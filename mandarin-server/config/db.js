@@ -1,30 +1,17 @@
-require('dotenv').config();
-const mysql = require('mysql');
-const util = require('util');
+// config/db.js for MongoDB
+const mongoose = require('mongoose');
 
-/**
- * Use a connection pool instead of a single connection.
- * This is more scalable in production.
- */
-const db = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '',
-  database: process.env.DB_NAME || 'test',
-  connectionLimit: 10
-});
-
-// Convert "db.query(...)" into a promise-based function
-db.query = util.promisify(db.query).bind(db);
-
-// Test the connection on initialization
-db.getConnection((err, connection) => {
-  if (err) {
-    console.error('MySQL connection error: ', err);
-  } else {
-    console.log(`MySQL connected to database: ${process.env.DB_NAME}`);
-    connection.release();
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    console.log(`MongoDB connected: ${conn.connection.host}`);
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    process.exit(1);
   }
-});
+};
 
-module.exports = db;
+module.exports = connectDB;
