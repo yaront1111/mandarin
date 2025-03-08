@@ -47,6 +47,7 @@ function App() {
       {/* Bottom Navigation */}
       <nav className="nav">
         <ul className="nav-list">
+          {/* Discover */}
           <li className="nav-item">
             <Link
               to="/discover"
@@ -56,6 +57,8 @@ function App() {
               <span className="nav-link-text">Discover</span>
             </Link>
           </li>
+
+          {/* Map */}
           <li className="nav-item">
             <Link
               to="/map"
@@ -65,6 +68,8 @@ function App() {
               <span className="nav-link-text">Map</span>
             </Link>
           </li>
+
+          {/* Matches */}
           <li className="nav-item">
             <Link
               to="/matches"
@@ -74,6 +79,8 @@ function App() {
               <span className="nav-link-text">Matches</span>
             </Link>
           </li>
+
+          {/* Messages */}
           <li className="nav-item">
             <Link
               to="/messages"
@@ -84,6 +91,8 @@ function App() {
               <span className="nav-link-text">Chats</span>
             </Link>
           </li>
+
+          {/* Stories */}
           <li className="nav-item">
             <Link
               to="/stories"
@@ -93,6 +102,8 @@ function App() {
               <span className="nav-link-text">Stories</span>
             </Link>
           </li>
+
+          {/* Profile */}
           <li className="nav-item">
             <Link
               to="/profile"

@@ -7,11 +7,11 @@ import PropTypes from 'prop-types';
  * optional premium badge, stealth mode toggle, and notifications.
  */
 function Header({
-  appTitle,
-  showPremiumBadge,
-  stealthMode,
-  toggleStealthMode,
-  notificationsCount,
+  appTitle = 'ConnectX',
+  showPremiumBadge = false,
+  stealthMode = false,
+  toggleStealthMode = () => {},
+  notificationsCount = 0,
 }) {
   return (
     <header className="header">
@@ -64,12 +64,6 @@ Header.propTypes = {
   notificationsCount: PropTypes.number,
 };
 
-Header.defaultProps = {
-  appTitle: 'ConnectX',
-  showPremiumBadge: false,
-  stealthMode: false,
-  toggleStealthMode: () => {},
-  notificationsCount: 0,
-};
+// No more Header.defaultProps needed, since we use default parameters above
 
 export default Header;

@@ -8,6 +8,7 @@ import LoginPage from './pages/Auth/LoginPage';
 import RegisterPage from './pages/Auth/RegisterPage';
 
 // Discovery
+import DiscoverPage from './pages/Discovery/DiscoverPage';
 import MapDiscovery from './pages/Discovery/MapDiscovery';
 
 // Matches
@@ -41,10 +42,9 @@ import Analytics from './pages/Admin/Analytics';
 
 /**
  * Example of a simple "RequireAuth" guard.
- * Replace the hardcoded value with real auth checks.
  */
 function RequireAuth({ children }) {
-  const isAuthenticated = true; // Replace with real check from AuthContext
+  const isAuthenticated = true; // Replace with real logic
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 }
 
@@ -52,7 +52,7 @@ function RequireAuth({ children }) {
  * Example of a "RequireAdmin" guard for admin routes.
  */
 function RequireAdmin({ children }) {
-  const isAdmin = false; // Replace with real admin check
+  const isAdmin = false; // Replace with real logic
   return isAdmin ? children : <Navigate to="/login" replace />;
 }
 
@@ -65,28 +65,186 @@ function AppRoutes() {
         <Route path="/register" element={<RegisterPage />} />
 
         {/* Protected Routes */}
-        <Route path="/" element={<RequireAuth><Navigate to="/discover" replace /></RequireAuth>} />
-        <Route path="/discover" element={<RequireAuth><MapDiscovery /></RequireAuth>} />
-        <Route path="/matches" element={<RequireAuth><MatchPage /></RequireAuth>} />
-        <Route path="/matches/:matchId" element={<RequireAuth><MatchDetail /></RequireAuth>} />
-        <Route path="/matches/:matchId/compatibility" element={<RequireAuth><Compatibility /></RequireAuth>} />
-        <Route path="/messages" element={<RequireAuth><ChatPage /></RequireAuth>} />
-        <Route path="/messages/:conversationId" element={<RequireAuth><ChatDetail /></RequireAuth>} />
-        <Route path="/stories" element={<RequireAuth><StoriesPage /></RequireAuth>} />
-        <Route path="/profiles/:userId" element={<RequireAuth><UserProfile /></RequireAuth>} />
-        <Route path="/profile/edit" element={<RequireAuth><EditProfile /></RequireAuth>} />
-        <Route path="/profile/private-photos" element={<RequireAuth><PrivatePhotos /></RequireAuth>} />
-        <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
-        <Route path="/premium" element={<RequireAuth><PremiumFeatures /></RequireAuth>} />
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <Navigate to="/discover" replace />
+            </RequireAuth>
+          }
+        />
+
+        {/*
+            1) /discover -> We'll show a "DiscoverPage"
+            2) /map -> We show "MapDiscovery"
+        */}
+        <Route
+          path="/discover"
+          element={
+            <RequireAuth>
+              <DiscoverPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/map"
+          element={
+            <RequireAuth>
+              <MapDiscovery />
+            </RequireAuth>
+          }
+        />
+
+        {/* Matches */}
+        <Route
+          path="/matches"
+          element={
+            <RequireAuth>
+              <MatchPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/matches/:matchId"
+          element={
+            <RequireAuth>
+              <MatchDetail />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/matches/:matchId/compatibility"
+          element={
+            <RequireAuth>
+              <Compatibility />
+            </RequireAuth>
+          }
+        />
+
+        {/* Messages */}
+        <Route
+          path="/messages"
+          element={
+            <RequireAuth>
+              <ChatPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/messages/:conversationId"
+          element={
+            <RequireAuth>
+              <ChatDetail />
+            </RequireAuth>
+          }
+        />
+
+        {/* Stories */}
+        <Route
+          path="/stories"
+          element={
+            <RequireAuth>
+              <StoriesPage />
+            </RequireAuth>
+          }
+        />
+
+        {/* Profile
+            - /profile -> The logged-in user's profile
+            - /profiles/:userId -> Another user's profile
+        */}
+        <Route
+          path="/profile"
+          element={
+            <RequireAuth>
+              <UserProfile />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/profiles/:userId"
+          element={
+            <RequireAuth>
+              <UserProfile />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/profile/edit"
+          element={
+            <RequireAuth>
+              <EditProfile />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/profile/private-photos"
+          element={
+            <RequireAuth>
+              <PrivatePhotos />
+            </RequireAuth>
+          }
+        />
+
+        {/* Dashboard */}
+        <Route
+          path="/dashboard"
+          element={
+            <RequireAuth>
+              <DashboardPage />
+            </RequireAuth>
+          }
+        />
+
+        {/* Premium */}
+        <Route
+          path="/premium"
+          element={
+            <RequireAuth>
+              <PremiumFeatures />
+            </RequireAuth>
+          }
+        />
 
         {/* Admin Routes */}
-        <Route path="/admin" element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />
-        <Route path="/admin/users" element={<RequireAdmin><UserManagement /></RequireAdmin>} />
-        <Route path="/admin/moderation" element={<RequireAdmin><ModerationQueue /></RequireAdmin>} />
-        <Route path="/admin/analytics" element={<RequireAdmin><Analytics /></RequireAdmin>} />
+        <Route
+          path="/admin"
+          element={
+            <RequireAdmin>
+              <AdminDashboard />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <RequireAdmin>
+              <UserManagement />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/moderation"
+          element={
+            <RequireAdmin>
+              <ModerationQueue />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/analytics"
+          element={
+            <RequireAdmin>
+              <Analytics />
+            </RequireAdmin>
+          }
+        />
 
         {/* Catch-all for unknown routes */}
-        <Route path="*" element={<h2 className="p-4 text-center">404 Page Not Found</h2>} />
+        <Route
+          path="*"
+          element={<h2 className="p-4 text-center">404 Page Not Found</h2>}
+        />
       </Routes>
     </BrowserRouter>
   );
