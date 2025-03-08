@@ -1,35 +1,53 @@
-// controllers/storyController.js
 const Story = require('../models/Story');
 
+/**
+ * GET /api/stories
+ * Returns all stories.
+ * In real usage, add filters or pagination if needed.
+ */
 exports.fetchStories = async (req, res) => {
   try {
-    const stories = await Story.find();
+    const stories = await Story.find().populate('owner', 'username');
     res.json(stories);
   } catch (error) {
+    console.error('fetchStories Error:', error);
     res.status(500).json({ message: error.message });
   }
 };
 
+/**
+ * POST /api/stories
+ * Body: (Multer) => file upload
+ * Creates a new story for the authenticated user.
+ */
 exports.uploadStory = async (req, res) => {
   try {
-    // Assuming file upload handled by middleware (e.g., multer)
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded.' });
+    }
+
     const story = await Story.create({
       owner: req.user.id,
-      url: req.file.path, // if using multer
-      // add other metadata as needed
+      url: req.file.path
     });
+
     res.status(201).json(story);
   } catch (error) {
+    console.error('uploadStory Error:', error);
     res.status(500).json({ message: error.message });
   }
 };
 
+/**
+ * POST /api/stories/:id/reply
+ * Dummy: add a reply to a story. Implementation may vary.
+ */
 exports.replyToStory = async (req, res) => {
   try {
-    // Dummy implementation: add a reply to a story
-    // In a real app, you might update a story document with a replies array
-    res.status(200).json({ message: 'Reply sent' });
+    // You might store replies in a separate model or an array in Story
+    res.status(200).json({ message: 'Reply sent (dummy implementation).' });
   } catch (error) {
+    console.error('replyToStory Error:', error);
     res.status(500).json({ message: error.message });
   }
 };

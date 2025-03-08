@@ -1,31 +1,82 @@
-// controllers/authController.js
-const User = require('../models/User');
+const db = require('../config/db');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
 
-exports.login = async (req, res) => {
+/**
+ * POST /api/auth/signup
+ * Body: { username, password }
+ */
+exports.signup = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    // TODO: Validate and authenticate user
-    const user = await User.findOne({ email });
-    if (!user || password !== user.password) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password required.' });
     }
-    // Sign a token (replace 'secret' with your secret from env)
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
-    res.json({ token, user });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+
+    // Check if user already exists
+    const existingUser = await db.query(
+      'SELECT id FROM users WHERE username = ?',
+      [username]
+    );
+    if (existingUser.length > 0) {
+      return res.status(409).json({ error: 'Username already taken.' });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insert new user
+    await db.query(
+      'INSERT INTO users (username, password) VALUES (?, ?)',
+      [username, hashedPassword]
+    );
+
+    return res.status(201).json({ message: 'User created successfully.' });
+  } catch (err) {
+    console.error('Signup Error:', err);
+    return res.status(500).json({ error: 'Server error during signup.' });
   }
 };
 
-exports.register = async (req, res) => {
+/**
+ * POST /api/auth/login
+ * Body: { username, password }
+ */
+exports.login = async (req, res) => {
   try {
-    const { email, password, name } = req.body;
-    // TODO: Validate data
-    const user = await User.create({ email, password, name });
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
-    res.status(201).json({ token, user });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password required.' });
+    }
+
+    // Find user
+    const rows = await db.query(
+      'SELECT id, password FROM users WHERE username = ?',
+      [username]
+    );
+    if (rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid username or password.' });
+    }
+
+    const user = rows[0];
+
+    // Compare passwords
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid username or password.' });
+    }
+
+    // Sign JWT
+    const token = jwt.sign(
+      { userId: user.id, username },
+      process.env.JWT_SECRET || 'changeme',
+      { expiresIn: '1h' }
+    );
+
+    return res.json({ message: 'Logged in', token });
+  } catch (err) {
+    console.error('Login Error:', err);
+    return res.status(500).json({ error: 'Server error during login.' });
   }
 };
