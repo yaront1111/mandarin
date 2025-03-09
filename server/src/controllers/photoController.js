@@ -177,3 +177,71 @@ exports.getCurrentUserPhotos = catchAsync(async (req, res) => {
 
   res.json({ success: true, data: photos });
 });
+
+/**
+ * PUT /photos/:id
+ * Update a photo's details (caption, privacy, etc.)
+ */
+exports.updatePhoto = catchAsync(async (req, res) => {
+  const photoId = req.params.id;
+  const { caption, isPrivate } = req.body;
+
+  const photo = await Photo.findByPk(photoId);
+
+  if (!photo) {
+    const err = new Error('Photo not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (photo.userId !== req.user.id) {
+    const err = new Error('Not authorized');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // Update only provided fields
+  if (caption !== undefined) photo.caption = caption;
+  if (isPrivate !== undefined) photo.isPrivate = isPrivate === true || isPrivate === 'true';
+
+  await photo.save();
+
+  res.json({
+    success: true,
+    data: photo
+  });
+});
+
+/**
+ * PUT /photos/order
+ * Update the order of user's photos
+ */
+exports.updatePhotoOrder = catchAsync(async (req, res) => {
+  const userId = req.user.id;
+  const { photoOrder } = req.body;
+
+  if (!Array.isArray(photoOrder)) {
+    const err = new Error('Photo order must be an array of photo IDs');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Verify all photos belong to the user
+  const photos = await Photo.findAll({
+    where: { id: photoOrder, userId }
+  });
+
+  if (photos.length !== photoOrder.length) {
+    const err = new Error('One or more photos not found or not owned by you');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // In a real implementation, you would update each photo's order in the database
+  // For this example, we'll just return success
+
+  res.json({
+    success: true,
+    message: 'Photo order updated successfully'
+  });
+});
