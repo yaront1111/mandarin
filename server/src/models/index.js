@@ -11,14 +11,15 @@ const KinkPreference = require('./KinkPreference');
 const Story = require('./Story');
 const Call = require('./Call');
 
-
-
-// Photoacess
+// Associations
+// Photo and PhotoAccess association
 Photo.hasMany(PhotoAccess, { foreignKey: 'photoId', onDelete: 'CASCADE' });
 PhotoAccess.belongsTo(Photo, { foreignKey: 'photoId' });
-PhotoAccess.sync()
 
-// Associations
+// Remove this individual sync call - it's causing the error
+// PhotoAccess.sync() <- REMOVE THIS LINE
+
+// Other associations (unchanged)
 User.hasOne(Profile, { foreignKey: 'userId', onDelete: 'CASCADE' });
 Profile.belongsTo(User, { foreignKey: 'userId' });
 
@@ -31,6 +32,7 @@ KinkPreference.belongsTo(User, { foreignKey: 'userId' });
 
 Kink.hasMany(KinkPreference, { foreignKey: 'kinkId', onDelete: 'CASCADE' });
 KinkPreference.belongsTo(Kink, { foreignKey: 'kinkId' });
+
 // Match: userAId, userBId -> each is a foreign key to User
 User.belongsToMany(User, {
   through: Match,
@@ -62,7 +64,7 @@ Story.belongsTo(User, { foreignKey: 'userId' });
 User.hasMany(Like, { foreignKey: 'userId' });
 Like.belongsTo(User, { foreignKey: 'userId' });
 
-// Typically you’d use migrations, but for a quick start:
+// Sync all models at once
 sequelize.sync({ alter: false }) // set to true to auto-update tables
   .then(() => console.log('✅ All models synced.'))
   .catch(err => console.error('❌ Model sync error:', err));
