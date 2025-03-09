@@ -1,33 +1,78 @@
 const { Photo } = require('../models');
 const { catchAsync } = require('../utils/helpers');
-// Add import:
 const photoAccessService = require('../services/photoAccessService');
 
 /**
+ * Helper function to convert relative photo URLs to absolute URLs
+ * @param {Object} req - Express request object
+ * @param {string} photoUrl - The relative photo URL
+ * @returns {string} The absolute photo URL
+ */
+const getFullPhotoUrl = (req, photoUrl) => {
+  // In development, use the host from request
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+  // Make sure photoUrl starts with a slash
+  const normalizedPhotoUrl = photoUrl.startsWith('/') ? photoUrl : `/${photoUrl}`;
+
+  return `${baseUrl}${normalizedPhotoUrl}`;
+};
+
+/**
+ * Transform a photo object or array to include full URLs
+ * @param {Object} req - Express request object
+ * @param {Object|Array} photos - Photo object or array of photo objects
+ * @returns {Object|Array} Transformed photo(s) with full URLs
+ */
+const transformPhotoUrls = (req, photos) => {
+  const transform = (photo) => {
+    // If it's a Sequelize model, convert to plain object
+    const photoData = photo.toJSON ? photo.toJSON() : { ...photo };
+    if (photoData.url) {
+      photoData.url = getFullPhotoUrl(req, photoData.url);
+    }
+    return photoData;
+  };
+
+  // Handle both single photo and arrays of photos
+  if (Array.isArray(photos)) {
+    return photos.map(photo => transform(photo));
+  }
+
+  return transform(photos);
+};
+
+/**
  * POST /photos
- * Upload a new photo (existing code).
+ * Upload a new photo
  */
 exports.uploadPhoto = catchAsync(async (req, res) => {
   if (!req.file) {
-    throw new Error('No file uploaded');
+    const err = new Error('No file uploaded');
+    err.statusCode = 400;
+    throw err;
   }
 
   const newPhoto = await Photo.create({
     userId: req.user.id,
     url: `/uploads/${req.file.filename}`,
+    caption: req.body.caption || '',
     isPrivate: req.body.isPrivate === 'true'
   });
 
+  // Transform the URL to absolute before sending response
+  const photoWithFullUrl = transformPhotoUrls(req, newPhoto);
+
   res.status(201).json({
     success: true,
-    data: newPhoto
+    data: photoWithFullUrl
   });
 });
 
 /**
  * GET /photos/:userId
  * If userId == req.user.id, show all photos (owner).
- * Otherwise, show only public or “granted” private photos.
+ * Otherwise, show only public or "granted" private photos.
  */
 exports.getUserPhotos = catchAsync(async (req, res) => {
   const userId = req.params.userId; // Photos belong to userId
@@ -36,7 +81,10 @@ exports.getUserPhotos = catchAsync(async (req, res) => {
   let photos;
   if (viewerId === userId) {
     // The owner can see all their own photos
-    photos = await Photo.findAll({ where: { userId } });
+    photos = await Photo.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']]
+    });
   } else {
     // Check if viewer has access
     const canViewPrivate = await photoAccessService.hasAccessToPrivatePhotos(
@@ -46,21 +94,28 @@ exports.getUserPhotos = catchAsync(async (req, res) => {
 
     if (canViewPrivate) {
       // Show all photos
-      photos = await Photo.findAll({ where: { userId } });
+      photos = await Photo.findAll({
+        where: { userId },
+        order: [['createdAt', 'DESC']]
+      });
     } else {
       // Show only public
       photos = await Photo.findAll({
-        where: { userId, isPrivate: false }
+        where: { userId, isPrivate: false },
+        order: [['createdAt', 'DESC']]
       });
     }
   }
 
-  res.json({ success: true, data: photos });
+  // Transform all photo URLs to absolute URLs
+  const photosWithFullUrls = transformPhotoUrls(req, photos);
+
+  res.json({ success: true, data: photosWithFullUrls });
 });
 
 /**
  * DELETE /photos/:id
- * Delete the photo if you own it (existing code).
+ * Delete the photo if you own it.
  */
 exports.deletePhoto = catchAsync(async (req, res) => {
   const photoId = req.params.id;
@@ -81,10 +136,6 @@ exports.deletePhoto = catchAsync(async (req, res) => {
   res.json({ success: true, message: 'Photo deleted' });
 });
 
-/*-------------------------------------------------------------------
-  NEW ENDPOINTS
- -------------------------------------------------------------------*/
-
 /**
  * POST /photos/request-access
  * Viewer requests access to owner's private photos.
@@ -92,6 +143,12 @@ exports.deletePhoto = catchAsync(async (req, res) => {
 exports.requestPhotoAccess = catchAsync(async (req, res) => {
   const { userId, message } = req.body;
   const viewerId = req.user.id;
+
+  if (userId === viewerId) {
+    const err = new Error('Cannot request access to your own photos');
+    err.statusCode = 400;
+    throw err;
+  }
 
   const record = await photoAccessService.requestPhotoAccess({
     ownerId: userId,
@@ -114,6 +171,12 @@ exports.grantPhotoAccess = catchAsync(async (req, res) => {
   const ownerId = req.user.id;
   const { userId: viewerId } = req.body;
 
+  if (!viewerId) {
+    const err = new Error('Viewer ID is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
   const record = await photoAccessService.grantPhotoAccess({
     ownerId,
     viewerId
@@ -133,6 +196,12 @@ exports.grantPhotoAccess = catchAsync(async (req, res) => {
 exports.rejectPhotoAccess = catchAsync(async (req, res) => {
   const ownerId = req.user.id;
   const { userId: viewerId } = req.body;
+
+  if (!viewerId) {
+    const err = new Error('Viewer ID is required');
+    err.statusCode = 400;
+    throw err;
+  }
 
   const record = await photoAccessService.rejectPhotoAccess({
     ownerId,
@@ -161,8 +230,6 @@ exports.getPhotoAccessRequests = catchAsync(async (req, res) => {
   });
 });
 
-// Add this method to server/src/controllers/photoController.js
-
 /**
  * GET /photos
  * Get all photos of the currently logged-in user.
@@ -175,7 +242,10 @@ exports.getCurrentUserPhotos = catchAsync(async (req, res) => {
     order: [['createdAt', 'DESC']]
   });
 
-  res.json({ success: true, data: photos });
+  // Transform all photo URLs to absolute URLs
+  const photosWithFullUrls = transformPhotoUrls(req, photos);
+
+  res.json({ success: true, data: photosWithFullUrls });
 });
 
 /**
@@ -206,9 +276,12 @@ exports.updatePhoto = catchAsync(async (req, res) => {
 
   await photo.save();
 
+  // Transform URL to absolute before sending response
+  const photoWithFullUrl = transformPhotoUrls(req, photo);
+
   res.json({
     success: true,
-    data: photo
+    data: photoWithFullUrl
   });
 });
 
@@ -237,11 +310,32 @@ exports.updatePhotoOrder = catchAsync(async (req, res) => {
     throw err;
   }
 
-  // In a real implementation, you would update each photo's order in the database
-  // For this example, we'll just return success
+  // Update the order of each photo in the database
+  for (let i = 0; i < photoOrder.length; i++) {
+    const photoId = photoOrder[i];
+    await Photo.update(
+      { order: i },
+      { where: { id: photoId, userId } }
+    );
+  }
 
   res.json({
     success: true,
     message: 'Photo order updated successfully'
+  });
+});
+
+/**
+ * GET /photos/access-permissions
+ * Get a list of users who have access to the current user's private photos
+ */
+exports.getPhotoAccessPermissions = catchAsync(async (req, res) => {
+  const ownerId = req.user.id;
+
+  const permissions = await photoAccessService.getAccessPermissions(ownerId);
+
+  res.json({
+    success: true,
+    data: permissions
   });
 });

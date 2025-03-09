@@ -1,4 +1,6 @@
-const { PhotoAccess } = require('../models');
+// src/services/photoAccessService.js
+const { PhotoAccess, User } = require('../models');
+const { Op } = require('sequelize');
 
 /**
  * Requests access to private photos:
@@ -13,14 +15,37 @@ async function requestPhotoAccess({ ownerId, viewerId, message }) {
     throw err;
   }
 
+  // Check if owner exists
+  const ownerExists = await User.findByPk(ownerId);
+  if (!ownerExists) {
+    const err = new Error('User not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
   let record = await PhotoAccess.findOne({
     where: { ownerId, viewerId }
   });
 
   if (record) {
-    return record; // Either pending, granted, or rejected
+    // If already granted, just return it
+    if (record.status === 'granted') {
+      return record;
+    }
+    
+    // If previously rejected, update to pending
+    if (record.status === 'rejected') {
+      record.status = 'pending';
+      record.message = message || '';
+      await record.save();
+      return record;
+    }
+    
+    // Otherwise it's pending, just return it
+    return record;
   }
 
+  // Create new request
   record = await PhotoAccess.create({
     ownerId,
     viewerId,
@@ -34,17 +59,22 @@ async function requestPhotoAccess({ ownerId, viewerId, message }) {
 /**
  * Grants private photo access:
  * - Updates existing record if status='pending'.
- * - Throws error if not found or already processed.
+ * - Creates a new record if none exists.
  */
 async function grantPhotoAccess({ ownerId, viewerId }) {
-  const record = await PhotoAccess.findOne({
-    where: { ownerId, viewerId, status: 'pending' }
+  let record = await PhotoAccess.findOne({
+    where: { ownerId, viewerId }
   });
 
   if (!record) {
-    const err = new Error('No pending request found to grant.');
-    err.statusCode = 404;
-    throw err;
+    // Create and grant directly if no request exists
+    record = await PhotoAccess.create({
+      ownerId,
+      viewerId,
+      status: 'granted',
+      message: 'Access granted directly'
+    });
+    return record;
   }
 
   record.status = 'granted';
@@ -57,11 +87,11 @@ async function grantPhotoAccess({ ownerId, viewerId }) {
  */
 async function rejectPhotoAccess({ ownerId, viewerId }) {
   const record = await PhotoAccess.findOne({
-    where: { ownerId, viewerId, status: 'pending' }
+    where: { ownerId, viewerId }
   });
 
   if (!record) {
-    const err = new Error('No pending request found to reject.');
+    const err = new Error('No access request found to reject.');
     err.statusCode = 404;
     throw err;
   }
@@ -77,8 +107,31 @@ async function rejectPhotoAccess({ ownerId, viewerId }) {
 async function getAccessRequests(ownerId) {
   return PhotoAccess.findAll({
     where: { ownerId, status: 'pending' },
-    // If you want to include the requesting user's data, do:
-    // include: [{ model: User, as: 'viewer' }]
+    include: [
+      {
+        model: User,
+        as: 'viewer',
+        attributes: ['id', 'firstName', 'nickname', 'avatar']
+      }
+    ],
+    order: [['createdAt', 'DESC']]
+  });
+}
+
+/**
+ * Get a list of users who have access to the owner's private photos
+ */
+async function getAccessPermissions(ownerId) {
+  return PhotoAccess.findAll({
+    where: { ownerId, status: 'granted' },
+    include: [
+      {
+        model: User,
+        as: 'viewer',
+        attributes: ['id', 'firstName', 'nickname', 'avatar']
+      }
+    ],
+    order: [['updatedAt', 'DESC']]
   });
 }
 
@@ -97,10 +150,30 @@ async function hasAccessToPrivatePhotos(ownerId, viewerId) {
   return !!record;
 }
 
+/**
+ * Revoke previously granted access
+ */
+async function revokePhotoAccess({ ownerId, viewerId }) {
+  const record = await PhotoAccess.findOne({
+    where: { ownerId, viewerId, status: 'granted' }
+  });
+
+  if (!record) {
+    const err = new Error('No granted access found to revoke.');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  await record.destroy();
+  return { success: true, message: 'Access revoked successfully' };
+}
+
 module.exports = {
   requestPhotoAccess,
   grantPhotoAccess,
   rejectPhotoAccess,
+  revokePhotoAccess,
   getAccessRequests,
+  getAccessPermissions,
   hasAccessToPrivatePhotos
 };
