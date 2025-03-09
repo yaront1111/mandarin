@@ -11,7 +11,7 @@ const matchService = {
    */
   async getMatches(options = { page: 1, limit: 20 }) {
     try {
-      const response = await api.get('/matches', {
+      const response = await api.get('api/matches', {
         params: {
           page: options.page,
           limit: options.limit
@@ -31,7 +31,7 @@ const matchService = {
    */
   async getMutualMatches(options = { page: 1, limit: 20 }) {
     try {
-      const response = await api.get('/matches/mutual', {
+      const response = await api.get('api/matches/mutual', {
         params: {
           page: options.page,
           limit: options.limit
@@ -51,7 +51,7 @@ const matchService = {
    */
   async getPotentialMatches(filters = {}) {
     try {
-      const response = await api.get('/matches/potential', {
+      const response = await api.get('api/matches/potential', {
         params: filters
       });
       return response.data.data;
@@ -68,7 +68,7 @@ const matchService = {
    */
   async likeUser(targetId) {
     try {
-      const response = await api.post('/matches/like', { targetId });
+      const response = await api.post('api/matches/like', { targetId });
       return response.data.data;
     } catch (error) {
       console.error('Error liking user:', error);
@@ -83,7 +83,7 @@ const matchService = {
    */
   async passUser(targetId) {
     try {
-      const response = await api.post('/matches/pass', { targetId });
+      const response = await api.post('api/matches/pass', { targetId });
       return response.data.data;
     } catch (error) {
       console.error('Error passing user:', error);
@@ -98,7 +98,7 @@ const matchService = {
    */
   async unmatch(matchId) {
     try {
-      const response = await api.delete(`/matches/${matchId}`);
+      const response = await api.delete(`api/matches/${matchId}`);
       return response.data;
     } catch (error) {
       console.error('Error unmatching user:', error);
@@ -113,7 +113,7 @@ const matchService = {
    */
   async blockUser(userId) {
     try {
-      const response = await api.post('/matches/block', { userId });
+      const response = await api.post('api/matches/block', { userId });
       return response.data;
     } catch (error) {
       console.error('Error blocking user:', error);
@@ -130,7 +130,7 @@ const matchService = {
    */
   async reportUser(userId, reason, details = '') {
     try {
-      const response = await api.post('/matches/report', {
+      const response = await api.post('api/matches/report', {
         userId,
         reason,
         details
@@ -148,7 +148,7 @@ const matchService = {
    */
   async getUserStats() {
     try {
-      const response = await api.get('/users/stats');
+      const response = await api.get('api/users/stats');
       return response.data.data;
     } catch (error) {
       console.error('Error fetching user stats:', error);
@@ -170,7 +170,7 @@ const matchService = {
    */
   async getMatchFilters() {
     try {
-      const response = await api.get('/matches/filters');
+      const response = await api.get('api/matches/filters');
       return response.data.data;
     } catch (error) {
       console.error('Error fetching match filters:', error);
@@ -185,7 +185,7 @@ const matchService = {
    */
   async updateMatchPreferences(preferences) {
     try {
-      const response = await api.put('/matches/preferences', preferences);
+      const response = await api.put('api/matches/preferences', preferences);
       return response.data;
     } catch (error) {
       console.error('Error updating match preferences:', error);

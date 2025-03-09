@@ -20,7 +20,7 @@ const photoService = {
       if (metadata.order) formData.append('order', metadata.order);
       if (metadata.tags) formData.append('tags', JSON.stringify(metadata.tags));
 
-      const response = await api.post('/photos', formData, {
+      const response = await api.post('api/photos', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
@@ -40,7 +40,7 @@ const photoService = {
    */
   async getUserPhotos(userId = 'me') {
     try {
-      const endpoint = userId === 'me' ? '/photos' : `/photos/${userId}`;
+      const endpoint = userId === 'me' ? 'api/photos' : `api/photos/${userId}`;
       const response = await api.get(endpoint);
       return response.data.data;
     } catch (error) {
@@ -56,7 +56,7 @@ const photoService = {
    */
   async deletePhoto(photoId) {
     try {
-      const response = await api.delete(`/photos/${photoId}`);
+      const response = await api.delete(`api/photos/${photoId}`);
       return response.data;
     } catch (error) {
       console.error('Error deleting photo:', error);
@@ -72,7 +72,7 @@ const photoService = {
    */
   async updatePhoto(photoId, updates) {
     try {
-      const response = await api.put(`/photos/${photoId}`, updates);
+      const response = await api.put(`api/photos/${photoId}`, updates);
       return response.data.data;
     } catch (error) {
       console.error('Error updating photo:', error);
@@ -87,7 +87,7 @@ const photoService = {
    */
   async updatePhotoOrder(photoOrder) {
     try {
-      const response = await api.put('/photos/order', { photoOrder });
+      const response = await api.put('api/photos/order', { photoOrder });
       return response.data;
     } catch (error) {
       console.error('Error updating photo order:', error);
@@ -103,7 +103,7 @@ const photoService = {
    */
   async requestPhotoAccess(userId, message = '') {
     try {
-      const response = await api.post('/photos/request-access', {
+      const response = await api.post('api/photos/request-access', {
         userId,
         message
       });
@@ -122,7 +122,7 @@ const photoService = {
    */
   async grantPhotoAccess(userId, photoIds = []) {
     try {
-      const response = await api.post('/photos/grant-access', {
+      const response = await api.post('api/photos/grant-access', {
         userId,
         photoIds
       });
@@ -158,7 +158,7 @@ const photoService = {
    */
   async getPhotoAccessRequests() {
     try {
-      const response = await api.get('/photos/access-requests');
+      const response = await api.get('api/photos/access-requests');
       return response.data.data;
     } catch (error) {
       console.error('Error fetching photo access requests:', error);
@@ -172,7 +172,7 @@ const photoService = {
    */
   async getPhotoAccessPermissions() {
     try {
-      const response = await api.get('/photos/access-permissions');
+      const response = await api.get('api/photos/access-permissions');
       return response.data.data;
     } catch (error) {
       console.error('Error fetching photo access permissions:', error);

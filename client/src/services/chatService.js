@@ -3,7 +3,7 @@ import api from './api';
 
 const chatService = {
   async getMessages(matchId) {
-    const response = await api.get(`/chat/${matchId}`);
+    const response = await api.get(`api/chat/${matchId}`);
     // { success: true, data: [ ...messages ] }
     return response.data.data;
   },

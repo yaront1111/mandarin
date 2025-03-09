@@ -13,7 +13,7 @@ const authService = {
 
   async register(formData) {
     // formData might contain email, password, birthDate, etc.
-    const response = await api.post('/auth/register', formData);
+    const response = await api.post('api/auth/register', formData);
     const { user, token, refreshToken } = response.data.data;
     localStorage.setItem('token', token);
     localStorage.setItem('refreshToken', refreshToken);
@@ -21,7 +21,7 @@ const authService = {
   },
 
   async getCurrentUser() {
-    const response = await api.get('/auth/me');
+    const response = await api.get('api/auth/me');
     // { success: true, data: { user: {...} } }
     return response.data.data.user;
   },
