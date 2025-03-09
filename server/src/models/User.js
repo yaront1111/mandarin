@@ -1,3 +1,5 @@
+// server/src/models/User.js
+
 const { DataTypes } = require('sequelize');
 const bcrypt = require('bcrypt');
 const sequelize = require('../database');
@@ -25,6 +27,15 @@ const User = sequelize.define('User', {
   lastName: {
     type: DataTypes.STRING
   },
+
+  /**
+   * New nickname field
+   */
+  nickname: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+
   birthDate: {
     type: DataTypes.DATEONLY,
     allowNull: false

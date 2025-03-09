@@ -30,3 +30,21 @@ p, span, div {
 .mandarin-input {
   @apply bg-bg-input text-text-primary border border-bg-input rounded-md px-4 py-2 focus:border-brand-pink focus:outline-none;
 }
+/* Swipe animations */
+@keyframes swipe-left {
+  from { transform: translateX(0) rotate(0); opacity: 1; }
+  to { transform: translateX(-100vw) rotate(-20deg); opacity: 0; }
+}
+
+@keyframes swipe-right {
+  from { transform: translateX(0) rotate(0); opacity: 1; }
+  to { transform: translateX(100vw) rotate(20deg); opacity: 0; }
+}
+
+.animate-swipe-left {
+  animation: swipe-left 0.3s forwards ease-out;
+}
+
+.animate-swipe-right {
+  animation: swipe-right 0.3s forwards ease-out;
+}

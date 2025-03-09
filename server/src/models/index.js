@@ -12,9 +12,12 @@ const Story = require('./Story');
 const Call = require('./Call');
 
 
+
 // Photoacess
 Photo.hasMany(PhotoAccess, { foreignKey: 'photoId', onDelete: 'CASCADE' });
 PhotoAccess.belongsTo(Photo, { foreignKey: 'photoId' });
+db.PhotoAccess = PhotoAccess;
+PhotoAccess.sync()
 
 // Associations
 User.hasOne(Profile, { foreignKey: 'userId', onDelete: 'CASCADE' });
@@ -77,5 +80,5 @@ module.exports = {
   Like,
   Kink,
   KinkPreference,
-  Story
+  Story,
 };

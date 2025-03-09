@@ -1,4 +1,4 @@
-// src/validators/authValidator.js
+// server/src/validators/authValidator.js
 
 const Joi = require('joi');
 const { ValidationError } = require('../utils/errors');
@@ -19,6 +19,14 @@ const registerSchema = Joi.object({
     'any.required': 'First name is required'
   }),
   lastName: Joi.string().allow('', null),
+
+  /**
+   * New nickname field
+   */
+  nickname: Joi.string().required().messages({
+    'any.required': 'Nickname is required'
+  }),
+
   birthDate: Joi.date().iso().required().messages({
     'date.base': 'Birth date must be a valid date',
     'any.required': 'Birth date is required'

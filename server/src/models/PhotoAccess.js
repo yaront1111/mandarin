@@ -1,35 +1,37 @@
-// src/models/PhotoAccess.js
-const { DataTypes } = require('sequelize');
+const { Model, DataTypes } = require('sequelize');
 const sequelize = require('../database');
 
-const PhotoAccess = sequelize.define('PhotoAccess', {
-  id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true
+class PhotoAccess extends Model {}
+
+PhotoAccess.init(
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true
+    },
+    ownerId: {
+      type: DataTypes.UUID,
+      allowNull: false
+    },
+    viewerId: {
+      type: DataTypes.UUID,
+      allowNull: false
+    },
+    status: {
+      type: DataTypes.ENUM('pending', 'granted', 'rejected'),
+      allowNull: false,
+      defaultValue: 'pending'
+    },
+    message: {
+      type: DataTypes.STRING,
+      allowNull: true
+    }
   },
-  photoId: {
-    type: DataTypes.UUID,
-    allowNull: false
-  },
-  grantedToId: {
-    type: DataTypes.UUID,
-    allowNull: false
-  },
-  grantedById: {
-    type: DataTypes.UUID,
-    allowNull: false
-  },
-  status: {
-    type: DataTypes.ENUM('pending', 'approved', 'denied', 'revoked'),
-    defaultValue: 'pending'
-  },
-  expiresAt: {
-    type: DataTypes.DATE,
-    allowNull: true
+  {
+    sequelize,
+    modelName: 'PhotoAccess'
   }
-}, {
-  timestamps: true
-});
+);
 
 module.exports = PhotoAccess;

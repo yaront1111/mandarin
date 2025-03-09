@@ -1,112 +1,106 @@
-// src/services/photoAccessService.js
-const { Photo, PhotoAccess } = require('../models');
-const { NotFoundError, ForbiddenError } = require('../utils/errors');
-// If you have a notification system or socket for alerts
-// const notificationService = require('./notificationService');
-const { Op } = require('sequelize');
+const { PhotoAccess } = require('../models');
 
-exports.requestPhotoAccess = async (requesterId, photoId) => {
-  const photo = await Photo.findByPk(photoId);
-  if (!photo) throw new NotFoundError('Photo');
-
-  if (!photo.isPrivate) {
-    return { success: true, message: 'Photo is public, no need to request access.' };
+/**
+ * Requests access to private photos:
+ * - If a request already exists, returns it.
+ * - Otherwise creates a new record with status='pending'.
+ */
+async function requestPhotoAccess({ ownerId, viewerId, message }) {
+  // Avoid requesting your own photos
+  if (ownerId === viewerId) {
+    const err = new Error('Cannot request access to your own photos.');
+    err.statusCode = 400;
+    throw err;
   }
 
-  // Check if there's an existing record
-  const existing = await PhotoAccess.findOne({
-    where: {
-      photoId,
-      grantedToId: requesterId,
-      status: {
-        [Op.in]: ['pending', 'approved']
-      }
-    }
-  });
-  if (existing) {
-    if (existing.status === 'approved') {
-      return { success: true, message: 'Already have access' };
-    }
-    return { success: true, message: 'Request is already pending' };
-  }
-
-  // Create request
-  const accessRequest = await PhotoAccess.create({
-    photoId,
-    grantedToId: requesterId,
-    grantedById: photo.userId,
-    status: 'pending'
+  let record = await PhotoAccess.findOne({
+    where: { ownerId, viewerId }
   });
 
-  //Optionally notify the photo owner
-  await notificationService.createNotification(
-    photo.userId,
-    'PHOTO_REQUEST',
-    `User ${requesterId} requested access to your private photo`,
-    accessRequest.id
-  );
-
-  return { success: true, data: accessRequest };
-};
-
-exports.respondToRequest = async (ownerId, accessId, approve) => {
-  const access = await PhotoAccess.findByPk(accessId);
-  if (!access) throw new NotFoundError('Access request not found');
-
-  const photo = await Photo.findByPk(access.photoId);
-  if (!photo || photo.userId !== ownerId) {
-    throw new ForbiddenError('You are not the owner of this photo');
+  if (record) {
+    return record; // Either pending, granted, or rejected
   }
 
-  access.status = approve ? 'approved' : 'denied';
-  if (approve) {
-    // Optionally set expiration
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + 7); // 7 day expiry
-    access.expiresAt = expiryDate;
-  }
-  await access.save();
-
-  // Notify requester if you have a system
-  // ...
-
-  return { success: true, data: access };
-};
-
-exports.checkAccess = async (userId, photoId) => {
-  // Photo owner always has access
-  const photo = await Photo.findByPk(photoId);
-  if (!photo) throw new NotFoundError('Photo');
-
-  if (photo.userId === userId) return true;
-  if (!photo.isPrivate) return true;
-
-  // Otherwise check PhotoAccess
-  const pa = await PhotoAccess.findOne({
-    where: {
-      photoId,
-      grantedToId: userId,
-      status: 'approved',
-      [Op.or]: [
-        { expiresAt: null },
-        { expiresAt: { [Op.gt]: new Date() } }
-      ]
-    }
+  record = await PhotoAccess.create({
+    ownerId,
+    viewerId,
+    status: 'pending',
+    message: message || ''
   });
-  return !!pa; // Boolean
-};
 
-exports.revokeAccess = async (ownerId, accessId) => {
-  const access = await PhotoAccess.findByPk(accessId);
-  if (!access) throw new NotFoundError('No such access record');
+  return record;
+}
 
-  const photo = await Photo.findByPk(access.photoId);
-  if (!photo || photo.userId !== ownerId) {
-    throw new ForbiddenError('Not authorized to revoke');
+/**
+ * Grants private photo access:
+ * - Updates existing record if status='pending'.
+ * - Throws error if not found or already processed.
+ */
+async function grantPhotoAccess({ ownerId, viewerId }) {
+  const record = await PhotoAccess.findOne({
+    where: { ownerId, viewerId, status: 'pending' }
+  });
+
+  if (!record) {
+    const err = new Error('No pending request found to grant.');
+    err.statusCode = 404;
+    throw err;
   }
 
-  access.status = 'revoked';
-  await access.save();
+  record.status = 'granted';
+  await record.save();
+  return record;
+}
 
-  return { success: true, data: access };
+/**
+ * Rejects private photo access.
+ */
+async function rejectPhotoAccess({ ownerId, viewerId }) {
+  const record = await PhotoAccess.findOne({
+    where: { ownerId, viewerId, status: 'pending' }
+  });
+
+  if (!record) {
+    const err = new Error('No pending request found to reject.');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  record.status = 'rejected';
+  await record.save();
+  return record;
+}
+
+/**
+ * Fetches all "pending" requests for the current owner.
+ */
+async function getAccessRequests(ownerId) {
+  return PhotoAccess.findAll({
+    where: { ownerId, status: 'pending' },
+    // If you want to include the requesting user's data, do:
+    // include: [{ model: User, as: 'viewer' }]
+  });
+}
+
+/**
+ * Checks if viewer has been granted access to owner's private photos.
+ */
+async function hasAccessToPrivatePhotos(ownerId, viewerId) {
+  if (ownerId === viewerId) {
+    return true; // your own photos
+  }
+
+  const record = await PhotoAccess.findOne({
+    where: { ownerId, viewerId, status: 'granted' }
+  });
+
+  return !!record;
+}
+
+module.exports = {
+  requestPhotoAccess,
+  grantPhotoAccess,
+  rejectPhotoAccess,
+  getAccessRequests,
+  hasAccessToPrivatePhotos
 };
