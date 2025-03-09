@@ -1,0 +1,8 @@
+/* src/styles/index.css */
+/* Global resets or base styling */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: sans-serif;
+}
