@@ -16,7 +16,6 @@ const Call = require('./Call');
 // Photoacess
 Photo.hasMany(PhotoAccess, { foreignKey: 'photoId', onDelete: 'CASCADE' });
 PhotoAccess.belongsTo(Photo, { foreignKey: 'photoId' });
-db.PhotoAccess = PhotoAccess;
 PhotoAccess.sync()
 
 // Associations

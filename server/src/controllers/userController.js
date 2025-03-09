@@ -105,3 +105,27 @@ exports.deleteAccount = catchAsync(async (req, res) => {
     message: 'Account deleted'
   });
 });
+
+/**
+ * GET /users/stats
+ * Get statistics for the current user.
+ */
+exports.getUserStats = catchAsync(async (req, res) => {
+  const userId = req.user.id;
+
+  // Here you would normally query various tables to get actual stats
+  // For now, we'll return mock data
+  const stats = {
+    viewCount: 0,
+    likeCount: 0,
+    matchCount: 0,
+    messageCount: 0,
+    profileCompleteness: 0,
+    responseRate: 0
+  };
+
+  res.json({
+    success: true,
+    data: stats
+  });
+});

@@ -160,3 +160,20 @@ exports.getPhotoAccessRequests = catchAsync(async (req, res) => {
     data: requests
   });
 });
+
+// Add this method to server/src/controllers/photoController.js
+
+/**
+ * GET /photos
+ * Get all photos of the currently logged-in user.
+ */
+exports.getCurrentUserPhotos = catchAsync(async (req, res) => {
+  const userId = req.user.id;
+
+  const photos = await Photo.findAll({
+    where: { userId },
+    order: [['createdAt', 'DESC']]
+  });
+
+  res.json({ success: true, data: photos });
+});

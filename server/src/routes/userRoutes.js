@@ -15,6 +15,7 @@ const auth = require('../middlewares/auth');
  */
 
 router.get('/me', auth, userController.getProfile);
+router.get('/stats', auth, userController.getUserStats);
 router.get('/:id', auth, userController.getProfile);
 router.put('/me', auth, userController.updateProfile);
 router.delete('/me', auth, userController.deleteAccount);
