@@ -1,3 +1,4 @@
+// server/src/models/index.js
 const sequelize = require('../database');
 const User = require('./User');
 const Profile = require('./Profile');
@@ -11,63 +12,72 @@ const KinkPreference = require('./KinkPreference');
 const Story = require('./Story');
 const Call = require('./Call');
 
-// Associations
-// Photo and PhotoAccess association
-Photo.hasMany(PhotoAccess, { foreignKey: 'photoId', onDelete: 'CASCADE' });
-PhotoAccess.belongsTo(Photo, { foreignKey: 'photoId' });
+// ------------------
+// Define Associations
+// ------------------
 
-// Remove this individual sync call - it's causing the error
-// PhotoAccess.sync() <- REMOVE THIS LINE
-
-// Other associations (unchanged)
+// Profile and User
 User.hasOne(Profile, { foreignKey: 'userId', onDelete: 'CASCADE' });
 Profile.belongsTo(User, { foreignKey: 'userId' });
 
+// Photo and PhotoAccess
+Photo.hasMany(PhotoAccess, { foreignKey: 'photoId', onDelete: 'CASCADE' });
+PhotoAccess.belongsTo(Photo, { foreignKey: 'photoId' });
+
+// PhotoAccess associations with User
+// This association defines the user who is requesting access.
+User.hasMany(PhotoAccess, { foreignKey: 'viewerId', as: 'viewerAccesses' });
+PhotoAccess.belongsTo(User, { foreignKey: 'viewerId', as: 'viewer' });
+
+// This association defines the user who owns the photos.
+User.hasMany(PhotoAccess, { foreignKey: 'ownerId', as: 'ownerAccesses' });
+PhotoAccess.belongsTo(User, { foreignKey: 'ownerId', as: 'owner' });
+
+// Photo and User
 User.hasMany(Photo, { foreignKey: 'userId', onDelete: 'CASCADE' });
 Photo.belongsTo(User, { foreignKey: 'userId' });
 
-// New associations for Kink & KinkPreference:
+// Kink & KinkPreference associations
 User.hasMany(KinkPreference, { foreignKey: 'userId', onDelete: 'CASCADE' });
 KinkPreference.belongsTo(User, { foreignKey: 'userId' });
-
 Kink.hasMany(KinkPreference, { foreignKey: 'kinkId', onDelete: 'CASCADE' });
 KinkPreference.belongsTo(Kink, { foreignKey: 'kinkId' });
 
-// Match: userAId, userBId -> each is a foreign key to User
+// Match associations (Users matching with each other)
 User.belongsToMany(User, {
   through: Match,
   as: 'Matches',
   foreignKey: 'userAId',
   otherKey: 'userBId'
 });
-
-// For the Match model, we can keep direct references:
 Match.belongsTo(User, { as: 'userA', foreignKey: 'userAId' });
 Match.belongsTo(User, { as: 'userB', foreignKey: 'userBId' });
 
-// Message
+// Message associations
 Match.hasMany(Message, { foreignKey: 'matchId', onDelete: 'CASCADE' });
 Message.belongsTo(Match, { foreignKey: 'matchId' });
-
 User.hasMany(Message, { foreignKey: 'senderId', onDelete: 'CASCADE' });
 Message.belongsTo(User, { foreignKey: 'senderId' });
 
-// Call
+// Call associations
 Match.hasMany(Call, { foreignKey: 'matchId', onDelete: 'CASCADE' });
 Call.belongsTo(Match, { foreignKey: 'matchId' });
 
-//story
+// Story associations
 User.hasMany(Story, { foreignKey: 'userId', onDelete: 'CASCADE' });
 Story.belongsTo(User, { foreignKey: 'userId' });
 
-// Like
+// Like associations
 User.hasMany(Like, { foreignKey: 'userId' });
 Like.belongsTo(User, { foreignKey: 'userId' });
 
-// Sync all models at once
-sequelize.sync({ alter: false }) // set to true to auto-update tables
+// ------------------
+// Sync and Export
+// ------------------
+sequelize
+  .sync({ alter: false }) // set to true to auto-update tables if needed
   .then(() => console.log('✅ All models synced.'))
-  .catch(err => console.error('❌ Model sync error:', err));
+  .catch((err) => console.error('❌ Model sync error:', err));
 
 module.exports = {
   sequelize,
