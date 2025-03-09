@@ -21,7 +21,7 @@ const authService = {
   },
 
   async getCurrentUser() {
-    const response = await api.get('api/auth/me');
+    const response = await api.get('/auth/me');
     // { success: true, data: { user: {...} } }
     return response.data.data.user;
   },
