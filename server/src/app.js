@@ -57,8 +57,8 @@ const authLimiter = rateLimit({
   max: 5,
   message: 'Too many login attempts, please try again later'
 });
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
+app.use('/auth/login', authLimiter);
+app.use('/auth/register', authLimiter);
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

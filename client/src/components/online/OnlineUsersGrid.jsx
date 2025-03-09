@@ -8,7 +8,7 @@ const OnlineUsersGrid = () => {
   useEffect(() => {
     const fetchOnlineUsers = async () => {
       try {
-        const response = await fetch('/api/users/online'); // adjust endpoint as needed
+        const response = await fetch('/users/online'); // adjust endpoint as needed
         const data = await response.json();
         setOnlineUsers(data);
       } catch (error) {
