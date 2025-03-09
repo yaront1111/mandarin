@@ -24,7 +24,7 @@ async function requestPhotoAccess({ ownerId, viewerId, message }) {
   }
 
   let record = await PhotoAccess.findOne({
-    where: { ownerId, viewerId }
+    where: { ownerId, viewerId },
   });
 
   if (record) {
@@ -32,7 +32,7 @@ async function requestPhotoAccess({ ownerId, viewerId, message }) {
     if (record.status === 'granted') {
       return record;
     }
-    
+
     // If previously rejected, update to pending
     if (record.status === 'rejected') {
       record.status = 'pending';
@@ -40,7 +40,7 @@ async function requestPhotoAccess({ ownerId, viewerId, message }) {
       await record.save();
       return record;
     }
-    
+
     // Otherwise it's pending, just return it
     return record;
   }
@@ -50,7 +50,7 @@ async function requestPhotoAccess({ ownerId, viewerId, message }) {
     ownerId,
     viewerId,
     status: 'pending',
-    message: message || ''
+    message: message || '',
   });
 
   return record;
@@ -63,7 +63,7 @@ async function requestPhotoAccess({ ownerId, viewerId, message }) {
  */
 async function grantPhotoAccess({ ownerId, viewerId }) {
   let record = await PhotoAccess.findOne({
-    where: { ownerId, viewerId }
+    where: { ownerId, viewerId },
   });
 
   if (!record) {
@@ -72,7 +72,7 @@ async function grantPhotoAccess({ ownerId, viewerId }) {
       ownerId,
       viewerId,
       status: 'granted',
-      message: 'Access granted directly'
+      message: 'Access granted directly',
     });
     return record;
   }
@@ -87,7 +87,7 @@ async function grantPhotoAccess({ ownerId, viewerId }) {
  */
 async function rejectPhotoAccess({ ownerId, viewerId }) {
   const record = await PhotoAccess.findOne({
-    where: { ownerId, viewerId }
+    where: { ownerId, viewerId },
   });
 
   if (!record) {
@@ -103,6 +103,8 @@ async function rejectPhotoAccess({ ownerId, viewerId }) {
 
 /**
  * Fetches all "pending" requests for the current owner.
+ * We include the 'viewer' relationship because in PhotoAccess,
+ * PhotoAccess.belongsTo(User, { foreignKey: 'viewerId', as: 'viewer' }).
  */
 async function getAccessRequests(ownerId) {
   return PhotoAccess.findAll({
@@ -110,11 +112,11 @@ async function getAccessRequests(ownerId) {
     include: [
       {
         model: User,
-        as: 'viewer',
-        attributes: ['id', 'firstName', 'nickname', 'avatar']
-      }
+        as: 'viewer', // Must match PhotoAccess.belongsTo(User, { as: 'viewer' })
+        attributes: ['id', 'firstName', 'nickname', 'avatar'],
+      },
     ],
-    order: [['createdAt', 'DESC']]
+    order: [['createdAt', 'DESC']],
   });
 }
 
@@ -127,11 +129,11 @@ async function getAccessPermissions(ownerId) {
     include: [
       {
         model: User,
-        as: 'viewer',
-        attributes: ['id', 'firstName', 'nickname', 'avatar']
-      }
+        as: 'viewer', // Must match PhotoAccess.belongsTo(User, { as: 'viewer' })
+        attributes: ['id', 'firstName', 'nickname', 'avatar'],
+      },
     ],
-    order: [['updatedAt', 'DESC']]
+    order: [['updatedAt', 'DESC']],
   });
 }
 
@@ -144,7 +146,7 @@ async function hasAccessToPrivatePhotos(ownerId, viewerId) {
   }
 
   const record = await PhotoAccess.findOne({
-    where: { ownerId, viewerId, status: 'granted' }
+    where: { ownerId, viewerId, status: 'granted' },
   });
 
   return !!record;
@@ -155,7 +157,7 @@ async function hasAccessToPrivatePhotos(ownerId, viewerId) {
  */
 async function revokePhotoAccess({ ownerId, viewerId }) {
   const record = await PhotoAccess.findOne({
-    where: { ownerId, viewerId, status: 'granted' }
+    where: { ownerId, viewerId, status: 'granted' },
   });
 
   if (!record) {
@@ -175,5 +177,5 @@ module.exports = {
   revokePhotoAccess,
   getAccessRequests,
   getAccessPermissions,
-  hasAccessToPrivatePhotos
+  hasAccessToPrivatePhotos,
 };
