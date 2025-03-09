@@ -1,20 +1,24 @@
+// src/components/profile/InterestTags.jsx
 import React from 'react';
+import PropTypes from 'prop-types';
 
-export default function InterestTags({ interests = [] }) {
+const InterestTags = ({ interests }) => {
   return (
-    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-      {interests.map((tag, i) => (
-        <span
-          key={i}
-          style={{
-            backgroundColor: '#ddd',
-            padding: '0.25rem 0.5rem',
-            borderRadius: '4px'
-          }}
+    <div className="flex flex-wrap gap-2">
+      {interests.map((interest, index) => (
+        <span 
+          key={index}
+          className="px-3 py-1 bg-bg-input rounded-full text-sm"
         >
-          {tag}
+          {interest}
         </span>
       ))}
     </div>
   );
-}
+};
+
+InterestTags.propTypes = {
+  interests: PropTypes.array.isRequired
+};
+
+export default InterestTags;

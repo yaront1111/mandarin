@@ -1,6 +1,8 @@
+// src/components/ui/Avatar.jsx
 import React from 'react';
+import PropTypes from 'prop-types';
 
-export default function Avatar({ src, alt = 'avatar', size = 50 }) {
+function Avatar({ src, alt = 'avatar', size = 50 }) {
   const fallback = '/images/default-avatar.png';
   return (
     <img
@@ -15,3 +17,17 @@ export default function Avatar({ src, alt = 'avatar', size = 50 }) {
     />
   );
 }
+
+Avatar.propTypes = {
+  src: PropTypes.string,
+  alt: PropTypes.string,
+  size: PropTypes.number
+};
+
+Avatar.defaultProps = {
+  src: null,
+  alt: 'avatar',
+  size: 50
+};
+
+export default Avatar;

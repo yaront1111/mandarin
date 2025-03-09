@@ -1,8 +1,32 @@
-/* src/styles/index.css */
-/* Global resets or base styling */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-html, body {
-  margin: 0;
-  padding: 0;
-  font-family: sans-serif;
+body {
+  @apply bg-bg-dark text-text-primary font-montserrat;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  @apply font-montserrat font-semibold;
+}
+
+p, span, div {
+  @apply font-lato;
+}
+
+/* Custom utility classes */
+.mandarin-card {
+  @apply bg-bg-card rounded-lg overflow-hidden shadow-md;
+}
+
+.mandarin-button-primary {
+  @apply bg-brand-pink text-white px-4 py-2 rounded-md hover:bg-opacity-90 transition-colors;
+}
+
+.mandarin-button-secondary {
+  @apply border border-brand-pink text-brand-pink px-4 py-2 rounded-md hover:bg-brand-pink hover:bg-opacity-10 transition-colors;
+}
+
+.mandarin-input {
+  @apply bg-bg-input text-text-primary border border-bg-input rounded-md px-4 py-2 focus:border-brand-pink focus:outline-none;
 }

@@ -1,28 +1,23 @@
+// src/components/ui/CompatibilityMeter.jsx
 import React from 'react';
+import PropTypes from 'prop-types';
 
-export default function CompatibilityMeter({ score = 0 }) {
-  // score 0-100
-  const containerStyle = {
-    width: '200px',
-    height: '10px',
-    backgroundColor: '#e0e0e0',
-    borderRadius: '5px',
-    overflow: 'hidden',
-    marginBottom: '0.5rem'
-  };
-
-  const fillStyle = {
-    width: `${score}%`,
-    height: '100%',
-    backgroundColor: score > 70 ? 'green' : score > 40 ? 'orange' : 'red'
-  };
-
+const CompatibilityMeter = ({ score }) => {
   return (
-    <div>
-      <div style={containerStyle}>
-        <div style={fillStyle} />
+    <div className="w-48 text-center">
+      <div className="h-2 w-full bg-bg-input rounded-full overflow-hidden">
+        <div 
+          className="h-full bg-brand-pink"
+          style={{ width: `${score}%` }}
+        ></div>
       </div>
-      <span>{score}% compatible</span>
+      <p className="text-lg font-semibold text-brand-pink mt-1">{score}% Match</p>
     </div>
   );
-}
+};
+
+CompatibilityMeter.propTypes = {
+  score: PropTypes.number.isRequired
+};
+
+export default CompatibilityMeter;

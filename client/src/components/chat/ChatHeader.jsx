@@ -1,9 +1,18 @@
+// src/components/chat/ChatHeader.jsx
 import React from 'react';
+import PropTypes from 'prop-types';
 
-export default function ChatHeader({ title = 'Chat Room' }) {
+const ChatHeader = ({ match }) => {
+  // Your component code...
   return (
-    <div style={{ backgroundColor: '#f1f1f1', padding: '0.5rem' }}>
-      <h2>{title}</h2>
+    <div className="flex items-center p-4 border-b border-gray-800 bg-bg-card">
+      {/* Header content */}
     </div>
   );
-}
+};
+
+ChatHeader.propTypes = {
+  match: PropTypes.object.isRequired
+};
+
+export default ChatHeader;
