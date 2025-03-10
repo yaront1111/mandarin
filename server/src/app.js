@@ -8,7 +8,7 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsDoc = require('swagger-jsdoc');
-const path = require('path'); // Add this import at the top
+const path = require('path');
 
 const config = require('./config');
 const errorMiddleware = require('./middlewares/error');
@@ -19,19 +19,19 @@ const app = express();
 
 // Security headers
 app.use(helmet({
-  // Example advanced CSP config
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "*.amazonaws.com"]
+      // Allow images from self, data URIs, AWS domains, and your server (for uploads)
+      imgSrc: ["'self'", "data:", "*.amazonaws.com", `http://localhost:${config.port}`]
     }
   },
   referrerPolicy: { policy: 'no-referrer-when-downgrade' }
 }));
 
-// CORS
+// CORS: Allow requests from your client URL
 app.use(cors({
   origin: config.clientUrl,
   credentials: true
@@ -44,14 +44,14 @@ app.use(express.urlencoded({ extended: true }));
 // Gzip compression
 app.use(compression());
 
-// Request logging (Morgan) - or replace with Winston's express middleware
+// Request logging (Morgan)
 if (config.nodeEnv === 'development') {
   app.use(morgan('dev'));
 } else {
   app.use(morgan('combined'));
 }
 
-// Example: Rate limiting specifically for login/register endpoints
+// Rate limiting for authentication endpoints
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,
@@ -60,10 +60,17 @@ const authLimiter = rateLimit({
 app.use('/auth/login', authLimiter);
 app.use('/auth/register', authLimiter);
 
-// Serve static files from uploads directory
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use(
+  '/uploads',
+  cors({ origin: config.clientUrl }),
+  (req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  },
+  express.static(path.join(__dirname, '../uploads'))
+);
 
-// Swagger setup
+// Swagger setup for API documentation
 const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
@@ -76,7 +83,7 @@ const swaggerOptions = {
       { url: `http://localhost:${config.port}`, description: 'Development server' }
     ]
   },
-  apis: ['./src/routes/*.js'] // Where to look for OpenAPI docs in JSDoc
+  apis: ['./src/routes/*.js'] // Where to look for OpenAPI docs in JSDoc comments
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
@@ -85,7 +92,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 // Mount main routes
 app.use('/api', routes);
 
-// Health check
+// Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });

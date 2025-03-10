@@ -17,7 +17,10 @@ const Message = sequelize.define('Message', {
   },
   content: {
     type: DataTypes.TEXT,
-    allowNull: false
+    allowNull: false,
+    validate: {
+      notEmpty: { msg: 'Message content cannot be empty' }
+    }
   },
   messageType: {
     type: DataTypes.ENUM('text', 'image', 'video'),

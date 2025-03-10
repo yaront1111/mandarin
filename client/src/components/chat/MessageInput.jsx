@@ -1,22 +1,14 @@
-// src/components/chat/MessageInput.jsx
 import React from 'react';
 import PropTypes from 'prop-types';
 
 /**
- * MessageInput Component
- * A production-ready input for chat messages.
- *
- * Props:
- * - value: The current text input value.
- * - onChange: Callback to update the input value.
- * - onSend: Callback to send the message.
+ * MessageInput component provides an input field for sending messages.
  */
-const MessageInput = ({ value, onChange, onSend }) => {
-  // Handle key down events to send message on Enter (without Shift)
+const MessageInput = ({ value = '', onChange, onSend }) => {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (value.trim() !== '') {
+      if (value.trim()) {
         onSend();
       }
     }
@@ -36,12 +28,8 @@ const MessageInput = ({ value, onChange, onSend }) => {
         />
         <button
           type="button"
-          onClick={() => {
-            if (value.trim() !== '') {
-              onSend();
-            }
-          }}
-          disabled={value.trim() === ''}
+          onClick={onSend}
+          disabled={!value.trim()}
           aria-label="Send message"
           className="bg-brand-pink text-white rounded-r-full px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -56,10 +44,6 @@ MessageInput.propTypes = {
   value: PropTypes.string,
   onChange: PropTypes.func.isRequired,
   onSend: PropTypes.func.isRequired,
-};
-
-MessageInput.defaultProps = {
-  value: '',
 };
 
 export default React.memo(MessageInput);

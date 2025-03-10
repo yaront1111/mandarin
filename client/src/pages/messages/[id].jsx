@@ -5,18 +5,18 @@ import ChatWindow from '../../components/chat/ChatWindow';
 
 export default function MessagePage() {
   const { id: matchId } = useParams();
-  const { messages, onSendMessage, loading, error } = useChat(matchId);
+  const { messages, sendMessage, loading, error } = useChat(matchId);
 
   if (loading) return <p>Loading chat...</p>;
   if (error) return <p>Error: {error}</p>;
 
   return (
-    <div>
-      <h1>Chat with Match {matchId}</h1>
+    <div className="min-h-screen bg-bg-dark">
+      <h1 className="p-4 text-xl text-white">Chat with Match {matchId}</h1>
       <ChatWindow
+        match={{ id: matchId, currentUserId: /* Insert current user ID here or derive from state */, userA: {}, userB: {} }}
         messages={messages}
-        onSend={onSendMessage}
-        title={`Match #${matchId}`}
+        onSendMessage={sendMessage}
       />
     </div>
   );

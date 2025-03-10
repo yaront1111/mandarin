@@ -4,11 +4,14 @@ import ChatHeader from './ChatHeader';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 
+/**
+ * ChatWindow component manages the chat conversation UI.
+ */
 const ChatWindow = ({ match, messages, onSendMessage }) => {
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef(null);
 
-  // Scroll to bottom when new messages arrive
+  // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -20,7 +23,7 @@ const ChatWindow = ({ match, messages, onSendMessage }) => {
     }
   };
 
-  // Get the other user (not current user)
+  // Determine the other user from match details
   const otherUser = match?.userA || match?.userB;
 
   if (!match || !otherUser) {
@@ -34,23 +37,20 @@ const ChatWindow = ({ match, messages, onSendMessage }) => {
   return (
     <div className="h-full flex flex-col">
       <ChatHeader match={match} />
-
       <div className="flex-1 overflow-y-auto p-4 bg-bg-dark">
-        {/* Date separator */}
+        {/* Optional: Date separator */}
         <div className="flex justify-center mb-4">
           <span className="px-3 py-1 bg-bg-input rounded-full text-xs text-text-secondary">
             Today
           </span>
         </div>
-
-        {/* Messages */}
         <div className="space-y-4">
-          {messages?.length > 0 ? (
-            messages.map(message => (
+          {messages.length > 0 ? (
+            messages.map(msg => (
               <MessageBubble
-                key={message.id}
-                message={message}
-                isMine={message.senderId !== otherUser.id}
+                key={msg.id}
+                message={msg}
+                isMine={msg.senderId === match.currentUserId} // Adjust if you store current user info in match object
               />
             ))
           ) : (
@@ -61,12 +61,7 @@ const ChatWindow = ({ match, messages, onSendMessage }) => {
           <div ref={messagesEndRef} />
         </div>
       </div>
-
-      <MessageInput
-        value={newMessage}
-        onChange={setNewMessage}
-        onSend={handleSendMessage}
-      />
+      <MessageInput value={newMessage} onChange={setNewMessage} onSend={handleSendMessage} />
     </div>
   );
 };
