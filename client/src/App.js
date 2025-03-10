@@ -13,6 +13,7 @@ import DiscoverPage from './pages/DiscoverPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
 import MatchesPage from './pages/MatchesPage';
+import MessagesPage from './pages/MessagesPage'; // Import the new MessagesPage
 import HomePage from './pages/DashboardPage';
 
 // Protected Route Component
@@ -141,8 +142,7 @@ const App = () => {
           path="/messages/:id"
           element={
             <ProtectedRoute>
-              {/* You'll need to implement this page or use the existing one */}
-              <div>Messages Detail Page</div>
+              <MessagesPage />
             </ProtectedRoute>
           }
         />
@@ -151,8 +151,7 @@ const App = () => {
           path="/messages"
           element={
             <ProtectedRoute>
-              {/* You'll need to implement this page or use the existing one */}
-              <div>Messages List Page</div>
+              <MessagesPage />
             </ProtectedRoute>
           }
         />

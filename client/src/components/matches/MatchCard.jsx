@@ -1,15 +1,37 @@
+// src/components/matches/MatchCard.jsx
 import React from 'react';
 import PropTypes from 'prop-types';
 import Avatar from '../ui/Avatar';
+import { useSelector } from 'react-redux';
 
 const MatchCard = ({ match, isActive, onClick }) => {
+  const { user } = useSelector(state => state.auth);
+  
   // Determine which user to display (other than current user)
-  const otherUser = match?.userA || match?.userB;
+  const otherUser = match?.userA?.id !== user?.id ? match?.userA : match?.userB;
   
   // Calculate last message time or default
-  const lastActive = match?.lastMessageAt 
-    ? new Date(match.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : 'No messages yet';
+  const formatLastActive = (dateString) => {
+    if (!dateString) return 'No messages yet';
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffDays >= 7) {
+      // More than a week ago - show date
+      return date.toLocaleDateString();
+    } else if (diffDays >= 1) {
+      // More than a day ago - show days
+      return `${diffDays}d ago`;
+    } else {
+      // Less than a day - show time
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+  };
+  
+  const lastActive = formatLastActive(match?.lastMessageAt);
   
   // Determine if user is online
   const isOnline = otherUser?.isOnline;
@@ -32,7 +54,7 @@ const MatchCard = ({ match, isActive, onClick }) => {
         <div className="relative">
           <Avatar src={otherUser.avatar} alt={otherUser.firstName} size={48} />
           {isOnline && (
-            <span className="absolute bottom-0 right-0 block h-3 w-3 rounded-full bg-success ring-2 ring-bg-card"></span>
+            <span className="absolute bottom-0 right-0 block h-3 w-3 rounded-full bg-green-500 ring-2 ring-bg-card"></span>
           )}
         </div>
         
