@@ -1,8 +1,10 @@
-// src/controllers/matchController.js
+// server/src/controllers/matchController.js
 
 const { catchAsync } = require('../utils/helpers');
 const matchService = require('../services/matchService');
 const logger = require('../utils/logger');
+const { User, Profile, Photo, Like } = require('../models');
+const { Op } = require('sequelize');
 
 /**
  * Like a target user.
@@ -60,8 +62,82 @@ exports.getPotentialMatches = catchAsync(async (req, res) => {
   const userId = req.user.id;
   const filters = req.query;
   logger.info(`Fetching potential matches for user ${userId} with filters: ${JSON.stringify(filters)}`);
-  const potentialMatches = await matchService.getPotentialMatches(userId, filters);
-  res.status(200).json({ success: true, data: potentialMatches });
+
+  // Build the where clause based on user's preferences
+  const whereClause = {
+    id: { [Op.ne]: userId }, // Exclude current user
+    accountStatus: 'active'
+  };
+
+  // Add gender filter if provided
+  if (filters.gender) {
+    whereClause.gender = filters.gender;
+  }
+
+  // Find users who the current user hasn't liked yet
+  const userLikes = await Like.findAll({
+    where: { userId },
+    attributes: ['targetId']
+  });
+
+  const likedUserIds = userLikes.map(like => like.targetId);
+
+  // Exclude users already liked
+  if (likedUserIds.length > 0) {
+    whereClause.id = {
+      [Op.and]: [
+        { [Op.ne]: userId },
+        { [Op.notIn]: likedUserIds }
+      ]
+    };
+  }
+
+  try {
+    // Try to get users with ordering by createdAt descending
+    const potentialMatches = await User.findAll({
+      where: whereClause,
+      attributes: ['id', 'firstName', 'nickname', 'gender', 'birthDate'],
+      include: [
+        {
+          model: Photo,
+          attributes: ['id', 'url'],
+          where: { isPrivate: false },
+          required: false
+        },
+        {
+          model: Profile,
+          attributes: ['bio', 'interests']
+        }
+      ],
+      limit: 10,
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.status(200).json({ success: true, data: potentialMatches });
+  } catch (error) {
+    logger.error('Error fetching potential matches:', error);
+
+    // Fallback without ordering if there's an error
+    const potentialMatches = await User.findAll({
+      where: whereClause,
+      attributes: ['id', 'firstName', 'nickname', 'gender', 'birthDate'],
+      include: [
+        {
+          model: Photo,
+          attributes: ['id', 'url'],
+          where: { isPrivate: false },
+          required: false
+        },
+        {
+          model: Profile,
+          attributes: ['bio', 'interests']
+        }
+      ],
+      limit: 10
+    });
+
+    res.status(200).json({ success: true, data: potentialMatches });
+  }
 });
 
 /**

@@ -2,23 +2,20 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import Avatar from '../ui/Avatar';
-import { useSelector } from 'react-redux';
 
-const MatchCard = ({ match, isActive, onClick }) => {
-  const { user } = useSelector(state => state.auth);
-  
+const MatchCard = ({ match, currentUserId, isActive, onClick }) => {
   // Determine which user to display (other than current user)
-  const otherUser = match?.userA?.id !== user?.id ? match?.userA : match?.userB;
-  
-  // Calculate last message time or default
+  const otherUser = match?.userA?.id !== currentUserId ? match?.userA : match?.userB;
+
+  // Format time for display
   const formatLastActive = (dateString) => {
     if (!dateString) return 'No messages yet';
-    
+
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now - date;
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays >= 7) {
       // More than a week ago - show date
       return date.toLocaleDateString();
@@ -30,25 +27,25 @@ const MatchCard = ({ match, isActive, onClick }) => {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
   };
-  
+
   const lastActive = formatLastActive(match?.lastMessageAt);
-  
+
   // Determine if user is online
   const isOnline = otherUser?.isOnline;
-  
+
   // Handle unread counts
   const unreadCount = match?.unreadCount || 0;
-  
+
   if (!otherUser) {
     return null;
   }
-  
+
   return (
-    <div 
+    <div
       className={`p-3 hover:bg-opacity-70 cursor-pointer transition-colors ${
         isActive ? 'bg-brand-pink bg-opacity-10' : 'bg-bg-card'
       }`}
-      onClick={onClick}
+      onClick={() => onClick(match)}
     >
       <div className="flex items-center space-x-3">
         <div className="relative">
@@ -57,7 +54,7 @@ const MatchCard = ({ match, isActive, onClick }) => {
             <span className="absolute bottom-0 right-0 block h-3 w-3 rounded-full bg-green-500 ring-2 ring-bg-card"></span>
           )}
         </div>
-        
+
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-center">
             <h4 className={`font-medium truncate ${isActive ? 'text-brand-pink' : 'text-text-primary'}`}>
@@ -67,12 +64,12 @@ const MatchCard = ({ match, isActive, onClick }) => {
               {lastActive}
             </span>
           </div>
-          
+
           <div className="flex justify-between items-center mt-1">
             <p className="text-sm text-text-secondary truncate">
               {match.lastMessage || 'Start a conversation'}
             </p>
-            
+
             {unreadCount > 0 && (
               <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-brand-pink text-white text-xs">
                 {unreadCount}
@@ -87,6 +84,7 @@ const MatchCard = ({ match, isActive, onClick }) => {
 
 MatchCard.propTypes = {
   match: PropTypes.object.isRequired,
+  currentUserId: PropTypes.string,
   isActive: PropTypes.bool,
   onClick: PropTypes.func
 };

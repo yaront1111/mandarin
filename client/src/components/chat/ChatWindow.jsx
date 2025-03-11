@@ -1,7 +1,6 @@
 // src/components/chat/ChatWindow.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { useSelector } from 'react-redux';
 import ChatHeader from './ChatHeader';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
@@ -10,7 +9,6 @@ import MessageInput from './MessageInput';
  * ChatWindow component manages the chat conversation UI.
  */
 const ChatWindow = ({ match, messages, onSendMessage }) => {
-  const { user } = useSelector(state => state.auth);
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -30,7 +28,7 @@ const ChatWindow = ({ match, messages, onSendMessage }) => {
   // Group messages by date for better visual separation
   const groupedMessages = React.useMemo(() => {
     if (!messages || messages.length === 0) return {};
-    
+
     return messages.reduce((groups, message) => {
       const date = new Date(message.createdAt).toLocaleDateString();
       if (!groups[date]) {
@@ -41,29 +39,9 @@ const ChatWindow = ({ match, messages, onSendMessage }) => {
     }, {});
   }, [messages]);
 
-  // Determine the other user from match details
-  const otherUser = match?.userA?.id !== user?.id ? match?.userA : match?.userB;
-
-  if (!match || !otherUser) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <p className="text-text-secondary">Select a match to start chatting</p>
-      </div>
-    );
-  }
-
-  // Create a richer match object for the header
-  const enhancedMatch = {
-    ...match,
-    otherUserName: otherUser.firstName,
-    otherUserAvatar: otherUser.avatar,
-    otherUserIsOnline: otherUser.isOnline,
-    currentUserId: user?.id
-  };
-
   return (
     <div className="h-full flex flex-col">
-      <ChatHeader match={enhancedMatch} />
+      <ChatHeader match={match} />
       <div className="flex-1 overflow-y-auto p-4 bg-bg-dark" ref={messagesContainerRef}>
         {messages.length > 0 ? (
           Object.entries(groupedMessages).map(([date, dayMessages]) => (
@@ -74,18 +52,18 @@ const ChatWindow = ({ match, messages, onSendMessage }) => {
                   {date === new Date().toLocaleDateString() ? 'Today' : date}
                 </span>
               </div>
-              
+
               {/* Messages for this date */}
               <div className="space-y-4">
                 {dayMessages.map((msg, index) => {
                   // Check if this message is part of a sequence from same sender
                   const isSequence = index > 0 && dayMessages[index - 1].senderId === msg.senderId;
-                  
+
                   return (
                     <MessageBubble
                       key={msg.id}
                       message={msg}
-                      isMine={msg.senderId === user?.id || msg.senderId === 'current-user'}
+                      isMine={msg.senderId === match.currentUserId}
                       isSequence={isSequence}
                     />
                   );
@@ -101,7 +79,7 @@ const ChatWindow = ({ match, messages, onSendMessage }) => {
               </svg>
             </div>
             <p className="mb-2">No messages yet</p>
-            <p className="text-sm">Start the conversation with {otherUser.firstName}!</p>
+            <p className="text-sm">Start the conversation with {match.otherUserName}!</p>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -112,7 +90,7 @@ const ChatWindow = ({ match, messages, onSendMessage }) => {
 };
 
 ChatWindow.propTypes = {
-  match: PropTypes.object,
+  match: PropTypes.object.isRequired,
   messages: PropTypes.array,
   onSendMessage: PropTypes.func
 };

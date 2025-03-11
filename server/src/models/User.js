@@ -89,6 +89,45 @@ const User = sequelize.define('User', {
     validate: {
       isUrl: { msg: 'Avatar must be a valid URL' }
     }
+  },
+  // Additional useful fields
+  isOnline: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  verificationStatus: {
+    type: DataTypes.ENUM('unverified', 'pending', 'verified'),
+    defaultValue: 'unverified'
+  },
+  phoneNumber: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  isProfileComplete: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  preferredLanguage: {
+    type: DataTypes.STRING,
+    defaultValue: 'en'
+  },
+  locationLat: {
+    type: DataTypes.DECIMAL(10, 8),
+    allowNull: true
+  },
+  locationLng: {
+    type: DataTypes.DECIMAL(11, 8),
+    allowNull: true
+  },
+  notificationPreferences: {
+    type: DataTypes.JSONB,  // PostgreSQL specific type
+    defaultValue: {
+      messages: true,
+      matches: true,
+      likes: true,
+      system: true
+    },
+    allowNull: true
   }
 }, {
   timestamps: true,
