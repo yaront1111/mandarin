@@ -182,7 +182,7 @@ async function seedDatabase() {
         const user = await User.create({
           id: uuidv4(),
           email,
-          password: hashedPassword,
+          password: plainPassword,
           firstName,
           lastName,
           nickname,
