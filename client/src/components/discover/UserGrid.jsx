@@ -1,8 +1,9 @@
 // src/components/discover/UserGrid.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
+import PropTypes from 'prop-types'; // Add PropTypes import
 import UserCard from './UserCard';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'; // Remove unused TabsContent
 import Spinner from '../ui/Spinner';
 import { fetchUsers } from '../../store/userSlice';
 import { likeUser, sendWink } from '../../services/matchService';
@@ -365,6 +366,16 @@ const UserGrid = ({ onSelectUser }) => {
       )}
     </div>
   );
+};
+
+// Add PropTypes validation for onSelectUser
+UserGrid.propTypes = {
+  onSelectUser: PropTypes.func
+};
+
+// Add default prop value
+UserGrid.defaultProps = {
+  onSelectUser: () => {}
 };
 
 export default UserGrid;

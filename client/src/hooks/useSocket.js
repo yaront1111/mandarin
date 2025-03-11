@@ -1,102 +1,134 @@
 // src/hooks/useSocket.js
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 /**
  * A React hook for managing Socket.IO connections with graceful fallback
- * when the server isn't available
- * 
+ * and improved reliability when the server isn't available
+ *
  * @param {string} token - Authentication token
- * @returns {Object|null} - Socket instance or null if not connected
+ * @returns {Object} - Socket instance and connection state
  */
 export default function useSocket(token) {
   const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
-  // We're tracking the error state but not using it directly in this hook
-  // eslint-disable-next-line no-unused-vars
   const [error, setError] = useState(null);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const reconnectTimerRef = useRef(null);
+  const maxReconnectAttempts = 10;
 
-  useEffect(() => {
-    if (!token) return;
+  // Function to connect socket with proper error handling
+  const connectSocket = useCallback(async () => {
+    if (!token) {
+      setError('No authentication token provided');
+      return;
+    }
 
-    // Only import socket.io-client if we have a token
-    const connectSocket = async () => {
-      try {
-        // Dynamically import socket.io-client to prevent errors when it's not installed
-        const io = await import('socket.io-client').then(module => module.io).catch(() => null);
-
-        if (!io) {
+    try {
+      // Dynamically import socket.io-client to prevent errors when it's not installed
+      const io = await import('socket.io-client')
+        .then(module => module.io)
+        .catch(() => {
           console.warn('Socket.io client not available');
-          return;
-        }
-
-        // Connect to Socket.IO with token
-        socketRef.current = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000', {
-          auth: { token },
-          transports: ['websocket', 'polling'],
-          reconnectionAttempts: 5,
-          reconnectionDelay: 1000,
-          timeout: 5000
+          setError('Socket.io client not available');
+          return null;
         });
 
-        // Set up event listeners
-        socketRef.current.on('connect', () => {
-          console.log('Socket connected');
-          setConnected(true);
-          setError(null);
-        });
+      if (!io) return;
 
-        socketRef.current.on('connect_error', (err) => {
-          console.warn('Socket connection error:', err.message);
-          setError(err.message);
-          // Don't set connected to false here as the socket will try to reconnect
-        });
-
-        socketRef.current.on('disconnect', (reason) => {
-          console.log('Socket disconnected:', reason);
-          setConnected(false);
-
-          // If the server forcibly closed the connection, don't try to reconnect
-          if (reason === 'io server disconnect') {
-            socketRef.current.connect();
-          }
-        });
-
-        // Add more error handling
-        socketRef.current.on('error', (err) => {
-          console.error('Socket error:', err);
-          setError(err.message);
-        });
-
-        // Create a mock implementation of common socket methods in case the real socket fails
-        const mockSocket = {
-          emit: (...args) => {
-            console.warn('Socket not connected, emitting event', args[0]);
-            return mockSocket;
-          },
-          on: () => mockSocket,
-          off: () => mockSocket,
-          once: () => mockSocket,
-          connect: () => mockSocket,
-          disconnect: () => mockSocket,
-          connected: false
-        };
-
-        // If connection fails, use the mock socket
-        setTimeout(() => {
-          if (!connected && !socketRef.current?.connected) {
-            console.warn('Socket failed to connect within timeout, using mock implementation');
-            socketRef.current = mockSocket;
-          }
-        }, 5000);
-      } catch (err) {
-        console.error('Error initializing socket:', err);
-        setError(err.message);
+      // Clean up any existing connection
+      if (socketRef.current && typeof socketRef.current.disconnect === 'function') {
+        socketRef.current.disconnect();
       }
-    };
 
-    connectSocket();
+      // Connect to Socket.IO with token
+      socketRef.current = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000', {
+        auth: { token },
+        transports: ['websocket', 'polling'],
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        timeout: 10000,
+        autoConnect: true,
+        forceNew: true
+      });
 
-    return () => {
+      // Set up event listeners
+      socketRef.current.on('connect', () => {
+        console.log('Socket connected successfully');
+        setConnected(true);
+        setError(null);
+        setReconnectAttempts(0); // Reset reconnect counter on successful connection
+
+        // Clear any pending reconnect timers
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
+      });
+
+      socketRef.current.on('connect_error', (err) => {
+        console.warn('Socket connection error:', err.message);
+        setError(`Connection error: ${err.message}`);
+
+        // Don't set connected to false here as the socket will try to reconnect automatically
+        // But we can track reconnect attempts
+        setReconnectAttempts(prev => prev + 1);
+      });
+
+      socketRef.current.on('disconnect', (reason) => {
+        console.log('Socket disconnected:', reason);
+        setConnected(false);
+
+        // If the server forcibly closed the connection, try to reconnect
+        if (reason === 'io server disconnect') {
+          const attemptReconnect = () => {
+            if (reconnectAttempts < maxReconnectAttempts) {
+              console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
+              socketRef.current.connect();
+            } else {
+              setError('Maximum reconnection attempts reached. Please refresh the page.');
+            }
+          };
+
+          // Wait a bit before trying to reconnect
+          reconnectTimerRef.current = setTimeout(attemptReconnect, 3000);
+        }
+      });
+
+      // Add more error handling
+      socketRef.current.on('error', (err) => {
+        console.error('Socket error:', err);
+        setError(`Socket error: ${err.message || 'Unknown error'}`);
+      });
+
+      // Handle ping timeouts
+      socketRef.current.on('ping', () => {
+        console.log('Socket ping received');
+      });
+
+      socketRef.current.on('pong', (latency) => {
+        console.log(`Socket pong received (latency: ${latency}ms)`);
+      });
+
+    } catch (err) {
+      console.error('Error initializing socket:', err);
+      setError(`Failed to initialize socket: ${err.message}`);
+      setConnected(false);
+    }
+  }, [token, reconnectAttempts, maxReconnectAttempts]);
+
+  // Handle manual reconnection
+  const reconnect = useCallback(() => {
+    setReconnectAttempts(0); // Reset counter
+    setError(null); // Clear errors
+    connectSocket(); // Try to connect again
+  }, [connectSocket]);
+
+  // Connect when token changes
+  useEffect(() => {
+    if (token) {
+      connectSocket();
+    } else {
+      // Clean up existing connection if token is removed
       if (socketRef.current) {
         try {
           socketRef.current.disconnect();
@@ -106,13 +138,50 @@ export default function useSocket(token) {
         socketRef.current = null;
         setConnected(false);
       }
-    };
-  }, [token, connected]);
+    }
 
-  // Return both the socket and connection status
+    // Cleanup function for disconnecting socket and clearing timers
+    return () => {
+      if (socketRef.current) {
+        try {
+          socketRef.current.disconnect();
+        } catch (error) {
+          console.warn('Error disconnecting socket during cleanup:', error);
+        }
+        socketRef.current = null;
+        setConnected(false);
+      }
+
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
+  }, [token, connectSocket]);
+
+  // Public event emitter with error handling
+  const emit = useCallback((event, ...args) => {
+    if (!socketRef.current || !connected) {
+      console.warn(`Cannot emit ${event}: Socket not connected`);
+      return false;
+    }
+
+    try {
+      socketRef.current.emit(event, ...args);
+      return true;
+    } catch (error) {
+      console.error(`Error emitting ${event}:`, error);
+      return false;
+    }
+  }, [connected]);
+
+  // Return both the socket, connection status, and helper functions
   return {
     socket: socketRef.current,
     connected,
-    error
+    error,
+    reconnect,
+    emit,
+    reconnectAttempts
   };
 }

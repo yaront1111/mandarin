@@ -1,6 +1,7 @@
 // src/store/authSlice.js
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import authService from '../services/authService';
+import { jwtDecode } from 'jwt-decode';  // Fixed import to use named export
 
 // Helper functions for localStorage
 const saveAuthState = (token, refreshToken) => {
@@ -56,12 +57,31 @@ export const fetchCurrentUser = createAsyncThunk(
 
 export const refreshAccessToken = createAsyncThunk(
   'auth/refreshToken',
-  async (_, { rejectWithValue, getState }) => {
+  async (_, { rejectWithValue, getState, dispatch }) => {
     try {
       const { refreshToken } = getState().auth;
       if (!refreshToken) throw new Error('No refresh token available');
 
       const data = await authService.refreshToken(refreshToken);
+
+      // Set up the next token refresh after this one succeeds
+      if (data.token || data.accessToken) {
+        const token = data.token || data.accessToken;
+        try {
+          const tokenData = jwtDecode(token);
+          const expiresAt = tokenData.exp * 1000;
+          const timeUntilExpiry = expiresAt - Date.now();
+
+          if (timeUntilExpiry > 0 && timeUntilExpiry < 24 * 60 * 60 * 1000) { // Less than 24 hours
+            setTimeout(() => {
+              dispatch(refreshAccessToken());
+            }, timeUntilExpiry - (60 * 1000)); // 1 minute before expiry
+          }
+        } catch (error) {
+          console.error('Error setting up next token refresh:', error);
+        }
+      }
+
       return data;
     } catch (err) {
       // On refresh failure, force logout
@@ -70,6 +90,32 @@ export const refreshAccessToken = createAsyncThunk(
     }
   }
 );
+
+export const setupTokenRefresh = () => (dispatch, getState) => {
+  const { token, refreshToken } = getState().auth;
+  if (!token || !refreshToken) return;
+
+  try {
+    // Get token expiration time (assuming JWT)
+    const tokenData = jwtDecode(token);
+    const expiresAt = tokenData.exp * 1000; // Convert to milliseconds
+    const timeUntilExpiry = expiresAt - Date.now();
+
+    // Set up refresh timer (refresh 1 minute before expiration)
+    if (timeUntilExpiry > 0) {
+      setTimeout(() => {
+        dispatch(refreshAccessToken());
+      }, timeUntilExpiry - (60 * 1000));
+    } else {
+      // Token already expired, refresh immediately
+      dispatch(refreshAccessToken());
+    }
+  } catch (error) {
+    console.error('Error setting up token refresh:', error);
+    // If there's an error decoding the token, try to refresh it immediately
+    dispatch(refreshAccessToken());
+  }
+};
 
 export const logoutUser = createAsyncThunk(
   'auth/logout',
@@ -208,7 +254,14 @@ const authSlice = createSlice({
     });
 
     // Refresh Token
+    builder.addCase(refreshAccessToken.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    });
     builder.addCase(refreshAccessToken.fulfilled, (state, action) => {
+      state.loading = false;
+      state.error = null;
+
       const data = action.payload.data || action.payload;
 
       if (data.token || data.accessToken) {
@@ -222,6 +275,7 @@ const authSlice = createSlice({
       }
     });
     builder.addCase(refreshAccessToken.rejected, (state) => {
+      state.loading = false;
       state.user = null;
       state.token = null;
       state.refreshToken = null;

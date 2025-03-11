@@ -2,7 +2,8 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { fetchCurrentUser } from './store/authSlice';
+import { fetchCurrentUser, setupTokenRefresh, logout } from './store/authSlice';
+import { registerAuthHandlers } from './services/api';
 import PropTypes from 'prop-types';
 
 // Import Pages
@@ -13,7 +14,7 @@ import DiscoverPage from './pages/DiscoverPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
 import MatchesPage from './pages/MatchesPage';
-import MessagesPage from './pages/MessagesPage'; // Import the new MessagesPage
+import MessagesPage from './pages/MessagesPage';
 import HomePage from './pages/DashboardPage';
 
 // Protected Route Component
@@ -54,10 +55,18 @@ const App = () => {
   const dispatch = useDispatch();
   const { token, loading } = useSelector((state) => state.auth);
 
-  // Fetch current user on app load if token exists
+  // Register the logout handler for API auth errors
+  useEffect(() => {
+    registerAuthHandlers(() => {
+      dispatch(logout());
+    });
+  }, [dispatch]);
+
+  // Fetch current user on app load if token exists and set up token refresh
   useEffect(() => {
     if (token) {
       dispatch(fetchCurrentUser());
+      dispatch(setupTokenRefresh()); // Set up automatic token refresh
     }
   }, [dispatch, token]);
 
