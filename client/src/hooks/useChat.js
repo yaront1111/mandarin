@@ -6,64 +6,38 @@ import useSocket from './useSocket';
 
 export default function useChat(matchId) {
   const dispatch = useDispatch();
-  const { messages, loading, error } = useSelector(state => state.chat);
+  const { messages, loading: messagesLoading, error: messagesError } = useSelector(state => state.chat);
   const { token } = useSelector(state => state.auth);
-  const socket = useSocket(token);
-  
-  // Generate mock messages for testing when API is not available
-  const [mockMessages, setMockMessages] = useState([]);
+  const { socket, connected: socketConnected, error: socketError } = useSocket(token);
 
+  // We'll store local preview URLs for any files the user selects,
+  // so we can revoke them on component unmount / cleanup.
+  const [localMessages, setLocalMessages] = useState([]);
+  const [error, setError] = useState(null);
+
+  // Combine real and local messages
+  const allMessages = [...messages, ...localMessages].sort((a, b) => {
+    return new Date(a.createdAt) - new Date(b.createdAt);
+  });
+
+  // Handle socket connection and message events
   useEffect(() => {
-    if (matchId && mockMessages.length === 0) {
-      // Generate some mock messages for testing
-      const now = new Date();
-      const mockData = [
-        {
-          id: '1',
-          matchId,
-          content: 'Hey there! How are you doing?',
-          createdAt: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
-          senderId: 'other-user-id',
-        },
-        {
-          id: '2',
-          matchId,
-          content: "I'm good! Just checking out this new app.",
-          createdAt: new Date(now.getTime() - 23 * 60 * 60 * 1000).toISOString(),
-          senderId: 'current-user',
-        },
-        {
-          id: '3',
-          matchId,
-          content: 'It looks pretty cool so far!',
-          createdAt: new Date(now.getTime() - 22 * 60 * 60 * 1000).toISOString(),
-          senderId: 'other-user-id',
-        },
-        {
-          id: '4',
-          matchId,
-          content: 'Yeah, I like the design. Want to meet up sometime?',
-          createdAt: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(),
-          senderId: 'current-user',
-        },
-      ];
-      setMockMessages(mockData);
-    }
-  }, [matchId, mockMessages.length]);
+    setError(messagesError || socketError);
+  }, [messagesError, socketError]);
 
   // Fetch messages on match change
   useEffect(() => {
     if (matchId) {
       dispatch(fetchMessages(matchId)).catch(err => {
-        console.log('Error fetching messages or API not implemented yet:', err);
-        // We'll use mock data instead
+        console.error('Error fetching messages:', err);
+        setError('Failed to load messages');
       });
     }
   }, [dispatch, matchId]);
 
   // Listen for incoming messages via socket
   useEffect(() => {
-    if (!socket || !matchId) return;
+    if (!socket || !matchId || !socketConnected) return;
 
     const handleNewMessage = (message) => {
       if (message.matchId === matchId) {
@@ -76,41 +50,58 @@ export default function useChat(matchId) {
     return () => {
       socket.off('chat:message', handleNewMessage);
     };
-  }, [socket, matchId, dispatch]);
+  }, [socket, socketConnected, matchId, dispatch]);
 
   // Function to send a new message
   const handleSendMessage = useCallback(
-    (content) => {
+    async (content) => {
       if (!matchId || !content.trim()) return;
 
-      // Try to send through Redux/API
-      dispatch(sendMessage({ matchId, content })).catch(err => {
-        console.log('Error sending message or API not implemented yet:', err);
-
-        // If API fails, add a mock message
-        const newMessage = {
-          id: `mock-${Date.now()}`,
+      try {
+        // Add an optimistic message right away
+        const tempId = `temp-${Date.now()}`;
+        const optimisticMessage = {
+          id: tempId,
           matchId,
           content,
           createdAt: new Date().toISOString(),
-          senderId: 'current-user', // Assume this is the current user ID
+          senderId: 'current-user', // This will be replaced by the server
+          pending: true
         };
 
-        setMockMessages(prev => [...prev, newMessage]);
-      });
+        setLocalMessages(prev => [...prev, optimisticMessage]);
+
+        // Try to send through Redux/API
+        const result = await dispatch(sendMessage({ matchId, content })).unwrap();
+
+        // On success, remove the local message as it will be replaced by the server message
+        setLocalMessages(prev => prev.filter(msg => msg.id !== tempId));
+
+        return result;
+      } catch (err) {
+        console.error('Error sending message:', err);
+        setError('Failed to send message');
+
+        // Update the local message to show it failed
+        setLocalMessages(prev =>
+          prev.map(msg =>
+            msg.id.startsWith('temp-')
+              ? { ...msg, error: true, pending: false }
+              : msg
+          )
+        );
+
+        throw err;
+      }
     },
     [dispatch, matchId]
   );
 
-  // Combine real messages from API with mock messages if needed
-  const allMessages = messages.length > 0
-    ? messages.filter(m => m.matchId === matchId)
-    : mockMessages;
-
   return {
     messages: allMessages,
-    loading,
+    loading: messagesLoading,
     error,
-    sendMessage: handleSendMessage
+    sendMessage: handleSendMessage,
+    socketConnected
   };
 }

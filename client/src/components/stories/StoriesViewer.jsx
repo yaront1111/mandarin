@@ -1,7 +1,9 @@
 // src/components/stories/StoriesViewer.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import Spinner from '../ui/Spinner';
+import { getStoriesByUser, viewStory } from '../../services/storyService';
+import { formatDistanceToNow } from '../../utils/dateFormatter';
 
 const StoriesViewer = ({ userId, onClose }) => {
   const [stories, setStories] = useState([]);
@@ -10,63 +12,122 @@ const StoriesViewer = ({ userId, onClose }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [touchStart, setTouchStart] = useState(null);
 
-  // Simulated story duration in milliseconds
+  // Refs for animation control
+  const progressIntervalRef = useRef(null);
+  const progressTimeoutRef = useRef(null);
+
+  // Story duration in milliseconds (configurable)
   const storyDuration = 5000;
+
+  // Function to move to next story
+  const goToNextStory = useCallback(() => {
+    if (currentIndex < stories.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+    } else {
+      onClose();
+    }
+  }, [currentIndex, stories.length, onClose]);
+
+  // Function to move to previous story
+  const goToPrevStory = useCallback(() => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1);
+    }
+  }, [currentIndex]);
 
   // Load stories for the user
   useEffect(() => {
+    let isMounted = true;
+
     const fetchStories = async () => {
       try {
         setLoading(true);
-        // In a real app, you'd call your API here
-        // const response = await fetch(`/api/stories/${userId}`);
-        // const data = await response.json();
+        setError(null);
 
-        // Simulate API response with mock data
-        const mockStories = [
-          {
-            id: '1',
-            type: 'text',
-            content: 'Just having a great day! ☀️',
-            backgroundColor: '#FF5588',
-            createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000) // 2 hours ago
-          },
-          {
-            id: '2',
-            type: 'photo',
-            content: '/images/default-avatar.png', // This would be a real image URL
-            backgroundColor: '#000000',
-            createdAt: new Date(Date.now() - 30 * 60 * 1000) // 30 minutes ago
+        const fetchedStories = await getStoriesByUser(userId);
+
+        if (isMounted) {
+          if (fetchedStories && fetchedStories.length > 0) {
+            setStories(fetchedStories);
+
+            // Mark first story as viewed
+            if (fetchedStories[0]?.id) {
+              viewStory(fetchedStories[0].id).catch(err => {
+                console.error('Error marking story as viewed:', err);
+              });
+            }
+          } else {
+            setError('No stories available');
           }
-        ];
-
-        setStories(mockStories);
+        }
       } catch (err) {
         console.error('Error fetching stories:', err);
-        setError('Failed to load stories');
+        if (isMounted) {
+          setError('Failed to load stories. Please try again.');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchStories();
+
+    return () => {
+      isMounted = false;
+      // Clean up timers
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+      }
+      if (progressTimeoutRef.current) {
+        clearTimeout(progressTimeoutRef.current);
+      }
+    };
   }, [userId]);
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowLeft') {
+        goToPrevStory();
+      } else if (e.key === 'ArrowRight') {
+        goToNextStory();
+      } else if (e.key === 'Escape') {
+        onClose();
+      } else if (e.key === ' ') { // Spacebar
+        setIsPaused(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose, goToNextStory, goToPrevStory]);
 
   // Progress timer
   useEffect(() => {
     if (loading || stories.length === 0 || isPaused) return;
 
-    let interval;
-    let timeout;
+    // Clear any existing timers
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
+    if (progressTimeoutRef.current) {
+      clearTimeout(progressTimeoutRef.current);
+    }
 
     // Reset progress when changing stories
     setProgress(0);
 
-    interval = setInterval(() => {
+    // Start progress animation
+    progressIntervalRef.current = setInterval(() => {
       setProgress(prev => {
         if (prev >= 100) {
-          clearInterval(interval);
+          clearInterval(progressIntervalRef.current);
           return 100;
         }
         return prev + (100 / storyDuration) * 100;
@@ -74,38 +135,75 @@ const StoriesViewer = ({ userId, onClose }) => {
     }, 100);
 
     // Move to next story when progress completes
-    timeout = setTimeout(() => {
+    progressTimeoutRef.current = setTimeout(() => {
       goToNextStory();
     }, storyDuration);
 
     return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+      }
+      if (progressTimeoutRef.current) {
+        clearTimeout(progressTimeoutRef.current);
+      }
     };
-  }, [currentIndex, loading, stories.length, isPaused]);
+  }, [currentIndex, loading, stories.length, isPaused, storyDuration, goToNextStory]);
 
-  const goToNextStory = () => {
-    if (currentIndex < stories.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-    } else {
-      onClose();
+  // Mark story as viewed when changing to a new story
+  useEffect(() => {
+    if (stories.length > 0 && !loading && currentIndex < stories.length) {
+      const currentStory = stories[currentIndex];
+      if (currentStory?.id) {
+        viewStory(currentStory.id).catch(err => {
+          console.error('Error marking story as viewed:', err);
+        });
+      }
     }
+  }, [currentIndex, stories, loading]);
+
+  // Handle touch events for mobile swipe
+  const handleTouchStart = (e) => {
+    setIsPaused(true);
+    setTouchStart(e.touches[0].clientX);
   };
 
-  const goToPrevStory = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-    }
+  const handleTouchMove = (e) => {
+    if (!touchStart) return;
   };
 
-  const handleClose = () => {
-    onClose();
+  const handleTouchEnd = (e) => {
+    setIsPaused(false);
+    if (!touchStart) return;
+
+    const touchEnd = e.changedTouches[0].clientX;
+    const diff = touchStart - touchEnd;
+
+    // Swipe threshold - adjust as needed
+    if (diff > 50) {
+      // Swiped left
+      goToNextStory();
+    } else if (diff < -50) {
+      // Swiped right
+      goToPrevStory();
+    }
+
+    setTouchStart(null);
+  };
+
+  // Format creation date
+  const formatCreatedAt = (dateString) => {
+    if (!dateString) return '';
+    try {
+      return formatDistanceToNow(new Date(dateString));
+    } catch (e) {
+      return '';
+    }
   };
 
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex items-center justify-center">
-        <Spinner size="lg" />
+        <Spinner size="lg" color="brand-pink" />
       </div>
     );
   }
@@ -113,11 +211,14 @@ const StoriesViewer = ({ userId, onClose }) => {
   if (error || stories.length === 0) {
     return (
       <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex items-center justify-center">
-        <div className="text-center p-6">
-          <p className="text-white text-lg mb-4">{error || 'No stories available'}</p>
+        <div className="text-center p-6 bg-bg-card rounded-lg max-w-sm">
+          <svg className="w-12 h-12 text-text-secondary mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-text-primary text-lg mb-4">{error || 'No stories available'}</p>
           <button
-            className="px-4 py-2 bg-brand-pink text-white rounded-md"
-            onClick={handleClose}
+            className="px-4 py-2 bg-brand-pink text-white rounded-md hover:bg-opacity-90"
+            onClick={onClose}
           >
             Close
           </button>
@@ -131,29 +232,56 @@ const StoriesViewer = ({ userId, onClose }) => {
   return (
     <div
       className="fixed inset-0 z-50 bg-black bg-opacity-90 flex items-center justify-center"
-      onMouseDown={() => setIsPaused(true)}
-      onMouseUp={() => setIsPaused(false)}
-      onTouchStart={() => setIsPaused(true)}
-      onTouchEnd={() => setIsPaused(false)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onClick={() => setIsPaused(prev => !prev)}
     >
       {/* Close button */}
       <button
         className="absolute top-4 right-4 h-8 w-8 rounded-full bg-black bg-opacity-50 flex items-center justify-center text-white"
-        onClick={handleClose}
+        onClick={(e) => {
+          e.stopPropagation(); // Prevent toggling pause
+          onClose();
+        }}
+        aria-label="Close stories"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </button>
 
+      {/* User info */}
+      <div className="absolute top-4 left-4 right-16 flex items-center">
+        <div className="w-8 h-8 rounded-full overflow-hidden bg-brand-pink mr-2">
+          <img
+            src={currentStory.user?.avatar || '/images/default-avatar.png'}
+            alt={currentStory.user?.firstName || 'User'}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = '/images/default-avatar.png';
+            }}
+          />
+        </div>
+        <div>
+          <p className="text-white text-sm font-medium">
+            {currentStory.user?.firstName || 'User'}
+          </p>
+          <p className="text-white text-xs opacity-70">
+            {formatCreatedAt(currentStory.createdAt)}
+          </p>
+        </div>
+      </div>
+
       {/* Progress indicators */}
-      <div className="absolute top-4 left-4 right-16 flex space-x-1">
+      <div className="absolute top-16 left-4 right-4 flex space-x-1">
         {stories.map((_, index) => (
           <div key={index} className="flex-1 h-1 bg-gray-600 rounded-full overflow-hidden">
             {index === currentIndex ? (
               <div
                 className="h-full bg-white"
-                style={{ width: `${progress}%` }}
+                style={{ width: `${progress}%`, transition: isPaused ? 'none' : 'width 0.1s linear' }}
               ></div>
             ) : index < currentIndex ? (
               <div className="h-full bg-white w-full"></div>
@@ -163,10 +291,18 @@ const StoriesViewer = ({ userId, onClose }) => {
       </div>
 
       {/* Navigation areas */}
-      <div className="absolute inset-0 flex items-stretch">
-        <div className="w-1/3 cursor-pointer" onClick={goToPrevStory}></div>
-        <div className="w-1/3 cursor-pointer"></div>
-        <div className="w-1/3 cursor-pointer" onClick={goToNextStory}></div>
+      <div className="absolute inset-0 flex items-stretch" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="w-1/3 cursor-pointer"
+          onClick={goToPrevStory}
+          aria-label="Previous story"
+        ></div>
+        <div className="w-1/3"></div>
+        <div
+          className="w-1/3 cursor-pointer"
+          onClick={goToNextStory}
+          aria-label="Next story"
+        ></div>
       </div>
 
       {/* Story content */}
@@ -179,17 +315,32 @@ const StoriesViewer = ({ userId, onClose }) => {
             src={currentStory.content}
             alt="Story"
             className="w-full h-full object-contain"
+            onError={(e) => {
+              e.target.onerror = null;
+              console.error('Failed to load story image');
+              // Show error indicator
+              e.target.parentNode.classList.add('bg-error', 'bg-opacity-20');
+              e.target.replaceWith(document.createTextNode('Failed to load image'));
+            }}
           />
         ) : (
           <div className="flex items-center justify-center h-full p-6">
-            <p className="text-white text-xl font-medium text-center">{currentStory.content}</p>
+            <p className="text-white text-xl font-medium text-center whitespace-pre-wrap">
+              {currentStory.content}
+            </p>
           </div>
         )}
 
-        {/* Timestamp */}
-        <div className="absolute bottom-4 left-4 text-white text-sm opacity-70">
-          {new Date(currentStory.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </div>
+        {/* Paused indicator */}
+        {isPaused && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30">
+            <div className="w-16 h-16 rounded-full bg-black bg-opacity-50 flex items-center justify-center">
+              <svg width="32" height="32" fill="white" viewBox="0 0 24 24">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
