@@ -9,12 +9,14 @@ const photoAccessService = require('../services/photoAccessService');
  * @returns {string} The absolute photo URL
  */
 const getFullPhotoUrl = (req, photoUrl) => {
-  // In development, use the host from request
+  // If it's already a full URL (starts with http), return as is
+  if (photoUrl.startsWith('http')) {
+    return photoUrl;
+  }
+
+  // Otherwise, construct URL with our hostname
   const baseUrl = `${req.protocol}://${req.get('host')}`;
-
-  // Make sure photoUrl starts with a slash
   const normalizedPhotoUrl = photoUrl.startsWith('/') ? photoUrl : `/${photoUrl}`;
-
   return `${baseUrl}${normalizedPhotoUrl}`;
 };
 

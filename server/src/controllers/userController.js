@@ -1,8 +1,82 @@
-// src/controllers/userController.js
+// server/src/controllers/userController.js
 
 const { User, Profile, Photo } = require('../models');
 const { catchAsync } = require('../utils/helpers');
 const kinkService = require('../services/kinkService');
+const { Op } = require('sequelize'); // Added import for search functionality
+
+/**
+ * GET /users
+ * Get a list of users with optional filtering and pagination
+ */
+exports.getUsers = catchAsync(async (req, res) => {
+  const { page = 1, limit = 20, filter, search } = req.query;
+  const pageNum = parseInt(page, 10);
+  const limitNum = parseInt(limit, 10);
+  const offset = (pageNum - 1) * limitNum;
+
+  // Build where clause based on filters
+  const whereClause = {
+    accountStatus: 'active'
+  };
+
+  // Apply filter
+  if (filter && filter !== 'all') {
+    if (filter === 'online') {
+      whereClause.isOnline = true;
+    }
+    // Add more filter conditions as needed
+  }
+
+  // Apply search
+  if (search) {
+    whereClause[Op.or] = [
+      { firstName: { [Op.iLike]: `%${search}%` } },
+      { lastName: { [Op.iLike]: `%${search}%` } },
+      { nickname: { [Op.iLike]: `%${search}%` } }
+    ];
+  }
+
+  try {
+    // Get users with associated profile and public photos
+    const users = await User.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: Profile,
+          attributes: ['bio', 'interests']
+        },
+        {
+          model: Photo,
+          where: { isPrivate: false },
+          required: false
+        }
+      ],
+      limit: limitNum,
+      offset: offset,
+      order: [['lastActive', 'DESC']]
+    });
+
+    // Get the total count for pagination information
+    const total = await User.count({ where: whereClause });
+
+    // Construct response with pagination metadata
+    res.status(200).json({
+      success: true,
+      data: users,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum)
+      }
+    });
+  } catch (error) {
+    // For Sequelize-specific errors like bad column names
+    console.error('Error fetching users:', error);
+    throw new Error('Failed to fetch users. Please try again.');
+  }
+});
 
 /**
  * GET /users/me  or  GET /users/:id
@@ -121,7 +195,8 @@ exports.getUserStats = catchAsync(async (req, res) => {
     matchCount: 0,
     messageCount: 0,
     profileCompleteness: 0,
-    responseRate: 0
+    responseRate: 0,
+    dailyLikesRemaining: 3
   };
 
   res.json({

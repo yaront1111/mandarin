@@ -1,4 +1,4 @@
-// src/routes/userRoutes.js
+// server/src/routes/userRoutes.js
 
 const express = require('express');
 const router = express.Router();
@@ -8,11 +8,15 @@ const auth = require('../middlewares/auth');
 /**
  * Protected routes for user profile.
  *
- * GET /users/me       -> get your own profile
- * GET /users/:id      -> get someone else's profile (requires auth)
- * PUT /users/me       -> update your profile
- * DELETE /users/me    -> delete your account
+ * GET /users        -> get list of users with filtering/pagination
+ * GET /users/me     -> get your own profile
+ * GET /users/:id    -> get someone else's profile (requires auth)
+ * PUT /users/me     -> update your profile
+ * DELETE /users/me  -> delete your account
  */
+
+// Add this new route for getting users list
+router.get('/', auth, userController.getUsers);
 
 router.get('/me', auth, userController.getProfile);
 router.get('/stats', auth, userController.getUserStats);
