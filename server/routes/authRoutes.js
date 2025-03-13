@@ -1,99 +1,15 @@
 // routes/authRoutes.js
 const express = require('express');
-const jwt = require('jsonwebtoken');
 const { User } = require('../models');
-const config = require('../config');
+const { protect, asyncHandler, sendTokenResponse } = require('../middleware/auth');
 const logger = require('../logger');
 const router = express.Router();
 
-// Helper to wrap async route handlers
-const asyncHandler = fn => (req, res, next) =>
-  Promise.resolve(fn(req, res, next)).catch(next);
-
-// Middleware to protect routes
-const protect = asyncHandler(async (req, res, next) => {
-  let token;
-
-  // Log headers for debugging
-  logger.debug(`Auth request headers: ${JSON.stringify(req.headers)}`);
-
-  // Check for token in Authorization header
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
-    logger.debug(`Token extracted from Authorization header: ${token ? token.substring(0, 15) + '...' : 'undefined'}`);
-  }
-  // Alternative check for token in cookies if using credentials
-  else if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
-    logger.debug(`Token extracted from cookies: ${token.substring(0, 15)}...`);
-  }
-
-  if (!token) {
-    logger.warn(`Authentication failed: No token provided (IP: ${req.ip})`);
-    return res.status(401).json({
-      success: false,
-      error: 'Not authorized to access this route - no token provided'
-    });
-  }
-
-  try {
-    // Verify token
-    const decoded = jwt.verify(token, config.JWT_SECRET);
-    logger.debug(`Token verified for user ID: ${decoded.id}`);
-
-    // Get user from database
-    const user = await User.findById(decoded.id);
-
-    if (!user) {
-      logger.warn(`Authentication failed: User not found for ID ${decoded.id}`);
-      return res.status(401).json({
-        success: false,
-        error: 'User not found for this token'
-      });
-    }
-
-    // Update last active timestamp
-    user.lastActive = Date.now();
-    await user.save();
-
-    // Attach user to request object
-    req.user = user;
-    next();
-  } catch (err) {
-    logger.error(`Token verification error: ${err.message}`);
-
-    // Check if token expired
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({
-        success: false,
-        error: 'Token expired, please login again'
-      });
-    }
-
-    return res.status(401).json({
-      success: false,
-      error: 'Invalid authentication token'
-    });
-  }
-});
-
-// Helper to send token response
-const sendTokenResponse = (user, statusCode, res) => {
-  const token = user.getSignedJwtToken();
-  user.password = undefined; // Remove password from the output
-
-  logger.debug(`Generated token for user ${user._id}: ${token.substring(0, 15)}...`);
-
-  res.status(statusCode).json({
-    success: true,
-    token,
-    data: user
-  });
-};
-
-// @route   POST /api/auth/register
-// @desc    Register user
-// @access  Public
+/**
+ * @route   POST /api/auth/register
+ * @desc    Register user
+ * @access  Public
+ */
 router.post('/register', asyncHandler(async (req, res, next) => {
   try {
     const { email, password, nickname, details } = req.body;
@@ -147,9 +63,11 @@ router.post('/register', asyncHandler(async (req, res, next) => {
   }
 }));
 
-// @route   POST /api/auth/login
-// @desc    Login user
-// @access  Public
+/**
+ * @route   POST /api/auth/login
+ * @desc    Login user
+ * @access  Public
+ */
 router.post('/login', asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
@@ -195,9 +113,11 @@ router.post('/login', asyncHandler(async (req, res, next) => {
   sendTokenResponse(user, 200, res);
 }));
 
-// @route   POST /api/auth/logout (changed from GET to POST)
-// @desc    Logout user and update status
-// @access  Private
+/**
+ * @route   POST /api/auth/logout (changed from GET to POST)
+ * @desc    Logout user and update status
+ * @access  Private
+ */
 router.post('/logout', protect, asyncHandler(async (req, res) => {
   logger.info(`Logout: User ${req.user._id} (${req.user.email})`);
 
@@ -209,7 +129,11 @@ router.post('/logout', protect, asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: {} });
 }));
 
-// Keep old GET endpoint for backward compatibility temporarily
+/**
+ * @route   GET /api/auth/logout
+ * @desc    Legacy logout endpoint (for backward compatibility)
+ * @access  Private
+ */
 router.get('/logout', protect, asyncHandler(async (req, res) => {
   logger.info(`Logout (GET): User ${req.user._id} (${req.user.email})`);
 
@@ -224,9 +148,11 @@ router.get('/logout', protect, asyncHandler(async (req, res) => {
   });
 }));
 
-// @route   GET /api/auth/me
-// @desc    Get current user data
-// @access  Private
+/**
+ * @route   GET /api/auth/me
+ * @desc    Get current user data
+ * @access  Private
+ */
 router.get('/me', protect, asyncHandler(async (req, res) => {
   logger.debug(`Get user profile: ${req.user._id}`);
 
@@ -244,9 +170,11 @@ router.get('/me', protect, asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: user });
 }));
 
-// @route   GET /api/auth/test-connection
-// @desc    Test API connection
-// @access  Public
+/**
+ * @route   GET /api/auth/test-connection
+ * @desc    Test API connection
+ * @access  Public
+ */
 router.get('/test-connection', (req, res) => {
   logger.debug(`API connection test from ${req.ip}`);
 
@@ -257,9 +185,11 @@ router.get('/test-connection', (req, res) => {
   });
 });
 
-// @route   POST /api/auth/refresh-token
-// @desc    Refresh authentication token
-// @access  Public (with token)
+/**
+ * @route   POST /api/auth/refresh-token
+ * @desc    Refresh authentication token
+ * @access  Public (with token)
+ */
 router.post('/refresh-token', asyncHandler(async (req, res) => {
   let token;
 
