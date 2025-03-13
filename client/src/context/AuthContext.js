@@ -1,45 +1,12 @@
-// src/context/AuthContext.js
+// client/src/context/AuthContext.js
 import React, { createContext, useReducer, useContext, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 
-/**
- * @typedef {Object} User
- * @property {string} id - User ID
- * @property {string} nickname - User nickname
- * @property {string} email - User email
- * @property {Object} details - User details
- * @property {Array} photos - User photos
- * @property {boolean} isOnline - User online status
- * @property {Date} lastActive - Last active timestamp
- */
-
-/**
- * @typedef {Object} AuthState
- * @property {string|null} token - JWT token
- * @property {boolean|null} isAuthenticated - Authentication status
- * @property {boolean} loading - Loading status
- * @property {User|null} user - User data
- * @property {string|null} error - Error message
- */
-
-/**
- * @typedef {Object} AuthContextType
- * @property {string|null} token - JWT token
- * @property {boolean|null} isAuthenticated - Authentication status
- * @property {boolean} loading - Loading status
- * @property {User|null} user - User data
- * @property {string|null} error - Error message
- * @property {function(Object): Promise<void>} register - Register function
- * @property {function(Object): Promise<void>} login - Login function
- * @property {function(): Promise<void>} logout - Logout function
- * @property {function(): void} clearErrors - Clear errors function
- */
-
 // Create auth context
-const AuthContext = createContext(/** @type {AuthContextType} */ ({}));
+const AuthContext = createContext({});
 
-// Create API service with default config - fix CORS issue by not using withCredentials
+// Create API service with default config
 const apiService = axios.create({
   baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
   headers: {
@@ -50,61 +17,58 @@ const apiService = axios.create({
 
 /**
  * Auth reducer to handle auth state changes
- * @param {AuthState} state - Current auth state
- * @param {Object} action - Dispatch action
- * @returns {AuthState} - New auth state
  */
 const authReducer = (state, action) => {
   switch (action.type) {
     case 'LOGIN':
       sessionStorage.setItem('token', action.payload.token);
-      return { 
-        ...state, 
-        token: action.payload.token, 
-        isAuthenticated: true, 
-        loading: false, 
+      return {
+        ...state,
+        token: action.payload.token,
+        isAuthenticated: true,
+        loading: false,
         user: action.payload.data,
-        error: null 
+        error: null
       };
     case 'REGISTER':
       sessionStorage.setItem('token', action.payload.token);
-      return { 
-        ...state, 
-        token: action.payload.token, 
-        isAuthenticated: true, 
-        loading: false, 
+      return {
+        ...state,
+        token: action.payload.token,
+        isAuthenticated: true,
+        loading: false,
         user: action.payload.data,
-        error: null 
+        error: null
       };
     case 'USER_LOADED':
-      return { 
-        ...state, 
-        isAuthenticated: true, 
-        loading: false, 
+      return {
+        ...state,
+        isAuthenticated: true,
+        loading: false,
         user: action.payload,
-        error: null 
+        error: null
       };
     case 'AUTH_ERROR':
     case 'LOGIN_FAIL':
     case 'REGISTER_FAIL':
       sessionStorage.removeItem('token');
-      return { 
-        ...state, 
-        token: null, 
-        isAuthenticated: false, 
-        loading: false, 
-        user: null, 
-        error: action.payload 
+      return {
+        ...state,
+        token: null,
+        isAuthenticated: false,
+        loading: false,
+        user: null,
+        error: action.payload
       };
     case 'LOGOUT':
       sessionStorage.removeItem('token');
-      return { 
-        ...state, 
-        token: null, 
-        isAuthenticated: false, 
-        loading: false, 
-        user: null, 
-        error: null 
+      return {
+        ...state,
+        token: null,
+        isAuthenticated: false,
+        loading: false,
+        user: null,
+        error: null
       };
     case 'CLEAR_ERROR':
       return { ...state, error: null };
@@ -117,9 +81,6 @@ const authReducer = (state, action) => {
 
 /**
  * Auth provider component
- * @param {Object} props - Component props
- * @param {React.ReactNode} props.children - Child components
- * @returns {JSX.Element} - Auth provider component
  */
 export const AuthProvider = ({ children }) => {
   const initialState = {
@@ -134,151 +95,159 @@ export const AuthProvider = ({ children }) => {
 
   /**
    * Set auth token in API service headers
-   * @param {string|null} token - JWT token
    */
   const setAuthToken = useCallback((token) => {
     if (token) {
       apiService.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } else {
       delete apiService.defaults.headers.common['Authorization'];
+      delete axios.defaults.headers.common['Authorization'];
     }
   }, []);
 
   /**
    * Check if token is expired
-   * @param {string} token - JWT token
-   * @returns {boolean} - True if token is expired
+   * More lenient approach to avoid timing issues
    */
   const isTokenExpired = useCallback((token) => {
     if (!token) return true;
-    
+
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.exp < Date.now() / 1000;
+      // Parse the JWT payload
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(window.atob(base64));
+
+      // Check if exp exists and if token is expired
+      // Add 5 second buffer to prevent edge timing issues
+      if (payload.exp) {
+        return payload.exp < (Date.now() / 1000) - 5;
+      }
+
+      // If no exp field, assume token is valid
+      return false;
     } catch (error) {
+      console.warn('Error parsing JWT token:', error);
       return true;
     }
   }, []);
 
   /**
    * Load user data using token
-   * @returns {Promise<void>}
    */
   const loadUser = useCallback(async () => {
     const token = sessionStorage.getItem('token');
-    
-    if (!token || isTokenExpired(token)) {
-      dispatch({ type: 'AUTH_ERROR', payload: 'Invalid or expired token' });
+
+    if (!token) {
+      dispatch({ type: 'AUTH_ERROR', payload: 'No token found' });
       return;
     }
-    
+
+    // Skip token expiration check - let the server validate it
+    // if (isTokenExpired(token)) {
+    //   dispatch({ type: 'AUTH_ERROR', payload: 'Invalid or expired token' });
+    //   return;
+    // }
+
     dispatch({ type: 'SET_LOADING', payload: true });
-    
+
     try {
       setAuthToken(token);
       const res = await apiService.get('/auth/me');
-      
+
       if (res.data && res.data.data) {
         dispatch({ type: 'USER_LOADED', payload: res.data.data });
       } else {
         throw new Error('Invalid response format');
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.error || 
-                      err.response?.data?.message || 
-                      err.message || 
+      console.error('Auth error:', err);
+      const errorMsg = err.response?.data?.error ||
+                      err.response?.data?.message ||
+                      err.message ||
                       'Failed to authenticate';
-                      
+
       dispatch({ type: 'AUTH_ERROR', payload: errorMsg });
     }
-  }, [isTokenExpired, setAuthToken]);
+  }, [setAuthToken]);
 
   /**
    * Register a new user
-   * @param {Object} formData - Registration data
-   * @returns {Promise<void>}
    */
   const register = async (formData) => {
     dispatch({ type: 'SET_LOADING', payload: true });
-    
+
     try {
       const res = await apiService.post('/auth/register', formData);
-      
+
       if (res.data) {
         dispatch({ type: 'REGISTER', payload: res.data });
-        await loadUser();
+        toast.success('Registration successful');
+
+        // Important: Wait for state update before loading user
+        setTimeout(() => {
+          loadUser();
+        }, 100);
       } else {
         throw new Error('Invalid response format');
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.error || 
-                      err.response?.data?.message || 
-                      err.message || 
+      const errorMsg = err.response?.data?.error ||
+                      err.response?.data?.message ||
+                      err.message ||
                       'Registration failed';
-      
-      toast.error(errorMsg);             
+
+      toast.error(errorMsg);
       dispatch({ type: 'REGISTER_FAIL', payload: errorMsg });
     }
   };
 
   /**
    * Login user
-   * @param {Object} formData - Login credentials
-   * @returns {Promise<void>}
    */
   const login = async (formData) => {
     dispatch({ type: 'SET_LOADING', payload: true });
-    
+
     try {
-      const res = await apiService.post('/auth/login', formData);
-      
+      const res = await axios.post('/api/auth/login', formData);
+
       if (res.data) {
         dispatch({ type: 'LOGIN', payload: res.data });
         toast.success('Login successful');
-        await loadUser();
+
+        // Important: Set token in axios before loading user
+        setAuthToken(res.data.token);
+
+        // Add delay to ensure token is set before loading user
+        setTimeout(() => {
+          loadUser();
+        }, 100);
       } else {
         throw new Error('Invalid response format');
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.error || 
-                      err.response?.data?.message || 
-                      err.message || 
+      console.error('Login error:', err);
+      const errorMsg = err.response?.data?.error ||
+                      err.response?.data?.message ||
+                      err.message ||
                       'Login failed';
-      
-      toast.error(errorMsg);            
+
+      toast.error(errorMsg);
       dispatch({ type: 'LOGIN_FAIL', payload: errorMsg });
     }
   };
 
   /**
-   * Refresh auth token
-   * @returns {Promise<boolean>} - Success status
-   */
-  const refreshToken = async () => {
-    try {
-      const res = await apiService.post('/auth/refresh-token');
-      
-      if (res.data && res.data.token) {
-        sessionStorage.setItem('token', res.data.token);
-        setAuthToken(res.data.token);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      return false;
-    }
-  };
-
-  /**
    * Logout user
-   * @returns {Promise<void>}
    */
   const logout = async () => {
     try {
       // Send logout request to invalidate token on server
-      await apiService.post('/auth/logout');
+      await axios.post('/api/auth/logout');
       toast.info('Logged out successfully');
     } catch (err) {
+      console.warn('Logout error:', err.message);
       // Continue with local logout even if server request fails
     } finally {
       // Clean up local state
@@ -292,87 +261,21 @@ export const AuthProvider = ({ children }) => {
    */
   const clearErrors = () => dispatch({ type: 'CLEAR_ERROR' });
 
-  // Set up API request interceptor for handling token expiration
+  // Initial authentication check
   useEffect(() => {
-    const requestInterceptor = apiService.interceptors.request.use(
-      async (config) => {
-        const token = sessionStorage.getItem('token');
-        
-        if (token && isTokenExpired(token)) {
-          const refreshed = await refreshToken();
-          
-          if (!refreshed) {
-            dispatch({ type: 'AUTH_ERROR', payload: 'Session expired' });
-            toast.error('Your session has expired. Please log in again.');
-            return Promise.reject(new Error('Session expired'));
-          }
-          
-          // Update token in the current request
-          const newToken = sessionStorage.getItem('token');
-          if (newToken) {
-            config.headers.Authorization = `Bearer ${newToken}`;
-          }
-        }
-        
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
-
-    // Set up API response interceptor for handling auth errors
-    const responseInterceptor = apiService.interceptors.response.use(
-      (response) => response,
-      async (error) => {
-        const originalRequest = error.config;
-        
-        // Handle 401 Unauthorized errors
-        if (error.response?.status === 401 && !originalRequest._retry) {
-          originalRequest._retry = true;
-          
-          const refreshed = await refreshToken();
-          
-          if (refreshed) {
-            const newToken = sessionStorage.getItem('token');
-            if (newToken) {
-              setAuthToken(newToken);
-              originalRequest.headers.Authorization = `Bearer ${newToken}`;
-              return apiService(originalRequest);
-            }
-          }
-          
-          // If refresh failed, log the user out
-          dispatch({ type: 'AUTH_ERROR', payload: 'Session expired' });
-          toast.error('Your session has expired. Please log in again.');
-        }
-        
-        return Promise.reject(error);
-      }
-    );
-
-    // Initial auth check
+    // Check if token exists and set it in headers
     const token = sessionStorage.getItem('token');
-    if (token && !isTokenExpired(token)) {
+
+    if (token) {
       setAuthToken(token);
+
+      // Only load user if we have a token - let server validate it
       loadUser();
-    } else if (token && isTokenExpired(token)) {
-      // Try to refresh the token if it's expired
-      refreshToken().then(refreshed => {
-        if (refreshed) {
-          loadUser();
-        } else {
-          dispatch({ type: 'AUTH_ERROR', payload: 'Session expired' });
-        }
-      });
     } else {
+      // If no token exists, set loading to false
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-
-    // Clean up interceptors on unmount
-    return () => {
-      apiService.interceptors.request.eject(requestInterceptor);
-      apiService.interceptors.response.eject(responseInterceptor);
-    };
-  }, [loadUser, isTokenExpired, setAuthToken]);
+  }, [loadUser, setAuthToken]);
 
   return (
     <AuthContext.Provider
@@ -395,15 +298,14 @@ export const AuthProvider = ({ children }) => {
 
 /**
  * Custom hook to use auth context
- * @returns {AuthContextType} - Auth context
  */
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  
+
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
-  
+
   return context;
 };
 

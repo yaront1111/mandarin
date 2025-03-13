@@ -1,25 +1,20 @@
-// server.js
+// server/server.js
 const express = require('express');
-const cors = require('cors');
 const http = require('http');
-const socketio = require('socket.io');
 const path = require('path');
 const morgan = require('morgan');
 const config = require('./config');
-const connectDB = require('./db'); // DB connection file (see below)
+const connectDB = require('./db');
 const routes = require('./routes');
-const { User } = require('./models');
-const logger = require('./logger'); // Winston logger
+const logger = require('./logger');
+
+// Import custom middleware and services
+const corsMiddleware = require('./middleware/cors');
+const initSocketServer = require('./socket');
 
 // Initialize Express
 const app = express();
 const server = http.createServer(app);
-const io = socketio(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
-});
 
 // Connect to MongoDB
 connectDB();
@@ -31,7 +26,10 @@ app.use(morgan('combined', {
 
 // Standard middleware
 app.use(express.json());
-app.use(cors());
+app.use(express.urlencoded({ extended: true }));
+
+// Use custom CORS middleware
+app.use(corsMiddleware());
 
 // Set static folder for uploads
 app.use('/uploads', express.static(path.join(__dirname, config.FILE_UPLOAD_PATH)));
@@ -39,77 +37,48 @@ app.use('/uploads', express.static(path.join(__dirname, config.FILE_UPLOAD_PATH)
 // Mount API routes
 app.use('/api', routes);
 
-// Socket.io connection and events
-io.on('connection', socket => {
-  logger.info(`Socket connected: ${socket.id}`);
+// Initialize Socket.IO with improved implementation
+const io = initSocketServer(server);
 
-  // Join user to their room and update online status
-  socket.on('join', async ({ userId }) => {
-    socket.join(userId);
-    try {
-      await User.findByIdAndUpdate(userId, {
-        isOnline: true,
-        lastActive: Date.now()
-      });
-      socket.broadcast.emit('userOnline', { userId });
-    } catch (err) {
-      logger.error(`Error updating user online status: ${err.message}`);
-    }
-  });
+// Serve static assets in production
+if (process.env.NODE_ENV === 'production') {
+  // Set static folder
+  app.use(express.static(path.join(__dirname, '../client/build')));
 
-  // Handle private messages
-  socket.on('privateMessage', async ({ sender, recipient, type, content }) => {
-    try {
-      // Require Message model dynamically if needed
-      const { Message } = require('./models');
-      const message = await Message.create({
-        sender,
-        recipient,
-        type,
-        content
-      });
-      io.to(recipient).emit('newMessage', message);
-      socket.emit('messageSent', message);
-    } catch (err) {
-      socket.emit('error', { message: err.message });
-      logger.error(`Error sending private message: ${err.message}`);
-    }
+  // Any route that is not an API route should be handled by React
+  app.get('*', (req, res) => {
+    res.sendFile(path.resolve(__dirname, '../client/build', 'index.html'));
   });
-
-  // Typing indicator
-  socket.on('typing', ({ sender, recipient }) => {
-    io.to(recipient).emit('userTyping', { userId: sender });
-  });
-
-  // Video call request
-  socket.on('videoCallRequest', ({ caller, recipient }) => {
-    io.to(recipient).emit('incomingCall', { userId: caller });
-  });
-
-  // Video call answer
-  socket.on('videoCallAnswer', ({ caller, recipient, answer }) => {
-    io.to(caller).emit('callAnswered', { userId: recipient, answer });
-  });
-
-  // Handle disconnection
-  socket.on('disconnect', () => {
-    logger.info(`Socket disconnected: ${socket.id}`);
-    // Optionally, update user status here
-  });
-});
+}
 
 // Global error-handling middleware
 app.use((err, req, res, next) => {
+  const statusCode = err.status || 500;
+  const errorMessage = err.message || 'Server Error';
+
   logger.error(
-    `${err.status || 500} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`
+    `${statusCode} - ${errorMessage} - ${req.originalUrl} - ${req.method} - ${req.ip}`
   );
-  res.status(err.status || 500).json({
+
+  // Don't expose stack traces in production
+  const error = process.env.NODE_ENV === 'production'
+    ? errorMessage
+    : { message: errorMessage, stack: err.stack };
+
+  res.status(statusCode).json({
     success: false,
-    error: err.message || 'Server Error'
+    error
   });
 });
 
 // Start the server
 server.listen(config.PORT, () => {
-  logger.info(`Server running on port ${config.PORT}`);
+  logger.info(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${config.PORT}`);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+  logger.error(`Unhandled Rejection: ${err.message}`);
+  // Close server & exit process
+  server.close(() => process.exit(1));
 });

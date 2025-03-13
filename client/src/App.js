@@ -1,8 +1,11 @@
+// client/src/App.js
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Home, Login, Register, Dashboard, Profile, NotFound } from './pages';
 import { PrivateRoute } from './components';
 import { AuthProvider, UserProvider, ChatProvider } from './context';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
 
 function App() {
@@ -34,6 +37,17 @@ function App() {
                 />
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              <ToastContainer 
+                position="top-right"
+                autoClose={5000}
+                hideProgressBar={false}
+                newestOnTop
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+              />
             </div>
           </Router>
         </ChatProvider>
