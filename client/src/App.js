@@ -24,7 +24,7 @@ function App() {
       <UserProvider>
         <ChatProvider>
           <Router>
-            <div className="App">
+            <div className="dating-app">
               <Routes>
                 {/* Public Routes */}
                 <Route path="/" element={<Home />} />
