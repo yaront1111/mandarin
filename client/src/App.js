@@ -1,7 +1,16 @@
 // client/src/App.js
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Home, Login, Register, Dashboard, Profile, NotFound } from './pages';
+import {
+  Home,
+  Login,
+  Register,
+  Dashboard,
+  Profile,
+  Messages,
+  UserProfile,
+  NotFound
+} from './pages';
 import { PrivateRoute } from './components';
 import './utils/apiDebugger';
 import { AuthProvider, UserProvider, ChatProvider } from './context';
@@ -17,9 +26,12 @@ function App() {
           <Router>
             <div className="App">
               <Routes>
+                {/* Public Routes */}
                 <Route path="/" element={<Home />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+
+                {/* Protected Routes */}
                 <Route
                   path="/dashboard"
                   element={
@@ -36,9 +48,27 @@ function App() {
                     </PrivateRoute>
                   }
                 />
+                <Route
+                  path="/messages"
+                  element={
+                    <PrivateRoute>
+                      <Messages />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/user/:id"
+                  element={
+                    <PrivateRoute>
+                      <UserProfile />
+                    </PrivateRoute>
+                  }
+                />
+
+                {/* Fallback Route */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
-              <ToastContainer 
+              <ToastContainer
                 position="top-right"
                 autoClose={5000}
                 hideProgressBar={false}

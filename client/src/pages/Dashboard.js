@@ -1,8 +1,12 @@
+// client/src/pages/Dashboard.js
 import React, { useState, useEffect } from 'react';
-import { FaSearch, FaFilter, FaHeart, FaComments, FaBell, FaUserCircle, FaMapMarkerAlt, FaEllipsisH, FaChevronDown, FaSlidersH } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
+import { FaSearch, FaFilter, FaHeart, FaComments, FaBell, FaUserCircle, FaMapMarkerAlt, 
+         FaEllipsisH, FaChevronDown, FaSlidersH } from 'react-icons/fa';
 import { useAuth, useUser } from '../context';
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { users, getUsers, loading } = useUser();
   const [activeTab, setActiveTab] = useState('discover');
@@ -21,7 +25,7 @@ const Dashboard = () => {
   // Fetch users on component mount
   useEffect(() => {
     getUsers();
-  }, []);
+  }, [getUsers]);
 
   // Available interests for filtering
   const availableInterests = [
@@ -38,6 +42,22 @@ const Dashboard = () => {
         return { ...prev, interests: [...prev.interests, interest] };
       }
     });
+  };
+
+  // Handle navigating to user profile
+  const navigateToUserProfile = (userId) => {
+    navigate(`/user/${userId}`);
+  };
+
+  // Handle navigating to messages
+  const navigateToMessages = (e) => {
+    if (e) e.stopPropagation(); // Prevent triggering the card click
+    navigate('/messages');
+  };
+
+  // Handle navigating to profile
+  const navigateToProfile = () => {
+    navigate('/profile');
   };
 
   // Apply filters to users
@@ -113,7 +133,7 @@ const Dashboard = () => {
             </button>
             <button
               className={`nav-tab ${activeTab === 'messages' ? 'active' : ''}`}
-              onClick={() => setActiveTab('messages')}
+              onClick={navigateToMessages}
             >
               <span className="tab-icon"><FaComments /></span>
               <span className="tab-text">Messages</span>
@@ -127,7 +147,7 @@ const Dashboard = () => {
               <span className="badge">2</span>
             </button>
             <div className="user-menu">
-              <button className="user-menu-button">
+              <button className="user-menu-button" onClick={navigateToProfile}>
                 {user.photos && user.photos.length > 0 ? (
                   <img src={user.photos[0].url} alt={user.nickname} className="avatar" />
                 ) : (
@@ -302,47 +322,75 @@ const Dashboard = () => {
                   <p>Loading potential matches...</p>
                 </div>
               ) : sortedUsers.length > 0 ? (
-                sortedUsers.map(user => (
-                  <div key={user._id} className="user-card">
+                sortedUsers.map(matchedUser => (
+                  <div 
+                    key={matchedUser._id} 
+                    className="user-card" 
+                    onClick={() => navigateToUserProfile(matchedUser._id)}
+                  >
                     <div className="user-card-photo">
-                      {user.photos && user.photos.length > 0 ? (
-                        <img src={user.photos[0].url} alt={user.nickname} />
+                      {matchedUser.photos && matchedUser.photos.length > 0 ? (
+                        <img src={matchedUser.photos[0].url} alt={matchedUser.nickname} />
                       ) : (
                         <div className="no-photo">
                           <FaUserCircle />
                         </div>
                       )}
-                      {user.isOnline && <div className="online-indicator"></div>}
-                      <button className="quick-like">
+                      {matchedUser.isOnline && <div className="online-indicator"></div>}
+                      <button 
+                        className="quick-like"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Handle like action
+                        }}
+                      >
                         <FaHeart />
                       </button>
                     </div>
                     <div className="user-card-content">
                       <div className="user-info">
-                        <h3>{user.nickname}, {user.details?.age || '?'}</h3>
+                        <h3>{matchedUser.nickname}, {matchedUser.details?.age || '?'}</h3>
                         <p className="user-location">
                           <FaMapMarkerAlt />
-                          <span>{user.details?.location || 'Unknown location'}</span>
+                          <span>{matchedUser.details?.location || 'Unknown location'}</span>
                         </p>
                       </div>
                       <div className="user-interests">
-                        {user.details?.interests?.slice(0, 3).map(interest => (
+                        {matchedUser.details?.interests?.slice(0, 3).map(interest => (
                           <span key={interest} className="interest-badge">{interest}</span>
                         ))}
-                        {user.details?.interests?.length > 3 && (
-                          <span className="more-interests">+{user.details.interests.length - 3}</span>
+                        {matchedUser.details?.interests?.length > 3 && (
+                          <span className="more-interests">+{matchedUser.details.interests.length - 3}</span>
                         )}
                       </div>
                       <div className="user-actions">
-                        <button className="btn btn-outline btn-like">
+                        <button 
+                          className="btn btn-outline btn-like"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Handle like action
+                          }}
+                        >
                           <FaHeart />
                           <span>Like</span>
                         </button>
-                        <button className="btn btn-primary btn-message">
+                        <button 
+                          className="btn btn-primary btn-message"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigateToMessages();
+                          }}
+                        >
                           <FaComments />
                           <span>Message</span>
                         </button>
-                        <button className="action-options">
+                        <button 
+                          className="action-options"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Handle options menu
+                          }}
+                        >
                           <FaEllipsisH />
                         </button>
                       </div>
@@ -431,13 +479,16 @@ const Dashboard = () => {
         </button>
         <button
           className={`mobile-nav-item ${activeTab === 'messages' ? 'active' : ''}`}
-          onClick={() => setActiveTab('messages')}
+          onClick={navigateToMessages}
         >
           <FaComments />
           <span>Messages</span>
           <span className="mobile-badge">3</span>
         </button>
-        <button className="mobile-nav-item">
+        <button 
+          className="mobile-nav-item"
+          onClick={navigateToProfile}
+        >
           <FaUserCircle />
           <span>Profile</span>
         </button>
