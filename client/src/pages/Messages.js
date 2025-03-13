@@ -47,6 +47,16 @@ const Messages = () => {
     }
   }, [selectedUser]);
 
+    // Add to Messages.js
+  useEffect(() => {
+    // Clean up function for unmounting
+    return () => {
+      // Ensure we remove any active message listeners when component unmounts
+      if (selectedUser) {
+        setCurrentChat(null);
+      }
+    };
+  }, []);
   // Handle selecting a user to chat with
   const handleSelectUser = (user) => {
     setSelectedUser(user);

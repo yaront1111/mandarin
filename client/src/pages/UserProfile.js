@@ -5,6 +5,7 @@ import { FaArrowLeft, FaHeart, FaComment, FaEllipsisH, FaShieldAlt, FaMapMarkerA
          FaLock, FaUserAlt, FaTrophy } from 'react-icons/fa';
 import { useUser, useChat, useAuth } from '../context';
 import { PhotoGallery, ChatBox } from '../components';
+import {toast} from "react-toastify";
 
 const UserProfile = () => {
   const { id } = useParams();
@@ -25,6 +26,14 @@ const UserProfile = () => {
     }
   }, [id]);
 
+  // Add this to UserProfile.js after the useEffect hook
+  useEffect(() => {
+    if (!loading && !profileUser && id) {
+      // If profile has finished loading but no user was found
+      toast.error('User profile not found');
+      navigate('/dashboard');
+    }
+  }, [loading, profileUser, id, navigate]);
   // Go back to previous page
   const handleBack = () => {
     navigate('/dashboard');

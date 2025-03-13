@@ -25,7 +25,8 @@ const Dashboard = () => {
   // Fetch users on component mount
   useEffect(() => {
     getUsers();
-  }, [getUsers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array with eslint comment to prevent warnings
 
   // Available interests for filtering
   const availableInterests = [
