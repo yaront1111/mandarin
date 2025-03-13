@@ -1,37 +1,31 @@
 // client/src/context/ChatContext.js
-import React, { createContext, useReducer, useContext, useEffect } from 'react';
+import React, { createContext, useReducer, useContext, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
 import apiService from '../services/apiService';
 import socketService from '../services/socketService';
 import { useAuth } from './AuthContext';
-
-/**
- * @typedef {Object} ChatState
- * @property {Array} messages - List of messages
- * @property {Array} unreadMessages - List of unread messages
- * @property {Object|null} currentChat - Current selected chat user
- * @property {Object} typingUsers - Users who are currently typing
- * @property {Object|null} incomingCall - Incoming call information
- * @property {Object|null} callAnswered - Call answer information
- * @property {boolean} loading - Loading status
- * @property {string|null} error - Error message
- */
 
 // Create chat context
 const ChatContext = createContext();
 
 /**
  * Chat reducer to handle chat state changes
- * @param {ChatState} state - Current chat state
+ * @param {Object} state - Current chat state
  * @param {Object} action - Dispatch action
- * @returns {ChatState} - New chat state
+ * @returns {Object} - New chat state
  */
 const chatReducer = (state, action) => {
   switch (action.type) {
     case 'GET_MESSAGES':
       return { ...state, messages: action.payload, loading: false };
     case 'SEND_MESSAGE':
-      return { ...state, messages: [action.payload, ...state.messages] };
+      return {
+        ...state,
+        messages: [action.payload, ...state.messages],
+        sendingMessage: false
+      };
+    case 'SENDING_MESSAGE':
+      return { ...state, sendingMessage: true };
     case 'RECEIVE_MESSAGE':
       if (
         (state.currentChat && action.payload.sender === state.currentChat._id) ||
@@ -41,15 +35,16 @@ const chatReducer = (state, action) => {
       }
       return { ...state, unreadMessages: [...state.unreadMessages, action.payload] };
     case 'SET_CURRENT_CHAT':
-      return { 
-        ...state, 
-        currentChat: action.payload, 
-        unreadMessages: state.unreadMessages.filter(msg => msg.sender !== action.payload._id) 
+      return {
+        ...state,
+        currentChat: action.payload,
+        unreadMessages: state.unreadMessages.filter(msg => msg.sender !== action.payload?._id),
+        messageError: null
       };
     case 'USER_TYPING':
-      return { 
-        ...state, 
-        typingUsers: { ...state.typingUsers, [action.payload.userId]: Date.now() } 
+      return {
+        ...state,
+        typingUsers: { ...state.typingUsers, [action.payload.userId]: Date.now() }
       };
     case 'USER_ONLINE':
       return { ...state, userOnline: action.payload };
@@ -64,9 +59,11 @@ const chatReducer = (state, action) => {
       return { ...state, incomingCall: null, callAnswered: null };
     case 'CHAT_ERROR':
       toast.error(action.payload);
-      return { ...state, error: action.payload };
+      return { ...state, error: action.payload, sendingMessage: false };
+    case 'MESSAGE_ERROR':
+      return { ...state, messageError: action.payload, sendingMessage: false };
     case 'CLEAR_ERROR':
-      return { ...state, error: null };
+      return { ...state, error: null, messageError: null };
     case 'SET_LOADING':
       return { ...state, loading: action.payload };
     default:
@@ -76,9 +73,6 @@ const chatReducer = (state, action) => {
 
 /**
  * Chat provider component
- * @param {Object} props - Component props
- * @param {React.ReactNode} props.children - Child components
- * @returns {JSX.Element} - Chat provider component
  */
 export const ChatProvider = ({ children }) => {
   const initialState = {
@@ -89,47 +83,70 @@ export const ChatProvider = ({ children }) => {
     incomingCall: null,
     callAnswered: null,
     loading: false,
+    sendingMessage: false,
     error: null,
+    messageError: null,
   };
 
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const { user, token } = useAuth();
+
+  // Use refs to track socket event handlers for cleanup
+  const eventHandlers = useRef({});
 
   // Initialize socket connection when user is authenticated
   useEffect(() => {
     if (user && token) {
       // Initialize socket connection
       socketService.init(user._id, token);
-      
+
       // Set up socket event listeners
       const newMessageHandler = (message) => {
         dispatch({ type: 'RECEIVE_MESSAGE', payload: message });
+
+        // Show notification if it's not from current chat
+        if (state.currentChat && message.sender !== state.currentChat._id) {
+          // Get sender nickname if available
+          const senderName = message.senderName || 'Someone';
+          toast.info(`New message from ${senderName}`);
+        }
       };
-      
+
       const userOnlineHandler = (data) => {
         dispatch({ type: 'USER_ONLINE', payload: data });
       };
-      
+
       const userOfflineHandler = (data) => {
         dispatch({ type: 'USER_OFFLINE', payload: data });
       };
-      
+
       const userTypingHandler = (data) => {
         dispatch({ type: 'USER_TYPING', payload: data });
       };
-      
+
       const incomingCallHandler = (data) => {
         dispatch({ type: 'INCOMING_CALL', payload: data });
       };
-      
+
       const callAnsweredHandler = (data) => {
         dispatch({ type: 'CALL_ANSWERED', payload: data });
       };
-      
+
       const errorHandler = (error) => {
         dispatch({ type: 'CHAT_ERROR', payload: error.message || 'Socket error' });
       };
-      
+
+      // Store handlers in ref for cleanup
+      eventHandlers.current = {
+        newMessage: newMessageHandler,
+        userOnline: userOnlineHandler,
+        userOffline: userOfflineHandler,
+        userTyping: userTypingHandler,
+        incomingCall: incomingCallHandler,
+        callAnswered: callAnsweredHandler,
+        error: errorHandler
+      };
+
       // Register event handlers
       socketService.on('newMessage', newMessageHandler);
       socketService.on('userOnline', userOnlineHandler);
@@ -138,22 +155,28 @@ export const ChatProvider = ({ children }) => {
       socketService.on('incomingCall', incomingCallHandler);
       socketService.on('callAnswered', callAnsweredHandler);
       socketService.on('error', errorHandler);
-      
-      // Clean up event listeners on unmount
+
+      // Clean up function
       return () => {
-        socketService.off('newMessage', newMessageHandler);
-        socketService.off('userOnline', userOnlineHandler);
-        socketService.off('userOffline', userOfflineHandler);
-        socketService.off('userTyping', userTypingHandler);
-        socketService.off('incomingCall', incomingCallHandler);
-        socketService.off('callAnswered', callAnsweredHandler);
-        socketService.off('error', errorHandler);
-        
-        // Disconnect socket
-        socketService.disconnect();
+        // Remove all handlers
+        Object.entries(eventHandlers.current).forEach(([event, handler]) => {
+          socketService.off(event, handler);
+        });
       };
     }
-  }, [user, token]);
+  }, [user, token, state.currentChat]); // Added state.currentChat as a dependency
+
+  // Additional cleanup for component unmount
+  useEffect(() => {
+    return () => {
+      // This ensures we clean up when the provider is unmounted
+      if (user) {
+        Object.entries(eventHandlers.current).forEach(([event, handler]) => {
+          socketService.off(event, handler);
+        });
+      }
+    };
+  }, [user]);
 
   /**
    * Get message history with a specific user
@@ -161,18 +184,20 @@ export const ChatProvider = ({ children }) => {
    * @returns {Promise<void>}
    */
   const getMessages = async (userId) => {
+    if (!userId) return;
+
     dispatch({ type: 'SET_LOADING', payload: true });
-    
+
     try {
       const data = await apiService.get(`/messages/${userId}`);
-      
+
       if (data.success) {
         dispatch({ type: 'GET_MESSAGES', payload: data.data });
       } else {
         throw new Error(data.error || 'Failed to fetch messages');
       }
     } catch (err) {
-      const errorMsg = err.message || 'Failed to fetch messages';
+      const errorMsg = err.error || err.message || 'Failed to fetch messages';
       dispatch({ type: 'CHAT_ERROR', payload: errorMsg });
     }
   };
@@ -185,28 +210,31 @@ export const ChatProvider = ({ children }) => {
    * @returns {Promise<Object|null>} - Sent message or null if failed
    */
   const sendMessage = async (recipient, type, content) => {
+    dispatch({ type: 'SENDING_MESSAGE' });
+
     try {
       // First send through API
       const data = await apiService.post('/messages', { recipient, type, content });
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to send message');
       }
-      
+
       const message = data.data;
-      
+
       // Then emit through socket for real-time delivery
       try {
         await socketService.sendMessage(recipient, type, content);
       } catch (socketErr) {
         console.warn('Socket delivery failed, but message is saved:', socketErr);
+        // Don't throw here - the message was saved, just not delivered in real-time
       }
-      
+
       dispatch({ type: 'SEND_MESSAGE', payload: message });
       return message;
     } catch (err) {
-      const errorMsg = err.message || 'Failed to send message';
-      dispatch({ type: 'CHAT_ERROR', payload: errorMsg });
+      const errorMsg = err.error || err.message || 'Failed to send message';
+      dispatch({ type: 'MESSAGE_ERROR', payload: errorMsg });
       return null;
     }
   };
@@ -217,6 +245,11 @@ export const ChatProvider = ({ children }) => {
    */
   const setCurrentChat = (user) => {
     dispatch({ type: 'SET_CURRENT_CHAT', payload: user });
+
+    // If user is set, fetch messages
+    if (user && user._id) {
+      getMessages(user._id);
+    }
   };
 
   /**
@@ -224,6 +257,7 @@ export const ChatProvider = ({ children }) => {
    * @param {string} recipient - Recipient user ID
    */
   const sendTyping = (recipient) => {
+    if (!recipient) return;
     socketService.sendTyping(recipient);
   };
 
@@ -251,7 +285,7 @@ export const ChatProvider = ({ children }) => {
   const answerVideoCall = async (caller, answer) => {
     try {
       await socketService.answerVideoCall(caller, answer);
-      
+
       if (answer) {
         toast.success('Call accepted');
       } else {
@@ -279,17 +313,23 @@ export const ChatProvider = ({ children }) => {
     dispatch({ type: 'CLEAR_ERROR' });
   };
 
+  // Check for unread messages count
+  const unreadMessagesCount = state.unreadMessages.length;
+
   return (
     <ChatContext.Provider
       value={{
         messages: state.messages,
         unreadMessages: state.unreadMessages,
+        unreadMessagesCount,
         currentChat: state.currentChat,
         typingUsers: state.typingUsers,
         incomingCall: state.incomingCall,
         callAnswered: state.callAnswered,
         loading: state.loading,
+        sendingMessage: state.sendingMessage,
         error: state.error,
+        messageError: state.messageError,
         getMessages,
         sendMessage,
         setCurrentChat,
@@ -311,10 +351,10 @@ export const ChatProvider = ({ children }) => {
  */
 export const useChat = () => {
   const context = useContext(ChatContext);
-  
+
   if (context === undefined) {
     throw new Error('useChat must be used within a ChatProvider');
   }
-  
+
   return context;
 };

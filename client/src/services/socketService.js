@@ -11,6 +11,7 @@ class SocketService {
     this.userId = null;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
+    this.connectionTimeout = null;
     this.handlers = {
       newMessage: [],
       userOnline: [],
@@ -35,7 +36,22 @@ class SocketService {
 
     this.userId = userId;
 
-    const socketUrl = process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000';
+    // Determine socket URL - use same origin if not specified
+    const socketUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin;
+
+    // Clear any existing connection timeout
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout);
+    }
+
+    // Set connection timeout to detect failed connects
+    this.connectionTimeout = setTimeout(() => {
+      if (this.socket && !this.socket.connected) {
+        console.error('Socket connection timeout');
+        toast.error('Could not establish real-time connection. Chat features might be limited.');
+        // Don't disconnect here - let the reconnection mechanism work
+      }
+    }, 10000);
 
     this.socket = io(socketUrl, {
       autoConnect: true,
@@ -48,8 +64,21 @@ class SocketService {
     // Connect and join user's room
     this.socket.on('connect', () => {
       console.log('Socket connected with ID:', this.socket.id);
+
+      // Clear the connection timeout
+      if (this.connectionTimeout) {
+        clearTimeout(this.connectionTimeout);
+        this.connectionTimeout = null;
+      }
+
       this.reconnectAttempts = 0;
       this.socket.emit('join', { userId });
+
+      // Notify user of successful connection if previously disconnected
+      if (this.wasDisconnected) {
+        toast.success('Real-time connection restored');
+        this.wasDisconnected = false;
+      }
     });
 
     // Set up listeners for standard events
@@ -88,22 +117,37 @@ class SocketService {
       if (error.message === 'Authentication error') {
         toast.error('Authentication failed. Please log in again.');
         this.disconnect();
+
+        // Redirect to login after short delay
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 1500);
       }
     });
 
     this.socket.on('disconnect', (reason) => {
       console.log('Socket disconnected:', reason);
+      this.wasDisconnected = true;
 
       if (reason === 'io server disconnect') {
         // Server disconnected the client, need to reconnect manually
-        this.socket.connect();
+        setTimeout(() => {
+          this.socket.connect();
+        }, 1000);
       }
+
+      // Notify user of disconnection
+      toast.warn('Real-time connection lost. Attempting to reconnect...');
     });
 
     this.socket.on('reconnect', (attemptNumber) => {
       console.log(`Socket reconnected after ${attemptNumber} attempts`);
       // Re-join room on reconnection
       this.socket.emit('join', { userId });
+
+      // Notify user of successful reconnection
+      toast.success('Real-time connection restored');
+      this.wasDisconnected = false;
     });
 
     this.socket.on('reconnect_attempt', (attemptNumber) => {
@@ -172,8 +216,10 @@ class SocketService {
   sendMessage(recipient, type, content) {
     return new Promise((resolve, reject) => {
       if (!this.isConnected()) {
-        toast.warning('Connection lost. Attempting to reconnect...');
+        // Try to reconnect
         this.socket.connect();
+
+        toast.warning('Connection lost. Attempting to reconnect...');
         reject(new Error('Socket not connected'));
         return;
       }
@@ -201,6 +247,8 @@ class SocketService {
    */
   sendTyping(recipient) {
     if (!this.isConnected()) {
+      // Try to reconnect but don't show error for typing
+      this.socket.connect();
       return;
     }
 
@@ -265,9 +313,34 @@ class SocketService {
   }
 
   /**
+   * Reconnect socket manually
+   * @param {string} token - Authentication token
+   * @returns {boolean} - True if reconnection was attempted
+   */
+  reconnect(token) {
+    if (!this.userId) {
+      console.error('Cannot reconnect: no user ID');
+      return false;
+    }
+
+    if (this.socket) {
+      this.socket.io.opts.query = { token };
+      this.socket.connect();
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Disconnect socket
    */
   disconnect() {
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout);
+      this.connectionTimeout = null;
+    }
+
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;

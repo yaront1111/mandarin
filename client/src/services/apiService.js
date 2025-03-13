@@ -7,11 +7,10 @@ import { toast } from 'react-toastify';
  */
 class ApiService {
   constructor() {
-    // Determine the base URL with better fallback handling
+    // Use consistent API URL approach with clear fallback
     const baseURL = process.env.REACT_APP_API_URL ||
-                   (window.location.origin.includes('localhost') ?
-                   'http://localhost:5000/api' :
-                   `${window.location.origin}/api`);
+                   (window.location.hostname.includes('localhost') ?
+                   'http://localhost:5000/api' : '/api');
 
     console.log(`API Service initialized with baseURL: ${baseURL}`);
 
@@ -34,11 +33,16 @@ class ApiService {
 
     // Add request interceptor for debugging
     this.api.interceptors.request.use(config => {
-      console.log(`API Request: ${config.method.toUpperCase()} ${config.url}`);
-      if (config.headers.Authorization) {
-        console.log('Request includes auth token');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`API Request: ${config.method.toUpperCase()} ${config.url}`);
+        if (config.headers.Authorization) {
+          console.log('Request includes auth token');
+        }
       }
       return config;
+    }, error => {
+      console.error('Request error:', error);
+      return Promise.reject(error);
     });
   }
 
@@ -48,12 +52,10 @@ class ApiService {
    */
   setAuthToken(token) {
     if (token) {
-      console.log('Setting auth token in API Service');
       this.api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       // Also set for global axios for consistency
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } else {
-      console.log('Removing auth token from API Service');
       delete this.api.defaults.headers.common['Authorization'];
       delete axios.defaults.headers.common['Authorization'];
     }
@@ -92,7 +94,9 @@ class ApiService {
    * @returns {Object} - Response data
    */
   _handleResponse(response) {
-    console.log(`API Response Success: ${response.config.url}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`API Response Success: ${response.config.url}`);
+    }
     return response.data; // Return data directly to simplify usage
   }
 
@@ -103,7 +107,10 @@ class ApiService {
    */
   _handleError = async (error) => {
     const originalRequest = error.config;
-    console.error('API Error:', error.message, originalRequest?.url);
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('API Error:', error.message, originalRequest?.url);
+    }
 
     // Handle network errors
     if (!error.response) {
@@ -118,7 +125,6 @@ class ApiService {
     // Handle token refresh for 401 errors
     if (error.response.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      console.log('Attempting token refresh...');
 
       if (this.refreshPromise === null) {
         this.refreshPromise = this._refreshToken();
@@ -128,7 +134,6 @@ class ApiService {
         const token = await this.refreshPromise;
 
         if (token) {
-          console.log('Token refreshed successfully');
           this.setAuthToken(token);
           originalRequest.headers.Authorization = `Bearer ${token}`;
           return this.api(originalRequest);
@@ -139,6 +144,11 @@ class ApiService {
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('token');
           toast.error('Session expired. Please log in again.');
+
+          // Redirect to login page after a short delay
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 1500);
         }
       } finally {
         this.refreshPromise = null;
@@ -191,11 +201,9 @@ class ApiService {
    */
   async _refreshToken() {
     try {
-      console.log('Attempting to refresh token');
       const response = await this.api.post('/auth/refresh-token');
 
       if (response.success && response.token) {
-        console.log('Token refreshed successfully');
         const token = response.token;
         sessionStorage.setItem('token', token);
         return token;
@@ -218,7 +226,6 @@ class ApiService {
    */
   async get(url, params = {}, options = {}) {
     try {
-      console.log(`Making GET request to ${url}`);
       const response = await this.api.get(url, { params, ...options });
       return response; // The interceptor already returns response.data
     } catch (error) {
@@ -235,7 +242,6 @@ class ApiService {
    */
   async post(url, data = {}, options = {}) {
     try {
-      console.log(`Making POST request to ${url}`);
       const response = await this.api.post(url, data, options);
       return response;
     } catch (error) {
@@ -252,7 +258,6 @@ class ApiService {
    */
   async put(url, data = {}, options = {}) {
     try {
-      console.log(`Making PUT request to ${url}`);
       const response = await this.api.put(url, data, options);
       return response;
     } catch (error) {
@@ -268,7 +273,6 @@ class ApiService {
    */
   async delete(url, options = {}) {
     try {
-      console.log(`Making DELETE request to ${url}`);
       const response = await this.api.delete(url, options);
       return response;
     } catch (error) {
@@ -285,7 +289,6 @@ class ApiService {
    */
   async upload(url, formData, onProgress = null) {
     try {
-      console.log(`Uploading file to ${url}`);
       const response = await this.api.post(url, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
@@ -295,7 +298,6 @@ class ApiService {
             (progressEvent.loaded * 100) / progressEvent.total
           );
           onProgress(percentCompleted);
-          console.log(`Upload progress: ${percentCompleted}%`);
         } : undefined
       });
       return response;
@@ -310,15 +312,10 @@ class ApiService {
    */
   async testConnection() {
     try {
-      console.log('Testing API connection...');
       const token = sessionStorage.getItem('token');
-      console.log('Token available:', !!token);
-
       const result = await this.get('/auth/test-connection');
-      console.log('Connection test successful');
       return { success: true, data: result };
     } catch (error) {
-      console.error('Connection test failed:', error);
       return {
         success: false,
         error: error.error || error.message || 'Connection test failed'

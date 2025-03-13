@@ -3,6 +3,7 @@ import React, { createContext, useReducer, useContext, useEffect, useCallback } 
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import apiService from '../services/apiService';
+import socketService from '../services/socketService';
 
 // Create auth context
 const AuthContext = createContext({});
@@ -90,12 +91,10 @@ export const AuthProvider = ({ children }) => {
    */
   const setAuthToken = useCallback((token) => {
     if (token) {
-      console.log('Setting auth token in headers');
       // Set token in both apiService and global axios
       apiService.setAuthToken(token);
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } else {
-      console.log('Removing auth token from headers');
       apiService.setAuthToken(null);
       delete axios.defaults.headers.common['Authorization'];
     }
@@ -131,35 +130,38 @@ export const AuthProvider = ({ children }) => {
    * Load user data using token
    */
   const loadUser = useCallback(async () => {
-    console.log('Loading user data...');
     const token = sessionStorage.getItem('token');
 
     if (!token) {
-      console.warn('No token found in storage');
       dispatch({ type: 'AUTH_ERROR', payload: 'No token found' });
-      return;
+      return null;
+    }
+
+    // Check if token is expired
+    if (isTokenExpired(token)) {
+      dispatch({ type: 'AUTH_ERROR', payload: 'Token expired' });
+      return null;
     }
 
     dispatch({ type: 'SET_LOADING', payload: true });
 
     try {
       setAuthToken(token);
-      console.log('Making request to /auth/me endpoint');
 
       const result = await apiService.get('/auth/me');
 
       if (result.success && result.data) {
         dispatch({ type: 'USER_LOADED', payload: result.data });
+        return result.data;
       } else {
         throw new Error('Invalid response format');
       }
     } catch (err) {
-      console.error('Auth error:', err);
       const errorMsg = err.error || err.message || 'Failed to authenticate';
-
       dispatch({ type: 'AUTH_ERROR', payload: errorMsg });
+      return null;
     }
-  }, [setAuthToken]);
+  }, [setAuthToken, isTokenExpired]);
 
   /**
    * Register a new user
@@ -168,7 +170,6 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: 'SET_LOADING', payload: true });
 
     try {
-      console.log('Registering new user');
       const result = await apiService.post('/auth/register', formData);
 
       if (result.success && result.token) {
@@ -179,19 +180,17 @@ export const AuthProvider = ({ children }) => {
         dispatch({ type: 'REGISTER', payload: result });
         toast.success('Registration successful');
 
-        // Load user data with sufficient delay
-        setTimeout(() => {
-          loadUser();
-        }, 500);
+        // Load user data
+        await loadUser();
+        return true;
       } else {
         throw new Error('Invalid response format');
       }
     } catch (err) {
-      console.error('Registration error:', err);
       const errorMsg = err.error || err.message || 'Registration failed';
-
       toast.error(errorMsg);
       dispatch({ type: 'REGISTER_FAIL', payload: errorMsg });
+      return false;
     }
   };
 
@@ -202,8 +201,6 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: 'SET_LOADING', payload: true });
 
     try {
-      console.log('Logging in user');
-
       // Use apiService instead of axios directly
       const result = await apiService.post('/auth/login', formData);
 
@@ -215,28 +212,28 @@ export const AuthProvider = ({ children }) => {
         dispatch({ type: 'LOGIN', payload: result });
         toast.success('Login successful');
 
-        // Load user with increased delay for reliability
-        setTimeout(() => {
-          loadUser();
-        }, 500);
+        // Load user data immediately after login
+        await loadUser();
+        return true;
       } else {
         throw new Error('Invalid response format');
       }
     } catch (err) {
-      console.error('Login error:', err);
       const errorMsg = err.error || err.message || 'Login failed';
-
       toast.error(errorMsg);
       dispatch({ type: 'LOGIN_FAIL', payload: errorMsg });
+      return false;
     }
   };
 
   /**
    * Logout user
    */
-  const logout = async () => {
+  const logout = useCallback(async () => {
+    // First, ensure we disconnect from socket
+    socketService.disconnect();
+
     try {
-      console.log('Logging out user');
       if (state.token) {
         setAuthToken(state.token); // Ensure token is set for the request
         await apiService.post('/auth/logout');
@@ -249,7 +246,7 @@ export const AuthProvider = ({ children }) => {
       setAuthToken(null);
       dispatch({ type: 'LOGOUT' });
     }
-  };
+  }, [state.token, setAuthToken]);
 
   /**
    * Clear error messages
@@ -258,18 +255,38 @@ export const AuthProvider = ({ children }) => {
 
   // Initial authentication check
   useEffect(() => {
-    console.log('Initial auth check');
     const token = sessionStorage.getItem('token');
 
     if (token) {
-      console.log('Token found in storage, setting up authentication');
+      // Check if token is expired first
+      if (isTokenExpired(token)) {
+        sessionStorage.removeItem('token');
+        dispatch({ type: 'AUTH_ERROR', payload: 'Token expired' });
+        dispatch({ type: 'SET_LOADING', payload: false });
+        return;
+      }
+
       setAuthToken(token);
       loadUser();
     } else {
-      console.log('No token found, not authenticating');
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [loadUser, setAuthToken]);
+  }, [loadUser, setAuthToken, isTokenExpired]);
+
+  // Set up periodic token validation check
+  useEffect(() => {
+    const validateTokenInterval = setInterval(() => {
+      const token = sessionStorage.getItem('token');
+      if (token && isTokenExpired(token)) {
+        // Token has expired, log user out
+        console.warn('Token expired during session');
+        toast.error('Your session has expired. Please log in again.');
+        logout();
+      }
+    }, 60000); // Check every minute
+
+    return () => clearInterval(validateTokenInterval);
+  }, [isTokenExpired, logout]);
 
   return (
     <AuthContext.Provider
@@ -283,6 +300,7 @@ export const AuthProvider = ({ children }) => {
         login,
         logout,
         clearErrors,
+        loadUser,
       }}
     >
       {children}
