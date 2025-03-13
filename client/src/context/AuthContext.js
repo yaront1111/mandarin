@@ -1,12 +1,17 @@
+// src/context/AuthContext.js
 import React, { createContext, useReducer, useContext, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { toast } from 'react-toastify';
 
 /**
  * @typedef {Object} User
  * @property {string} id - User ID
- * @property {string} name - User name
+ * @property {string} nickname - User nickname
  * @property {string} email - User email
- * @property {string} [role] - User role
+ * @property {Object} details - User details
+ * @property {Array} photos - User photos
+ * @property {boolean} isOnline - User online status
+ * @property {Date} lastActive - Last active timestamp
  */
 
 /**
@@ -34,13 +39,13 @@ import axios from 'axios';
 // Create auth context
 const AuthContext = createContext(/** @type {AuthContextType} */ ({}));
 
-// Create API service with default config
+// Create API service with default config - fix CORS issue by not using withCredentials
 const apiService = axios.create({
   baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true, // Enable sending cookies with requests
+  // Don't use withCredentials with wildcard CORS
 });
 
 /**
@@ -52,58 +57,54 @@ const apiService = axios.create({
 const authReducer = (state, action) => {
   switch (action.type) {
     case 'LOGIN':
-      // In production, prefer httpOnly cookies set by the server
-      // This is a fallback for APIs that don't support cookies
-      if (action.payload.token) {
-        sessionStorage.setItem('token', action.payload.token);
-      }
-      return {
-        ...state,
-        isAuthenticated: true,
-        loading: false,
+      sessionStorage.setItem('token', action.payload.token);
+      return { 
+        ...state, 
+        token: action.payload.token, 
+        isAuthenticated: true, 
+        loading: false, 
         user: action.payload.data,
-        error: null
+        error: null 
       };
     case 'REGISTER':
-      if (action.payload.token) {
-        sessionStorage.setItem('token', action.payload.token);
-      }
-      return {
-        ...state,
-        isAuthenticated: true,
-        loading: false,
+      sessionStorage.setItem('token', action.payload.token);
+      return { 
+        ...state, 
+        token: action.payload.token, 
+        isAuthenticated: true, 
+        loading: false, 
         user: action.payload.data,
-        error: null
+        error: null 
       };
     case 'USER_LOADED':
-      return {
-        ...state,
-        isAuthenticated: true,
-        loading: false,
+      return { 
+        ...state, 
+        isAuthenticated: true, 
+        loading: false, 
         user: action.payload,
-        error: null
+        error: null 
       };
     case 'AUTH_ERROR':
     case 'LOGIN_FAIL':
     case 'REGISTER_FAIL':
       sessionStorage.removeItem('token');
-      return {
-        ...state,
-        token: null,
-        isAuthenticated: false,
-        loading: false,
-        user: null,
-        error: action.payload
+      return { 
+        ...state, 
+        token: null, 
+        isAuthenticated: false, 
+        loading: false, 
+        user: null, 
+        error: action.payload 
       };
     case 'LOGOUT':
       sessionStorage.removeItem('token');
-      return {
-        ...state,
-        token: null,
-        isAuthenticated: false,
-        loading: false,
-        user: null,
-        error: null
+      return { 
+        ...state, 
+        token: null, 
+        isAuthenticated: false, 
+        loading: false, 
+        user: null, 
+        error: null 
       };
     case 'CLEAR_ERROR':
       return { ...state, error: null };
@@ -150,7 +151,7 @@ export const AuthProvider = ({ children }) => {
    */
   const isTokenExpired = useCallback((token) => {
     if (!token) return true;
-
+    
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
       return payload.exp < Date.now() / 1000;
@@ -165,29 +166,29 @@ export const AuthProvider = ({ children }) => {
    */
   const loadUser = useCallback(async () => {
     const token = sessionStorage.getItem('token');
-
+    
     if (!token || isTokenExpired(token)) {
       dispatch({ type: 'AUTH_ERROR', payload: 'Invalid or expired token' });
       return;
     }
-
+    
     dispatch({ type: 'SET_LOADING', payload: true });
-
+    
     try {
       setAuthToken(token);
       const res = await apiService.get('/auth/me');
-
+      
       if (res.data && res.data.data) {
         dispatch({ type: 'USER_LOADED', payload: res.data.data });
       } else {
         throw new Error('Invalid response format');
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.error ||
-                      err.response?.data?.message ||
-                      err.message ||
+      const errorMsg = err.response?.data?.error || 
+                      err.response?.data?.message || 
+                      err.message || 
                       'Failed to authenticate';
-
+                      
       dispatch({ type: 'AUTH_ERROR', payload: errorMsg });
     }
   }, [isTokenExpired, setAuthToken]);
@@ -199,10 +200,10 @@ export const AuthProvider = ({ children }) => {
    */
   const register = async (formData) => {
     dispatch({ type: 'SET_LOADING', payload: true });
-
+    
     try {
       const res = await apiService.post('/auth/register', formData);
-
+      
       if (res.data) {
         dispatch({ type: 'REGISTER', payload: res.data });
         await loadUser();
@@ -210,11 +211,12 @@ export const AuthProvider = ({ children }) => {
         throw new Error('Invalid response format');
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.error ||
-                      err.response?.data?.message ||
-                      err.message ||
+      const errorMsg = err.response?.data?.error || 
+                      err.response?.data?.message || 
+                      err.message || 
                       'Registration failed';
-
+      
+      toast.error(errorMsg);             
       dispatch({ type: 'REGISTER_FAIL', payload: errorMsg });
     }
   };
@@ -226,22 +228,24 @@ export const AuthProvider = ({ children }) => {
    */
   const login = async (formData) => {
     dispatch({ type: 'SET_LOADING', payload: true });
-
+    
     try {
       const res = await apiService.post('/auth/login', formData);
-
+      
       if (res.data) {
         dispatch({ type: 'LOGIN', payload: res.data });
+        toast.success('Login successful');
         await loadUser();
       } else {
         throw new Error('Invalid response format');
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.error ||
-                      err.response?.data?.message ||
-                      err.message ||
+      const errorMsg = err.response?.data?.error || 
+                      err.response?.data?.message || 
+                      err.message || 
                       'Login failed';
-
+      
+      toast.error(errorMsg);            
       dispatch({ type: 'LOGIN_FAIL', payload: errorMsg });
     }
   };
@@ -253,7 +257,7 @@ export const AuthProvider = ({ children }) => {
   const refreshToken = async () => {
     try {
       const res = await apiService.post('/auth/refresh-token');
-
+      
       if (res.data && res.data.token) {
         sessionStorage.setItem('token', res.data.token);
         setAuthToken(res.data.token);
@@ -273,6 +277,7 @@ export const AuthProvider = ({ children }) => {
     try {
       // Send logout request to invalidate token on server
       await apiService.post('/auth/logout');
+      toast.info('Logged out successfully');
     } catch (err) {
       // Continue with local logout even if server request fails
     } finally {
@@ -292,22 +297,23 @@ export const AuthProvider = ({ children }) => {
     const requestInterceptor = apiService.interceptors.request.use(
       async (config) => {
         const token = sessionStorage.getItem('token');
-
+        
         if (token && isTokenExpired(token)) {
           const refreshed = await refreshToken();
-
+          
           if (!refreshed) {
             dispatch({ type: 'AUTH_ERROR', payload: 'Session expired' });
+            toast.error('Your session has expired. Please log in again.');
             return Promise.reject(new Error('Session expired'));
           }
-
+          
           // Update token in the current request
           const newToken = sessionStorage.getItem('token');
           if (newToken) {
             config.headers.Authorization = `Bearer ${newToken}`;
           }
         }
-
+        
         return config;
       },
       (error) => Promise.reject(error)
@@ -318,13 +324,13 @@ export const AuthProvider = ({ children }) => {
       (response) => response,
       async (error) => {
         const originalRequest = error.config;
-
+        
         // Handle 401 Unauthorized errors
         if (error.response?.status === 401 && !originalRequest._retry) {
           originalRequest._retry = true;
-
+          
           const refreshed = await refreshToken();
-
+          
           if (refreshed) {
             const newToken = sessionStorage.getItem('token');
             if (newToken) {
@@ -333,11 +339,12 @@ export const AuthProvider = ({ children }) => {
               return apiService(originalRequest);
             }
           }
-
+          
           // If refresh failed, log the user out
           dispatch({ type: 'AUTH_ERROR', payload: 'Session expired' });
+          toast.error('Your session has expired. Please log in again.');
         }
-
+        
         return Promise.reject(error);
       }
     );
@@ -392,11 +399,11 @@ export const AuthProvider = ({ children }) => {
  */
 export const useAuth = () => {
   const context = useContext(AuthContext);
-
+  
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
-
+  
   return context;
 };
 
