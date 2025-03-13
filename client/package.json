@@ -1,42 +1,31 @@
 {
-  "name": "mandarin1-client",
-  "version": "1.0.0",
+  "name": "mandarin-dating-client",
+  "version": "0.1.0",
   "private": true,
-  "description": "Production-ready React client for Mandarin1 dating app",
+  "dependencies": {
+    "@testing-library/jest-dom": "^5.16.5",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "axios": "^1.8.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-icons": "^4.12.0",
+    "react-router-dom": "^6.30.0",
+    "react-scripts": "5.0.1",
+    "react-toastify": "^9.1.3",
+    "socket.io-client": "^4.8.1",
+    "web-vitals": "^2.1.4"
+  },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
-  "dependencies": {
-    "@reduxjs/toolkit": "^1.9.3",
-    "autoprefixer": "^10.4.13",
-    "axios": "^1.3.4",
-    "jwt-decode": "^4.0.0",
-    "postcss": "^8.4.21",
-    "prop-types": "^15.8.1",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-redux": "^8.0.5",
-    "react-router-dom": "^6.9.0",
-    "socket.io-client": "^4.6.1",
-    "tailwindcss": "^3.2.7"
-  },
-  "devDependencies": {
-    "@types/node": "^18.14.1",
-    "@types/react": "^18.0.26",
-    "@types/react-dom": "^18.0.9",
-    "eslint": "^8.34.0",
-    "prettier": "^2.8.4",
-    "react-scripts": "^5.0.1"
-  },
   "eslintConfig": {
     "extends": [
       "react-app",
-      "react-app/jest",
-      "eslint:recommended",
-      "plugin:react/recommended"
+      "react-app/jest"
     ]
   },
   "browserslist": {
@@ -50,5 +39,6 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  }
+  },
+  "proxy": "http://localhost:5000"
 }
