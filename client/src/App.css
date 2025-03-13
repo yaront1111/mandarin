@@ -1,5 +1,3 @@
-/* Modern Dating Site - Enhanced CSS */
-
 :root {
   /* Color Palette - Enhanced with more cohesive tones */
   --primary: #FF3366;
@@ -18,14 +16,14 @@
   --danger: #EF476F;
   --danger-light: #FFD3DF;
 
-  /* Neutrals - Refined for better readability */
+  /* Neutrals */
   --dark: #222831;
   --medium: #393E46;
   --light: #F2F2F2;
   --white: #FFFFFF;
   --background: #F8F9FA;
 
-  /* Text - Improved contrast */
+  /* Text */
   --text-dark: #1A1A1A;
   --text-medium: #4F4F4F;
   --text-light: #7E7E7E;
@@ -34,9 +32,17 @@
   /* UI Elements */
   --border-color: #E0E0E0;
   --border-color-focus: #AABCFF;
+
+  /* Shadows & Effects */
   --card-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
   --hover-shadow: 0 10px 24px rgba(0, 0, 0, 0.1);
   --active-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+  /* “Glass” styling */
+  --glass-bg: rgba(255, 255, 255, 0.4);
+  --glass-bg-dark: rgba(24, 24, 24, 0.4);
+  --glass-blur: blur(10px);
+  --glass-border: rgba(255, 255, 255, 0.2);
 
   /* Spacing */
   --space-xxs: 2px;
@@ -56,14 +62,14 @@
   --radius-round: 50%;
 
   /* Typography */
-  --font-size-xs: 0.75rem;   /* 12px */
-  --font-size-sm: 0.875rem;  /* 14px */
-  --font-size-md: 1rem;      /* 16px */
-  --font-size-lg: 1.125rem;  /* 18px */
-  --font-size-xl: 1.25rem;   /* 20px */
-  --font-size-2xl: 1.5rem;   /* 24px */
-  --font-size-3xl: 2rem;     /* 32px */
-  --font-size-4xl: 2.5rem;   /* 40px */
+  --font-size-xs: 0.75rem;  /* 12px */
+  --font-size-sm: 0.875rem; /* 14px */
+  --font-size-md: 1rem;     /* 16px */
+  --font-size-lg: 1.125rem; /* 18px */
+  --font-size-xl: 1.25rem;  /* 20px */
+  --font-size-2xl: 1.5rem;  /* 24px */
+  --font-size-3xl: 2rem;    /* 32px */
+  --font-size-4xl: 2.5rem;  /* 40px */
 
   /* Line heights */
   --line-height-tight: 1.2;
@@ -83,7 +89,7 @@
   --transition-slow: 350ms ease;
 }
 
-/* Base Styles - Enhanced readability and consistency */
+/* Base Styles */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -152,7 +158,6 @@ img {
   height: auto;
 }
 
-/* Container */
 .container {
   width: 100%;
   max-width: 1200px;
@@ -168,14 +173,19 @@ img {
   flex-direction: column;
 }
 
-/* Modern Header - Enhanced visual appeal */
+/* Modern Header - 2025 Glassmorphism */
 .modern-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: var(--space-md) var(--space-lg);
-  background-color: var(--white);
-  box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+
+  /* Glass background for an ultra-modern feel */
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+
+  border-bottom: 1px solid var(--glass-border);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -186,10 +196,12 @@ img {
   font-weight: var(--font-weight-bold);
   color: var(--primary);
   letter-spacing: -0.5px;
+  transition: transform var(--transition-normal);
 }
 
 .logo:hover {
   color: var(--primary-dark);
+  transform: translateX(2px);
 }
 
 .main-tabs {
@@ -208,11 +220,12 @@ img {
   color: var(--text-medium);
   font-weight: var(--font-weight-medium);
   position: relative;
-  transition: color var(--transition-normal);
+  transition: color var(--transition-normal), transform var(--transition-fast);
 }
 
 .tab-button:hover {
   color: var(--primary);
+  transform: translateY(-2px);
 }
 
 .tab-button.active {
@@ -249,18 +262,20 @@ img {
   position: relative;
   color: var(--text-medium);
   font-size: var(--font-size-lg);
-  transition: color var(--transition-normal);
+  transition: color var(--transition-normal), transform var(--transition-fast);
   width: 40px;
   height: 40px;
   border-radius: var(--radius-round);
   display: flex;
   align-items: center;
   justify-content: center;
+  backdrop-filter: var(--glass-blur);
 }
 
 .header-action-button:hover {
   color: var(--primary);
   background-color: var(--primary-subtle);
+  transform: scale(1.05);
 }
 
 .notification-badge {
@@ -286,14 +301,15 @@ img {
   object-fit: cover;
   cursor: pointer;
   border: 2px solid transparent;
-  transition: border-color var(--transition-normal);
+  transition: border-color var(--transition-normal), transform var(--transition-fast);
 }
 
 .user-avatar:hover {
   border-color: var(--primary-light);
+  transform: scale(1.05);
 }
 
-/* Dashboard Layout - Improved spacing and hierarchy */
+/* Dashboard Layout */
 .modern-dashboard {
   min-height: calc(100vh - 73px); /* Adjust based on header height */
   background-color: var(--background);
@@ -370,7 +386,7 @@ img {
   border-color: var(--primary-light);
 }
 
-/* Filter Panel - Improved usability */
+/* Filter Panel */
 .filter-panel {
   background-color: var(--white);
   border-radius: var(--radius-lg);
@@ -380,6 +396,7 @@ img {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: var(--space-xl);
+  animation: fadeIn var(--transition-slow) forwards;
 }
 
 .filter-section h3 {
@@ -440,11 +457,12 @@ img {
   margin-top: var(--space-lg);
 }
 
-/* Users Grid - Enhanced styling for user cards */
+/* Users Grid */
 .users-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: var(--space-lg);
+  animation: fadeIn var(--transition-slow) forwards;
 }
 
 .user-card {
@@ -555,7 +573,7 @@ img {
   color: white;
 }
 
-/* Messages Layout - Improved chat experience */
+/* Messages Layout */
 .messages-layout {
   display: grid;
   grid-template-columns: 300px 1fr;
@@ -872,7 +890,7 @@ img {
   cursor: not-allowed;
 }
 
-/* Profile Layout - Enhanced for better presentation */
+/* Profile Layout */
 .profile-layout {
   display: grid;
   grid-template-columns: 45% 55%;
@@ -922,11 +940,12 @@ img {
   border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: var(--font-weight-medium);
-  transition: background-color var(--transition-normal);
+  transition: background-color var(--transition-normal), transform var(--transition-fast);
 }
 
 .edit-photos-button:hover {
   background-color: rgba(0,0,0,0.85);
+  transform: scale(1.05);
 }
 
 .photo-thumbnails {
@@ -1118,11 +1137,12 @@ img {
   color: var(--text-medium);
 }
 
-/* User Profile View - Enhanced for better presentation */
+/* User Profile View */
 .modern-user-profile {
   min-height: 100vh;
   background-color: var(--background);
   padding-bottom: var(--space-xxl);
+  animation: fadeIn var(--transition-slow) forwards;
 }
 
 .profile-content {
@@ -1141,11 +1161,12 @@ img {
   align-items: center;
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-medium);
-  transition: color var(--transition-normal);
+  transition: color var(--transition-normal), transform var(--transition-fast);
 }
 
 .back-button:hover {
   color: var(--primary);
+  transform: translateX(-2px);
 }
 
 .back-button svg {
@@ -1244,7 +1265,7 @@ img {
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
-  transition: background-color var(--transition-normal);
+  transition: background-color var(--transition-normal), transform var(--transition-fast);
   display: flex;
   align-items: center;
   gap: var(--space-sm);
@@ -1252,6 +1273,7 @@ img {
 
 .profile-action-button.primary:hover {
   background-color: var(--primary-dark);
+  transform: translateY(-2px);
 }
 
 .profile-action-button.secondary {
@@ -1272,6 +1294,7 @@ img {
 .profile-action-button.secondary:hover {
   background-color: var(--primary-subtle);
   color: var(--primary);
+  transform: translateY(-2px);
 }
 
 .profile-section {
@@ -1376,7 +1399,7 @@ img {
   transition: width 1s ease;
 }
 
-/* Home Page - Enhanced for better first impression */
+/* Home Page */
 .modern-home-page {
   background-color: var(--white);
 }
@@ -1408,6 +1431,7 @@ img {
   padding-right: var(--space-xl);
   position: relative;
   z-index: 1;
+  animation: fadeIn var(--transition-slow) forwards;
 }
 
 .hero-content h1 {
@@ -1489,6 +1513,7 @@ img {
   justify-content: center;
   position: relative;
   z-index: 1;
+  animation: fadeIn var(--transition-slow) forwards;
 }
 
 .image-collage {
@@ -1539,7 +1564,7 @@ img {
   z-index: 1;
 }
 
-/* Footer - Enhanced for better branding */
+/* Footer */
 .modern-footer {
   background-color: var(--medium);
   color: white;
@@ -1819,7 +1844,7 @@ img {
   width: 24px;
   height: 24px;
   border: 3px solid rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
+  border-radius: var(--radius-round);
   border-top-color: var(--white);
   animation: spin 1s linear infinite;
 }
@@ -1846,13 +1871,12 @@ img {
   color: var(--text-medium);
 }
 
-/* Responsive Styles - Enhanced and expanded */
+/* Responsive & Utility Classes */
 @media (max-width: 1200px) {
   :root {
     --space-xl: 24px;
     --space-xxl: 32px;
   }
-
   .container {
     padding: 0 var(--space-md);
   }
@@ -1863,34 +1887,27 @@ img {
     --space-lg: 16px;
     --space-xl: 20px;
   }
-
   h1 { font-size: var(--font-size-2xl); }
   h2 { font-size: var(--font-size-xl); }
-
   .profile-layout {
     grid-template-columns: 1fr;
     gap: var(--space-lg);
   }
-
   .profile-photos-section,
   .profile-details-section {
     grid-column: 1;
   }
-
   .hero-section {
     grid-template-columns: 1fr;
   }
-
   .hero-image {
     display: none;
   }
-
   .messages-layout {
     grid-template-columns: 1fr;
     height: auto;
     min-height: calc(100vh - 180px);
   }
-
   .conversations-list {
     border-right: none;
     border-bottom: 1px solid var(--border-color);
@@ -1903,39 +1920,31 @@ img {
     --space-md: 12px;
     --space-lg: 16px;
   }
-
   body {
     font-size: 15px;
   }
-
   .features-grid {
     grid-template-columns: 1fr;
   }
-
   .users-grid {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: var(--space-md);
   }
-
   .footer-content {
     flex-direction: column;
     gap: var(--space-lg);
     align-items: center;
     text-align: center;
   }
-
   .main-tabs {
     display: none;
   }
-
   .hero-content h1 {
     font-size: var(--font-size-3xl);
   }
-
   .profile-stats {
     grid-template-columns: 1fr;
   }
-
   .compatibility-score {
     flex-direction: column;
   }
@@ -1946,37 +1955,29 @@ img {
     --space-sm: 6px;
     --space-md: 10px;
   }
-
   .users-grid {
     grid-template-columns: 1fr;
   }
-
   .hero-content h1 {
     font-size: var(--font-size-2xl);
   }
-
   .hero-actions {
     flex-direction: column;
   }
-
   .filter-panel {
     grid-template-columns: 1fr;
     padding: var(--space-md);
   }
-
   .btn-primary, .btn-outline {
     width: 100%;
     justify-content: center;
   }
-
   .photo-thumbnails {
     justify-content: center;
   }
-
   .profile-actions {
     flex-direction: column;
   }
-
   .profile-action-button {
     width: 100%;
     justify-content: center;
@@ -2033,11 +2034,6 @@ img {
 .d-block { display: block; }
 
 /* Animations */
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
 @keyframes slideUp {
   from { transform: translateY(20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }

@@ -1,40 +1,45 @@
 // client/src/pages/Dashboard.js
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaSearch, FaFilter, FaHeart, FaComments, FaBell, FaUserCircle, FaMapMarkerAlt, 
-         FaEllipsisH, FaChevronDown, FaSlidersH } from 'react-icons/fa';
+import {
+  FaSearch,
+  FaFilter,
+  FaHeart,
+  FaComments,
+  FaBell,
+  FaUserCircle
+} from 'react-icons/fa';
 import { useAuth, useUser } from '../context';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { users, getUsers, loading } = useUser();
+
   const [activeTab, setActiveTab] = useState('discover');
   const [showFilters, setShowFilters] = useState(false);
+
+  // Default filters show all users
   const [filterValues, setFilterValues] = useState({
-    ageMin: 18,
-    ageMax: 50,
-    distance: 50,
-    online: true,
+    ageMin: 0,
+    ageMax: 150,
+    distance: 100,
+    online: false,
     verified: false,
-    withPhotos: true,
+    withPhotos: false,
     interests: []
   });
-  const [sortBy, setSortBy] = useState('lastActive');
 
-  // Fetch users on component mount
   useEffect(() => {
     getUsers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array with eslint comment to prevent warnings
+    // eslint-disable-next-line
+  }, []);
 
-  // Available interests for filtering
   const availableInterests = [
     'Dating', 'Casual', 'Friendship', 'Long-term', 'Travel',
     'Outdoors', 'Movies', 'Music', 'Fitness', 'Food', 'Art'
   ];
 
-  // Toggle an interest in the filter
   const toggleInterest = (interest) => {
     setFilterValues(prev => {
       if (prev.interests.includes(interest)) {
@@ -45,455 +50,324 @@ const Dashboard = () => {
     });
   };
 
-  // Handle navigating to user profile
   const navigateToUserProfile = (userId) => {
     navigate(`/user/${userId}`);
   };
 
-  // Handle navigating to messages
   const navigateToMessages = (e) => {
-    if (e) e.stopPropagation(); // Prevent triggering the card click
+    e?.stopPropagation();
     navigate('/messages');
   };
 
-  // Handle navigating to profile
   const navigateToProfile = () => {
     navigate('/profile');
   };
 
-  // Apply filters to users
-  const filteredUsers = users.filter(user => {
-    // Age filter
-    const userAge = user.details?.age || 25;
-    if (userAge < filterValues.ageMin || userAge > filterValues.ageMax) {
-      return false;
-    }
-
-    // Online status filter
-    if (filterValues.online && !user.isOnline) {
-      return false;
-    }
-
-    // Photos filter
-    if (filterValues.withPhotos && (!user.photos || user.photos.length === 0)) {
-      return false;
-    }
-
-    // Interests filter (if any selected)
+  // Filter users based on filterValues
+  const filteredUsers = users.filter(u => {
+    const userAge = u.details?.age || 25;
+    if (userAge < filterValues.ageMin || userAge > filterValues.ageMax) return false;
+    if (filterValues.online && !u.isOnline) return false;
+    if (filterValues.withPhotos && (!u.photos || u.photos.length === 0)) return false;
     if (filterValues.interests.length > 0) {
-      const userInterests = user.details?.interests || [];
-      const hasMatchingInterest = filterValues.interests.some(interest =>
-        userInterests.includes(interest)
-      );
-      if (!hasMatchingInterest) {
-        return false;
-      }
+      const userInterests = u.details?.interests || [];
+      const hasMatchingInterest = filterValues.interests.some(i => userInterests.includes(i));
+      if (!hasMatchingInterest) return false;
     }
-
     return true;
   });
 
-  // Sort filtered users
+  // Custom sorting: online users first, then order by lastActive descending
   const sortedUsers = [...filteredUsers].sort((a, b) => {
-    switch (sortBy) {
-      case 'lastActive':
-        return new Date(b.lastActive) - new Date(a.lastActive);
-      case 'newest':
-        return new Date(b.createdAt) - new Date(a.createdAt);
-      case 'distance':
-        // In a real app, this would use geolocation
-        return 0;
-      default:
-        return 0;
-    }
+    if (a.isOnline && !b.isOnline) return -1;
+    if (!a.isOnline && b.isOnline) return 1;
+    return new Date(b.lastActive) - new Date(a.lastActive);
   });
 
   return (
-    <div className="dashboard-page">
-      {/* Modern App Header */}
-      <header className="app-header">
-        <div className="container header-container">
-          <div className="header-left">
-            <div className="logo">Mandarin</div>
-          </div>
-
-          <nav className="main-navigation">
+    <div className="modern-dashboard">
+      {/* Header */}
+      <header className="modern-header">
+        <div className="container d-flex justify-content-between align-items-center">
+          <div className="logo">Mandarin</div>
+          <div className="main-tabs d-none d-md-flex">
             <button
-              className={`nav-tab ${activeTab === 'discover' ? 'active' : ''}`}
+              className={`tab-button ${activeTab === 'discover' ? 'active' : ''}`}
               onClick={() => setActiveTab('discover')}
             >
-              <span className="tab-icon"><FaSearch /></span>
-              <span className="tab-text">Discover</span>
+              <FaSearch className="tab-icon" />
+              <span>Discover</span>
             </button>
             <button
-              className={`nav-tab ${activeTab === 'matches' ? 'active' : ''}`}
+              className={`tab-button ${activeTab === 'matches' ? 'active' : ''}`}
               onClick={() => setActiveTab('matches')}
             >
-              <span className="tab-icon"><FaHeart /></span>
-              <span className="tab-text">Matches</span>
+              <FaHeart className="tab-icon" />
+              <span>Matches</span>
             </button>
             <button
-              className={`nav-tab ${activeTab === 'messages' ? 'active' : ''}`}
+              className={`tab-button ${activeTab === 'messages' ? 'active' : ''}`}
               onClick={navigateToMessages}
             >
-              <span className="tab-icon"><FaComments /></span>
-              <span className="tab-text">Messages</span>
-              <span className="badge">3</span>
+              <FaComments className="tab-icon" />
+              <span>Messages</span>
+              <span className="notification-badge">3</span>
             </button>
-          </nav>
-
-          <div className="header-right">
-            <button className="icon-button notification-button">
+          </div>
+          <div className="header-actions d-flex align-items-center">
+            <button className="header-action-button">
               <FaBell />
-              <span className="badge">2</span>
+              <span className="notification-badge">2</span>
             </button>
-            <div className="user-menu">
-              <button className="user-menu-button" onClick={navigateToProfile}>
-                {user.photos && user.photos.length > 0 ? (
-                  <img src={user.photos[0].url} alt={user.nickname} className="avatar" />
-                ) : (
-                  <FaUserCircle className="avatar-placeholder" />
-                )}
-                <span className="user-name">{user.nickname}</span>
-                <FaChevronDown className="dropdown-icon" />
-              </button>
+            <div className="user-avatar-dropdown">
+              {user?.photos?.length > 0 ? (
+                <img
+                  src={user.photos[0].url}
+                  alt={user.nickname}
+                  className="user-avatar"
+                  onClick={navigateToProfile}
+                />
+              ) : (
+                <FaUserCircle
+                  className="user-avatar"
+                  style={{ fontSize: '32px' }}
+                  onClick={navigateToProfile}
+                />
+              )}
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Content */}
       <main className="dashboard-content">
-        <div className="container">
-          {/* Page Header with Title and Actions */}
-          <div className="page-header">
-            <h1>{activeTab === 'discover' ? 'Discover People' :
-                activeTab === 'matches' ? 'Your Matches' : 'Conversations'}</h1>
-
-            <div className="page-actions">
-              <div className="search-bar">
-                <FaSearch className="search-icon" />
-                <input type="text" placeholder="Search by name or interest..." />
-              </div>
-
-              <div className="filter-sort-actions">
-                <button
-                  className={`filter-button ${showFilters ? 'active' : ''}`}
-                  onClick={() => setShowFilters(!showFilters)}
-                >
-                  <FaFilter />
-                  <span>Filters</span>
-                </button>
-
-                <div className="sort-dropdown">
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                  >
-                    <option value="lastActive">Recently Active</option>
-                    <option value="newest">Newest Members</option>
-                    <option value="distance">Distance</option>
-                  </select>
-                </div>
-              </div>
+        <div className="content-header d-flex justify-content-between align-items-center">
+          <h1>
+            {activeTab === 'discover'
+              ? 'Discover People'
+              : activeTab === 'matches'
+              ? 'Your Matches'
+              : 'Messages'}
+          </h1>
+          <div className="content-actions d-flex align-items-center">
+            <div className="filter-button d-none d-md-flex" onClick={() => setShowFilters(!showFilters)}>
+              <FaFilter />
+              <span>Filters</span>
             </div>
           </div>
+        </div>
 
-          {/* Filters Panel */}
-          {showFilters && (
-            <div className="filters-panel">
-              <div className="filters-content">
-                <div className="filter-section">
-                  <h3>Age Range</h3>
-                  <div className="range-slider">
-                    <div className="range-labels">
-                      <span>{filterValues.ageMin}</span>
-                      <span>{filterValues.ageMax}</span>
-                    </div>
-                    <div className="slider-controls">
-                      <input
-                        type="range"
-                        min="18"
-                        max="80"
-                        value={filterValues.ageMin}
-                        onChange={(e) => setFilterValues({...filterValues, ageMin: parseInt(e.target.value)})}
-                      />
-                      <input
-                        type="range"
-                        min="18"
-                        max="80"
-                        value={filterValues.ageMax}
-                        onChange={(e) => setFilterValues({...filterValues, ageMax: parseInt(e.target.value)})}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="filter-section">
-                  <h3>Distance</h3>
-                  <div className="distance-slider">
-                    <input
-                      type="range"
-                      min="5"
-                      max="100"
-                      value={filterValues.distance}
-                      onChange={(e) => setFilterValues({...filterValues, distance: parseInt(e.target.value)})}
-                    />
-                    <span className="distance-value">{filterValues.distance} km</span>
-                  </div>
-                </div>
-
-                <div className="filter-section">
-                  <h3>Show Only</h3>
-                  <div className="filter-checkboxes">
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={filterValues.online}
-                        onChange={() => setFilterValues({...filterValues, online: !filterValues.online})}
-                      />
-                      <span>Online Now</span>
-                    </label>
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={filterValues.verified}
-                        onChange={() => setFilterValues({...filterValues, verified: !filterValues.verified})}
-                      />
-                      <span>Verified Profiles</span>
-                    </label>
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={filterValues.withPhotos}
-                        onChange={() => setFilterValues({...filterValues, withPhotos: !filterValues.withPhotos})}
-                      />
-                      <span>With Photos</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="filter-section">
-                  <h3>Interests</h3>
-                  <div className="interests-tags">
-                    {availableInterests.map(interest => (
-                      <button
-                        key={interest}
-                        className={`interest-tag ${filterValues.interests.includes(interest) ? 'active' : ''}`}
-                        onClick={() => toggleInterest(interest)}
-                      >
-                        {interest}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="filters-footer">
-                <button
-                  className="btn btn-outline"
-                  onClick={() => setFilterValues({
-                    ageMin: 18,
-                    ageMax: 50,
-                    distance: 50,
-                    online: true,
-                    verified: false,
-                    withPhotos: true,
-                    interests: []
-                  })}
-                >
-                  Reset Filters
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => setShowFilters(false)}
-                >
-                  Apply Filters
-                </button>
+        {/* Filter Panel */}
+        {showFilters && (
+          <div className="filter-panel">
+            <div className="filter-section">
+              <h3>Age Range</h3>
+              <div className="filter-options">
+                <label>Min: {filterValues.ageMin}</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="150"
+                  value={filterValues.ageMin}
+                  onChange={(e) =>
+                    setFilterValues({ ...filterValues, ageMin: parseInt(e.target.value) })
+                  }
+                />
+                <label>Max: {filterValues.ageMax}</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="150"
+                  value={filterValues.ageMax}
+                  onChange={(e) =>
+                    setFilterValues({ ...filterValues, ageMax: parseInt(e.target.value) })
+                  }
+                />
               </div>
             </div>
-          )}
 
-          {/* User Grid */}
-          {activeTab === 'discover' && (
-            <div className="users-grid">
-              {loading ? (
-                <div className="loading-indicator">
-                  <div className="spinner"></div>
-                  <p>Loading potential matches...</p>
-                </div>
-              ) : sortedUsers.length > 0 ? (
-                sortedUsers.map(matchedUser => (
-                  <div 
-                    key={matchedUser._id} 
-                    className="user-card" 
-                    onClick={() => navigateToUserProfile(matchedUser._id)}
-                  >
-                    <div className="user-card-photo">
-                      {matchedUser.photos && matchedUser.photos.length > 0 ? (
-                        <img src={matchedUser.photos[0].url} alt={matchedUser.nickname} />
-                      ) : (
-                        <div className="no-photo">
-                          <FaUserCircle />
-                        </div>
-                      )}
-                      {matchedUser.isOnline && <div className="online-indicator"></div>}
-                      <button 
-                        className="quick-like"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          // Handle like action
-                        }}
-                      >
-                        <FaHeart />
-                      </button>
-                    </div>
-                    <div className="user-card-content">
-                      <div className="user-info">
-                        <h3>{matchedUser.nickname}, {matchedUser.details?.age || '?'}</h3>
-                        <p className="user-location">
-                          <FaMapMarkerAlt />
-                          <span>{matchedUser.details?.location || 'Unknown location'}</span>
-                        </p>
-                      </div>
-                      <div className="user-interests">
-                        {matchedUser.details?.interests?.slice(0, 3).map(interest => (
-                          <span key={interest} className="interest-badge">{interest}</span>
-                        ))}
-                        {matchedUser.details?.interests?.length > 3 && (
-                          <span className="more-interests">+{matchedUser.details.interests.length - 3}</span>
-                        )}
-                      </div>
-                      <div className="user-actions">
-                        <button 
-                          className="btn btn-outline btn-like"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Handle like action
-                          }}
-                        >
-                          <FaHeart />
-                          <span>Like</span>
-                        </button>
-                        <button 
-                          className="btn btn-primary btn-message"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigateToMessages();
-                          }}
-                        >
-                          <FaComments />
-                          <span>Message</span>
-                        </button>
-                        <button 
-                          className="action-options"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Handle options menu
-                          }}
-                        >
-                          <FaEllipsisH />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="no-results">
-                  <div className="no-results-icon">🔍</div>
-                  <h3>No matches found</h3>
-                  <p>Try adjusting your filters or broadening your search criteria.</p>
-                  <button className="btn btn-primary" onClick={() => setShowFilters(true)}>
-                    <FaSlidersH />
-                    <span>Adjust Filters</span>
-                  </button>
-                </div>
-              )}
+            <div className="filter-section">
+              <h3>Distance</h3>
+              <div className="filter-options">
+                <label>{filterValues.distance} km</label>
+                <input
+                  type="range"
+                  min="5"
+                  max="100"
+                  value={filterValues.distance}
+                  onChange={(e) =>
+                    setFilterValues({ ...filterValues, distance: parseInt(e.target.value) })
+                  }
+                />
+              </div>
             </div>
-          )}
 
-          {/* Matches Tab Content */}
-          {activeTab === 'matches' && (
-            <div className="matches-content">
-              <div className="matches-grid">
-                {/* This would show mutual matches */}
-                <div className="no-results">
-                  <div className="no-results-icon">❤️</div>
-                  <h3>No matches yet</h3>
-                  <p>Start liking profiles to create matches. When someone likes you back, they'll appear here.</p>
+            <div className="filter-section">
+              <h3>Show Only</h3>
+              <div className="filter-options d-flex flex-column">
+                <label className="filter-option">
+                  <input
+                    type="checkbox"
+                    checked={filterValues.online}
+                    onChange={() => setFilterValues({ ...filterValues, online: !filterValues.online })}
+                  />
+                  <span>Online Now</span>
+                </label>
+                <label className="filter-option">
+                  <input
+                    type="checkbox"
+                    checked={filterValues.verified}
+                    onChange={() =>
+                      setFilterValues({ ...filterValues, verified: !filterValues.verified })
+                    }
+                  />
+                  <span>Verified Profiles</span>
+                </label>
+                <label className="filter-option">
+                  <input
+                    type="checkbox"
+                    checked={filterValues.withPhotos}
+                    onChange={() =>
+                      setFilterValues({ ...filterValues, withPhotos: !filterValues.withPhotos })
+                    }
+                  />
+                  <span>With Photos</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="filter-section">
+              <h3>Interests</h3>
+              <div className="tags-container">
+                {availableInterests.map((interest) => (
                   <button
-                    className="btn btn-primary"
-                    onClick={() => setActiveTab('discover')}
+                    key={interest}
+                    className={`filter-tag ${filterValues.interests.includes(interest) ? 'active' : ''}`}
+                    onClick={() => toggleInterest(interest)}
                   >
-                    Discover People
+                    {interest}
                   </button>
-                </div>
+                ))}
               </div>
             </div>
-          )}
 
-          {/* Messages Tab Content */}
-          {activeTab === 'messages' && (
-            <div className="messages-layout">
-              <div className="conversations-list">
-                <div className="conversations-header">
-                  <h3>Messages</h3>
-                  <button className="btn-icon">
-                    <FaEllipsisH />
-                  </button>
+            <div className="filter-actions">
+              <button
+                className="btn btn-outline"
+                onClick={() =>
+                  setFilterValues({
+                    ageMin: 0,
+                    ageMax: 150,
+                    distance: 100,
+                    online: false,
+                    verified: false,
+                    withPhotos: false,
+                    interests: []
+                  })
+                }
+              >
+                Reset
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowFilters(false)}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Users Grid */}
+        <div className="users-grid mt-4" style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+          gap: '24px'
+        }}>
+          {loading ? (
+            <div className="loading-container">
+              <div className="spinner spinner-dark"></div>
+              <p className="loading-text">Loading users...</p>
+            </div>
+          ) : sortedUsers.length > 0 ? (
+            sortedUsers.map(matchedUser => (
+              <div
+                key={matchedUser._id}
+                className="user-card"
+                onClick={() => navigateToUserProfile(matchedUser._id)}
+              >
+                <div className="user-card-photo" style={{ position: 'relative', height: '280px', overflow: 'hidden' }}>
+                  {matchedUser.photos && matchedUser.photos.length > 0 ? (
+                    <img
+                      src={matchedUser.photos[0].url}
+                      alt={matchedUser.nickname}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform var(--transition-slow)' }}
+                    />
+                  ) : (
+                    <FaUserCircle style={{ fontSize: '80px', color: '#ccc', margin: '50px auto' }} />
+                  )}
+                  {matchedUser.isOnline && (
+                    <div className="online-indicator" style={{
+                      position: 'absolute',
+                      top: '16px',
+                      right: '16px',
+                      width: '12px',
+                      height: '12px',
+                      borderRadius: '50%',
+                      backgroundColor: 'var(--success)',
+                      border: '2px solid var(--white)'
+                    }}></div>
+                  )}
                 </div>
-
-                <div className="empty-state">
-                  <div className="empty-state-icon">💌</div>
-                  <h3>No conversations yet</h3>
-                  <p>When you start chatting with someone, they'll appear here.</p>
+                <div className="user-card-info" style={{ padding: '16px' }}>
+                  <h3 style={{ fontSize: '1.125rem', marginBottom: '8px', color: 'var(--text-dark)' }}>
+                    {matchedUser.nickname}, {matchedUser.details?.age || '?'}
+                  </h3>
+                  <p style={{ fontSize: '0.875rem', color: 'var(--text-light)' }}>
+                    {matchedUser.details?.location || 'Unknown location'}
+                  </p>
+                  <div className="user-actions" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'auto' }}>
+                    <button
+                      className="card-action-button like"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        width: '48%',
+                        padding: '8px',
+                        borderRadius: '8px',
+                        backgroundColor: 'var(--light)',
+                        color: 'var(--text-medium)',
+                        border: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <FaHeart />
+                    </button>
+                    <button
+                      className="card-action-button message"
+                      onClick={(e) => { e.stopPropagation(); navigateToMessages(); }}
+                      style={{
+                        width: '48%',
+                        padding: '8px',
+                        borderRadius: '8px',
+                        backgroundColor: 'var(--light)',
+                        color: 'var(--text-medium)',
+                        border: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <FaComments />
+                    </button>
+                  </div>
                 </div>
               </div>
-
-              <div className="chat-placeholder">
-                <div className="chat-placeholder-icon">
-                  <FaComments />
-                </div>
-                <h3>Select a conversation</h3>
-                <p>Choose a conversation from the list or start a new one by messaging someone.</p>
-              </div>
+            ))
+          ) : (
+            <div className="loading-container">
+              <p>No users found.</p>
             </div>
           )}
         </div>
       </main>
-
-      {/* Mobile Navigation */}
-      <nav className="mobile-nav">
-        <button
-          className={`mobile-nav-item ${activeTab === 'discover' ? 'active' : ''}`}
-          onClick={() => setActiveTab('discover')}
-        >
-          <FaSearch />
-          <span>Discover</span>
-        </button>
-        <button
-          className={`mobile-nav-item ${activeTab === 'matches' ? 'active' : ''}`}
-          onClick={() => setActiveTab('matches')}
-        >
-          <FaHeart />
-          <span>Matches</span>
-        </button>
-        <button
-          className={`mobile-nav-item ${activeTab === 'messages' ? 'active' : ''}`}
-          onClick={navigateToMessages}
-        >
-          <FaComments />
-          <span>Messages</span>
-          <span className="mobile-badge">3</span>
-        </button>
-        <button 
-          className="mobile-nav-item"
-          onClick={navigateToProfile}
-        >
-          <FaUserCircle />
-          <span>Profile</span>
-        </button>
-      </nav>
     </div>
   );
 };
