@@ -7,8 +7,16 @@ import { toast } from 'react-toastify';
  */
 class ApiService {
   constructor() {
+    // Determine the base URL with better fallback handling
+    const baseURL = process.env.REACT_APP_API_URL ||
+                   (window.location.origin.includes('localhost') ?
+                   'http://localhost:5000/api' :
+                   `${window.location.origin}/api`);
+
+    console.log(`API Service initialized with baseURL: ${baseURL}`);
+
     this.api = axios.create({
-      baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+      baseURL: baseURL,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -17,6 +25,21 @@ class ApiService {
 
     this.refreshPromise = null;
     this._initializeResponseInterceptor();
+
+    // On initialization, set auth token from session storage
+    const token = sessionStorage.getItem('token');
+    if (token) {
+      this.setAuthToken(token);
+    }
+
+    // Add request interceptor for debugging
+    this.api.interceptors.request.use(config => {
+      console.log(`API Request: ${config.method.toUpperCase()} ${config.url}`);
+      if (config.headers.Authorization) {
+        console.log('Request includes auth token');
+      }
+      return config;
+    });
   }
 
   /**
@@ -25,9 +48,14 @@ class ApiService {
    */
   setAuthToken(token) {
     if (token) {
+      console.log('Setting auth token in API Service');
       this.api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      // Also set for global axios for consistency
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } else {
+      console.log('Removing auth token from API Service');
       delete this.api.defaults.headers.common['Authorization'];
+      delete axios.defaults.headers.common['Authorization'];
     }
   }
 
@@ -43,6 +71,7 @@ class ApiService {
       const payload = JSON.parse(atob(token.split('.')[1]));
       return payload.exp * 1000 < Date.now();
     } catch (error) {
+      console.error('Error parsing JWT token:', error);
       return true;
     }
   }
@@ -63,7 +92,8 @@ class ApiService {
    * @returns {Object} - Response data
    */
   _handleResponse(response) {
-    return response;
+    console.log(`API Response Success: ${response.config.url}`);
+    return response.data; // Return data directly to simplify usage
   }
 
   /**
@@ -73,18 +103,22 @@ class ApiService {
    */
   _handleError = async (error) => {
     const originalRequest = error.config;
+    console.error('API Error:', error.message, originalRequest?.url);
 
     // Handle network errors
     if (!error.response) {
-      toast.error('Network error. Please check your connection.');
+      const errorMsg = 'Network error. Please check your connection.';
+      toast.error(errorMsg);
       return Promise.reject({
-        message: 'Network error. Please check your connection.'
+        success: false,
+        error: errorMsg
       });
     }
 
     // Handle token refresh for 401 errors
     if (error.response.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
+      console.log('Attempting token refresh...');
 
       if (this.refreshPromise === null) {
         this.refreshPromise = this._refreshToken();
@@ -94,15 +128,17 @@ class ApiService {
         const token = await this.refreshPromise;
 
         if (token) {
+          console.log('Token refreshed successfully');
           this.setAuthToken(token);
           originalRequest.headers.Authorization = `Bearer ${token}`;
           return this.api(originalRequest);
         }
       } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
         // If refresh fails, handle authentication error
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('token');
-          // You might want to redirect to login here or dispatch a Redux action
+          toast.error('Session expired. Please log in again.');
         }
       } finally {
         this.refreshPromise = null;
@@ -110,34 +146,43 @@ class ApiService {
     }
 
     // Handle specific HTTP error codes
+    const errorData = error.response.data;
+    const errorMsg = errorData?.error || errorData?.message || 'An error occurred';
+
     switch (error.response.status) {
       case 400:
-        toast.error('Bad request: ' + (error.response.data.error || 'Please check your data'));
+        toast.error(`Bad request: ${errorMsg}`);
         break;
       case 403:
-        toast.error('Access denied: ' + (error.response.data.error || 'You do not have permission'));
+        toast.error(`Access denied: ${errorMsg}`);
         break;
       case 404:
-        toast.error('Not found: ' + (error.response.data.error || 'The requested resource was not found'));
+        toast.error(`Not found: ${errorMsg}`);
         break;
       case 422:
-        toast.error('Validation error: ' + (error.response.data.error || 'Please check your data'));
+        toast.error(`Validation error: ${errorMsg}`);
         break;
       case 429:
         toast.error('Too many requests. Please try again later.');
         break;
       case 500:
-        toast.error('Server error. Please try again later.');
+      case 502:
+      case 503:
+      case 504:
+        toast.error(`Server error (${error.response.status}). Please try again later.`);
         break;
       default:
-        if (error.response.status >= 500) {
-          toast.error('Server error. Please try again later.');
-        } else if (!originalRequest._retry) {
-          toast.error(error.response.data.error || 'An error occurred');
+        if (!originalRequest._retry) {
+          toast.error(errorMsg);
         }
     }
 
-    return Promise.reject(error.response?.data || error);
+    return Promise.reject({
+      success: false,
+      error: errorMsg,
+      status: error.response.status,
+      data: error.response.data
+    });
   };
 
   /**
@@ -146,16 +191,19 @@ class ApiService {
    */
   async _refreshToken() {
     try {
+      console.log('Attempting to refresh token');
       const response = await this.api.post('/auth/refresh-token');
 
-      if (response.data && response.data.token) {
-        const token = response.data.token;
+      if (response.success && response.token) {
+        console.log('Token refreshed successfully');
+        const token = response.token;
         sessionStorage.setItem('token', token);
         return token;
       }
 
-      return null;
+      throw new Error('Invalid refresh token response');
     } catch (error) {
+      console.error('Token refresh failed:', error);
       sessionStorage.removeItem('token');
       return null;
     }
@@ -170,8 +218,9 @@ class ApiService {
    */
   async get(url, params = {}, options = {}) {
     try {
+      console.log(`Making GET request to ${url}`);
       const response = await this.api.get(url, { params, ...options });
-      return response.data;
+      return response; // The interceptor already returns response.data
     } catch (error) {
       throw error;
     }
@@ -186,8 +235,9 @@ class ApiService {
    */
   async post(url, data = {}, options = {}) {
     try {
+      console.log(`Making POST request to ${url}`);
       const response = await this.api.post(url, data, options);
-      return response.data;
+      return response;
     } catch (error) {
       throw error;
     }
@@ -202,8 +252,9 @@ class ApiService {
    */
   async put(url, data = {}, options = {}) {
     try {
+      console.log(`Making PUT request to ${url}`);
       const response = await this.api.put(url, data, options);
-      return response.data;
+      return response;
     } catch (error) {
       throw error;
     }
@@ -217,8 +268,9 @@ class ApiService {
    */
   async delete(url, options = {}) {
     try {
+      console.log(`Making DELETE request to ${url}`);
       const response = await this.api.delete(url, options);
-      return response.data;
+      return response;
     } catch (error) {
       throw error;
     }
@@ -233,6 +285,7 @@ class ApiService {
    */
   async upload(url, formData, onProgress = null) {
     try {
+      console.log(`Uploading file to ${url}`);
       const response = await this.api.post(url, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
@@ -242,11 +295,34 @@ class ApiService {
             (progressEvent.loaded * 100) / progressEvent.total
           );
           onProgress(percentCompleted);
+          console.log(`Upload progress: ${percentCompleted}%`);
         } : undefined
       });
-      return response.data;
+      return response;
     } catch (error) {
       throw error;
+    }
+  }
+
+  /**
+   * Test API connection
+   * @returns {Promise<Object>} - Connection test result
+   */
+  async testConnection() {
+    try {
+      console.log('Testing API connection...');
+      const token = sessionStorage.getItem('token');
+      console.log('Token available:', !!token);
+
+      const result = await this.get('/auth/test-connection');
+      console.log('Connection test successful');
+      return { success: true, data: result };
+    } catch (error) {
+      console.error('Connection test failed:', error);
+      return {
+        success: false,
+        error: error.error || error.message || 'Connection test failed'
+      };
     }
   }
 }

@@ -2,18 +2,10 @@
 import React, { createContext, useReducer, useContext, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import apiService from '../services/apiService';
 
 // Create auth context
 const AuthContext = createContext({});
-
-// Create API service with default config
-const apiService = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  // Don't use withCredentials with wildcard CORS
-});
 
 /**
  * Auth reducer to handle auth state changes
@@ -98,17 +90,19 @@ export const AuthProvider = ({ children }) => {
    */
   const setAuthToken = useCallback((token) => {
     if (token) {
-      apiService.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      console.log('Setting auth token in headers');
+      // Set token in both apiService and global axios
+      apiService.setAuthToken(token);
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } else {
-      delete apiService.defaults.headers.common['Authorization'];
+      console.log('Removing auth token from headers');
+      apiService.setAuthToken(null);
       delete axios.defaults.headers.common['Authorization'];
     }
   }, []);
 
   /**
    * Check if token is expired
-   * More lenient approach to avoid timing issues
    */
   const isTokenExpired = useCallback((token) => {
     if (!token) return true;
@@ -120,9 +114,9 @@ export const AuthProvider = ({ children }) => {
       const payload = JSON.parse(window.atob(base64));
 
       // Check if exp exists and if token is expired
-      // Add 5 second buffer to prevent edge timing issues
       if (payload.exp) {
-        return payload.exp < (Date.now() / 1000) - 5;
+        const now = Math.floor(Date.now() / 1000);
+        return payload.exp < now;
       }
 
       // If no exp field, assume token is valid
@@ -137,36 +131,31 @@ export const AuthProvider = ({ children }) => {
    * Load user data using token
    */
   const loadUser = useCallback(async () => {
+    console.log('Loading user data...');
     const token = sessionStorage.getItem('token');
 
     if (!token) {
+      console.warn('No token found in storage');
       dispatch({ type: 'AUTH_ERROR', payload: 'No token found' });
       return;
     }
-
-    // Skip token expiration check - let the server validate it
-    // if (isTokenExpired(token)) {
-    //   dispatch({ type: 'AUTH_ERROR', payload: 'Invalid or expired token' });
-    //   return;
-    // }
 
     dispatch({ type: 'SET_LOADING', payload: true });
 
     try {
       setAuthToken(token);
-      const res = await apiService.get('/auth/me');
+      console.log('Making request to /auth/me endpoint');
 
-      if (res.data && res.data.data) {
-        dispatch({ type: 'USER_LOADED', payload: res.data.data });
+      const result = await apiService.get('/auth/me');
+
+      if (result.success && result.data) {
+        dispatch({ type: 'USER_LOADED', payload: result.data });
       } else {
         throw new Error('Invalid response format');
       }
     } catch (err) {
       console.error('Auth error:', err);
-      const errorMsg = err.response?.data?.error ||
-                      err.response?.data?.message ||
-                      err.message ||
-                      'Failed to authenticate';
+      const errorMsg = err.error || err.message || 'Failed to authenticate';
 
       dispatch({ type: 'AUTH_ERROR', payload: errorMsg });
     }
@@ -179,24 +168,27 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: 'SET_LOADING', payload: true });
 
     try {
-      const res = await apiService.post('/auth/register', formData);
+      console.log('Registering new user');
+      const result = await apiService.post('/auth/register', formData);
 
-      if (res.data) {
-        dispatch({ type: 'REGISTER', payload: res.data });
+      if (result.success && result.token) {
+        // Store token immediately
+        sessionStorage.setItem('token', result.token);
+        setAuthToken(result.token);
+
+        dispatch({ type: 'REGISTER', payload: result });
         toast.success('Registration successful');
 
-        // Important: Wait for state update before loading user
+        // Load user data with sufficient delay
         setTimeout(() => {
           loadUser();
-        }, 100);
+        }, 500);
       } else {
         throw new Error('Invalid response format');
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.error ||
-                      err.response?.data?.message ||
-                      err.message ||
-                      'Registration failed';
+      console.error('Registration error:', err);
+      const errorMsg = err.error || err.message || 'Registration failed';
 
       toast.error(errorMsg);
       dispatch({ type: 'REGISTER_FAIL', payload: errorMsg });
@@ -210,28 +202,29 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: 'SET_LOADING', payload: true });
 
     try {
-      const res = await axios.post('/api/auth/login', formData);
+      console.log('Logging in user');
 
-      if (res.data) {
-        dispatch({ type: 'LOGIN', payload: res.data });
+      // Use apiService instead of axios directly
+      const result = await apiService.post('/auth/login', formData);
+
+      if (result.success && result.token) {
+        // Store token immediately
+        sessionStorage.setItem('token', result.token);
+        setAuthToken(result.token);
+
+        dispatch({ type: 'LOGIN', payload: result });
         toast.success('Login successful');
 
-        // Important: Set token in axios before loading user
-        setAuthToken(res.data.token);
-
-        // Add delay to ensure token is set before loading user
+        // Load user with increased delay for reliability
         setTimeout(() => {
           loadUser();
-        }, 100);
+        }, 500);
       } else {
         throw new Error('Invalid response format');
       }
     } catch (err) {
       console.error('Login error:', err);
-      const errorMsg = err.response?.data?.error ||
-                      err.response?.data?.message ||
-                      err.message ||
-                      'Login failed';
+      const errorMsg = err.error || err.message || 'Login failed';
 
       toast.error(errorMsg);
       dispatch({ type: 'LOGIN_FAIL', payload: errorMsg });
@@ -243,12 +236,14 @@ export const AuthProvider = ({ children }) => {
    */
   const logout = async () => {
     try {
-      // Send logout request to invalidate token on server
-      await axios.post('/api/auth/logout');
+      console.log('Logging out user');
+      if (state.token) {
+        setAuthToken(state.token); // Ensure token is set for the request
+        await apiService.post('/auth/logout');
+      }
       toast.info('Logged out successfully');
     } catch (err) {
       console.warn('Logout error:', err.message);
-      // Continue with local logout even if server request fails
     } finally {
       // Clean up local state
       setAuthToken(null);
@@ -263,16 +258,15 @@ export const AuthProvider = ({ children }) => {
 
   // Initial authentication check
   useEffect(() => {
-    // Check if token exists and set it in headers
+    console.log('Initial auth check');
     const token = sessionStorage.getItem('token');
 
     if (token) {
+      console.log('Token found in storage, setting up authentication');
       setAuthToken(token);
-
-      // Only load user if we have a token - let server validate it
       loadUser();
     } else {
-      // If no token exists, set loading to false
+      console.log('No token found, not authenticating');
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   }, [loadUser, setAuthToken]);

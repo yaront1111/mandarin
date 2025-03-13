@@ -3,6 +3,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Home, Login, Register, Dashboard, Profile, NotFound } from './pages';
 import { PrivateRoute } from './components';
+import './utils/apiDebugger';
 import { AuthProvider, UserProvider, ChatProvider } from './context';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
