@@ -1,4 +1,4 @@
-// routes/messageRoutes.js
+// server/routes/messageRoutes.js
 const express = require('express');
 const { User, Message } = require('../models');
 const { protect, asyncHandler } = require('../middleware/auth');
@@ -96,7 +96,7 @@ router.get('/:userId', protect, asyncHandler(async (req, res) => {
     // Mark received messages as read in the background
     Message.updateMany(
       { sender: req.params.userId, recipient: req.user._id, read: false },
-      { read: true }
+      { read: true, readAt: new Date() }
     ).then(updateResult => {
       if (updateResult.modifiedCount > 0) {
         logger.debug(`Marked ${updateResult.modifiedCount} messages as read`);
@@ -353,23 +353,28 @@ router.get('/unread/count', protect, asyncHandler(async (req, res) => {
   logger.debug(`Getting unread message count for user ${req.user._id}`);
 
   try {
+    // Convert user ID to ObjectId with the 'new' keyword
+    const recipientId = new mongoose.Types.ObjectId(req.user._id);
+
+    // Get total count of unread messages
     const count = await Message.countDocuments({
-      recipient: req.user._id,
+      recipient: recipientId,
       read: false
     });
 
+    // Get unread counts grouped by sender
     const unreadBySender = await Message.aggregate([
       {
         $match: {
-          recipient: mongoose.Types.ObjectId(req.user._id),
+          recipient: recipientId,
           read: false
         }
       },
       {
         $group: {
-          _id: '$sender',
+          _id: "$sender",
           count: { $sum: 1 },
-          lastMessage: { $max: '$createdAt' }
+          lastMessage: { $max: "$createdAt" }
         }
       },
       {
@@ -377,21 +382,31 @@ router.get('/unread/count', protect, asyncHandler(async (req, res) => {
       }
     ]);
 
-    const senderIds = unreadBySender.map(item => item._id);
-    const senders = await User.find(
-      { _id: { $in: Array.from(senderIds) } },
-      { nickname: 1 }
-    );
+    // If there are unread messages, get sender details
+    let detailedUnread = [];
+    if (unreadBySender.length > 0) {
+      // Extract sender IDs
+      const senderIds = unreadBySender.map(item => item._id);
 
-    const detailedUnread = unreadBySender.map(item => {
-      const sender = senders.find(s => s._id.toString() === item._id.toString());
-      return {
-        senderId: item._id,
-        senderName: sender ? sender.nickname : 'Unknown',
-        count: item.count,
-        lastMessage: item.lastMessage
-      };
-    });
+      // Get sender info
+      const senders = await User.find(
+        { _id: { $in: senderIds } },
+        { nickname: 1, photos: 1 }
+      ).lean();
+
+      // Combine sender info with unread counts
+      detailedUnread = unreadBySender.map(item => {
+        const sender = senders.find(s => s._id.toString() === item._id.toString());
+        return {
+          senderId: item._id,
+          senderName: sender ? sender.nickname : 'Unknown',
+          senderPhoto: sender && sender.photos && sender.photos.length > 0 ?
+                        sender.photos[0].url : null,
+          count: item.count,
+          lastMessage: item.lastMessage
+        };
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -449,15 +464,18 @@ router.delete('/:id', protect, asyncHandler(async (req, res) => {
       } else if (isRecipient) {
         message.deletedByRecipient = true;
       }
+
       if (message.deletedBySender && message.deletedByRecipient) {
-        await message.remove();
+        // If both parties deleted, remove entirely
+        await Message.deleteOne({ _id: message._id });
         logger.info(`Message ${req.params.id} permanently deleted`);
       } else {
         await message.save();
         logger.info(`Message ${req.params.id} marked as deleted for ${isSender ? 'sender' : 'recipient'}`);
       }
     } else if (deleteMode === 'both' && isSender) {
-      await message.remove();
+      // Sender can delete for both
+      await Message.deleteOne({ _id: message._id });
       logger.info(`Message ${req.params.id} permanently deleted by sender for both users`);
     } else {
       return res.status(400).json({

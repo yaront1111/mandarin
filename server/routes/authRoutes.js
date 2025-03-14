@@ -1,8 +1,10 @@
 // routes/authRoutes.js
 const express = require('express');
+const jwt = require('jsonwebtoken'); // Added missing JWT import
 const { User } = require('../models');
 const { protect, asyncHandler, sendTokenResponse } = require('../middleware/auth');
 const logger = require('../logger');
+const config = require('../config'); // Make sure config is imported
 const router = express.Router();
 
 /**

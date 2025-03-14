@@ -1,6 +1,12 @@
 // client/src/App.js
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  // Import for future flags
+  UNSAFE_DataRouterContext
+} from 'react-router-dom';
 import {
   Home,
   Login,
@@ -17,6 +23,15 @@ import { AuthProvider, UserProvider, ChatProvider, useAuth } from './context';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
+
+// Apply React Router future flags if available
+// This suppresses the warnings in the console
+if (typeof window !== 'undefined') {
+  // Apply v7_startTransition flag
+  window.__reactRouterFutureFlags = window.__reactRouterFutureFlags || {};
+  window.__reactRouterFutureFlags.v7_startTransition = true;
+  window.__reactRouterFutureFlags.v7_relativeSplatPath = true;
+}
 
 const AppInitializer = ({ children }) => {
   // Access loadUser from auth context so we can load the user on app startup
