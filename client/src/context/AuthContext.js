@@ -1,4 +1,6 @@
 // client/src/context/AuthContext.js
+// Production-level Auth Context with improved token refresh logic and axios interceptor
+
 import React, {
   createContext,
   useReducer,
@@ -12,7 +14,6 @@ import { toast } from 'react-toastify';
 import apiService from '../services/apiService';
 import socketService from '../services/socketService';
 
-// Create AuthContext
 const AuthContext = createContext({});
 
 // Reducer to manage auth state
@@ -94,21 +95,20 @@ export const AuthProvider = ({ children }) => {
   };
 
   const [state, dispatch] = useReducer(authReducer, initialState);
-
-  // Prevent multiple simultaneous token refreshes
   const refreshTokenPromise = useRef(null);
-  // Track component mount status for cleanup
+  const tokenRefreshTimer = useRef(null);
   const isMounted = useRef(true);
 
   useEffect(() => {
     return () => {
       isMounted.current = false;
+      if (tokenRefreshTimer.current) {
+        clearTimeout(tokenRefreshTimer.current);
+      }
     };
   }, []);
 
-  /**
-   * Set the auth token in both apiService and global axios defaults.
-   */
+  // Set the auth token in apiService and axios defaults
   const setAuthToken = useCallback((token) => {
     if (token) {
       apiService.setAuthToken(token);
@@ -119,30 +119,22 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  /**
-   * Check if a given JWT token is expired.
-   */
+  // Check if the JWT token is expired (with a 30-second buffer)
   const isTokenExpired = useCallback((token) => {
     if (!token) return true;
     try {
       const base64Url = token.split('.')[1];
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
       const payload = JSON.parse(window.atob(base64));
-      if (payload.exp) {
-        // Add 30-second buffer
-        const now = Math.floor(Date.now() / 1000) + 30;
-        return payload.exp < now;
-      }
-      return false;
+      const now = Math.floor(Date.now() / 1000) + 30;
+      return payload.exp < now;
     } catch (error) {
       console.warn('Error parsing JWT token:', error);
       return true;
     }
   }, []);
 
-  /**
-   * Get the number of seconds until the token expires.
-   */
+  // Calculate seconds until token expiry
   const getTokenExpiryTime = useCallback((token) => {
     if (!token) return 0;
     try {
@@ -160,18 +152,22 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  /**
-   * Refresh the authentication token.
-   */
+  // Improved token refresh logic with proper request queuing
   const refreshToken = useCallback(async () => {
-    if (refreshTokenPromise.current !== null) {
+    if (refreshTokenPromise.current) {
       return refreshTokenPromise.current;
     }
+
     refreshTokenPromise.current = (async () => {
       try {
         const currentToken = sessionStorage.getItem('token');
         if (!currentToken) {
-          throw new Error('No token to refresh');
+          throw new Error('No token available for refresh');
+        }
+        // Clear any existing token refresh timer
+        if (tokenRefreshTimer.current) {
+          clearTimeout(tokenRefreshTimer.current);
+          tokenRefreshTimer.current = null;
         }
         const result = await apiService.post('/auth/refresh-token', { token: currentToken });
         if (result.success && result.token) {
@@ -179,6 +175,16 @@ export const AuthProvider = ({ children }) => {
           setAuthToken(result.token);
           if (isMounted.current) {
             dispatch({ type: 'TOKEN_REFRESHED', payload: result.token });
+          }
+          // Schedule next token refresh
+          const expiryTime = getTokenExpiryTime(result.token);
+          if (expiryTime > 0) {
+            const refreshDelay = Math.min(expiryTime - 300, Math.max(expiryTime / 2, 60));
+            tokenRefreshTimer.current = setTimeout(() => {
+              if (isMounted.current && sessionStorage.getItem('token')) {
+                refreshToken().catch(err => console.error('Scheduled token refresh failed:', err));
+              }
+            }, refreshDelay * 1000);
           }
           return result.token;
         } else {
@@ -189,19 +195,40 @@ export const AuthProvider = ({ children }) => {
         if (isMounted.current) {
           const errorMsg = err.error || err.message || 'Session expired. Please login again.';
           toast.error(errorMsg);
-          logout();
+          await logout();
         }
         throw err;
       } finally {
         refreshTokenPromise.current = null;
       }
     })();
-    return refreshTokenPromise.current;
-  }, [setAuthToken]);
 
-  /**
-   * Load user data using the current token.
-   */
+    return refreshTokenPromise.current;
+  }, [setAuthToken, getTokenExpiryTime]);
+
+  // Axios interceptor to retry requests after refreshing token on 401 errors
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      response => response,
+      async error => {
+        const originalRequest = error.config;
+        if (error.response && error.response.status === 401 && !originalRequest._retry) {
+          originalRequest._retry = true;
+          try {
+            const newToken = await refreshToken();
+            originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+            return axios(originalRequest);
+          } catch (err) {
+            return Promise.reject(err);
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => axios.interceptors.response.eject(interceptor);
+  }, [refreshToken]);
+
+  // Load user data using the current token
   const loadUser = useCallback(async () => {
     const token = sessionStorage.getItem('token');
     if (!token) {
@@ -225,7 +252,7 @@ export const AuthProvider = ({ children }) => {
         dispatch({ type: 'USER_LOADED', payload: result.data });
         return result.data;
       } else {
-        throw new Error('Invalid response format');
+        throw new Error('Invalid response from server');
       }
     } catch (err) {
       if (err.status === 401) {
@@ -233,20 +260,15 @@ export const AuthProvider = ({ children }) => {
           await refreshToken();
           return loadUser();
         } catch (refreshErr) {
-          const errorMsg = refreshErr.error || refreshErr.message || 'Failed to authenticate';
-          dispatch({ type: 'AUTH_ERROR', payload: errorMsg });
+          dispatch({ type: 'AUTH_ERROR', payload: refreshErr.message || 'Authentication failed' });
           return null;
         }
       }
-      const errorMsg = err.error || err.message || 'Failed to authenticate';
-      dispatch({ type: 'AUTH_ERROR', payload: errorMsg });
+      dispatch({ type: 'AUTH_ERROR', payload: err.message || 'Failed to load user' });
       return null;
     }
   }, [setAuthToken, isTokenExpired, refreshToken]);
 
-  /**
-   * Register a new user.
-   */
   const register = async (formData) => {
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
@@ -256,7 +278,7 @@ export const AuthProvider = ({ children }) => {
           registrationData.details.interests = registrationData.details.interests
             .toString()
             .split(',')
-            .map(interest => interest.trim())
+            .map(item => item.trim())
             .filter(Boolean);
         }
         if (registrationData.details.lookingFor && !Array.isArray(registrationData.details.lookingFor)) {
@@ -286,9 +308,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  /**
-   * Log in an existing user.
-   */
   const login = async (formData) => {
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
@@ -299,12 +318,13 @@ export const AuthProvider = ({ children }) => {
         dispatch({ type: 'LOGIN', payload: result });
         toast.success('Login successful');
         await loadUser();
+        // Schedule token refresh based on expiry
         const expiryTime = getTokenExpiryTime(result.token);
         if (expiryTime > 0) {
           const refreshDelay = Math.min(expiryTime - 300, Math.max(expiryTime / 2, 60));
-          setTimeout(() => {
+          tokenRefreshTimer.current = setTimeout(() => {
             if (sessionStorage.getItem('token')) {
-              refreshToken();
+              refreshToken().catch(err => console.error('Scheduled token refresh failed:', err));
             }
           }, refreshDelay * 1000);
         }
@@ -320,9 +340,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  /**
-   * Log out the current user.
-   */
   const logout = useCallback(async () => {
     socketService.disconnect();
     try {
@@ -358,13 +375,11 @@ export const AuthProvider = ({ children }) => {
         loadUser();
         const expiryTime = getTokenExpiryTime(token);
         if (expiryTime > 0) {
-          const refreshDelay = Math.min(expiryTime - 300, Math.max(expiryTime / 2, 60));
-          const timeoutId = setTimeout(() => {
+          tokenRefreshTimer.current = setTimeout(() => {
             if (sessionStorage.getItem('token')) {
               refreshToken();
             }
-          }, refreshDelay * 1000);
-          return () => clearTimeout(timeoutId);
+          }, Math.min(expiryTime - 300, Math.max(expiryTime / 2, 60)) * 1000);
         }
       }
     } else {

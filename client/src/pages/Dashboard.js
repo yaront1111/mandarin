@@ -15,11 +15,8 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { users, getUsers, loading } = useUser();
-
   const [activeTab, setActiveTab] = useState('discover');
   const [showFilters, setShowFilters] = useState(false);
-
-  // Default filters show all users
   const [filterValues, setFilterValues] = useState({
     ageMin: 0,
     ageMax: 150,
@@ -30,10 +27,51 @@ const Dashboard = () => {
     interests: []
   });
 
+  // Fetch users on mount and set up periodic refresh and visibility listener.
   useEffect(() => {
     getUsers();
-    // eslint-disable-next-line
-  }, []);
+
+    const refreshInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        getUsers();
+      }
+    }, 60000); // Refresh every minute when visible
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        getUsers(); // Refresh immediately when tab becomes visible
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Cleanup on unmount.
+    return () => {
+      clearInterval(refreshInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [getUsers]);
+
+  // Filter users based on filterValues.
+  const filteredUsers = users.filter(u => {
+    const userAge = u.details?.age || 25;
+    if (userAge < filterValues.ageMin || userAge > filterValues.ageMax) return false;
+    if (filterValues.online && !u.isOnline) return false;
+    if (filterValues.withPhotos && (!u.photos || u.photos.length === 0)) return false;
+    if (filterValues.interests.length > 0) {
+      const userInterests = u.details?.interests || [];
+      const hasMatchingInterest = filterValues.interests.some(i => userInterests.includes(i));
+      if (!hasMatchingInterest) return false;
+    }
+    return true;
+  });
+
+  // Custom sorting: online users first, then by lastActive descending.
+  const sortedUsers = [...filteredUsers].sort((a, b) => {
+    if (a.isOnline && !b.isOnline) return -1;
+    if (!a.isOnline && b.isOnline) return 1;
+    return new Date(b.lastActive) - new Date(a.lastActive);
+  });
 
   const availableInterests = [
     'Dating', 'Casual', 'Friendship', 'Long-term', 'Travel',
@@ -62,27 +100,6 @@ const Dashboard = () => {
   const navigateToProfile = () => {
     navigate('/profile');
   };
-
-  // Filter users based on filterValues
-  const filteredUsers = users.filter(u => {
-    const userAge = u.details?.age || 25;
-    if (userAge < filterValues.ageMin || userAge > filterValues.ageMax) return false;
-    if (filterValues.online && !u.isOnline) return false;
-    if (filterValues.withPhotos && (!u.photos || u.photos.length === 0)) return false;
-    if (filterValues.interests.length > 0) {
-      const userInterests = u.details?.interests || [];
-      const hasMatchingInterest = filterValues.interests.some(i => userInterests.includes(i));
-      if (!hasMatchingInterest) return false;
-    }
-    return true;
-  });
-
-  // Custom sorting: online users first, then order by lastActive descending
-  const sortedUsers = [...filteredUsers].sort((a, b) => {
-    if (a.isOnline && !b.isOnline) return -1;
-    if (!a.isOnline && b.isOnline) return 1;
-    return new Date(b.lastActive) - new Date(a.lastActive);
-  });
 
   return (
     <div className="modern-dashboard">
@@ -301,7 +318,7 @@ const Dashboard = () => {
                     <img
                       src={matchedUser.photos[0].url}
                       alt={matchedUser.nickname}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform var(--transition-slow)' }}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s ease' }}
                     />
                   ) : (
                     <FaUserCircle style={{ fontSize: '80px', color: '#ccc', margin: '50px auto' }} />

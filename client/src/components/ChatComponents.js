@@ -1,24 +1,85 @@
-import React, { useState, useEffect, useRef } from 'react';
+// client/src/components/ChatComponents.js
+
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  memo
+} from 'react';
 import { useAuth, useChat } from '../context';
 import {
   FaHeart,
   FaVideo,
-  FaEnvelope,
-  FaSpinner,
+  FaCheckDouble,
+  FaCheck,
   FaTimes,
   FaSmile,
   FaPaperPlane,
   FaPaperclip,
-  FaImage,
-  FaArrowLeft,
-  FaCheckDouble,
-  FaCheck
+  FaSpinner
 } from 'react-icons/fa';
+import { toast } from 'react-toastify';
 
-// Define commonEmojis at the top so it's available throughout the file.
+// Common emojis available for the emoji picker.
 const commonEmojis = ['😊', '😂', '😍', '❤️', '👍', '🙌', '🔥', '✨', '🎉', '🤔', '😉', '🥰'];
 
-// Chat Box Component
+/**
+ * Individual message component, memoized to avoid unnecessary re-renders.
+ */
+const Message = memo(({ message, currentUserId, formattedTime }) => {
+  const isSentByCurrentUser = message.sender === currentUserId;
+  return (
+    <div className={`message ${isSentByCurrentUser ? 'sent' : 'received'}`}>
+      {message.type === 'text' && (
+        <>
+          <p className="message-content">{message.content}</p>
+          <span className="message-time">
+            {formattedTime}
+            {isSentByCurrentUser &&
+              (message.read ? (
+                <FaCheckDouble style={{ marginLeft: '4px' }} />
+              ) : (
+                <FaCheck style={{ marginLeft: '4px' }} />
+              ))}
+          </span>
+        </>
+      )}
+      {message.type === 'wink' && (
+        <p className="message-content">😉 (Wink)</p>
+      )}
+      {message.type === 'video' && (
+        <p className="video-msg">
+          <FaVideo /> Video Call
+        </p>
+      )}
+    </div>
+  );
+});
+
+/**
+ * Date divider for grouping messages.
+ */
+const MessageDateDivider = memo(({ date }) => (
+  <div className="message-date">
+    <span>{date}</span>
+  </div>
+));
+
+/**
+ * Typing indicator component.
+ */
+const TypingIndicator = memo(() => (
+  <div className="typing-indicator">
+    <span></span>
+    <span></span>
+    <span></span>
+  </div>
+));
+
+/**
+ * ChatBox component with virtualized scrolling.
+ */
 export const ChatBox = ({ recipient }) => {
   const { user } = useAuth();
   const {
@@ -34,26 +95,77 @@ export const ChatBox = ({ recipient }) => {
 
   const [newMessage, setNewMessage] = useState('');
   const [showEmojis, setShowEmojis] = useState(false);
+  const [visibleMessages, setVisibleMessages] = useState([]);
+  const [scrollPosition, setScrollPosition] = useState(0);
+
   const messagesEndRef = useRef(null);
   const chatInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const messageContainerRef = useRef(null);
 
-  // Auto-scroll to bottom when messages change
+  // Memoized formatting for message time to avoid recalculation on each render.
+  const formatMessageTime = useCallback((timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }, []);
+
+  // Throttled scroll handler updates the scroll position state.
+  const handleScroll = useCallback(() => {
+    if (messageContainerRef.current) {
+      setScrollPosition(messageContainerRef.current.scrollTop);
+    }
+  }, []);
+
+  // Setup throttled scroll listener.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messageContainerRef.current;
+    if (!container) return;
+    let scrollTimeout;
+    const throttledScroll = () => {
+      if (!scrollTimeout) {
+        scrollTimeout = setTimeout(() => {
+          handleScroll();
+          scrollTimeout = null;
+        }, 100);
+      }
+    };
+    container.addEventListener('scroll', throttledScroll);
+    return () => {
+      container.removeEventListener('scroll', throttledScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+    };
+  }, [handleScroll]);
+
+  // Virtualize messages: calculate and render only the messages in view (with a buffer).
+  useEffect(() => {
+    if (!messageContainerRef.current || messages.length === 0) return;
+    const container = messageContainerRef.current;
+    const containerHeight = container.clientHeight;
+    const messageHeight = 80; // Approximate height (in pixels) per message.
+    const buffer = 5; // Extra messages above and below the view.
+    const startIndex = Math.max(
+      0,
+      Math.floor(scrollPosition / messageHeight) - buffer
+    );
+    const endIndex = Math.min(
+      messages.length - 1,
+      Math.ceil((scrollPosition + containerHeight) / messageHeight) + buffer
+    );
+    setVisibleMessages(messages.slice(startIndex, endIndex + 1));
+  }, [messages, scrollPosition]);
+
+  // Auto-scroll to bottom when new messages arrive, if user is near the bottom.
+  useEffect(() => {
+    if (messageContainerRef.current) {
+      const { scrollHeight, scrollTop, clientHeight } = messageContainerRef.current;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 200;
+      if (isNearBottom) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
   }, [messages]);
 
-  // Focus input on mount
-  useEffect(() => {
-    chatInputRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    };
-  }, []);
-
+  // Handler for sending text messages.
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (newMessage.trim() && !sendingMessage && recipient) {
@@ -66,6 +178,7 @@ export const ChatBox = ({ recipient }) => {
     }
   };
 
+  // Handler for sending a wink.
   const handleSendWink = async () => {
     if (!sendingMessage && recipient) {
       try {
@@ -76,6 +189,7 @@ export const ChatBox = ({ recipient }) => {
     }
   };
 
+  // Handler for typing events, with a debounce to avoid too many calls.
   const handleTyping = (e) => {
     setNewMessage(e.target.value);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -86,33 +200,40 @@ export const ChatBox = ({ recipient }) => {
     }, 300);
   };
 
+  // Check if the recipient is currently typing.
   const isTyping =
     recipient &&
     typingUsers[recipient._id] &&
     Date.now() - typingUsers[recipient._id] < 3000;
 
-  // Group messages by date
-  const groupMessagesByDate = () => {
-    const groups = {};
-    messages.forEach((message) => {
-      const date = new Date(message.createdAt).toLocaleDateString();
-      if (!groups[date]) {
-        groups[date] = [];
-      }
-      groups[date].push(message);
+  /**
+   * Render visible messages while inserting date dividers when the date changes.
+   */
+  const renderMessages = () => {
+    let lastDate = '';
+    return visibleMessages.map((message) => {
+      const messageDate = new Date(message.createdAt).toLocaleDateString();
+      const divider =
+        messageDate !== lastDate ? (
+          <MessageDateDivider key={`divider-${message._id}`} date={messageDate} />
+        ) : null;
+      lastDate = messageDate;
+      return (
+        <React.Fragment key={message._id}>
+          {divider}
+          <Message
+            message={message}
+            currentUserId={user._id}
+            formattedTime={formatMessageTime(message.createdAt)}
+          />
+        </React.Fragment>
+      );
     });
-    return groups;
-  };
-
-  const messageGroups = groupMessagesByDate();
-
-  const formatMessageTime = (timestamp) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
     <div className="chat-box">
+      {/* Chat header */}
       <div className="chat-header">
         <h3>{recipient.nickname}</h3>
         <div className="chat-actions">
@@ -135,50 +256,16 @@ export const ChatBox = ({ recipient }) => {
         </div>
       </div>
 
-      <div className="messages-container">
+      {/* Messages container with virtualization */}
+      <div className="messages-container" ref={messageContainerRef}>
         {messages.length === 0 ? (
           <div className="no-messages">
             <p>No messages yet. Say hello!</p>
           </div>
         ) : (
-          Object.entries(messageGroups).map(([date, msgs]) => (
-            <div key={date} className="message-group">
-              <div className="message-date">
-                <span>{date}</span>
-              </div>
-              {msgs.map((message) => (
-                <div
-                  key={message._id}
-                  className={`message ${message.sender === user._id ? 'sent' : 'received'}`}
-                >
-                  {message.type === 'text' && (
-                    <>
-                      <p className="message-content">{message.content}</p>
-                      <span className="message-time">
-                        {formatMessageTime(message.createdAt)}
-                      </span>
-                    </>
-                  )}
-                  {message.type === 'wink' && (
-                    <p className="message-content">😉 (Wink)</p>
-                  )}
-                  {message.type === 'video' && (
-                    <p className="video-msg">
-                      <FaVideo /> Video Call
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          ))
+          renderMessages()
         )}
-        {isTyping && (
-          <div className="typing-indicator">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-        )}
+        {isTyping && <TypingIndicator />}
         {messageError && (
           <div className="message-error">
             <p>{messageError}</p>
@@ -190,6 +277,7 @@ export const ChatBox = ({ recipient }) => {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Message input form */}
       <form className="message-form" onSubmit={handleSendMessage}>
         <button type="button" className="input-attachment">
           <FaPaperclip />
@@ -211,17 +299,16 @@ export const ChatBox = ({ recipient }) => {
         </button>
         {showEmojis && (
           <div className="emoji-picker">
-            <div className="emoji-header d-flex justify-content-between align-items-center mb-2">
+            <div className="emoji-header">
               <h4>Emojis</h4>
-              <button className="close-emojis" onClick={() => setShowEmojis(false)}>
+              <button onClick={() => setShowEmojis(false)}>
                 <FaTimes />
               </button>
             </div>
-            <div className="d-flex flex-wrap" style={{ gap: '8px' }}>
+            <div className="emoji-list">
               {commonEmojis.map((emoji) => (
                 <button
                   key={emoji}
-                  className="btn btn-sm btn-subtle"
                   type="button"
                   onClick={() => {
                     setNewMessage((prev) => prev + emoji);
@@ -247,6 +334,9 @@ export const ChatBox = ({ recipient }) => {
   );
 };
 
+/**
+ * VideoCall component to manage local/remote streams and call controls.
+ */
 export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
@@ -268,9 +358,7 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
         setConnectionStatus('error');
       }
     };
-
     setupMediaStream();
-
     return () => {
       if (localStream) localStream.getTracks().forEach(track => track.stop());
       if (remoteStream) remoteStream.getTracks().forEach(track => track.stop());
@@ -325,6 +413,9 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
   );
 };
 
+/**
+ * Spinner component to indicate loading.
+ */
 export const Spinner = () => (
   <div className="spinner-container">
     <div className="spinner"></div>

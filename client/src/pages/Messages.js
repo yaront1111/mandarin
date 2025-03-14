@@ -1,5 +1,5 @@
 // client/src/pages/Messages.js
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   FaSearch,
   FaEllipsisV,
@@ -37,35 +37,46 @@ const Messages = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [showEmojis, setShowEmojis] = useState(false);
+
   const messagesEndRef = useRef(null);
   const chatInputRef = useRef(null);
 
   const commonEmojis = ['😊', '😂', '😍', '❤️', '👍', '🙌', '🔥', '✨', '🎉', '🤔', '😉', '🥰'];
 
+  // Fetch the users list on mount.
   useEffect(() => {
     getUsers();
   }, [getUsers]);
 
+  // Auto-scroll to the bottom whenever messages change.
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Focus the chat input when a user is selected.
   useEffect(() => {
-    if (selectedUser) chatInputRef.current?.focus();
+    if (selectedUser) {
+      chatInputRef.current?.focus();
+    }
   }, [selectedUser]);
 
+  // When the component unmounts or the selected user changes, clear the current chat.
   useEffect(() => {
     return () => {
-      if (selectedUser) setCurrentChat(null);
+      if (selectedUser) {
+        setCurrentChat(null);
+      }
     };
   }, [selectedUser, setCurrentChat]);
 
+  // When a conversation is selected, update state and fetch messages.
   const handleSelectUser = (u) => {
     setSelectedUser(u);
     setCurrentChat(u);
     getMessages(u._id);
   };
 
+  // Send a text message.
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (newMessage.trim() && !isSending && selectedUser) {
@@ -81,17 +92,22 @@ const Messages = () => {
     }
   };
 
+  // Handle typing: update message state and send a typing event.
   const handleTyping = (e) => {
     setNewMessage(e.target.value);
-    if (selectedUser) sendTyping(selectedUser._id);
+    if (selectedUser) {
+      sendTyping(selectedUser._id);
+    }
   };
 
+  // Append an emoji to the message and focus the input.
   const handleEmojiClick = (emoji) => {
     setNewMessage((prev) => prev + emoji);
     setShowEmojis(false);
     chatInputRef.current?.focus();
   };
 
+  // Send a "wink" message.
   const handleSendWink = async () => {
     if (!isSending && selectedUser) {
       setIsSending(true);
@@ -105,10 +121,14 @@ const Messages = () => {
     }
   };
 
+  // Initiate a video call.
   const handleVideoCall = () => {
-    if (selectedUser) initiateVideoCall(selectedUser._id);
+    if (selectedUser) {
+      initiateVideoCall(selectedUser._id);
+    }
   };
 
+  // Filter out the current user from the list and filter by search term.
   const filteredUsers = users.filter(
     (u) =>
       u._id !== user._id &&
@@ -117,17 +137,20 @@ const Messages = () => {
           u.details.location.toLowerCase().includes(searchTerm.toLowerCase())))
   );
 
+  // Helpers for unread messages.
   const hasUnreadMessages = (userId) =>
     unreadMessages.some((msg) => msg.sender === userId);
 
   const unreadCount = (userId) =>
     unreadMessages.filter((msg) => msg.sender === userId).length;
 
+  // Format time for display.
   const formatMessageTime = (timestamp) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Format the message date header.
   const formatMessageDate = (timestamp) => {
     const date = new Date(timestamp);
     const today = new Date();
@@ -142,6 +165,7 @@ const Messages = () => {
     }
   };
 
+  // Group messages by date.
   const groupMessagesByDate = () => {
     const groups = {};
     messages.forEach((message) => {
@@ -154,6 +178,7 @@ const Messages = () => {
     return groups;
   };
 
+  // Check if the selected user is typing.
   const isTyping =
     selectedUser &&
     typingUsers[selectedUser._id] &&
@@ -161,6 +186,7 @@ const Messages = () => {
 
   return (
     <div className="messages-layout">
+      {/* Conversations List */}
       <div className="conversations-list">
         <div className="conversations-header d-flex justify-content-between align-items-center p-3 border-bottom">
           <h3 style={{ margin: 0 }}>Messages</h3>
@@ -228,9 +254,12 @@ const Messages = () => {
           </div>
         )}
       </div>
+
+      {/* Chat Area */}
       <div className="chat-area">
         {selectedUser ? (
           <>
+            {/* Chat Header */}
             <div className="chat-header">
               <div className="chat-user">
                 <button
@@ -265,6 +294,8 @@ const Messages = () => {
                 </button>
               </div>
             </div>
+
+            {/* Messages Container */}
             <div className="messages-container">
               {Object.entries(groupMessagesByDate()).map(([date, msgs]) => (
                 <React.Fragment key={date}>
@@ -288,7 +319,9 @@ const Messages = () => {
                           </span>
                         </>
                       )}
-                      {message.type === 'wink' && <p className="message-content">😉 (Wink)</p>}
+                      {message.type === 'wink' && (
+                        <p className="message-content">😉 (Wink)</p>
+                      )}
                     </div>
                   ))}
                 </React.Fragment>
@@ -302,6 +335,8 @@ const Messages = () => {
               )}
               <div ref={messagesEndRef} />
             </div>
+
+            {/* Message Input */}
             <div className="message-input">
               <button className="input-attachment">
                 <FaPaperclip />
@@ -336,9 +371,7 @@ const Messages = () => {
                           className="btn btn-sm btn-subtle"
                           type="button"
                           onClick={() => {
-                            setNewMessage((prev) => prev + emoji);
-                            setShowEmojis(false);
-                            chatInputRef.current?.focus();
+                            handleEmojiClick(emoji);
                           }}
                         >
                           {emoji}

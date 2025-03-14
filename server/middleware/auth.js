@@ -1,4 +1,5 @@
 // server/middleware/auth.js
+
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 const config = require('../config');
@@ -9,11 +10,11 @@ const mongoose = require('mongoose');
 const userCache = new Map();
 const USER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// In-memory token blacklist (for production, use Redis)
+// In-memory token blacklist (for production, consider using Redis)
 const tokenBlacklist = new Set();
 
 /**
- * Clean expired entries from cache periodically
+ * Periodically cleans expired entries from the user cache.
  */
 setInterval(() => {
   const now = Date.now();
@@ -22,57 +23,62 @@ setInterval(() => {
       userCache.delete(key);
     }
   }
-}, 60000); // Clean up every minute
+}, 60000); // Every minute
+
+/**
+ * Extracts JWT token from request headers or cookies.
+ * @param {object} req - Express request object.
+ * @returns {string|null} The extracted token or null if not found.
+ */
+const extractToken = (req) => {
+  let token = null;
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
+  } else if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
+  return token;
+};
+
+/**
+ * Sanitizes headers for logging purposes.
+ * @param {object} headers - Request headers.
+ * @returns {object} Sanitized headers.
+ */
+const sanitizeHeaders = (headers) => {
+  const sanitized = { ...headers };
+  if (sanitized.authorization) {
+    sanitized.authorization = sanitized.authorization.substring(0, 15) + '...';
+  }
+  if (sanitized.cookie) {
+    sanitized.cookie = '[REDACTED]';
+  }
+  return sanitized;
+};
 
 /**
  * Authentication middleware to protect routes.
- * Verifies the JWT token and attaches the user to the request.
+ * Verifies the JWT token, checks token blacklist, caches user data,
+ * and attaches the user to the request object.
  */
 exports.protect = async (req, res, next) => {
-  let token;
-
-  // Helper function to sanitize headers for logging
-  const sanitizeHeaders = (headers) => {
-    const sanitized = { ...headers };
-    if (sanitized.authorization) {
-      sanitized.authorization = sanitized.authorization.substring(0, 15) + '...';
-    }
-    if (sanitized.cookie) {
-      sanitized.cookie = '[REDACTED]';
-    }
-    return sanitized;
-  };
-
-  // Log sanitized headers for debugging only in development
-  if (process.env.NODE_ENV === 'development') {
-    logger.debug(`Auth request headers: ${JSON.stringify(sanitizeHeaders(req.headers))}`);
-  }
-
-  // Check for token in Authorization header
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
-    if (process.env.NODE_ENV === 'development') {
-      logger.debug(`Token extracted from Authorization header: ${token ? token.substring(0, 15) + '...' : 'undefined'}`);
-    }
-  } else if (req.cookies && req.cookies.token) {
-    // Alternatively, check token in cookies
-    token = req.cookies.token;
-    if (process.env.NODE_ENV === 'development') {
-      logger.debug(`Token extracted from cookies: ${token.substring(0, 15)}...`);
-    }
-  }
-
-  if (!token) {
-    logger.warn(`Authentication failed: No token provided (IP: ${req.ip})`);
-    return res.status(401).json({
-      success: false,
-      error: 'Authentication required',
-      code: 'NO_TOKEN'
-    });
-  }
-
   try {
-    // Check if token is blacklisted
+    // Log headers in development mode for debugging
+    if (process.env.NODE_ENV === 'development') {
+      logger.debug(`Auth request headers: ${JSON.stringify(sanitizeHeaders(req.headers))}`);
+    }
+
+    const token = extractToken(req);
+    if (!token) {
+      logger.warn(`Authentication failed: No token provided (IP: ${req.ip})`);
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+        code: 'NO_TOKEN'
+      });
+    }
+
+    // Check token blacklist
     if (tokenBlacklist.has(token)) {
       logger.warn(`Authentication failed: Token blacklisted (IP: ${req.ip})`);
       return res.status(401).json({
@@ -82,11 +88,41 @@ exports.protect = async (req, res, next) => {
       });
     }
 
-    // Verify token
-    const decoded = jwt.verify(token, config.JWT_SECRET, {
-      algorithms: ['HS256']
-    });
+    // Verify token using HS256 algorithm
+    let decoded;
+    try {
+      decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
+    } catch (verifyErr) {
+      logger.error(`Token verification error: ${verifyErr.message}`);
+      if (verifyErr.name === 'TokenExpiredError') {
+        return res.status(401).json({
+          success: false,
+          error: 'Your session has expired. Please log in again.',
+          code: 'TOKEN_EXPIRED'
+        });
+      }
+      if (verifyErr.name === 'JsonWebTokenError') {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid authentication token',
+          code: 'INVALID_TOKEN'
+        });
+      }
+      if (verifyErr.name === 'NotBeforeError') {
+        return res.status(401).json({
+          success: false,
+          error: 'Token not yet valid',
+          code: 'TOKEN_NOT_ACTIVE'
+        });
+      }
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication failed',
+        code: 'AUTH_ERROR'
+      });
+    }
 
+    // Validate decoded token payload
     if (!decoded || !decoded.id) {
       logger.warn(`Authentication failed: Invalid token payload (IP: ${req.ip})`);
       return res.status(401).json({
@@ -106,30 +142,24 @@ exports.protect = async (req, res, next) => {
       });
     }
 
-    // Use cache to avoid extra DB queries
     const cacheKey = decoded.id;
     let user;
-    const cachedUser = userCache.get(cacheKey);
+    const cachedEntry = userCache.get(cacheKey);
 
-    if (cachedUser && Date.now() < cachedUser.expires) {
-      user = cachedUser.data;
+    if (cachedEntry && Date.now() < cachedEntry.expires) {
+      user = cachedEntry.data;
       logger.debug(`Using cached user for ID: ${decoded.id}`);
-
-      // Optionally update lastActive if needed (in the background)
+      // Optionally update lastActive in the background if needed
       const activeThreshold = 5 * 60 * 1000; // 5 minutes
       if (Date.now() - user.lastActive > activeThreshold) {
-        User.findByIdAndUpdate(
-          user._id,
-          { lastActive: Date.now() },
-          { new: false }
-        ).catch(err => logger.error(`Background lastActive update failed: ${err.message}`));
+        User.findByIdAndUpdate(user._id, { lastActive: Date.now() }, { new: false })
+          .catch(err => logger.error(`Background lastActive update failed: ${err.message}`));
       }
     } else {
-      // Retrieve user from DB.
-      // **Fix:** Instead of mixing inclusions and exclusions, we explicitly select the fields we need.
+      // Retrieve user from DB and select necessary fields
       user = await User.findById(decoded.id)
-        .select('email nickname details accountStatus role permissions lastActive');
-
+        .select('email nickname details accountStatus role permissions lastActive')
+        .lean();
       if (!user) {
         logger.warn(`Authentication failed: User not found for ID ${decoded.id}`);
         return res.status(401).json({
@@ -139,7 +169,7 @@ exports.protect = async (req, res, next) => {
         });
       }
 
-      // Check account status (active, suspended, etc.)
+      // Check account status
       if (user.accountStatus && user.accountStatus !== 'active') {
         logger.warn(`Authentication rejected: Account status ${user.accountStatus} for user ${decoded.id}`);
         return res.status(403).json({
@@ -160,34 +190,12 @@ exports.protect = async (req, res, next) => {
       });
     }
 
-    // Attach user and token info to request
+    // Attach user and token information to the request
     req.user = user;
     req.token = { raw: token, payload: decoded };
-
     next();
   } catch (err) {
-    logger.error(`Token verification error: ${err.message}`);
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({
-        success: false,
-        error: 'Your session has expired. Please log in again.',
-        code: 'TOKEN_EXPIRED'
-      });
-    }
-    if (err.name === 'JsonWebTokenError') {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid authentication token',
-        code: 'INVALID_TOKEN'
-      });
-    }
-    if (err.name === 'NotBeforeError') {
-      return res.status(401).json({
-        success: false,
-        error: 'Token not yet valid',
-        code: 'TOKEN_NOT_ACTIVE'
-      });
-    }
+    logger.error(`Unexpected authentication error: ${err.message}`);
     return res.status(401).json({
       success: false,
       error: 'Authentication failed',
@@ -200,7 +208,7 @@ exports.protect = async (req, res, next) => {
  * Role-based access control middleware.
  * Allows only users with specified roles.
  * @param {...string} roles - Allowed roles.
- * @returns {Function} - Express middleware.
+ * @returns {Function} Express middleware.
  */
 exports.authorize = (...roles) => {
   return (req, res, next) => {
@@ -212,7 +220,7 @@ exports.authorize = (...roles) => {
       });
     }
     if (!roles.includes(req.user.role)) {
-      logger.warn(`Access denied: User ${req.user._id} (role: ${req.user.role}) attempted to access route restricted to ${roles.join(', ')}`);
+      logger.warn(`Access denied: User ${req.user._id} (role: ${req.user.role}) attempted to access restricted route (${roles.join(', ')})`);
       return res.status(403).json({
         success: false,
         error: 'You do not have permission to access this resource',
@@ -224,30 +232,32 @@ exports.authorize = (...roles) => {
 };
 
 /**
- * Blacklist a token (for logout or security purposes).
+ * Blacklists a token (for logout or security purposes).
+ * For production, consider using a centralized store like Redis.
  * @param {string} token - JWT token to blacklist.
- * @returns {boolean} - Success status.
+ * @returns {boolean} Success status.
  */
 exports.blacklistToken = (token) => {
   if (!token) return false;
   try {
     tokenBlacklist.add(token);
+    // Schedule removal from blacklist when token expires
     try {
       const decoded = jwt.decode(token);
       if (decoded && decoded.exp) {
         const now = Math.floor(Date.now() / 1000);
         const timeUntilExpiry = (decoded.exp - now) * 1000;
-        if (timeUntilExpiry <= 0) {
+        if (timeUntilExpiry > 0) {
+          setTimeout(() => {
+            tokenBlacklist.delete(token);
+            logger.debug(`Token removed from blacklist after expiry`);
+          }, timeUntilExpiry);
+        } else {
           tokenBlacklist.delete(token);
-          return true;
         }
-        setTimeout(() => {
-          tokenBlacklist.delete(token);
-          logger.debug(`Token removed from blacklist after expiry`);
-        }, timeUntilExpiry);
       }
-    } catch (err) {
-      logger.error(`Error processing token for blacklist scheduling: ${err.message}`);
+    } catch (innerErr) {
+      logger.error(`Error processing token for blacklist scheduling: ${innerErr.message}`);
     }
     return true;
   } catch (err) {
@@ -257,42 +267,45 @@ exports.blacklistToken = (token) => {
 };
 
 /**
- * Helper to send token response with refresh token.
- * @param {Object} user - User object.
+ * Sends a token response along with setting appropriate cookies.
+ * @param {object} user - User object.
  * @param {number} statusCode - HTTP status code.
- * @param {Object} res - Express response object.
- * @param {boolean} includeRefresh - Whether to include refresh token.
+ * @param {object} res - Express response object.
+ * @param {boolean} [includeRefresh=false] - Whether to include a refresh token.
  */
 exports.sendTokenResponse = (user, statusCode, res, includeRefresh = false) => {
   const token = user.getSignedJwtToken();
   const sanitizedUser = user.toObject();
   delete sanitizedUser.password;
+
   const cookieOptions = {
     expires: new Date(Date.now() + config.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000),
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production'
   };
+
   logger.debug(`Generated token for user ${user._id}`);
-  const response = { success: true, token };
+  const responsePayload = { success: true, token };
+
   if (includeRefresh) {
     const refreshToken = user.getRefreshToken();
-    response.refreshToken = refreshToken;
+    responsePayload.refreshToken = refreshToken;
     res.cookie('refreshToken', refreshToken, {
       ...cookieOptions,
       expires: new Date(Date.now() + config.REFRESH_TOKEN_EXPIRE * 24 * 60 * 60 * 1000)
     });
   }
   res.cookie('token', token, cookieOptions);
-  response.data = sanitizedUser;
-  res.status(statusCode).json(response);
+  responsePayload.data = sanitizedUser;
+  res.status(statusCode).json(responsePayload);
 };
 
 /**
- * Middleware to check if user can access a specific resource.
- * @param {string} paramIdField - Request parameter name containing resource ID.
- * @param {string} ownerField - Field in resource containing owner ID.
- * @param {Function} getResource - Function to get resource from database.
- * @returns {Function} - Express middleware.
+ * Middleware to check if a user has access to a specific resource.
+ * @param {string} paramIdField - Request parameter name containing the resource ID.
+ * @param {string} ownerField - Field in the resource representing the owner ID.
+ * @param {Function} getResource - Function to retrieve the resource from the database.
+ * @returns {Function} Express middleware.
  */
 exports.checkResourceAccess = (paramIdField, ownerField, getResource) => {
   return async (req, res, next) => {
@@ -344,9 +357,9 @@ exports.checkResourceAccess = (paramIdField, ownerField, getResource) => {
 };
 
 /**
- * Helper to wrap async route handlers for consistent error handling.
+ * Wraps async route handlers for consistent error handling.
  * @param {Function} fn - Async route handler.
- * @returns {Function} - Express middleware.
+ * @returns {Function} Express middleware.
  */
 exports.asyncHandler = fn => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(err => {

@@ -1,5 +1,5 @@
 // client/src/pages/Profile.js
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FaCamera,
   FaEdit,
@@ -10,9 +10,7 @@ import {
   FaLockOpen,
   FaTrash,
   FaStar,
-  FaExclamationTriangle,
-  FaChevronLeft,
-  FaChevronRight
+  FaExclamationTriangle
 } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, useUser } from '../context';
@@ -33,15 +31,11 @@ const Profile = () => {
       interests: []
     }
   });
-
-  // State for managing photos
   const [localPhotos, setLocalPhotos] = useState([]);
   const [profilePhotoIndex, setProfilePhotoIndex] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
-
-  // Form state
   const [availableInterests] = useState([
     'Dating', 'Casual', 'Friendship', 'Long-term', 'Travel',
     'Outdoors', 'Movies', 'Music', 'Fitness', 'Food', 'Art',
@@ -53,7 +47,7 @@ const Profile = () => {
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
-  // Load user data and init state
+  // Initialize profile state from user data.
   useEffect(() => {
     if (user) {
       setProfileData({
@@ -68,19 +62,15 @@ const Profile = () => {
       });
 
       if (user.photos && user.photos.length > 0) {
-        // Initialize localPhotos with a default privacy flag if not present
         const photos = user.photos.map(photo => ({
           ...photo,
           isPrivate: photo.isPrivate ?? false,
-          isProfile: false // Add a property to track profile photo
+          isProfile: false
         }));
-
-        // Mark the first photo as profile by default
         if (photos.length > 0) {
           photos[0].isProfile = true;
           setProfilePhotoIndex(0);
         }
-
         setLocalPhotos(photos);
       } else {
         setLocalPhotos([]);
@@ -89,11 +79,17 @@ const Profile = () => {
     }
   }, [user]);
 
-  // Handle form input changes
+  // Cleanup file input on unmount to prevent lingering file references.
+  useEffect(() => {
+    return () => {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+  }, []);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
-
-    // For nested properties (e.g., details.age)
     if (name.includes('.')) {
       const [parent, child] = name.split('.');
       setProfileData(prev => ({
@@ -104,11 +100,8 @@ const Profile = () => {
         }
       }));
     } else {
-      // For top-level properties
       setProfileData(prev => ({ ...prev, [name]: value }));
     }
-
-    // Clear error for this field if it exists
     if (errors[name.split('.').pop()]) {
       setErrors(prev => {
         const newErrors = { ...prev };
@@ -118,31 +111,23 @@ const Profile = () => {
     }
   };
 
-  // Toggle interest selection
   const toggleInterest = (interest) => {
     const interests = profileData.details.interests;
-
-    // Max 10 interests
     if (!interests.includes(interest) && interests.length >= 10) {
       toast.warning('You can select up to 10 interests');
       return;
     }
-
     const updated = interests.includes(interest)
       ? interests.filter(i => i !== interest)
       : [...interests, interest];
-
     setProfileData(prev => ({
       ...prev,
       details: { ...prev.details, interests: updated }
     }));
   };
 
-  // Validate the profile form
   const validateForm = () => {
     const validationErrors = {};
-
-    // Nickname validation
     if (!profileData.nickname.trim()) {
       validationErrors.nickname = 'Nickname is required';
     } else if (profileData.nickname.length < 3) {
@@ -150,8 +135,6 @@ const Profile = () => {
     } else if (profileData.nickname.length > 50) {
       validationErrors.nickname = 'Nickname cannot exceed 50 characters';
     }
-
-    // Age validation
     if (!profileData.details.age && profileData.details.age !== 0) {
       validationErrors.age = 'Age is required';
     } else if (isNaN(profileData.details.age)) {
@@ -161,69 +144,46 @@ const Profile = () => {
     } else if (profileData.details.age > 120) {
       validationErrors.age = 'Please enter a valid age';
     }
-
-    // Gender validation
     if (!profileData.details.gender) {
       validationErrors.gender = 'Gender is required';
     }
-
-    // Location validation
     if (!profileData.details.location.trim()) {
       validationErrors.location = 'Location is required';
     } else if (profileData.details.location.length < 2) {
       validationErrors.location = 'Location must be at least 2 characters';
     }
-
-    // Bio validation (optional field)
     if (profileData.details.bio && profileData.details.bio.length > 500) {
       validationErrors.bio = 'Bio cannot exceed 500 characters';
     }
-
     return validationErrors;
   };
 
-  // Handle form submission
   const handleSubmit = async (e) => {
     e?.preventDefault();
-
-    // Validate form
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
-
-      // Scroll to first error
       const firstErrorElement = document.querySelector('.error-message');
       if (firstErrorElement) {
         firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-
       return;
     }
-
-    // Clear errors and start submission
     setErrors({});
     setIsSubmitting(true);
-
     try {
-      // Prepare data for submission
       const submissionData = {
         nickname: profileData.nickname.trim(),
         details: {
           ...profileData.details,
-          // Ensure location is trimmed
           location: profileData.details.location.trim(),
-          // Ensure bio is trimmed if it exists
           bio: profileData.details.bio ? profileData.details.bio.trim() : '',
-          // Ensure interests is an array
           interests: Array.isArray(profileData.details.interests)
             ? profileData.details.interests
             : []
         }
       };
-
-      // Submit profile update
       const updatedUser = await updateProfile(submissionData);
-
       if (updatedUser) {
         toast.success('Profile updated successfully');
         setIsEditing(false);
@@ -238,44 +198,29 @@ const Profile = () => {
     }
   };
 
-  // Handle photo upload
   const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // Validate file type
     const fileType = file.type.split('/')[0];
     if (fileType !== 'image') {
       toast.error('Please upload an image file');
       return;
     }
-
-    // Validate file size (5MB max)
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
       toast.error('Image size should be less than 5MB');
       return;
     }
-
     setIsUploading(true);
     setUploadProgress(0);
-
     try {
-      // Upload photo with progress tracking
       const newPhoto = await uploadPhoto(file, false, (progress) => {
         setUploadProgress(progress);
       });
-
       if (newPhoto) {
         toast.success('Photo uploaded successfully');
-
-        // Refresh user data to get the updated photos array
         await refreshUserData();
-
-        // Reset upload states
         setUploadProgress(0);
-
-        // Clear the file input
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
@@ -290,34 +235,23 @@ const Profile = () => {
     }
   };
 
-  // Trigger file input click
   const triggerFileInput = () => {
     fileInputRef.current?.click();
   };
 
-  // Toggle privacy for a photo
   const handleTogglePhotoPrivacy = async (photoId, e) => {
-    e?.stopPropagation(); // Prevent thumbnail click
-
+    e?.stopPropagation();
     if (isProcessingPhoto) return;
-
-    // Find the photo in local state
     const photoIndex = localPhotos.findIndex(p => p._id === photoId);
     if (photoIndex === -1) return;
-
     const newPrivacyValue = !localPhotos[photoIndex].isPrivate;
-
-    // Optimistically update UI
     setLocalPhotos(prev =>
       prev.map(photo =>
         photo._id === photoId ? { ...photo, isPrivate: newPrivacyValue } : photo
       )
     );
-
     setIsProcessingPhoto(true);
-
     try {
-      // Call API to update photo privacy
       const response = await fetch(`/api/users/photos/${photoId}/privacy`, {
         method: 'PUT',
         headers: {
@@ -326,23 +260,15 @@ const Profile = () => {
         },
         body: JSON.stringify({ isPrivate: newPrivacyValue })
       });
-
       const data = await response.json();
-
       if (!data.success) {
         throw new Error(data.error || 'Failed to update photo privacy');
       }
-
-      // Success message
       toast.success(`Photo is now ${newPrivacyValue ? 'private' : 'public'}`);
-
-      // Refresh user data
       await refreshUserData();
     } catch (error) {
       console.error('Failed to update photo privacy:', error);
       toast.error(error.message || 'Failed to update privacy setting');
-
-      // Revert UI change on error
       setLocalPhotos(prev =>
         prev.map(photo =>
           photo._id === photoId ? { ...photo, isPrivate: !newPrivacyValue } : photo
@@ -353,18 +279,11 @@ const Profile = () => {
     }
   };
 
-  // Set a photo as the profile photo
   const handleSetProfilePhoto = async (photoId) => {
     if (isProcessingPhoto) return;
-
-    // Find the photo index
     const photoIndex = localPhotos.findIndex(p => p._id === photoId);
     if (photoIndex === -1) return;
-
-    // Check if already the profile photo
     if (profilePhotoIndex === photoIndex) return;
-
-    // Optimistically update UI
     setProfilePhotoIndex(photoIndex);
     setLocalPhotos(prev =>
       prev.map((photo, index) => ({
@@ -372,11 +291,8 @@ const Profile = () => {
         isProfile: index === photoIndex
       }))
     );
-
     setIsProcessingPhoto(true);
-
     try {
-      // Call API to set profile photo
       const response = await fetch(`/api/users/photos/${photoId}/profile`, {
         method: 'PUT',
         headers: {
@@ -384,22 +300,15 @@ const Profile = () => {
           'Authorization': `Bearer ${sessionStorage.getItem('token')}`
         }
       });
-
       const data = await response.json();
-
       if (!data.success) {
         throw new Error(data.error || 'Failed to set profile photo');
       }
-
       toast.success('Profile photo updated');
-
-      // Refresh user data
       await refreshUserData();
     } catch (error) {
       console.error('Failed to set profile photo:', error);
       toast.error(error.message || 'Failed to set profile photo');
-
-      // Revert UI change on error
       const oldProfileIndex = localPhotos.findIndex(p => p.isProfile);
       if (oldProfileIndex !== -1) {
         setProfilePhotoIndex(oldProfileIndex);
@@ -415,76 +324,49 @@ const Profile = () => {
     }
   };
 
-  // Delete a photo
   const handleDeletePhoto = async (photoId, e) => {
-    e?.stopPropagation(); // Prevent thumbnail click
-
+    e?.stopPropagation();
     if (isProcessingPhoto) return;
-
-    // Ask for confirmation
-    if (!window.confirm('Are you sure you want to delete this photo?')) {
-      return;
-    }
-
-    // Find the photo index
+    if (!window.confirm('Are you sure you want to delete this photo?')) return;
     const photoIndex = localPhotos.findIndex(p => p._id === photoId);
     if (photoIndex === -1) return;
-
-    // Check if trying to delete the only photo or the profile photo
     if (localPhotos.length === 1) {
       toast.error('You cannot delete your only photo');
       return;
     }
-
     if (localPhotos[photoIndex].isProfile) {
       toast.error('You cannot delete your profile photo. Please set another photo as profile first.');
       return;
     }
-
-    // Optimistically update UI
     const updatedPhotos = localPhotos.filter(photo => photo._id !== photoId);
     setLocalPhotos(updatedPhotos);
-
-    // Adjust profile photo index if needed
     if (photoIndex < profilePhotoIndex) {
       setProfilePhotoIndex(profilePhotoIndex - 1);
     }
-
     setIsProcessingPhoto(true);
-
     try {
-      // Call API to delete photo
       const response = await fetch(`/api/users/photos/${photoId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${sessionStorage.getItem('token')}`
         }
       });
-
       const data = await response.json();
-
       if (!data.success) {
         throw new Error(data.error || 'Failed to delete photo');
       }
-
       toast.success('Photo deleted');
-
-      // Refresh user data
       await refreshUserData();
     } catch (error) {
       console.error('Failed to delete photo:', error);
       toast.error(error.message || 'Failed to delete photo');
-
-      // Revert UI change on error
       await refreshUserData();
     } finally {
       setIsProcessingPhoto(false);
     }
   };
 
-  // Cancel editing and reset form
   const handleCancelEdit = () => {
-    // Reset form to current user data
     if (user) {
       setProfileData({
         nickname: user.nickname || '',
@@ -497,7 +379,6 @@ const Profile = () => {
         }
       });
     }
-
     setErrors({});
     setIsEditing(false);
   };
@@ -553,7 +434,7 @@ const Profile = () => {
                     objectFit: 'cover',
                     borderRadius: '50%',
                     boxShadow: '0 6px 16px rgba(0, 0, 0, 0.1)',
-                    transition: 'transform var(--transition-normal)'
+                    transition: 'transform 0.3s ease'
                   }}
                 />
                 {localPhotos[profilePhotoIndex].isPrivate && (
@@ -604,7 +485,7 @@ const Profile = () => {
               </div>
             )}
 
-            {/* Photo upload button and progress indicator */}
+            {/* Photo Upload */}
             <div style={{ marginTop: '16px' }}>
               {isUploading ? (
                 <div className="upload-progress-container" style={{ width: '200px', margin: '0 auto' }}>
@@ -656,7 +537,7 @@ const Profile = () => {
                     border: photo.isProfile ? '2px solid var(--primary)' : '2px solid transparent',
                     borderRadius: '8px',
                     overflow: 'hidden',
-                    transition: 'transform var(--transition-normal)',
+                    transition: 'transform 0.3s ease',
                     height: '100px'
                   }}
                   onClick={() => handleSetProfilePhoto(photo._id)}
@@ -666,8 +547,6 @@ const Profile = () => {
                     alt={`Gallery`}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
-
-                  {/* Photo privacy indicator and toggle */}
                   <div className="photo-controls" style={{
                     position: 'absolute',
                     bottom: '0',
@@ -678,7 +557,6 @@ const Profile = () => {
                     padding: '4px',
                     background: 'rgba(0,0,0,0.5)'
                   }}>
-                    {/* Privacy toggle button */}
                     <button
                       onClick={(e) => handleTogglePhotoPrivacy(photo._id, e)}
                       style={{
@@ -696,8 +574,6 @@ const Profile = () => {
                         <FaLockOpen style={{ fontSize: '14px' }} />
                       }
                     </button>
-
-                    {/* Set as profile photo button */}
                     {!photo.isProfile && (
                       <button
                         onClick={(e) => {
@@ -717,8 +593,6 @@ const Profile = () => {
                         <FaStar style={{ fontSize: '14px' }} />
                       </button>
                     )}
-
-                    {/* Delete photo button */}
                     {!photo.isProfile && (
                       <button
                         onClick={(e) => handleDeletePhoto(photo._id, e)}
@@ -736,8 +610,6 @@ const Profile = () => {
                       </button>
                     )}
                   </div>
-
-                  {/* Profile photo indicator */}
                   {photo.isProfile && (
                     <div style={{
                       position: 'absolute',
@@ -754,8 +626,6 @@ const Profile = () => {
                   )}
                 </div>
               ))}
-
-              {/* Add Photo Button in Gallery */}
               <button
                 type="button"
                 className="gallery-item add"
@@ -954,7 +824,7 @@ const Profile = () => {
                           color: isSelected ? '#fff' : 'var(--text-medium)',
                           border: 'none',
                           cursor: isEditing ? 'pointer' : 'default',
-                          transition: 'all var(--transition-normal)'
+                          transition: 'all 0.3s ease'
                         }}
                       >
                         {interest}

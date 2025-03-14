@@ -6,9 +6,11 @@ class SocketService {
   constructor() {
     this.socket = null;
     this.userId = null;
+    this.connectionState = 'disconnected'; // 'connecting', 'connected', 'disconnected'
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.connectionTimeout = null;
+    this.reconnectTimer = null;
     this.wasDisconnected = false;
     this.handlers = {
       newMessage: [],
@@ -22,130 +24,152 @@ class SocketService {
   }
 
   /**
-   * Initialize the socket connection.
+   * Initialize the socket connection with improved error handling and manual reconnection logic.
+   * If a connection is already active or in progress, it reuses it.
    * @param {string} userId - Current user ID.
    * @param {string} token - Authentication token.
    * @returns {SocketService} - This instance.
    */
   init(userId, token) {
-    if (this.socket && this.socket.connected) {
+    // Avoid duplicate connections.
+    if (this.socket && (this.socket.connected || this.connectionState === 'connecting')) {
+      console.log('Socket already connecting/connected, reusing connection');
       return this;
     }
 
     this.userId = userId;
+    this.connectionState = 'connecting';
+
     const socketUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin;
 
-    // Clear any existing timeout
+    // Clear any existing timers.
     if (this.connectionTimeout) clearTimeout(this.connectionTimeout);
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
-    // Set a timeout to detect connection issues
+    // Set a connection timeout: if not connected within 10 seconds, handle failure.
     this.connectionTimeout = setTimeout(() => {
-      if (this.socket && !this.socket.connected) {
+      if (this.connectionState !== 'connected') {
         console.error('Socket connection timeout');
-        toast.error('Could not establish real-time connection. Chat features might be limited.');
+        this.connectionState = 'disconnected';
+        this._handleConnectionFailure();
       }
     }, 10000);
 
-    // Initialize socket with token passed in the query parameters
+    // Create a new socket instance with manual reconnection (disable auto reconnection)
     this.socket = io(socketUrl, {
       autoConnect: true,
-      reconnection: true,
-      reconnectionAttempts: this.maxReconnectAttempts,
-      reconnectionDelay: 3000,
+      reconnection: false,
+      timeout: 20000,
       query: { token }
     });
 
-    // When connected, join the user's room
+    // Successful connection.
     this.socket.on('connect', () => {
       console.log('Socket connected with ID:', this.socket.id);
+      this.connectionState = 'connected';
       if (this.connectionTimeout) {
         clearTimeout(this.connectionTimeout);
         this.connectionTimeout = null;
       }
       this.reconnectAttempts = 0;
-      this.socket.emit('join', { userId });
+      this.socket.emit('join', { userId: this.userId });
       if (this.wasDisconnected) {
         toast.success('Real-time connection restored');
         this.wasDisconnected = false;
       }
     });
 
-    // Standard event listeners
-    this.socket.on('newMessage', (message) => {
-      this.handlers.newMessage.forEach((handler) => handler(message));
-    });
-
-    this.socket.on('userOnline', (data) => {
-      this.handlers.userOnline.forEach((handler) => handler(data));
-    });
-
-    this.socket.on('userOffline', (data) => {
-      this.handlers.userOffline.forEach((handler) => handler(data));
-    });
-
-    this.socket.on('userTyping', (data) => {
-      this.handlers.userTyping.forEach((handler) => handler(data));
-    });
-
-    this.socket.on('incomingCall', (data) => {
-      this.handlers.incomingCall.forEach((handler) => handler(data));
-    });
-
-    this.socket.on('callAnswered', (data) => {
-      this.handlers.callAnswered.forEach((handler) => handler(data));
-    });
-
-    this.socket.on('error', (error) => {
-      console.error('Socket error:', error);
-      this.handlers.error.forEach((handler) => handler(error));
-    });
-
+    // Connection error handling.
     this.socket.on('connect_error', (error) => {
       console.error('Socket connection error:', error);
-      if (error.message === 'Authentication error') {
+      if (error && error.message === 'Authentication error') {
         toast.error('Authentication failed. Please log in again.');
         this.disconnect();
         setTimeout(() => {
           window.location.href = '/login';
         }, 1500);
+      } else {
+        this._handleConnectionFailure();
       }
     });
 
+    // Handle disconnections.
     this.socket.on('disconnect', (reason) => {
       console.log('Socket disconnected:', reason);
+      this.connectionState = 'disconnected';
       this.wasDisconnected = true;
+      // If the server forcibly disconnects, try reconnecting after a short delay.
       if (reason === 'io server disconnect') {
-        // Manually attempt to reconnect if the server disconnects you
         setTimeout(() => {
-          this.socket.connect();
+          this._handleConnectionFailure();
         }, 1000);
+      } else {
+        this._handleConnectionFailure();
       }
       toast.warn('Real-time connection lost. Attempting to reconnect...');
     });
 
-    this.socket.on('reconnect', (attemptNumber) => {
-      console.log(`Socket reconnected after ${attemptNumber} attempts`);
-      this.socket.emit('join', { userId });
-      toast.success('Real-time connection restored');
-      this.wasDisconnected = false;
+    // Standard event listeners.
+    this.socket.on('newMessage', (message) => {
+      this.handlers.newMessage.forEach((handler) => handler(message));
     });
-
-    this.socket.on('reconnect_attempt', (attemptNumber) => {
-      this.reconnectAttempts = attemptNumber;
-      console.log(`Reconnect attempt ${attemptNumber}/${this.maxReconnectAttempts}`);
+    this.socket.on('userOnline', (data) => {
+      this.handlers.userOnline.forEach((handler) => handler(data));
     });
-
-    this.socket.on('reconnect_failed', () => {
-      console.log('Socket reconnection failed after', this.maxReconnectAttempts, 'attempts');
-      toast.error('Connection lost. Please refresh the page.');
+    this.socket.on('userOffline', (data) => {
+      this.handlers.userOffline.forEach((handler) => handler(data));
+    });
+    this.socket.on('userTyping', (data) => {
+      this.handlers.userTyping.forEach((handler) => handler(data));
+    });
+    this.socket.on('incomingCall', (data) => {
+      this.handlers.incomingCall.forEach((handler) => handler(data));
+    });
+    this.socket.on('callAnswered', (data) => {
+      this.handlers.callAnswered.forEach((handler) => handler(data));
+    });
+    this.socket.on('error', (error) => {
+      console.error('Socket error:', error);
+      this.handlers.error.forEach((handler) => handler(error));
     });
 
     return this;
   }
 
   /**
+   * Private method to handle connection failures using exponential backoff.
+   * It schedules a reconnection attempt if the maximum attempts haven't been reached.
+   */
+  _handleConnectionFailure() {
+    // Prevent multiple concurrent reconnection timers.
+    if (this.reconnectTimer) return;
+    toast.error('Could not establish real-time connection. Retrying...');
+
+    const backoffTime = Math.min(30000, 1000 * Math.pow(2, this.reconnectAttempts));
+    this.reconnectAttempts++;
+    console.log(`Reconnect attempt ${this.reconnectAttempts} scheduled in ${backoffTime / 1000}s`);
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.reconnectAttempts <= this.maxReconnectAttempts) {
+        if (this.userId) {
+          const token = sessionStorage.getItem('token');
+          if (token) {
+            this.init(this.userId, token);
+          } else {
+            console.error('No token available for reconnection');
+            toast.error('Authentication expired. Please refresh the page.');
+          }
+        }
+      } else {
+        toast.error('Could not reconnect. Please refresh the page.');
+      }
+    }, backoffTime);
+  }
+
+  /**
    * Check if the socket is currently connected.
-   * @returns {boolean} - True if connected.
+   * @returns {boolean} True if connected.
    */
   isConnected() {
     return this.socket && this.socket.connected;
@@ -155,7 +179,7 @@ class SocketService {
    * Register an event handler.
    * @param {string} event - Event name.
    * @param {Function} handler - Handler function.
-   * @returns {Function} - Unsubscribe function.
+   * @returns {Function} Unsubscribe function.
    */
   on(event, handler) {
     if (!this.handlers[event]) {
@@ -184,15 +208,15 @@ class SocketService {
   /**
    * Send a private message.
    * @param {string} recipient - Recipient user ID.
-   * @param {string} type - Message type (e.g., 'text', 'wink', 'video').
+   * @param {string} type - Message type (e.g., 'text', 'video').
    * @param {string} content - Message content.
-   * @returns {Promise} - Resolves when message is acknowledged.
+   * @returns {Promise} Resolves when the message is acknowledged.
    */
   sendMessage(recipient, type, content) {
     return new Promise((resolve, reject) => {
       if (!this.isConnected()) {
-        this.socket.connect();
         toast.warning('Connection lost. Attempting to reconnect...');
+        this._handleConnectionFailure();
         reject(new Error('Socket not connected'));
         return;
       }
@@ -213,7 +237,7 @@ class SocketService {
    */
   sendTyping(recipient) {
     if (!this.isConnected()) {
-      this.socket.connect();
+      this._handleConnectionFailure();
       return;
     }
     this.socket.emit('typing', { sender: this.userId, recipient });
@@ -222,7 +246,7 @@ class SocketService {
   /**
    * Initiate a video call.
    * @param {string} recipient - Recipient user ID.
-   * @returns {Promise} - Resolves when call is initiated.
+   * @returns {Promise} Resolves when the call is initiated.
    */
   initiateVideoCall(recipient) {
     return new Promise((resolve, reject) => {
@@ -245,7 +269,7 @@ class SocketService {
    * Answer a video call.
    * @param {string} caller - Caller user ID.
    * @param {boolean} answer - Accept or decline the call.
-   * @returns {Promise} - Resolves when the answer is sent.
+   * @returns {Promise} Resolves when the answer is sent.
    */
   answerVideoCall(caller, answer) {
     return new Promise((resolve, reject) => {
@@ -267,7 +291,7 @@ class SocketService {
   /**
    * Manually reconnect the socket with a new token.
    * @param {string} token - Authentication token.
-   * @returns {boolean} - True if reconnection was attempted.
+   * @returns {boolean} True if reconnection was attempted.
    */
   reconnect(token) {
     if (!this.userId) {
@@ -283,24 +307,28 @@ class SocketService {
   }
 
   /**
-   * Disconnect the socket and clean up handlers.
+   * Disconnect the socket and clean up timers and handlers.
    */
   disconnect() {
     if (this.connectionTimeout) {
       clearTimeout(this.connectionTimeout);
       this.connectionTimeout = null;
     }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
-      this.userId = null;
-      Object.keys(this.handlers).forEach((event) => {
-        this.handlers[event] = [];
-      });
     }
+    this.userId = null;
+    this.connectionState = 'disconnected';
+    Object.keys(this.handlers).forEach((event) => {
+      this.handlers[event] = [];
+    });
   }
 }
 
-// Create a singleton instance of SocketService
 const socketService = new SocketService();
 export default socketService;
