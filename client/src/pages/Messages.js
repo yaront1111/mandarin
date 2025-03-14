@@ -1,9 +1,20 @@
 // client/src/pages/Messages.js
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  FaSearch, FaEllipsisV, FaVideo, FaPhone,
-  FaSmile, FaPaperPlane, FaHeart, FaImage, FaUserCircle,
-  FaArrowLeft, FaTimes, FaCheck, FaCheckDouble, FaPaperclip
+  FaSearch,
+  FaEllipsisV,
+  FaVideo,
+  FaPhone,
+  FaSmile,
+  FaPaperPlane,
+  FaHeart,
+  FaImage,
+  FaUserCircle,
+  FaArrowLeft,
+  FaTimes,
+  FaCheckDouble,
+  FaCheck,
+  FaPaperclip
 } from 'react-icons/fa';
 import { useAuth, useChat, useUser } from '../context';
 
@@ -40,9 +51,7 @@ const Messages = () => {
   }, [messages]);
 
   useEffect(() => {
-    if (selectedUser) {
-      chatInputRef.current?.focus();
-    }
+    if (selectedUser) chatInputRef.current?.focus();
   }, [selectedUser]);
 
   useEffect(() => {
@@ -58,7 +67,7 @@ const Messages = () => {
   };
 
   const handleSendMessage = async (e) => {
-    e?.preventDefault();
+    e.preventDefault();
     if (newMessage.trim() && !isSending && selectedUser) {
       setIsSending(true);
       try {
@@ -97,25 +106,22 @@ const Messages = () => {
   };
 
   const handleVideoCall = () => {
-    if (selectedUser) {
-      initiateVideoCall(selectedUser._id);
-    }
+    if (selectedUser) initiateVideoCall(selectedUser._id);
   };
 
   const filteredUsers = users.filter(
     (u) =>
       u._id !== user._id &&
       (u.nickname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.details?.location?.toLowerCase().includes(searchTerm.toLowerCase()))
+        (u.details?.location &&
+          u.details.location.toLowerCase().includes(searchTerm.toLowerCase())))
   );
 
-  const hasUnreadMessages = (userId) => {
-    return unreadMessages.some((msg) => msg.sender === userId);
-  };
+  const hasUnreadMessages = (userId) =>
+    unreadMessages.some((msg) => msg.sender === userId);
 
-  const unreadCount = (userId) => {
-    return unreadMessages.filter((msg) => msg.sender === userId).length;
-  };
+  const unreadCount = (userId) =>
+    unreadMessages.filter((msg) => msg.sender === userId).length;
 
   const formatMessageTime = (timestamp) => {
     const date = new Date(timestamp);
@@ -127,7 +133,6 @@ const Messages = () => {
     const today = new Date();
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-
     if (date.toDateString() === today.toDateString()) {
       return 'Today';
     } else if (date.toDateString() === yesterday.toDateString()) {
@@ -156,7 +161,6 @@ const Messages = () => {
 
   return (
     <div className="messages-layout">
-      {/* Left Panel - Conversations */}
       <div className="conversations-list">
         <div className="conversations-header d-flex justify-content-between align-items-center p-3 border-bottom">
           <h3 style={{ margin: 0 }}>Messages</h3>
@@ -176,15 +180,12 @@ const Messages = () => {
             />
           </div>
         </div>
-
         {filteredUsers.length > 0 ? (
           <div style={{ overflowY: 'auto' }}>
             {filteredUsers.map((u) => (
               <div
                 key={u._id}
-                className={`conversation-item ${
-                  selectedUser?._id === u._id ? 'active' : ''
-                }`}
+                className={`conversation-item ${selectedUser?._id === u._id ? 'active' : ''}`}
                 onClick={() => handleSelectUser(u)}
               >
                 <div className="conversation-avatar">
@@ -227,8 +228,6 @@ const Messages = () => {
           </div>
         )}
       </div>
-
-      {/* Right Panel - Chat */}
       <div className="chat-area">
         {selectedUser ? (
           <>
@@ -266,36 +265,30 @@ const Messages = () => {
                 </button>
               </div>
             </div>
-
             <div className="messages-container">
-              {Object.entries(groupMessagesByDate()).map(([date, dateMessages]) => (
+              {Object.entries(groupMessagesByDate()).map(([date, msgs]) => (
                 <React.Fragment key={date}>
                   <div className="message-date">{date}</div>
-                  {dateMessages.map((message) => (
+                  {msgs.map((message) => (
                     <div
                       key={message._id}
-                      className={`message ${
-                        message.sender === user._id ? 'sent' : 'received'
-                      }`}
+                      className={`message ${message.sender === user._id ? 'sent' : 'received'}`}
                     >
                       {message.type === 'text' && (
                         <>
                           <p className="message-content">{message.content}</p>
                           <span className="message-time">
                             {formatMessageTime(message.createdAt)}
-                            {message.sender === user._id && (
-                              message.read ? (
+                            {message.sender === user._id &&
+                              (message.read ? (
                                 <FaCheckDouble style={{ marginLeft: '4px' }} />
                               ) : (
                                 <FaCheck style={{ marginLeft: '4px' }} />
-                              )
-                            )}
+                              ))}
                           </span>
                         </>
                       )}
-                      {message.type === 'wink' && (
-                        <p className="message-content">😉 (Wink)</p>
-                      )}
+                      {message.type === 'wink' && <p className="message-content">😉 (Wink)</p>}
                     </div>
                   ))}
                 </React.Fragment>
@@ -309,7 +302,6 @@ const Messages = () => {
               )}
               <div ref={messagesEndRef} />
             </div>
-
             <div className="message-input">
               <button className="input-attachment">
                 <FaPaperclip />
@@ -333,10 +325,7 @@ const Messages = () => {
                   <div className="emoji-picker">
                     <div className="emoji-header d-flex justify-content-between align-items-center mb-2">
                       <h4>Emojis</h4>
-                      <button
-                        className="close-emojis"
-                        onClick={() => setShowEmojis(false)}
-                      >
+                      <button className="close-emojis" onClick={() => setShowEmojis(false)}>
                         <FaTimes />
                       </button>
                     </div>
@@ -346,7 +335,11 @@ const Messages = () => {
                           key={emoji}
                           className="btn btn-sm btn-subtle"
                           type="button"
-                          onClick={() => handleEmojiClick(emoji)}
+                          onClick={() => {
+                            setNewMessage((prev) => prev + emoji);
+                            setShowEmojis(false);
+                            chatInputRef.current?.focus();
+                          }}
                         >
                           {emoji}
                         </button>
@@ -362,11 +355,7 @@ const Messages = () => {
                   <FaPaperPlane />
                 </button>
               </form>
-              <button
-                className="input-attachment"
-                onClick={handleSendWink}
-                disabled={isSending}
-              >
+              <button className="input-attachment" onClick={handleSendWink} disabled={isSending}>
                 <FaHeart />
               </button>
               <button className="input-attachment">

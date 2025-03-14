@@ -1,7 +1,22 @@
-// client/src/components/ChatComponents.js
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth, useChat } from '../context';
-import { FaHeart, FaVideo, FaEnvelope, FaSpinner, FaTimes } from 'react-icons/fa';
+import {
+  FaHeart,
+  FaVideo,
+  FaEnvelope,
+  FaSpinner,
+  FaTimes,
+  FaSmile,
+  FaPaperPlane,
+  FaPaperclip,
+  FaImage,
+  FaArrowLeft,
+  FaCheckDouble,
+  FaCheck
+} from 'react-icons/fa';
+
+// Define commonEmojis at the top so it's available throughout the file.
+const commonEmojis = ['😊', '😂', '😍', '❤️', '👍', '🙌', '🔥', '✨', '🎉', '🤔', '😉', '🥰'];
 
 // Chat Box Component
 export const ChatBox = ({ recipient }) => {
@@ -14,37 +29,34 @@ export const ChatBox = ({ recipient }) => {
     initiateVideoCall,
     sendingMessage,
     messageError,
-    clearError  // Added this to handle messageError
+    clearError
   } = useChat();
 
   const [newMessage, setNewMessage] = useState('');
+  const [showEmojis, setShowEmojis] = useState(false);
   const messagesEndRef = useRef(null);
   const chatInputRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Focus input when component mounts
+  // Focus input on mount
   useEffect(() => {
     chatInputRef.current?.focus();
   }, []);
 
-  // Debounced typing indicator with proper dependencies
-  const debouncedTyping = useCallback((recipientId) => {
-    let timeout;
-    clearTimeout(timeout);
-    timeout = setTimeout(() => {
-      if (newMessage.trim()) {
-        sendTyping(recipientId);
-      }
-    }, 300); // 300ms debounce
-  }, [newMessage, sendTyping]);
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, []);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (newMessage.trim() && !sendingMessage) {
+    if (newMessage.trim() && !sendingMessage && recipient) {
       try {
         await sendMessage(recipient._id, 'text', newMessage.trim());
         setNewMessage('');
@@ -55,7 +67,7 @@ export const ChatBox = ({ recipient }) => {
   };
 
   const handleSendWink = async () => {
-    if (!sendingMessage) {
+    if (!sendingMessage && recipient) {
       try {
         await sendMessage(recipient._id, 'wink', '😉');
       } catch (error) {
@@ -66,28 +78,38 @@ export const ChatBox = ({ recipient }) => {
 
   const handleTyping = (e) => {
     setNewMessage(e.target.value);
-    debouncedTyping(recipient._id);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      if (e.target.value.trim() && recipient) {
+        sendTyping(recipient._id);
+      }
+    }, 300);
   };
 
-  const isTyping = typingUsers[recipient._id] &&
+  const isTyping =
+    recipient &&
+    typingUsers[recipient._id] &&
     Date.now() - typingUsers[recipient._id] < 3000;
 
-  // Group messages by date for better display
+  // Group messages by date
   const groupMessagesByDate = () => {
     const groups = {};
-
-    messages.forEach(message => {
+    messages.forEach((message) => {
       const date = new Date(message.createdAt).toLocaleDateString();
       if (!groups[date]) {
         groups[date] = [];
       }
       groups[date].push(message);
     });
-
     return groups;
   };
 
   const messageGroups = groupMessagesByDate();
+
+  const formatMessageTime = (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <div className="chat-box">
@@ -119,52 +141,59 @@ export const ChatBox = ({ recipient }) => {
             <p>No messages yet. Say hello!</p>
           </div>
         ) : (
-          Object.entries(messageGroups).map(([date, dateMessages]) => (
+          Object.entries(messageGroups).map(([date, msgs]) => (
             <div key={date} className="message-group">
               <div className="message-date">
                 <span>{date}</span>
               </div>
-
-              {dateMessages.map((message, index) => (
+              {msgs.map((message) => (
                 <div
-                  key={message._id || index}
+                  key={message._id}
                   className={`message ${message.sender === user._id ? 'sent' : 'received'}`}
                 >
-                  {message.type === 'text' && <p>{message.content}</p>}
-                  {message.type === 'wink' && <p className="wink">😉</p>}
-                  {message.type === 'video' && (
-                    <p className="video-msg"><FaVideo /> Video Call</p>
+                  {message.type === 'text' && (
+                    <>
+                      <p className="message-content">{message.content}</p>
+                      <span className="message-time">
+                        {formatMessageTime(message.createdAt)}
+                      </span>
+                    </>
                   )}
-
-                  <span className="message-time">
-                    {new Date(message.createdAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </span>
+                  {message.type === 'wink' && (
+                    <p className="message-content">😉 (Wink)</p>
+                  )}
+                  {message.type === 'video' && (
+                    <p className="video-msg">
+                      <FaVideo /> Video Call
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
           ))
         )}
-
         {isTyping && (
           <div className="typing-indicator">
-            <p>{recipient.nickname} is typing...</p>
+            <span></span>
+            <span></span>
+            <span></span>
           </div>
         )}
-
         {messageError && (
           <div className="message-error">
             <p>{messageError}</p>
-            <button onClick={() => clearError()}><FaTimes /></button>
+            <button onClick={clearError}>
+              <FaTimes />
+            </button>
           </div>
         )}
-
         <div ref={messagesEndRef} />
       </div>
 
       <form className="message-form" onSubmit={handleSendMessage}>
+        <button type="button" className="input-attachment">
+          <FaPaperclip />
+        </button>
         <input
           type="text"
           placeholder="Type a message..."
@@ -174,18 +203,50 @@ export const ChatBox = ({ recipient }) => {
           ref={chatInputRef}
         />
         <button
-          type="submit"
-          className="send-btn"
-          disabled={sendingMessage || !newMessage.trim()}
+          type="button"
+          className="input-emoji"
+          onClick={() => setShowEmojis(!showEmojis)}
         >
-          {sendingMessage ? <FaSpinner className="fa-spin" /> : <FaEnvelope />}
+          <FaSmile />
+        </button>
+        {showEmojis && (
+          <div className="emoji-picker">
+            <div className="emoji-header d-flex justify-content-between align-items-center mb-2">
+              <h4>Emojis</h4>
+              <button className="close-emojis" onClick={() => setShowEmojis(false)}>
+                <FaTimes />
+              </button>
+            </div>
+            <div className="d-flex flex-wrap" style={{ gap: '8px' }}>
+              {commonEmojis.map((emoji) => (
+                <button
+                  key={emoji}
+                  className="btn btn-sm btn-subtle"
+                  type="button"
+                  onClick={() => {
+                    setNewMessage((prev) => prev + emoji);
+                    setShowEmojis(false);
+                    chatInputRef.current?.focus();
+                  }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <button
+          type="submit"
+          className="input-send"
+          disabled={!newMessage.trim() || sendingMessage}
+        >
+          {sendingMessage ? <FaSpinner className="fa-spin" /> : <FaPaperPlane />}
         </button>
       </form>
     </div>
   );
 };
 
-// Video Call Component
 export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
@@ -193,25 +254,14 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
 
-  // Set up media stream
   useEffect(() => {
     const setupMediaStream = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true
-        });
-
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         setLocalStream(stream);
-
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
         }
-
-        // Setup peer connection would go here in a complete implementation
-        // This would use the peer parameter to establish connection
-        // and would call setRemoteStream when remote stream is available
-
         setConnectionStatus('awaiting');
       } catch (err) {
         console.error('Error accessing media devices:', err);
@@ -222,17 +272,11 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
     setupMediaStream();
 
     return () => {
-      // Clean up media streams
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
-      if (remoteStream) {
-        remoteStream.getTracks().forEach(track => track.stop());
-      }
+      if (localStream) localStream.getTracks().forEach(track => track.stop());
+      if (remoteStream) remoteStream.getTracks().forEach(track => track.stop());
     };
-  }, []);  // Empty dependency array is fine here as this runs once on mount
+  }, []);
 
-  // Update remote video reference when remote stream changes
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
@@ -247,9 +291,13 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
             <video ref={remoteVideoRef} autoPlay playsInline />
           ) : (
             <div className="connecting">
-              <p>{connectionStatus === 'connecting' ? 'Connecting...' :
-                 connectionStatus === 'awaiting' ? 'Waiting for connection...' :
-                 'Connection failed'}</p>
+              <p>
+                {connectionStatus === 'connecting'
+                  ? 'Connecting...'
+                  : connectionStatus === 'awaiting'
+                  ? 'Waiting for connection...'
+                  : 'Connection failed'}
+              </p>
             </div>
           )}
         </div>
@@ -257,32 +305,28 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
           <video ref={localVideoRef} autoPlay playsInline muted />
         </div>
       </div>
-
       <div className="call-controls">
         {isIncoming ? (
           <>
-            <button
-              className="answer-btn"
-              onClick={onAnswer}
-              disabled={connectionStatus === 'error'}
-            >
+            <button className="answer-btn" onClick={onAnswer} disabled={connectionStatus === 'error'}>
               Answer
             </button>
-            <button className="decline-btn" onClick={onDecline}>Decline</button>
+            <button className="decline-btn" onClick={onDecline}>
+              Decline
+            </button>
           </>
         ) : (
-          <button className="end-call-btn" onClick={onEnd}>End Call</button>
+          <button className="end-call-btn" onClick={onEnd}>
+            End Call
+          </button>
         )}
       </div>
     </div>
   );
 };
 
-// Loading Spinner Component
-export const Spinner = () => {
-  return (
-    <div className="spinner-container">
-      <div className="spinner"></div>
-    </div>
-  );
-};
+export const Spinner = () => (
+  <div className="spinner-container">
+    <div className="spinner"></div>
+  </div>
+);
