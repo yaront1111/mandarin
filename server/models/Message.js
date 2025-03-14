@@ -53,7 +53,6 @@ const ReactionSchema = new mongoose.Schema({
     required: true,
     validate: {
       validator: function(v) {
-        // Basic emoji validation (could be more sophisticated)
         return /^(\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff])$/.test(v) ||
                ['❤️', '👍', '👎', '😂', '😮', '😢', '😠'].includes(v);
       },
@@ -96,7 +95,6 @@ const MessageSchema = new mongoose.Schema({
       validator: function(v) {
         // Only validate for text messages
         if (this.type !== 'text') return true;
-
         return v && v.trim().length > 0;
       },
       message: 'Text messages cannot be empty'
@@ -175,20 +173,22 @@ const MessageSchema = new mongoose.Schema({
       type: String, // For client-side message handling
       index: true
     },
-    // Location data for location messages
+    // Location data for location messages with enhanced validation
     location: {
       coordinates: {
-        type: [Number], // [longitude, latitude]
+        type: [Number], // Expected format: [longitude, latitude]
         validate: {
           validator: function(v) {
             return !v || (
               Array.isArray(v) &&
               v.length === 2 &&
+              !isNaN(v[0]) &&
+              !isNaN(v[1]) &&
               v[0] >= -180 && v[0] <= 180 &&
               v[1] >= -90 && v[1] <= 90
             );
           },
-          message: 'Invalid coordinates format'
+          message: 'Invalid coordinates format. Must be a [longitude, latitude] array with valid numeric values.'
         }
       },
       name: String,
@@ -213,27 +213,13 @@ const MessageSchema = new mongoose.Schema({
 });
 
 // Create compound indexes for efficient querying
-// Index for conversation between two users
 MessageSchema.index({ sender: 1, recipient: 1, createdAt: -1 });
 MessageSchema.index({ sender: 1, recipient: 1, read: 1 });
-
-// Index for conversation and read status
-MessageSchema.index({
-  sender: 1,
-  recipient: 1,
-  read: 1,
-  createdAt: -1
-});
-
-// Index for deleted messages
-MessageSchema.index({
-  deletedBySender: 1,
-  deletedByRecipient: 1
-});
+MessageSchema.index({ sender: 1, recipient: 1, read: 1, createdAt: -1 });
+MessageSchema.index({ deletedBySender: 1, deletedByRecipient: 1 });
 
 // Define a virtual for conversation ID (for grouping)
 MessageSchema.virtual('conversationId').get(function() {
-  // Sort IDs to ensure consistent conversation ID regardless of sender/recipient
   const ids = [this.sender.toString(), this.recipient.toString()].sort();
   return ids.join('_');
 });
@@ -242,45 +228,34 @@ MessageSchema.virtual('conversationId').get(function() {
 MessageSchema.pre('save', function(next) {
   if (this.isModified('content') && this.type === 'text' && this.content) {
     try {
-      // Sanitize HTML to prevent XSS
       this.content = sanitizeHtml(this.content, {
-        allowedTags: [], // No HTML tags allowed
+        allowedTags: [],
         allowedAttributes: {},
         disallowedTagsMode: 'discard'
       });
-
-      // Trim content and enforce length limit
       this.content = this.content.trim().substring(0, 2000);
     } catch (error) {
       logger.error(`Error sanitizing message content: ${error.message}`);
     }
   }
-
-  // Set readAt time if message is being marked as read
   if (this.isModified('read') && this.read && !this.readAt) {
     this.readAt = new Date();
   }
-
-  // Update status timestamp if status changed
   if (this.isModified('status')) {
     this.statusUpdatedAt = new Date();
   }
-
   next();
 });
 
 // Static method to get conversation between two users
 MessageSchema.statics.getConversation = async function(user1Id, user2Id, options = {}) {
   const { page = 1, limit = 50, includeDeleted = false } = options;
-
   const query = {
     $or: [
       { sender: user1Id, recipient: user2Id },
       { sender: user2Id, recipient: user1Id }
     ]
   };
-
-  // Don't include messages deleted by the requesting user
   if (!includeDeleted) {
     query.$or = query.$or.map(condition => {
       if (condition.sender.toString() === user1Id.toString()) {
@@ -290,16 +265,13 @@ MessageSchema.statics.getConversation = async function(user1Id, user2Id, options
       }
     });
   }
-
   try {
     const messages = await this.find(query)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .lean();
-
     const total = await this.countDocuments(query);
-
     return {
       messages,
       pagination: {
@@ -329,7 +301,6 @@ MessageSchema.statics.markAsRead = async function(recipientId, senderId) {
         readAt: new Date()
       }
     );
-
     return result.modifiedCount;
   } catch (error) {
     logger.error(`Error marking messages as read: ${error.message}`);
@@ -367,50 +338,38 @@ MessageSchema.statics.getUnreadCountBySender = async function(recipientId) {
 
 // Method to mark a message as edited
 MessageSchema.methods.editMessage = async function(newContent) {
-  // Don't allow editing non-text messages
   if (this.type !== 'text') {
     throw new Error('Only text messages can be edited');
   }
-
-  // Save current content to edit history
   if (!this.editHistory) this.editHistory = [];
   this.editHistory.push({
     content: this.content,
     editedAt: new Date()
   });
-
-  // Update content and edit status
   this.content = sanitizeHtml(newContent, {
     allowedTags: [],
     allowedAttributes: {},
     disallowedTagsMode: 'discard'
   }).trim().substring(0, 2000);
-
   this.isEdited = true;
-
   return this.save();
 };
 
 // Method to add a reaction to a message
 MessageSchema.methods.addReaction = async function(userId, emoji) {
-  // Check if user already reacted
   const existingReaction = this.reactions.find(
     r => r.user.toString() === userId.toString()
   );
-
   if (existingReaction) {
-    // Update existing reaction
     existingReaction.emoji = emoji;
     existingReaction.createdAt = new Date();
   } else {
-    // Add new reaction
     this.reactions.push({
       user: userId,
       emoji,
       createdAt: new Date()
     });
   }
-
   return this.save();
 };
 
@@ -419,21 +378,17 @@ MessageSchema.methods.removeReaction = async function(userId) {
   this.reactions = this.reactions.filter(
     r => r.user.toString() !== userId.toString()
   );
-
   return this.save();
 };
 
-// Method to mark message as deleted for a user
+// Method to mark a message as deleted for a user
 MessageSchema.methods.markAsDeletedFor = async function(userId, mode = 'self') {
   const isSender = this.sender.toString() === userId.toString();
   const isRecipient = this.recipient.toString() === userId.toString();
-
   if (!isSender && !isRecipient) {
     throw new Error('User is not authorized to delete this message');
   }
-
   if (mode === 'self') {
-    // Delete only for the user
     if (isSender) {
       this.deletedBySender = true;
     }
@@ -441,31 +396,24 @@ MessageSchema.methods.markAsDeletedFor = async function(userId, mode = 'self') {
       this.deletedByRecipient = true;
     }
   } else if (mode === 'both' && isSender) {
-    // Only senders can delete for both users
     this.deletedBySender = true;
     this.deletedByRecipient = true;
   } else {
     throw new Error('Invalid delete mode or unauthorized action');
   }
-
-  // Check if message should be completely removed
   if (this.deletedBySender && this.deletedByRecipient) {
     return mongoose.model('Message').deleteOne({ _id: this._id });
   }
-
   return this.save();
 };
 
-// Function to check if the message should be hidden from a user
+// Method to check if the message should be hidden from a user
 MessageSchema.methods.isHiddenFrom = function(userId) {
   const isSender = this.sender.toString() === userId.toString();
   const isRecipient = this.recipient.toString() === userId.toString();
-
   if (isSender && this.deletedBySender) return true;
   if (isRecipient && this.deletedByRecipient) return true;
-
   return false;
 };
 
-// Export the model
 module.exports = mongoose.model('Message', MessageSchema);

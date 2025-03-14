@@ -1,139 +1,130 @@
-import React, { createContext, useReducer, useContext, useEffect, useRef } from 'react';
-import { toast } from 'react-toastify';
+// client/src/context/ChatContext.js
+import React, { createContext, useReducer, useContext, useCallback } from 'react';
 import apiService from '../services/apiService';
 import socketService from '../services/socketService';
-import { useAuth } from './AuthContext';
 
 const ChatContext = createContext();
 
+const initialState = {
+  messages: [],
+  sending: false,
+  error: null,
+};
+
 const chatReducer = (state, action) => {
   switch (action.type) {
-    case 'GET_MESSAGES':
-      return { ...state, messages: action.payload, loading: false };
-    case 'SEND_MESSAGE':
-      return { ...state, messages: [action.payload, ...state.messages], sendingMessage: false };
     case 'SENDING_MESSAGE':
-      return { ...state, sendingMessage: true };
-    case 'RECEIVE_MESSAGE':
-      if (
-        (state.currentChat && action.payload.sender === state.currentChat._id) ||
-        (state.currentChat && action.payload.recipient === state.currentChat._id)
-      ) {
-        return { ...state, messages: [action.payload, ...state.messages] };
-      }
-      return { ...state, unreadMessages: [...state.unreadMessages, action.payload] };
-    case 'SET_CURRENT_CHAT':
-      return {
-        ...state,
-        currentChat: action.payload,
-        unreadMessages: state.unreadMessages.filter(
-          (msg) => msg.sender.toString() !== action.payload?._id.toString()
-        ),
-        messageError: null
-      };
-    case 'USER_TYPING':
-      return { ...state, typingUsers: { ...state.typingUsers, [action.payload.userId]: Date.now() } };
-    case 'USER_ONLINE':
-      return { ...state, userOnline: action.payload };
-    case 'USER_OFFLINE':
-      return { ...state, userOffline: action.payload };
-    case 'INCOMING_CALL':
-      toast.info(`Incoming call from ${action.payload.userId}`);
-      return { ...state, incomingCall: action.payload };
-    case 'CALL_ANSWERED':
-      return { ...state, callAnswered: action.payload };
-    case 'END_CALL':
-      return { ...state, incomingCall: null, callAnswered: null };
-    case 'CHAT_ERROR':
-      toast.error(action.payload);
-      return { ...state, error: action.payload, sendingMessage: false };
+      return { ...state, sending: true, error: null };
+    case 'SEND_MESSAGE':
+      return { ...state, sending: false, messages: [...state.messages, action.payload] };
     case 'MESSAGE_ERROR':
-      return { ...state, messageError: action.payload, sendingMessage: false };
-    case 'CLEAR_ERROR':
-      return { ...state, error: null, messageError: null };
-    case 'SET_LOADING':
-      return { ...state, loading: action.payload };
+      return { ...state, sending: false, error: action.payload };
     default:
       return state;
   }
 };
 
 export const ChatProvider = ({ children }) => {
-  const initialState = {
-    messages: [],
-    unreadMessages: [],
-    currentChat: null,
-    typingUsers: {},
-    incomingCall: null,
-    callAnswered: null,
-    loading: false,
-    sendingMessage: false,
-    error: null,
-    messageError: null
-  };
-
   const [state, dispatch] = useReducer(chatReducer, initialState);
-  const { user, token } = useAuth();
-  const eventHandlers = useRef({});
 
-  useEffect(() => {
-    if (user && token) {
-      socketService.init(user._id, token);
-      const handlers = {
-        newMessage: (message) => {
-          dispatch({ type: 'RECEIVE_MESSAGE', payload: message });
-          if (state.currentChat && message.sender !== state.currentChat._id) {
-            const senderName = message.senderName || 'Someone';
-            toast.info(`New message from ${senderName}`);
-          }
-        },
-        userOnline: (data) => dispatch({ type: 'USER_ONLINE', payload: data }),
-        userOffline: (data) => dispatch({ type: 'USER_OFFLINE', payload: data }),
-        userTyping: (data) => dispatch({ type: 'USER_TYPING', payload: data }),
-        incomingCall: (data) => dispatch({ type: 'INCOMING_CALL', payload: data }),
-        callAnswered: (data) => dispatch({ type: 'CALL_ANSWERED', payload: data }),
-        error: (error) => dispatch({ type: 'CHAT_ERROR', payload: error.message || 'Socket error' })
-      };
-      eventHandlers.current = handlers;
-      Object.entries(handlers).forEach(([event, handler]) => {
-        socketService.on(event, handler);
-      });
-      return () => {
-        Object.entries(eventHandlers.current).forEach(([event, handler]) => {
-          socketService.off(event, handler);
-        });
-      };
-    }
-  }, [user, token]);
-
-  const getMessages = async (userId) => {
-    if (!userId) return;
-    dispatch({ type: 'SET_LOADING', payload: true });
-    try {
-      const data = await apiService.get(`/messages/${userId}`);
-      if (data.success) {
-        const sortedMessages = data.data.sort(
-          (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-        );
-        dispatch({ type: 'GET_MESSAGES', payload: sortedMessages });
-      }
-    } catch (err) {
-      const errorMsg = err.error || err.message || 'Failed to fetch messages';
-      dispatch({ type: 'CHAT_ERROR', payload: errorMsg });
-    }
-  };
-
-  const sendMessage = async (recipient, type, content) => {
+  /**
+   * Send a message to a recipient with proper formatting.
+   * Supports types: text, wink, video, location.
+   *
+   * @param {string} recipient - Recipient user ID.
+   * @param {string} type - Message type.
+   * @param {string|object} content - Message content or location data.
+   * @param {object} metadata - Optional metadata.
+   * @returns {Promise<object|null>} - Sent message or null if failed.
+   */
+  const sendMessage = useCallback(async (recipient, type, content, metadata = null) => {
     dispatch({ type: 'SENDING_MESSAGE' });
     try {
-      const data = await apiService.post('/messages', { recipient, type, content });
-      if (!data.success) throw new Error(data.error || 'Failed to send message');
+      // Prepare message data based on message type
+      let messageData = { recipient, type };
+      if (type === 'text') {
+        messageData.content = content;
+      } else if (type === 'wink') {
+        messageData.content = '😉';
+      } else if (type === 'video') {
+        messageData.content = 'Video Call';
+      } else if (type === 'location') {
+        // Handle location messages: Accept various formats
+        if (content && typeof content === 'object' && 'lat' in content && 'lng' in content) {
+          const { lat, lng, name, address } = content;
+          const latitude = parseFloat(lat);
+          const longitude = parseFloat(lng);
+          if (isNaN(latitude) || isNaN(longitude)) {
+            throw new Error('Invalid location coordinates');
+          }
+          messageData.metadata = {
+            location: {
+              coordinates: [longitude, latitude], // [longitude, latitude] order
+              name: name || '',
+              address: address || ''
+            }
+          };
+          messageData.content = address || name || 'Shared location';
+        } else if (content && typeof content === 'object' && 'coordinates' in content) {
+          const { coordinates, name, address } = content;
+          if (!Array.isArray(coordinates) || coordinates.length !== 2 ||
+              isNaN(parseFloat(coordinates[0])) || isNaN(parseFloat(coordinates[1]))) {
+            throw new Error('Invalid coordinates format');
+          }
+          const longitude = parseFloat(coordinates[0]);
+          const latitude = parseFloat(coordinates[1]);
+          messageData.metadata = {
+            location: {
+              coordinates: [longitude, latitude],
+              name: name || '',
+              address: address || ''
+            }
+          };
+          messageData.content = address || name || 'Shared location';
+        } else if (metadata && metadata.location && metadata.location.coordinates) {
+          let coordinates = metadata.location.coordinates;
+          if (!Array.isArray(coordinates) || coordinates.length !== 2) {
+            throw new Error('Invalid coordinates array');
+          }
+          const longitude = parseFloat(coordinates[0]);
+          const latitude = parseFloat(coordinates[1]);
+          if (isNaN(longitude) || isNaN(latitude)) {
+            throw new Error('Coordinates must be valid numbers');
+          }
+          messageData.metadata = {
+            location: {
+              coordinates: [longitude, latitude],
+              name: metadata.location.name || '',
+              address: metadata.location.address || ''
+            }
+          };
+          messageData.content = content || metadata.location.address ||
+            metadata.location.name || 'Shared location';
+        } else {
+          throw new Error('Invalid location data format');
+        }
+      } else {
+        // For any other type, use provided content and metadata
+        messageData.content = content || '';
+        if (metadata) {
+          messageData.metadata = metadata;
+        }
+      }
+
+      // Send the message to the API endpoint
+      const data = await apiService.post('/messages', messageData);
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to send message');
+      }
       const message = data.data;
+
+      // Try to send via socket for real-time delivery
       try {
-        await socketService.sendMessage(recipient, type, content);
+        await socketService.sendMessage(recipient, type, message._id);
       } catch (socketErr) {
         console.warn('Socket delivery failed, but message is saved:', socketErr);
       }
+
       dispatch({ type: 'SEND_MESSAGE', payload: message });
       return message;
     } catch (err) {
@@ -141,77 +132,83 @@ export const ChatProvider = ({ children }) => {
       dispatch({ type: 'MESSAGE_ERROR', payload: errorMsg });
       return null;
     }
-  };
+  }, []);
 
-  const setCurrentChat = (userObj) => {
-    dispatch({ type: 'SET_CURRENT_CHAT', payload: userObj });
-    if (userObj && userObj._id) {
-      getMessages(userObj._id);
-    }
-  };
-
-  const sendTyping = (recipient) => {
-    if (recipient) socketService.sendTyping(recipient);
-  };
-
-  const initiateVideoCall = async (recipient) => {
+  /**
+   * Send a location message using proper formatting.
+   * Accepts various location data formats.
+   *
+   * @param {string} recipient - Recipient user ID.
+   * @param {object} locationData - Location data (supports {lat, lng}, {coordinates: [...]}, or {longitude, latitude}).
+   * @returns {Promise<object|null>} - Sent message or null if failed.
+   */
+  const sendLocationMessage = useCallback(async (recipient, locationData) => {
     try {
-      await socketService.initiateVideoCall(recipient);
-      toast.info('Calling...');
-    } catch (err) {
-      toast.error('Could not initiate call. Please try again.');
-      dispatch({ type: 'CHAT_ERROR', payload: err.message || 'Failed to initiate call' });
-    }
-  };
-
-  const answerVideoCall = async (caller, answer) => {
-    try {
-      await socketService.answerVideoCall(caller, answer);
-      if (answer) {
-        toast.success('Call accepted');
-      } else {
-        toast.info('Call declined');
-        dispatch({ type: 'END_CALL' });
+      if (!locationData || typeof locationData !== 'object') {
+        throw new Error('Invalid location data');
       }
+      let coordinates;
+      if ('lat' in locationData && 'lng' in locationData) {
+        const lat = parseFloat(locationData.lat);
+        const lng = parseFloat(locationData.lng);
+        if (isNaN(lat) || isNaN(lng)) {
+          throw new Error('Invalid coordinates values');
+        }
+        coordinates = [lng, lat]; // [longitude, latitude]
+      } else if (Array.isArray(locationData.coordinates) && locationData.coordinates.length === 2) {
+        const longitude = parseFloat(locationData.coordinates[0]);
+        const latitude = parseFloat(locationData.coordinates[1]);
+        if (isNaN(longitude) || isNaN(latitude)) {
+          throw new Error('Invalid coordinates values');
+        }
+        coordinates = [longitude, latitude];
+      } else if ('longitude' in locationData && 'latitude' in locationData) {
+        const longitude = parseFloat(locationData.longitude);
+        const latitude = parseFloat(locationData.latitude);
+        if (isNaN(longitude) || isNaN(latitude)) {
+          throw new Error('Invalid coordinates values');
+        }
+        coordinates = [longitude, latitude];
+      } else {
+        throw new Error('Location must include valid coordinates');
+      }
+      if (coordinates[0] < -180 || coordinates[0] > 180 ||
+          coordinates[1] < -90 || coordinates[1] > 90) {
+        throw new Error('Coordinates out of valid range');
+      }
+      const messageData = {
+        recipient,
+        type: 'location',
+        content: locationData.address || locationData.name || 'Shared location',
+        metadata: {
+          location: {
+            coordinates,
+            name: locationData.name || '',
+            address: locationData.address || ''
+          }
+        }
+      };
+      return await sendMessage(
+        recipient,
+        'location',
+        messageData.content,
+        messageData.metadata
+      );
     } catch (err) {
-      toast.error('Could not answer call. Please try again.');
-      dispatch({ type: 'CHAT_ERROR', payload: err.message || 'Failed to answer call' });
+      const errorMsg = err.message || 'Failed to send location';
+      dispatch({ type: 'MESSAGE_ERROR', payload: errorMsg });
+      return null;
     }
-  };
-
-  const endCall = () => {
-    dispatch({ type: 'END_CALL' });
-    toast.info('Call ended');
-  };
-
-  const clearError = () => {
-    dispatch({ type: 'CLEAR_ERROR' });
-  };
-
-  const unreadMessagesCount = state.unreadMessages.length;
+  }, [sendMessage]);
 
   return (
     <ChatContext.Provider
       value={{
         messages: state.messages,
-        unreadMessages: state.unreadMessages,
-        unreadMessagesCount,
-        currentChat: state.currentChat,
-        typingUsers: state.typingUsers,
-        incomingCall: state.incomingCall,
-        callAnswered: state.callAnswered,
-        loading: state.loading,
-        sendingMessage: state.sendingMessage,
+        sending: state.sending,
         error: state.error,
-        messageError: state.messageError,
-        getMessages,
         sendMessage,
-        setCurrentChat,
-        sendTyping,
-        initiateVideoCall,
-        answerVideoCall,
-        endCall,
-        clearError
+        sendLocationMessage,
       }}
     >
       {children}

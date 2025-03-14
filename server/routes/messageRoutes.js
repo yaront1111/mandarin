@@ -10,7 +10,7 @@ const router = express.Router();
 const rateLimit = require('express-rate-limit');
 
 const messageRateLimit = rateLimit({
-  windowMs: 60 * 1000, // 1 minute window
+  windowMs: 60 * 1000, // 1 minute
   max: 60, // 60 requests per minute
   message: {
     success: false,
@@ -23,7 +23,7 @@ const messageRateLimit = rateLimit({
 /**
  * Helper to validate MongoDB ObjectId
  * @param {string} id - ID to validate
- * @returns {boolean} - Whether ID is valid
+ * @returns {boolean}
  */
 const isValidObjectId = (id) => {
   return mongoose.Types.ObjectId.isValid(id);
@@ -36,10 +36,7 @@ const isValidObjectId = (id) => {
  */
 const sanitizeText = (text) => {
   if (!text) return '';
-  // Remove any potentially harmful characters or patterns
-  return text.trim()
-    .replace(/[<>]/g, '') // Basic HTML tag prevention
-    .substr(0, 2000); // Limit length
+  return text.trim().replace(/[<>]/g, '').substr(0, 2000);
 };
 
 /**
@@ -51,7 +48,6 @@ router.get('/:userId', protect, asyncHandler(async (req, res) => {
   logger.debug(`Fetching messages with user ${req.params.userId} for user ${req.user._id}`);
 
   try {
-    // Validate user ID
     if (!isValidObjectId(req.params.userId)) {
       return res.status(400).json({
         success: false,
@@ -59,7 +55,6 @@ router.get('/:userId', protect, asyncHandler(async (req, res) => {
       });
     }
 
-    // Check if the user exists
     const otherUser = await User.findById(req.params.userId).select('_id');
     if (!otherUser) {
       return res.status(404).json({
@@ -68,12 +63,10 @@ router.get('/:userId', protect, asyncHandler(async (req, res) => {
       });
     }
 
-    // Get pagination parameters
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
     const skip = (page - 1) * limit;
 
-    // Build query to find conversation messages
     const query = {
       $or: [
         { sender: req.user._id, recipient: req.params.userId },
@@ -81,32 +74,26 @@ router.get('/:userId', protect, asyncHandler(async (req, res) => {
       ]
     };
 
-    // Allow date filtering
     if (req.query.since) {
-      // Validate date format
       const since = new Date(req.query.since);
       if (!isNaN(since.getTime())) {
         query.createdAt = { $gte: since };
       }
     }
 
-    // Allow message type filtering
     if (req.query.type && ['text', 'wink', 'video'].includes(req.query.type)) {
       query.type = req.query.type;
     }
 
-    // Find messages with pagination and populate sender name
     const messages = await Message.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
 
-    // Get message count for pagination
     const total = await Message.countDocuments(query);
 
-    // Mark received messages as read in a background task
-    // This avoids waiting for the update to complete before sending response
+    // Mark received messages as read in the background
     Message.updateMany(
       { sender: req.params.userId, recipient: req.user._id, read: false },
       { read: true }
@@ -139,24 +126,21 @@ router.get('/:userId', protect, asyncHandler(async (req, res) => {
 
 /**
  * @route   POST /api/messages
- * @desc    Send a new message
+ * @desc    Send a new message (supports location messages)
  * @access  Private
  */
 router.post('/', protect, messageRateLimit, asyncHandler(async (req, res) => {
-  const { recipient, type, content } = req.body;
+  const { recipient, type, content, metadata } = req.body;
 
   logger.debug(`Sending ${type || 'unknown'} message from ${req.user._id} to ${recipient}`);
 
   try {
-    // Validate required fields
     if (!recipient) {
       return res.status(400).json({
         success: false,
         error: 'Recipient is required'
       });
     }
-
-    // Validate recipient ID format
     if (!isValidObjectId(recipient)) {
       return res.status(400).json({
         success: false,
@@ -164,16 +148,14 @@ router.post('/', protect, messageRateLimit, asyncHandler(async (req, res) => {
       });
     }
 
-    // Validate message type
-    const validTypes = ['text', 'wink', 'video'];
+    const validTypes = ['text', 'wink', 'video', 'location'];
     if (!type || !validTypes.includes(type)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid message type. Must be one of: text, wink, video'
+        error: `Invalid message type. Must be one of: ${validTypes.join(', ')}`
       });
     }
 
-    // Validate message content based on type
     if (type === 'text' && (!content || content.trim().length === 0)) {
       return res.status(400).json({
         success: false,
@@ -181,7 +163,6 @@ router.post('/', protect, messageRateLimit, asyncHandler(async (req, res) => {
       });
     }
 
-    // Validate content length
     if (type === 'text' && content.length > 2000) {
       return res.status(400).json({
         success: false,
@@ -189,7 +170,6 @@ router.post('/', protect, messageRateLimit, asyncHandler(async (req, res) => {
       });
     }
 
-    // Make sure sender isn't sending a message to themselves
     if (recipient === req.user._id.toString()) {
       return res.status(400).json({
         success: false,
@@ -197,7 +177,6 @@ router.post('/', protect, messageRateLimit, asyncHandler(async (req, res) => {
       });
     }
 
-    // Validate recipient exists
     const recipientUser = await User.findById(recipient);
     if (!recipientUser) {
       return res.status(404).json({
@@ -206,10 +185,7 @@ router.post('/', protect, messageRateLimit, asyncHandler(async (req, res) => {
       });
     }
 
-    // Check if users are blocked (if you have a blocking system)
-    // This would be a good place to check if either user has blocked the other
-
-    // Process content based on type
+    // Process message content based on type
     let processedContent = '';
     if (type === 'text') {
       processedContent = sanitizeText(content);
@@ -217,18 +193,35 @@ router.post('/', protect, messageRateLimit, asyncHandler(async (req, res) => {
       processedContent = '😉';
     } else if (type === 'video') {
       processedContent = 'Video Call';
+    } else if (type === 'location') {
+      // For location messages, validate metadata
+      if (!metadata || !metadata.location || !Array.isArray(metadata.location.coordinates) || metadata.location.coordinates.length !== 2) {
+        return res.status(400).json({
+          success: false,
+          error: 'Location messages require valid coordinates in metadata'
+        });
+      }
+      const [longitude, latitude] = metadata.location.coordinates;
+      if (isNaN(longitude) || isNaN(latitude) ||
+          longitude < -180 || longitude > 180 ||
+          latitude < -90 || latitude > 90) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid coordinates. Longitude must be between -180 and 180, latitude between -90 and 90'
+        });
+      }
+      processedContent = content || ''; // Content can be empty for location messages
     }
 
-    // Create message
     const message = await Message.create({
       sender: req.user._id,
       recipient,
       type,
       content: processedContent,
+      metadata: metadata || {},
       createdAt: new Date()
     });
 
-    // Enhance response with sender info
     const enhancedMessage = {
       ...message.toObject(),
       senderName: req.user.nickname
@@ -258,7 +251,6 @@ router.put('/:id/read', protect, asyncHandler(async (req, res) => {
   logger.debug(`Marking message ${req.params.id} as read`);
 
   try {
-    // Validate message ID
     if (!isValidObjectId(req.params.id)) {
       return res.status(400).json({
         success: false,
@@ -266,7 +258,6 @@ router.put('/:id/read', protect, asyncHandler(async (req, res) => {
       });
     }
 
-    // Find message and ensure recipient is current user
     const message = await Message.findOne({
       _id: req.params.id,
       recipient: req.user._id
@@ -280,13 +271,10 @@ router.put('/:id/read', protect, asyncHandler(async (req, res) => {
       });
     }
 
-    // Only update if not already read
     if (!message.read) {
-      // Update read status
       message.read = true;
       message.readAt = new Date();
       await message.save();
-
       logger.debug(`Message ${req.params.id} marked as read`);
     } else {
       logger.debug(`Message ${req.params.id} was already read`);
@@ -312,11 +300,9 @@ router.put('/:id/read', protect, asyncHandler(async (req, res) => {
  */
 router.put('/conversation/:userId/read', protect, asyncHandler(async (req, res) => {
   const { userId } = req.params;
-
   logger.debug(`Marking all messages from user ${userId} as read`);
 
   try {
-    // Validate user ID
     if (!isValidObjectId(userId)) {
       return res.status(400).json({
         success: false,
@@ -324,7 +310,6 @@ router.put('/conversation/:userId/read', protect, asyncHandler(async (req, res) 
       });
     }
 
-    // Check if the user exists
     const otherUser = await User.findById(userId);
     if (!otherUser) {
       return res.status(404).json({
@@ -333,7 +318,6 @@ router.put('/conversation/:userId/read', protect, asyncHandler(async (req, res) 
       });
     }
 
-    // Update all unread messages
     const result = await Message.updateMany(
       {
         sender: userId,
@@ -347,7 +331,6 @@ router.put('/conversation/:userId/read', protect, asyncHandler(async (req, res) 
     );
 
     logger.debug(`Marked ${result.modifiedCount} messages as read`);
-
     res.status(200).json({
       success: true,
       count: result.modifiedCount
@@ -370,13 +353,11 @@ router.get('/unread/count', protect, asyncHandler(async (req, res) => {
   logger.debug(`Getting unread message count for user ${req.user._id}`);
 
   try {
-    // Count all unread messages for this user
     const count = await Message.countDocuments({
       recipient: req.user._id,
       read: false
     });
 
-    // Get count by sender for detailed info
     const unreadBySender = await Message.aggregate([
       {
         $match: {
@@ -396,14 +377,12 @@ router.get('/unread/count', protect, asyncHandler(async (req, res) => {
       }
     ]);
 
-    // Get sender names
     const senderIds = unreadBySender.map(item => item._id);
     const senders = await User.find(
-      { _id: { $in: senderIds } },
+      { _id: { $in: Array.from(senderIds) } },
       { nickname: 1 }
     );
 
-    // Map sender names to results
     const detailedUnread = unreadBySender.map(item => {
       const sender = senders.find(s => s._id.toString() === item._id.toString());
       return {
@@ -437,7 +416,6 @@ router.delete('/:id', protect, asyncHandler(async (req, res) => {
   logger.debug(`Deleting message ${req.params.id}`);
 
   try {
-    // Validate message ID
     if (!isValidObjectId(req.params.id)) {
       return res.status(400).json({
         success: false,
@@ -445,7 +423,6 @@ router.delete('/:id', protect, asyncHandler(async (req, res) => {
       });
     }
 
-    // Find message and ensure the user is either sender or recipient
     const message = await Message.findOne({
       _id: req.params.id,
       $or: [
@@ -462,23 +439,16 @@ router.delete('/:id', protect, asyncHandler(async (req, res) => {
       });
     }
 
-    // Handle different delete modes based on if user is sender or recipient
     const isSender = message.sender.toString() === req.user._id.toString();
     const isRecipient = message.recipient.toString() === req.user._id.toString();
-
-    // Check for delete mode from query param
     const deleteMode = req.query.mode || 'self';
 
-    // Handle different delete modes
     if (deleteMode === 'self') {
-      // Mark as deleted for this user only
       if (isSender) {
         message.deletedBySender = true;
       } else if (isRecipient) {
         message.deletedByRecipient = true;
       }
-
-      // If both users have deleted it, actually remove it
       if (message.deletedBySender && message.deletedByRecipient) {
         await message.remove();
         logger.info(`Message ${req.params.id} permanently deleted`);
@@ -487,8 +457,6 @@ router.delete('/:id', protect, asyncHandler(async (req, res) => {
         logger.info(`Message ${req.params.id} marked as deleted for ${isSender ? 'sender' : 'recipient'}`);
       }
     } else if (deleteMode === 'both' && isSender) {
-      // Only senders can delete for both users
-      // Permanently delete the message
       await message.remove();
       logger.info(`Message ${req.params.id} permanently deleted by sender for both users`);
     } else {
@@ -518,7 +486,6 @@ router.delete('/:id', protect, asyncHandler(async (req, res) => {
  */
 router.get('/search', protect, asyncHandler(async (req, res) => {
   const { query, with: conversationPartner } = req.query;
-
   logger.debug(`Searching messages with query "${query}" for user ${req.user._id}`);
 
   try {
@@ -529,21 +496,19 @@ router.get('/search', protect, asyncHandler(async (req, res) => {
       });
     }
 
-    // Build search query
     const searchQuery = {
       $and: [
-        { type: 'text' }, // Only search text messages
-        { content: { $regex: query, $options: 'i' } }, // Case-insensitive search
+        { type: 'text' },
+        { content: { $regex: query, $options: 'i' } },
         {
           $or: [
-            { sender: req.user._id }, // Messages sent by current user
-            { recipient: req.user._id } // Messages received by current user
+            { sender: req.user._id },
+            { recipient: req.user._id }
           ]
         }
       ]
     };
 
-    // If conversation partner specified, limit to that conversation
     if (conversationPartner && isValidObjectId(conversationPartner)) {
       searchQuery.$and.push({
         $or: [
@@ -553,22 +518,18 @@ router.get('/search', protect, asyncHandler(async (req, res) => {
       });
     }
 
-    // Get pagination parameters
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    // Execute search with pagination
     const messages = await Message.find(searchQuery)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
 
-    // Get total count for pagination
     const total = await Message.countDocuments(searchQuery);
 
-    // Enhance messages with conversation partner info
     const uniqueUserIds = new Set();
     messages.forEach(msg => {
       if (msg.sender.toString() !== req.user._id.toString()) {
@@ -579,20 +540,16 @@ router.get('/search', protect, asyncHandler(async (req, res) => {
       }
     });
 
-    // Get user info for all conversation partners
     const users = await User.find(
       { _id: { $in: Array.from(uniqueUserIds) } },
       { nickname: 1 }
     );
 
-    // Map user info to messages
     const enhancedMessages = messages.map(msg => {
       const otherUserId = msg.sender.toString() === req.user._id.toString()
         ? msg.recipient.toString()
         : msg.sender.toString();
-
       const otherUser = users.find(u => u._id.toString() === otherUserId);
-
       return {
         ...msg,
         conversationWith: {

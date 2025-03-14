@@ -1,5 +1,6 @@
 // client/src/pages/Messages.js
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FaSearch,
   FaEllipsisV,
@@ -14,144 +15,210 @@ import {
   FaTimes,
   FaCheckDouble,
   FaCheck,
-  FaPaperclip
+  FaPaperclip,
+  FaMapMarkerAlt
 } from 'react-icons/fa';
 import { useAuth, useChat, useUser } from '../context';
+import { toast } from 'react-toastify';
 
 const Messages = () => {
   const { user } = useAuth();
-  const { users, getUsers } = useUser();
+  const { users, getUsers, loading: usersLoading } = useUser();
   const {
     messages,
-    unreadMessages,
+    unreadMessages = [], // Provide default empty array
     getMessages,
     sendMessage,
+    sendLocationMessage,
     setCurrentChat,
     sendTyping,
-    typingUsers,
-    initiateVideoCall
+    typingUsers = {}, // Provide default empty object
+    initiateVideoCall,
+    sending: sendingMessage,
+    error: messageError
   } = useChat();
 
   const [selectedUser, setSelectedUser] = useState(null);
   const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [isSending, setIsSending] = useState(false);
   const [showEmojis, setShowEmojis] = useState(false);
-
   const messagesEndRef = useRef(null);
   const chatInputRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
-  const commonEmojis = ['😊', '😂', '😍', '❤️', '👍', '🙌', '🔥', '✨', '🎉', '🤔', '😉', '🥰'];
+  // Safely access or initialize arrays/objects
+  const safeUsers = Array.isArray(users) ? users : [];
+  const safeMessages = Array.isArray(messages) ? messages : [];
+  const safeUnreadMessages = Array.isArray(unreadMessages) ? unreadMessages : [];
 
-  // Fetch the users list on mount.
   useEffect(() => {
     getUsers();
   }, [getUsers]);
 
-  // Auto-scroll to the bottom whenever messages change.
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [safeMessages]);
 
-  // Focus the chat input when a user is selected.
   useEffect(() => {
-    if (selectedUser) {
-      chatInputRef.current?.focus();
-    }
+    if (selectedUser) chatInputRef.current?.focus();
   }, [selectedUser]);
 
-  // When the component unmounts or the selected user changes, clear the current chat.
   useEffect(() => {
     return () => {
-      if (selectedUser) {
-        setCurrentChat(null);
-      }
+      if (selectedUser) setCurrentChat?.(null);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [selectedUser, setCurrentChat]);
 
-  // When a conversation is selected, update state and fetch messages.
   const handleSelectUser = (u) => {
     setSelectedUser(u);
-    setCurrentChat(u);
-    getMessages(u._id);
+    if (setCurrentChat) setCurrentChat(u);
+    if (getMessages) getMessages(u._id);
   };
 
-  // Send a text message.
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (newMessage.trim() && !isSending && selectedUser) {
-      setIsSending(true);
+    if (newMessage.trim() && !sendingMessage && selectedUser) {
       try {
         await sendMessage(selectedUser._id, 'text', newMessage.trim());
         setNewMessage('');
       } catch (error) {
         console.error('Failed to send message:', error);
-      } finally {
-        setIsSending(false);
+        toast.error(error.message || 'Failed to send message');
       }
     }
   };
 
-  // Handle typing: update message state and send a typing event.
   const handleTyping = (e) => {
     setNewMessage(e.target.value);
-    if (selectedUser) {
-      sendTyping(selectedUser._id);
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
     }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      if (selectedUser && e.target.value.trim() && sendTyping) {
+        sendTyping(selectedUser._id);
+      }
+    }, 300);
   };
 
-  // Append an emoji to the message and focus the input.
   const handleEmojiClick = (emoji) => {
     setNewMessage((prev) => prev + emoji);
     setShowEmojis(false);
     chatInputRef.current?.focus();
   };
 
-  // Send a "wink" message.
   const handleSendWink = async () => {
-    if (!isSending && selectedUser) {
-      setIsSending(true);
+    if (!sendingMessage && selectedUser) {
       try {
         await sendMessage(selectedUser._id, 'wink', '😉');
       } catch (error) {
         console.error('Failed to send wink:', error);
-      } finally {
-        setIsSending(false);
+        toast.error(error.message || 'Failed to send wink');
       }
     }
   };
 
-  // Initiate a video call.
+  const handleShareLocation = async () => {
+    if (!sendingMessage && selectedUser) {
+      try {
+        if (!navigator.geolocation) {
+          toast.error('Geolocation is not supported by your browser');
+          return;
+        }
+
+        toast.info('Getting your location...');
+
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            try {
+              const locationData = {
+                coordinates: [position.coords.longitude, position.coords.latitude],
+                name: 'My Current Location'
+              };
+
+              // Use the specialized sendLocationMessage function
+              const result = await sendLocationMessage(selectedUser._id, locationData);
+
+              if (!result) {
+                toast.error('Failed to share location');
+              } else {
+                toast.success('Location shared successfully');
+              }
+            } catch (err) {
+              console.error('Location sharing error:', err);
+              toast.error(err.message || 'Failed to share location');
+            }
+          },
+          (err) => {
+            let errorMessage = 'Could not get your location';
+
+            switch(err.code) {
+              case err.PERMISSION_DENIED:
+                errorMessage = 'Location access was denied';
+                break;
+              case err.POSITION_UNAVAILABLE:
+                errorMessage = 'Location information is unavailable';
+                break;
+              case err.TIMEOUT:
+                errorMessage = 'Location request timed out';
+                break;
+            }
+
+            toast.error(errorMessage);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          }
+        );
+      } catch (error) {
+        console.error('Failed to share location:', error);
+        toast.error(error.message || 'Failed to share location');
+      }
+    }
+  };
+
   const handleVideoCall = () => {
-    if (selectedUser) {
+    if (initiateVideoCall && selectedUser) {
       initiateVideoCall(selectedUser._id);
     }
   };
 
-  // Filter out the current user from the list and filter by search term.
-  const filteredUsers = users.filter(
-    (u) =>
-      u._id !== user._id &&
-      (u.nickname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (u.details?.location &&
-          u.details.location.toLowerCase().includes(searchTerm.toLowerCase())))
+  // Filter users safely
+  const filteredUsers = safeUsers.filter(
+    (u) => {
+      if (!u || !user) return false;
+
+      return (
+        u._id !== user._id &&
+        (u.nickname?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (u.details?.location &&
+            u.details.location.toLowerCase().includes(searchTerm.toLowerCase())))
+      );
+    }
   );
 
-  // Helpers for unread messages.
-  const hasUnreadMessages = (userId) =>
-    unreadMessages.some((msg) => msg.sender === userId);
+  // Safely determine if a user has unread messages
+  const hasUnreadMessages = (userId) => {
+    return safeUnreadMessages.some((msg) => msg.sender === userId);
+  };
 
-  const unreadCount = (userId) =>
-    unreadMessages.filter((msg) => msg.sender === userId).length;
+  // Safely count unread messages
+  const unreadCount = (userId) => {
+    return safeUnreadMessages.filter((msg) => msg.sender === userId).length;
+  };
 
-  // Format time for display.
   const formatMessageTime = (timestamp) => {
+    if (!timestamp) return '';
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Format the message date header.
   const formatMessageDate = (timestamp) => {
+    if (!timestamp) return 'Unknown date';
     const date = new Date(timestamp);
     const today = new Date();
     const yesterday = new Date();
@@ -165,28 +232,32 @@ const Messages = () => {
     }
   };
 
-  // Group messages by date.
+  // Safely group messages by date
   const groupMessagesByDate = () => {
     const groups = {};
-    messages.forEach((message) => {
-      const date = formatMessageDate(message.createdAt);
-      if (!groups[date]) {
-        groups[date] = [];
+    safeMessages.forEach((message) => {
+      if (message && message.createdAt) {
+        const date = formatMessageDate(message.createdAt);
+        if (!groups[date]) {
+          groups[date] = [];
+        }
+        groups[date].push(message);
       }
-      groups[date].push(message);
     });
     return groups;
   };
 
-  // Check if the selected user is typing.
-  const isTyping =
-    selectedUser &&
-    typingUsers[selectedUser._id] &&
-    Date.now() - typingUsers[selectedUser._id] < 3000;
+  // Safely check if a user is typing
+  const isTyping = selectedUser &&
+                  typingUsers &&
+                  typingUsers[selectedUser._id] &&
+                  Date.now() - typingUsers[selectedUser._id] < 3000;
+
+  // Common emoji list
+  const commonEmojis = ['😊', '😂', '😍', '❤️', '👍', '🙌', '🔥', '✨', '🎉', '🤔', '😉', '🥰'];
 
   return (
     <div className="messages-layout">
-      {/* Conversations List */}
       <div className="conversations-list">
         <div className="conversations-header d-flex justify-content-between align-items-center p-3 border-bottom">
           <h3 style={{ margin: 0 }}>Messages</h3>
@@ -206,7 +277,14 @@ const Messages = () => {
             />
           </div>
         </div>
-        {filteredUsers.length > 0 ? (
+        {usersLoading ? (
+          <div className="p-3 text-center">
+            <div className="spinner-border spinner-border-sm" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p className="mb-0 mt-2">Loading users...</p>
+          </div>
+        ) : filteredUsers.length > 0 ? (
           <div style={{ overflowY: 'auto' }}>
             {filteredUsers.map((u) => (
               <div
@@ -226,16 +304,16 @@ const Messages = () => {
                   <div className="d-flex justify-content-between align-items-center">
                     <h4>{u.nickname}</h4>
                     <span className="conversation-time">
-                      {unreadMessages.find((msg) => msg.sender === u._id)?.createdAt
+                      {safeUnreadMessages.find((msg) => msg.sender === u._id)?.createdAt
                         ? formatMessageTime(
-                            unreadMessages.find((msg) => msg.sender === u._id).createdAt
+                            safeUnreadMessages.find((msg) => msg.sender === u._id).createdAt
                           )
                         : ''}
                     </span>
                   </div>
                   <div className="d-flex align-items-center">
                     <p className="last-message mb-0">
-                      {unreadMessages.find((msg) => msg.sender === u._id)?.content ||
+                      {safeUnreadMessages.find((msg) => msg.sender === u._id)?.content ||
                         'Start a conversation'}
                     </p>
                     {hasUnreadMessages(u._id) && (
@@ -254,12 +332,9 @@ const Messages = () => {
           </div>
         )}
       </div>
-
-      {/* Chat Area */}
       <div className="chat-area">
         {selectedUser ? (
           <>
-            {/* Chat Header */}
             <div className="chat-header">
               <div className="chat-user">
                 <button
@@ -294,8 +369,6 @@ const Messages = () => {
                 </button>
               </div>
             </div>
-
-            {/* Messages Container */}
             <div className="messages-container">
               {Object.entries(groupMessagesByDate()).map(([date, msgs]) => (
                 <React.Fragment key={date}>
@@ -303,14 +376,14 @@ const Messages = () => {
                   {msgs.map((message) => (
                     <div
                       key={message._id}
-                      className={`message ${message.sender === user._id ? 'sent' : 'received'}`}
+                      className={`message ${message.sender === user?._id ? 'sent' : 'received'}`}
                     >
                       {message.type === 'text' && (
                         <>
                           <p className="message-content">{message.content}</p>
                           <span className="message-time">
                             {formatMessageTime(message.createdAt)}
-                            {message.sender === user._id &&
+                            {message.sender === user?._id &&
                               (message.read ? (
                                 <FaCheckDouble style={{ marginLeft: '4px' }} />
                               ) : (
@@ -319,8 +392,28 @@ const Messages = () => {
                           </span>
                         </>
                       )}
-                      {message.type === 'wink' && (
-                        <p className="message-content">😉 (Wink)</p>
+                      {message.type === 'wink' && <p className="message-content">😉 (Wink)</p>}
+                      {message.type === 'location' && (
+                        <div className="location-message">
+                          <div className="location-icon">
+                            <FaMapMarkerAlt />
+                          </div>
+                          <p className="message-content">
+                            {message.content || 'Shared location'}
+                          </p>
+                          <div className="location-link">
+                            <a
+                              href={`https://www.google.com/maps?q=${message.metadata?.location?.coordinates[1]},${message.metadata?.location?.coordinates[0]}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              View on map
+                            </a>
+                          </div>
+                          <span className="message-time">
+                            {formatMessageTime(message.createdAt)}
+                          </span>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -333,13 +426,20 @@ const Messages = () => {
                   <span></span>
                 </div>
               )}
+              {messageError && (
+                <div className="message-error">
+                  <p>{messageError}</p>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
-
-            {/* Message Input */}
             <div className="message-input">
-              <button className="input-attachment">
-                <FaPaperclip />
+              <button
+                className="input-attachment"
+                onClick={handleShareLocation}
+                title="Share location"
+              >
+                <FaMapMarkerAlt />
               </button>
               <form className="d-flex flex-grow-1" onSubmit={handleSendMessage}>
                 <input
@@ -370,9 +470,7 @@ const Messages = () => {
                           key={emoji}
                           className="btn btn-sm btn-subtle"
                           type="button"
-                          onClick={() => {
-                            handleEmojiClick(emoji);
-                          }}
+                          onClick={() => handleEmojiClick(emoji)}
                         >
                           {emoji}
                         </button>
@@ -383,12 +481,12 @@ const Messages = () => {
                 <button
                   type="submit"
                   className="input-send"
-                  disabled={!newMessage.trim() || isSending}
+                  disabled={!newMessage.trim() || sendingMessage}
                 >
                   <FaPaperPlane />
                 </button>
               </form>
-              <button className="input-attachment" onClick={handleSendWink} disabled={isSending}>
+              <button className="input-attachment" onClick={handleSendWink} disabled={sendingMessage}>
                 <FaHeart />
               </button>
               <button className="input-attachment">
