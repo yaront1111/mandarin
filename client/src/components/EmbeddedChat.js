@@ -10,8 +10,8 @@ import {
   FaCheckDouble,
   FaCheck,
   FaVideo,
-  FaHeart,
   FaSpinner,
+  FaEllipsisH,
 } from "react-icons/fa"
 import { useAuth, useChat } from "../context"
 import { toast } from "react-toastify"
@@ -44,6 +44,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const [showEmojis, setShowEmojis] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [attachment, setAttachment] = useState(null)
+  const [showReactionMenu, setShowReactionMenu] = useState(null)
 
   const messagesEndRef = useRef(null)
   const chatInputRef = useRef(null)
@@ -52,14 +53,21 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Load messages when chat is opened with the recipient
   useEffect(() => {
+    let isMounted = true
     if (recipient && isOpen) {
       setIsLoading(true)
       getMessages(recipient._id)
-        .then(() => setIsLoading(false))
+        .then(() => {
+          if (isMounted) setIsLoading(false)
+        })
         .catch((err) => {
           console.error("Failed to load messages:", err)
-          setIsLoading(false)
+          if (isMounted) setIsLoading(false)
         })
+    }
+
+    return () => {
+      isMounted = false
     }
   }, [recipient, isOpen, getMessages])
 
@@ -145,6 +153,19 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     }
   }
 
+  // Handle message reaction
+  const handleReaction = async (messageId, emoji) => {
+    try {
+      // This would call a method in your chat context to add a reaction
+      // await addMessageReaction(messageId, emoji);
+      toast.info(`Reaction added: ${emoji}`)
+      setShowReactionMenu(null)
+    } catch (error) {
+      console.error("Failed to add reaction:", error)
+      toast.error("Failed to add reaction")
+    }
+  }
+
   // Format time for messages
   const formatMessageTime = (timestamp) => {
     if (!timestamp) return ""
@@ -185,6 +206,9 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Common emoji list
   const commonEmojis = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"]
+
+  // Reaction emojis
+  const reactionEmojis = ["👍", "❤️", "😂", "😮", "😢", "😠"]
 
   // Handle emoji selection
   const handleEmojiClick = (emoji) => {
@@ -252,125 +276,130 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                   {message.type === "text" && (
                     <>
                       <p className="message-content">{message.content}</p>
-                      <span className="message-time">
-                        {formatMessageTime(message.createdAt)}
-                        {message.sender === user?._id &&
-                          (message.read ? (
-                            <FaCheckDouble className="read-indicator" />
-                          ) : (
-                            <FaCheck className="read-indicator" />
-                          ))}
-                      </span>
+                      <div className="message-footer">
+                        <span className="message-time">
+                          {formatMessageTime(message.createdAt)}
+                          {message.sender === user?._id &&
+                            (message.read ? (
+                              <FaCheckDouble className="read-indicator" />
+                            ) : (
+                              <FaCheck className="read-indicator" />
+                            ))}
+                        </span>
+
+                        {/* Message reactions display */}
+                        {message.reactions && message.reactions.length > 0 && (
+                          <div className="message-reactions">
+                            {message.reactions.map((reaction, index) => (
+                              <span key={index} className="reaction-emoji">
+                                {reaction}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </>
                   )}
                   {message.type === "wink" && (
                     <div className="wink-message">
-                      <p className="message-content">😉</p>
-                      <span className="message-label">Wink</span>
+                      <span role="img" aria-label="Wink">
+                        {message.content}
+                      </span>
+                      <div className="message-footer">
+                        <span className="message-time">{formatMessageTime(message.createdAt)}</span>
+                      </div>
                     </div>
                   )}
-                  {message.type === "video" && (
-                    <div className="video-call-message">
-                      <FaVideo className="video-icon" />
-                      <p className="message-content">Video Call</p>
-                      <span className="message-time">{formatMessageTime(message.createdAt)}</span>
-                    </div>
-                  )}
+                  <div className="reaction-menu">
+                    {showReactionMenu === message._id && (
+                      <div className="reaction-options">
+                        {reactionEmojis.map((emoji, index) => (
+                          <span
+                            key={index}
+                            className="reaction-option"
+                            onClick={() => handleReaction(message._id, emoji)}
+                          >
+                            {emoji}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
+              {isTyping && (
+                <div className="typing-indicator">
+                  {recipient.nickname} is typing...
+                  <FaEllipsisH className="typing-dots" />
+                </div>
+              )}
             </React.Fragment>
           ))
-        )}
-        {isTyping && (
-          <div className="typing-indicator">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-        )}
-        {messageError && (
-          <div className="message-error">
-            <p>{messageError}</p>
-            <button onClick={clearError} aria-label="Dismiss error">
-              <FaTimes />
-            </button>
-          </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Message Input Form */}
-      <form className="message-input" onSubmit={handleSendMessage}>
-        <button
-          type="button"
-          className="input-emoji"
-          onClick={() => setShowEmojis(!showEmojis)}
-          title="Add Emoji"
-          aria-label="Add emoji"
-        >
-          <FaSmile />
-        </button>
+      {/* Chat Input */}
+      <form className="chat-input" onSubmit={handleSendMessage}>
+        <div className="input-container">
+          <button
+            type="button"
+            className="emoji-btn"
+            onClick={() => setShowEmojis(!showEmojis)}
+            aria-label="Toggle emojis"
+            title="Toggle emojis"
+          >
+            <FaSmile />
+          </button>
+
+          <input
+            type="text"
+            ref={chatInputRef}
+            placeholder="Type a message..."
+            value={newMessage}
+            onChange={handleTyping}
+            aria-label="Message input"
+          />
+
+          <button
+            type="button"
+            className="attach-btn"
+            onClick={handleFileAttachment}
+            aria-label="Attach file"
+            title="Attach file"
+          >
+            <FaPaperclip />
+          </button>
+          <input
+            type="file"
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+            ref={fileInputRef}
+            aria-label="File input"
+          />
+        </div>
+
         {showEmojis && (
-          <div className="emoji-picker">
-            <div className="emoji-header">
-              <h4>Emojis</h4>
-              <button onClick={() => setShowEmojis(false)} aria-label="Close emoji picker">
-                <FaTimes />
-              </button>
-            </div>
-            <div className="emoji-list">
-              {commonEmojis.map((emoji) => (
-                <button key={emoji} type="button" onClick={() => handleEmojiClick(emoji)} aria-label={`Emoji ${emoji}`}>
+          <div className="emojis-panel">
+            <div className="emojis-scroll">
+              {commonEmojis.map((emoji, index) => (
+                <span key={index} className="emoji" onClick={() => handleEmojiClick(emoji)}>
                   {emoji}
-                </button>
+                </span>
               ))}
             </div>
           </div>
         )}
-        <input
-          type="text"
-          placeholder="Type a message..."
-          value={newMessage}
-          onChange={handleTyping}
-          ref={chatInputRef}
-          disabled={sendingMessage}
-          aria-label="Message input"
-        />
-        <button
-          type="button"
-          className="input-attachment"
-          onClick={handleFileAttachment}
-          disabled={sendingMessage}
-          title="Attach File"
-          aria-label="Attach file"
-        >
-          <FaPaperclip />
-        </button>
-        <input
-          type="file"
-          ref={fileInputRef}
-          style={{ display: "none" }}
-          onChange={handleFileChange}
-          aria-hidden="true"
-        />
-        <button
-          type="button"
-          className="input-wink"
-          onClick={handleSendWink}
-          disabled={sendingMessage}
-          title="Send Wink"
-          aria-label="Send wink"
-        >
-          <FaHeart />
-        </button>
+
         <button
           type="submit"
-          className="input-send"
-          disabled={!newMessage.trim() || sendingMessage}
-          title="Send Message"
+          className="send-btn"
+          onClick={handleSendMessage}
           aria-label="Send message"
+          title="Send message"
+          disabled={sendingMessage}
         >
-          {sendingMessage ? <FaSpinner className="fa-spin" /> : <FaPaperPlane />}
+          {sendingMessage ? <FaSpinner className="spinner" /> : <FaPaperPlane />}
         </button>
       </form>
     </div>

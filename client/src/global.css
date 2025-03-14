@@ -1,4 +1,4 @@
-/* Dark mode variables and base styles */
+/* Improve dark mode implementation with more comprehensive variables */
 :root {
   /* Base colors */
   --background: #f8f9fa;
@@ -19,6 +19,18 @@
   --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.1);
+
+  /* Brand colors */
+  --primary-color: #ff3366;
+  --primary-color-light: #ff6b99;
+  --primary-color-dark: #cc2952;
+  --primary-color-subtle: rgba(255, 51, 102, 0.08);
+
+  /* Status colors */
+  --success-color: #33d685;
+  --warning-color: #ffd166;
+  --danger-color: #ef476f;
+  --info-color: #3a86ff;
 }
 
 .dark {
@@ -41,6 +53,18 @@
   --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.2);
   --shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.3);
+
+  /* Brand colors - keep the same for brand consistency */
+  --primary-color: #ff3366;
+  --primary-color-light: #ff6b99;
+  --primary-color-dark: #cc2952;
+  --primary-color-subtle: rgba(255, 51, 102, 0.15);
+
+  /* Status colors - slightly adjusted for dark mode */
+  --success-color: #33d685;
+  --warning-color: #ffd166;
+  --danger-color: #ef476f;
+  --info-color: #3a86ff;
 }
 
 /* Base styles for dark mode support */
@@ -100,6 +124,44 @@ p {
 }
 
 .theme-toggle-btn:hover {
-  background-color: rgba(255, 51, 102, 0.1);
-  color: #ff3366;
+  background-color: var(--primary-color-subtle);
+  color: var(--primary-color);
+}
+
+/* Additional dark mode styles for components */
+.dark .embedded-chat {
+  background-color: var(--card-bg);
+  color: var(--text-primary);
+}
+
+.dark .message.sent {
+  background-color: var(--primary-color);
+}
+
+.dark .message.received {
+  background-color: var(--card-bg);
+  color: var(--text-primary);
+}
+
+.dark .message-input input {
+  background-color: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
+}
+
+.dark .chat-header {
+  background-color: var(--card-bg);
+  border-color: var(--card-border);
+}
+
+.dark .messages-container {
+  background-color: var(--background);
+}
+
+.dark .typing-indicator {
+  background-color: var(--card-bg);
+}
+
+.dark .typing-indicator span {
+  background-color: var(--text-muted);
 }

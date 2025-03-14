@@ -788,6 +788,15 @@ class ApiService {
 
         // Get current token
         const currentToken = this._getStoredToken()
+        if (!currentToken) {
+          throw new Error("No token available for refresh")
+        }
+
+        // Clear any existing token refresh timer
+        if (this.tokenRefreshTimer.current) {
+          clearTimeout(this.tokenRefreshTimer.current)
+          this.tokenRefreshTimer.current = null
+        }
 
         // Make refresh request
         const response = await this.api.post(
@@ -824,6 +833,14 @@ class ApiService {
         // Clear tokens on refresh failure
         this._removeToken()
         this.setAuthToken(null)
+
+        // Notify user about authentication failure
+        toast.error("Your session has expired. Please log in again.")
+
+        // Redirect to login after a short delay
+        setTimeout(() => {
+          window.location.href = "/login"
+        }, 1500)
 
         return null
       } finally {
@@ -1221,6 +1238,114 @@ class ApiService {
       this.cancelAllRequests("User logout")
       this.clearCache()
     }
+  }
+
+  _handleConnectionFailure() {
+    // Prevent multiple concurrent reconnection timers
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+    }
+
+    toast.error("Could not establish connection. Retrying...")
+
+    const backoffTime = Math.min(30000, 1000 * Math.pow(2, this.reconnectAttempts))
+    this.reconnectAttempts++
+    console.log(`Reconnect attempt ${this.reconnectAttempts} scheduled in ${backoffTime / 1000}s`)
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      if (this.reconnectAttempts <= this.maxReconnectAttempts) {
+        if (this.userId) {
+          const token = sessionStorage.getItem("token")
+          if (token) {
+            this.init(this.userId, token)
+          } else {
+            console.error("No token available for reconnection")
+            toast.error("Authentication expired. Please refresh the page.")
+          }
+        }
+      } else {
+        toast.error("Could not reconnect. Please refresh the page.")
+      }
+    }, backoffTime)
+  }
+
+  // Improve token refresh mechanism with proper request queuing
+  async refreshToken() {
+    // If a refresh is already in progress, return that promise
+    if (this.refreshTokenPromise) {
+      return this.refreshTokenPromise
+    }
+
+    // Create new refresh promise
+    this.refreshTokenPromise = (async () => {
+      try {
+        this.logger.debug("Refreshing authentication token...")
+
+        // Get current token
+        const currentToken = this._getStoredToken()
+        if (!currentToken) {
+          throw new Error("No token available for refresh")
+        }
+
+        // Clear any existing token refresh timer
+        if (this.tokenRefreshTimer.current) {
+          clearTimeout(this.tokenRefreshTimer.current)
+          this.tokenRefreshTimer.current = null
+        }
+
+        // Make refresh request
+        const response = await this.api.post(
+          "/auth/refresh-token",
+          {
+            token: currentToken,
+          },
+          {
+            // Special options for refresh request
+            headers: { "x-no-cache": "true" },
+            _isRefreshRequest: true,
+          },
+        )
+
+        if (response.success && response.token) {
+          const token = response.token
+
+          // Store new token
+          this._storeToken(token, localStorage.getItem("token") !== null)
+          this.setAuthToken(token)
+
+          this.logger.debug("Token refreshed successfully")
+
+          // Process queued requests
+          this._retryQueuedRequests(token)
+
+          return token
+        } else {
+          throw new Error("Invalid refresh token response")
+        }
+      } catch (error) {
+        this.logger.error("Token refresh failed:", error)
+
+        // Clear tokens on refresh failure
+        this._removeToken()
+        this.setAuthToken(null)
+
+        // Notify user about authentication failure
+        toast.error("Your session has expired. Please log in again.")
+
+        // Redirect to login after a short delay
+        setTimeout(() => {
+          window.location.href = "/login"
+        }, 1500)
+
+        return null
+      } finally {
+        // Clear refresh promise to allow future refresh attempts
+        this.refreshTokenPromise = null
+      }
+    })()
+
+    return this.refreshTokenPromise
   }
 }
 
