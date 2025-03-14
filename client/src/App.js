@@ -1,5 +1,5 @@
 // client/src/App.js
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import {
   Home,
@@ -13,10 +13,25 @@ import {
 } from './pages';
 import { PrivateRoute } from './components';
 import './utils/apiDebugger';
-import { AuthProvider, UserProvider, ChatProvider } from './context';
+import { AuthProvider, UserProvider, ChatProvider, useAuth } from './context';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
+
+const AppInitializer = ({ children }) => {
+  // Access loadUser from auth context so we can load the user on app startup
+  const { loadUser } = useAuth();
+
+  useEffect(() => {
+    // Load token from sessionStorage and set it in apiService
+    const token = sessionStorage.getItem('token');
+    if (token) {
+      loadUser();
+    }
+  }, [loadUser]);
+
+  return children;
+};
 
 function App() {
   return (
@@ -24,62 +39,64 @@ function App() {
       <UserProvider>
         <ChatProvider>
           <Router>
-            <div className="dating-app">
-              <Routes>
-                {/* Public Routes */}
-                <Route path="/" element={<Home />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
+            <AppInitializer>
+              <div className="dating-app">
+                <Routes>
+                  {/* Public Routes */}
+                  <Route path="/" element={<Home />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
 
-                {/* Protected Routes */}
-                <Route
-                  path="/dashboard"
-                  element={
-                    <PrivateRoute>
-                      <Dashboard />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/profile"
-                  element={
-                    <PrivateRoute>
-                      <Profile />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/messages"
-                  element={
-                    <PrivateRoute>
-                      <Messages />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/user/:id"
-                  element={
-                    <PrivateRoute>
-                      <UserProfile />
-                    </PrivateRoute>
-                  }
-                />
+                  {/* Protected Routes */}
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <PrivateRoute>
+                        <Dashboard />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/profile"
+                    element={
+                      <PrivateRoute>
+                        <Profile />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/messages"
+                    element={
+                      <PrivateRoute>
+                        <Messages />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/user/:id"
+                    element={
+                      <PrivateRoute>
+                        <UserProfile />
+                      </PrivateRoute>
+                    }
+                  />
 
-                {/* Fallback Route */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-              <ToastContainer
-                position="top-right"
-                autoClose={5000}
-                hideProgressBar={false}
-                newestOnTop
-                closeOnClick
-                rtl={false}
-                pauseOnFocusLoss
-                draggable
-                pauseOnHover
-              />
-            </div>
+                  {/* Fallback Route */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+                <ToastContainer
+                  position="top-right"
+                  autoClose={5000}
+                  hideProgressBar={false}
+                  newestOnTop
+                  closeOnClick
+                  rtl={false}
+                  pauseOnFocusLoss
+                  draggable
+                  pauseOnHover
+                />
+              </div>
+            </AppInitializer>
           </Router>
         </ChatProvider>
       </UserProvider>

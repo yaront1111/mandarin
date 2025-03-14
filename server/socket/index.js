@@ -5,7 +5,7 @@ const { User, Message } = require('../models');
 const config = require('../config');
 const logger = require('../logger');
 const mongoose = require('mongoose');
-const { rateLimiterMemory } = require('rate-limiter-flexible');
+const { RateLimiterMemory } = require('rate-limiter-flexible');
 
 /**
  * Initialize Socket.IO server
@@ -61,19 +61,19 @@ const initSocketServer = (server) => {
   });
 
   // Set up rate limiters for various actions
-  const typingLimiter = new rateLimiterMemory({
+  const typingLimiter = new RateLimiterMemory({
     points: 5,     // 5 typing events
     duration: 3,   // per 3 seconds
     blockDuration: 2, // Block for 2 seconds if exceeded
   });
 
-  const messageLimiter = new rateLimiterMemory({
+  const messageLimiter = new RateLimiterMemory({
     points: 10,    // 10 messages
     duration: 10,  // per 10 seconds
     blockDuration: 30, // Block for 30 seconds if exceeded
   });
 
-  const callLimiter = new rateLimiterMemory({
+  const callLimiter = new RateLimiterMemory({
     points: 3,     // 3 call attempts
     duration: 60,  // per minute
     blockDuration: 120, // Block for 2 minutes if exceeded

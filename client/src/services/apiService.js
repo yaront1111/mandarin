@@ -331,17 +331,22 @@ class ApiService {
   /**
    * Load auth token from storage
    */
-  _loadAuthToken() {
-    const token = this._getStoredToken();
-    if (token) {
-      if (this.isTokenExpired(token)) {
-        this.logger.warn('Stored token is expired. Attempting to refresh...');
-        this.refreshToken();
-      } else {
-        this.setAuthToken(token);
-      }
+_loadAuthToken() {
+  const token = sessionStorage.getItem('token');
+  if (token) {
+    // Set token in both axios instance and global axios
+    this.api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+    if (this.isTokenExpired(token)) {
+      this.refreshToken().catch(err => {
+        console.warn('Token refresh failed on initialization:', err);
+      });
     }
+    return token;
   }
+  return null;
+}
 
   /**
    * Get stored auth token from sessionStorage or localStorage
