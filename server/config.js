@@ -5,6 +5,6 @@ module.exports = {
   MONGODB_URI: process.env.MONGODB_URI || 'mongodb://localhost:27017/mandarin',
   JWT_SECRET: process.env.JWT_SECRET || 'mandarin-secret-key',
   JWT_EXPIRE: '7d',
-  FILE_UPLOAD_PATH: './uploads',
+  FILE_UPLOAD_PATH: process.env.FILE_UPLOAD_PATH || path.join(__dirname, 'uploads'),
   MAX_FILE_SIZE: 1024 * 1024 * 5, // 5MB
 };

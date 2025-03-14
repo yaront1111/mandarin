@@ -191,11 +191,13 @@ export const ChatProvider = ({ children }) => {
     try {
       const data = await apiService.get(`/messages/${userId}`);
 
-      if (data.success) {
-        dispatch({ type: 'GET_MESSAGES', payload: data.data });
-      } else {
-        throw new Error(data.error || 'Failed to fetch messages');
-      }
+    if (data.success) {
+      // Sort messages by date descending
+      const sortedMessages = data.data.sort((a, b) =>
+        new Date(b.createdAt) - new Date(a.createdAt)
+      );
+      dispatch({ type: 'GET_MESSAGES', payload: sortedMessages });
+    }
     } catch (err) {
       const errorMsg = err.error || err.message || 'Failed to fetch messages';
       dispatch({ type: 'CHAT_ERROR', payload: errorMsg });

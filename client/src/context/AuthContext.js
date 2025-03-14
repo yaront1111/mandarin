@@ -1,5 +1,5 @@
 // client/src/context/AuthContext.js
-import React, { createContext, useReducer, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useReducer, useContext, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import apiService from '../services/apiService';
@@ -67,6 +67,13 @@ const authReducer = (state, action) => {
       return { ...state, error: null };
     case 'SET_LOADING':
       return { ...state, loading: action.payload };
+    case 'TOKEN_REFRESHED':
+      sessionStorage.setItem('token', action.payload);
+      return {
+        ...state,
+        token: action.payload,
+        error: null
+      };
     default:
       return state;
   }
@@ -85,6 +92,19 @@ export const AuthProvider = ({ children }) => {
   };
 
   const [state, dispatch] = useReducer(authReducer, initialState);
+
+  // Use ref to keep track of the refresh token promise to prevent multiple refreshes
+  const refreshTokenPromise = useRef(null);
+
+  // Use ref to track if the component is still mounted (prevent memory leaks)
+  const isMounted = useRef(true);
+
+  // Set mounted/unmounted status
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   /**
    * Set auth token in API service headers
@@ -114,17 +134,92 @@ export const AuthProvider = ({ children }) => {
 
       // Check if exp exists and if token is expired
       if (payload.exp) {
-        const now = Math.floor(Date.now() / 1000);
+        // Add a small buffer (30 seconds) to account for time differences
+        const now = Math.floor(Date.now() / 1000) + 30;
         return payload.exp < now;
       }
 
-      // If no exp field, assume token is valid
+      // If no exp field, assume token is valid (safer to return true here for production)
       return false;
     } catch (error) {
       console.warn('Error parsing JWT token:', error);
       return true;
     }
   }, []);
+
+  /**
+   * Get token expiration time in seconds
+   */
+  const getTokenExpiryTime = useCallback((token) => {
+    if (!token) return 0;
+
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(window.atob(base64));
+
+      if (payload.exp) {
+        const now = Math.floor(Date.now() / 1000);
+        return payload.exp - now;
+      }
+      return 0;
+    } catch (error) {
+      console.warn('Error parsing JWT token expiry:', error);
+      return 0;
+    }
+  }, []);
+
+  /**
+   * Refresh authentication token
+   */
+  const refreshToken = useCallback(async () => {
+    // Check if refresh is already in progress
+    if (refreshTokenPromise.current !== null) {
+      return refreshTokenPromise.current;
+    }
+
+    // Create new refresh promise
+    refreshTokenPromise.current = (async () => {
+      try {
+        const currentToken = sessionStorage.getItem('token');
+
+        if (!currentToken) {
+          throw new Error('No token to refresh');
+        }
+
+        const result = await apiService.post('/auth/refresh-token', { token: currentToken });
+
+        if (result.success && result.token) {
+          // Store token and update headers
+          sessionStorage.setItem('token', result.token);
+          setAuthToken(result.token);
+
+          if (isMounted.current) {
+            dispatch({ type: 'TOKEN_REFRESHED', payload: result.token });
+          }
+
+          return result.token;
+        } else {
+          throw new Error('Failed to refresh token');
+        }
+      } catch (err) {
+        console.error('Token refresh failed:', err);
+
+        // On refresh failure, log user out if still mounted
+        if (isMounted.current) {
+          const errorMsg = err.error || err.message || 'Session expired. Please login again.';
+          toast.error(errorMsg);
+          logout();
+        }
+
+        throw err;
+      } finally {
+        refreshTokenPromise.current = null;
+      }
+    })();
+
+    return refreshTokenPromise.current;
+  }, [setAuthToken]);
 
   /**
    * Load user data using token
@@ -137,16 +232,24 @@ export const AuthProvider = ({ children }) => {
       return null;
     }
 
-    // Check if token is expired
+    // Check if token is expired and attempt refresh if needed
     if (isTokenExpired(token)) {
-      dispatch({ type: 'AUTH_ERROR', payload: 'Token expired' });
-      return null;
+      try {
+        // Try to refresh the token first
+        await refreshToken();
+      } catch (err) {
+        // If refresh fails, return auth error
+        dispatch({ type: 'AUTH_ERROR', payload: 'Session expired. Please login again.' });
+        return null;
+      }
     }
 
     dispatch({ type: 'SET_LOADING', payload: true });
 
     try {
-      setAuthToken(token);
+      // Get the possibly refreshed token
+      const currentToken = sessionStorage.getItem('token');
+      setAuthToken(currentToken);
 
       const result = await apiService.get('/auth/me');
 
@@ -157,11 +260,25 @@ export const AuthProvider = ({ children }) => {
         throw new Error('Invalid response format');
       }
     } catch (err) {
+      // Try to refresh token if we get an auth error
+      if (err.status === 401) {
+        try {
+          await refreshToken();
+          // Retry loading user after token refresh
+          return loadUser();
+        } catch (refreshErr) {
+          // If refresh fails, proceed with error
+          const errorMsg = refreshErr.error || refreshErr.message || 'Failed to authenticate';
+          dispatch({ type: 'AUTH_ERROR', payload: errorMsg });
+          return null;
+        }
+      }
+
       const errorMsg = err.error || err.message || 'Failed to authenticate';
       dispatch({ type: 'AUTH_ERROR', payload: errorMsg });
       return null;
     }
-  }, [setAuthToken, isTokenExpired]);
+  }, [setAuthToken, isTokenExpired, refreshToken]);
 
   /**
    * Register a new user
@@ -170,7 +287,30 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: 'SET_LOADING', payload: true });
 
     try {
-      const result = await apiService.post('/auth/register', formData);
+      // Ensure data is properly formatted
+      const registrationData = { ...formData };
+
+      // Handle nested properties correctly
+      if (registrationData.details) {
+        // Ensure interests and lookingFor are arrays
+        if (registrationData.details.interests && !Array.isArray(registrationData.details.interests)) {
+          registrationData.details.interests = registrationData.details.interests
+            .toString()
+            .split(',')
+            .map(interest => interest.trim())
+            .filter(Boolean);
+        }
+
+        if (registrationData.details.lookingFor && !Array.isArray(registrationData.details.lookingFor)) {
+          registrationData.details.lookingFor = registrationData.details.lookingFor
+            .toString()
+            .split(',')
+            .map(item => item.trim())
+            .filter(Boolean);
+        }
+      }
+
+      const result = await apiService.post('/auth/register', registrationData);
 
       if (result.success && result.token) {
         // Store token immediately
@@ -214,6 +354,19 @@ export const AuthProvider = ({ children }) => {
 
         // Load user data immediately after login
         await loadUser();
+
+        // Setup token refresh timer based on expiry
+        const expiryTime = getTokenExpiryTime(result.token);
+        if (expiryTime > 0) {
+          // Schedule refresh before token expires (5 minutes before expiry or halfway to expiry if less than 10 minutes)
+          const refreshDelay = Math.min(expiryTime - 300, Math.max(expiryTime / 2, 60)); // At least 1 minute
+          setTimeout(() => {
+            if (sessionStorage.getItem('token')) {
+              refreshToken();
+            }
+          }, refreshDelay * 1000);
+        }
+
         return true;
       } else {
         throw new Error('Invalid response format');
@@ -260,33 +413,72 @@ export const AuthProvider = ({ children }) => {
     if (token) {
       // Check if token is expired first
       if (isTokenExpired(token)) {
-        sessionStorage.removeItem('token');
-        dispatch({ type: 'AUTH_ERROR', payload: 'Token expired' });
-        dispatch({ type: 'SET_LOADING', payload: false });
-        return;
-      }
+        // Try to refresh token first instead of immediately removing it
+        refreshToken()
+          .then(() => {
+            // If refresh was successful, load user data
+            loadUser();
+          })
+          .catch(() => {
+            // If refresh failed, clear token and show error
+            sessionStorage.removeItem('token');
+            dispatch({ type: 'AUTH_ERROR', payload: 'Session expired. Please login again.' });
+            dispatch({ type: 'SET_LOADING', payload: false });
+          });
+      } else {
+        setAuthToken(token);
+        loadUser();
 
-      setAuthToken(token);
-      loadUser();
+        // Setup token refresh timer based on expiry
+        const expiryTime = getTokenExpiryTime(token);
+        if (expiryTime > 0) {
+          // Schedule refresh before token expires (5 minutes before expiry or halfway to expiry if less than 10 minutes)
+          const refreshDelay = Math.min(expiryTime - 300, Math.max(expiryTime / 2, 60)); // At least 1 minute
+
+          const timeoutId = setTimeout(() => {
+            if (sessionStorage.getItem('token')) {
+              refreshToken();
+            }
+          }, refreshDelay * 1000);
+
+          return () => clearTimeout(timeoutId);
+        }
+      }
     } else {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [loadUser, setAuthToken, isTokenExpired]);
+  }, [loadUser, setAuthToken, isTokenExpired, getTokenExpiryTime, refreshToken]);
 
-  // Set up periodic token validation check
+  // Set up periodic token validation check with more intelligent timing
   useEffect(() => {
-    const validateTokenInterval = setInterval(() => {
-      const token = sessionStorage.getItem('token');
-      if (token && isTokenExpired(token)) {
-        // Token has expired, log user out
-        console.warn('Token expired during session');
-        toast.error('Your session has expired. Please log in again.');
-        logout();
-      }
-    }, 60000); // Check every minute
+    let tokenCheckInterval;
 
-    return () => clearInterval(validateTokenInterval);
-  }, [isTokenExpired, logout]);
+    if (state.token) {
+      // Calculate check interval based on token expiry time
+      const expiryTime = getTokenExpiryTime(state.token);
+
+      // If token expires in less than 10 minutes, check every minute
+      // Otherwise, check every 5 minutes
+      const checkInterval = expiryTime < 600 ? 60000 : 300000;
+
+      tokenCheckInterval = setInterval(() => {
+        const token = sessionStorage.getItem('token');
+        if (token && isTokenExpired(token)) {
+          console.warn('Token expired during session');
+
+          // Try to refresh the token first instead of logging out immediately
+          refreshToken().catch(() => {
+            toast.error('Your session has expired. Please log in again.');
+            logout();
+          });
+        }
+      }, checkInterval);
+    }
+
+    return () => {
+      if (tokenCheckInterval) clearInterval(tokenCheckInterval);
+    };
+  }, [state.token, isTokenExpired, logout, refreshToken, getTokenExpiryTime]);
 
   return (
     <AuthContext.Provider
@@ -301,6 +493,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         clearErrors,
         loadUser,
+        refreshToken,
       }}
     >
       {children}

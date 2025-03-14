@@ -462,7 +462,6 @@ img {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: var(--space-lg);
-  animation: fadeIn var(--transition-slow) forwards;
 }
 
 .user-card {

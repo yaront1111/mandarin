@@ -5,8 +5,12 @@ const logger = require('./logger');
 
 const connectDB = async () => {
   try {
-    await mongoose.connect(config.MONGODB_URI);
-    logger.info('MongoDB Connected');
+    await mongoose.connect(config.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
   } catch (err) {
     logger.error(`MongoDB connection error: ${err.message}`);
     process.exit(1);

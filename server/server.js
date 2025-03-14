@@ -32,7 +32,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(corsMiddleware());
 
 // Set static folder for uploads
-app.use('/uploads', express.static(path.join(__dirname, config.FILE_UPLOAD_PATH)));
+app.use('/uploads', express.static(config.FILE_UPLOAD_PATH));
 
 // Mount API routes
 app.use('/api', routes);

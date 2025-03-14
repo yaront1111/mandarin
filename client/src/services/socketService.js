@@ -317,6 +317,7 @@ class SocketService {
    * @param {string} token - Authentication token
    * @returns {boolean} - True if reconnection was attempted
    */
+Copy// Add to socketService.js
   reconnect(token) {
     if (!this.userId) {
       console.error('Cannot reconnect: no user ID');
@@ -324,7 +325,7 @@ class SocketService {
     }
 
     if (this.socket) {
-      this.socket.io.opts.query = { token };
+      this.socket.io.opts.query = { token }; // Update token
       this.socket.connect();
       return true;
     }
