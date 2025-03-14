@@ -81,7 +81,8 @@ const MessageSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['text', 'wink', 'video', 'image', 'audio', 'file', 'location', 'contact', 'system'],
+    // Removed 'location' from the list as location messages are no longer supported
+    enum: ['text', 'wink', 'video', 'image', 'audio', 'file', 'contact', 'system'],
     default: 'text',
     index: true
   },
@@ -167,33 +168,13 @@ const MessageSchema = new mongoose.Schema({
   },
   // Message reactions (likes, etc)
   reactions: [ReactionSchema],
-  // Additional metadata
+  // Additional metadata (location removed)
   metadata: {
     clientMessageId: {
       type: String, // For client-side message handling
       index: true
     },
-    // Location data for location messages with enhanced validation
-    location: {
-      coordinates: {
-        type: [Number], // Expected format: [longitude, latitude]
-        validate: {
-          validator: function(v) {
-            return !v || (
-              Array.isArray(v) &&
-              v.length === 2 &&
-              !isNaN(v[0]) &&
-              !isNaN(v[1]) &&
-              v[0] >= -180 && v[0] <= 180 &&
-              v[1] >= -90 && v[1] <= 90
-            );
-          },
-          message: 'Invalid coordinates format. Must be a [longitude, latitude] array with valid numeric values.'
-        }
-      },
-      name: String,
-      address: String
-    },
+    // Removed the location property since location messages are no longer used.
     // Contact info for sharing contacts
     contact: {
       name: String,

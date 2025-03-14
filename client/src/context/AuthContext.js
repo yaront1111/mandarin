@@ -1,6 +1,4 @@
 // client/src/context/AuthContext.js
-// Production-level Auth Context with improved token refresh logic and axios interceptor
-
 import React, {
   createContext,
   useReducer,
@@ -152,7 +150,7 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // Improved token refresh logic with proper request queuing
+  // Improved token refresh logic with proper request queuing and socket reconnection
   const refreshToken = useCallback(async () => {
     if (refreshTokenPromise.current) {
       return refreshTokenPromise.current;
@@ -176,6 +174,8 @@ export const AuthProvider = ({ children }) => {
           if (isMounted.current) {
             dispatch({ type: 'TOKEN_REFRESHED', payload: result.token });
           }
+          // Reconnect socket with the new token
+          socketService.reconnect(result.token);
           // Schedule next token refresh
           const expiryTime = getTokenExpiryTime(result.token);
           if (expiryTime > 0) {
@@ -295,7 +295,11 @@ export const AuthProvider = ({ children }) => {
         setAuthToken(result.token);
         dispatch({ type: 'REGISTER', payload: result });
         toast.success('Registration successful');
-        await loadUser();
+        const user = await loadUser();
+        if (user) {
+          // Initialize socket connection after user is loaded
+          socketService.init(user._id.toString(), result.token);
+        }
         return true;
       } else {
         throw new Error('Invalid response format');
@@ -317,7 +321,11 @@ export const AuthProvider = ({ children }) => {
         setAuthToken(result.token);
         dispatch({ type: 'LOGIN', payload: result });
         toast.success('Login successful');
-        await loadUser();
+        const user = await loadUser();
+        if (user) {
+          // Initialize socket connection after user is loaded
+          socketService.init(user._id.toString(), result.token);
+        }
         // Schedule token refresh based on expiry
         const expiryTime = getTokenExpiryTime(result.token);
         if (expiryTime > 0) {
@@ -365,6 +373,11 @@ export const AuthProvider = ({ children }) => {
       if (isTokenExpired(token)) {
         refreshToken()
           .then(() => loadUser())
+          .then(user => {
+            if (user) {
+              socketService.init(user._id.toString(), sessionStorage.getItem('token'));
+            }
+          })
           .catch(() => {
             sessionStorage.removeItem('token');
             dispatch({ type: 'AUTH_ERROR', payload: 'Session expired. Please login again.' });
@@ -372,7 +385,11 @@ export const AuthProvider = ({ children }) => {
           });
       } else {
         setAuthToken(token);
-        loadUser();
+        loadUser().then(user => {
+          if (user) {
+            socketService.init(user._id.toString(), token);
+          }
+        });
         const expiryTime = getTokenExpiryTime(token);
         if (expiryTime > 0) {
           tokenRefreshTimer.current = setTimeout(() => {

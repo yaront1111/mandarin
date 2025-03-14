@@ -194,22 +194,30 @@ router.post('/', protect, messageRateLimit, asyncHandler(async (req, res) => {
     } else if (type === 'video') {
       processedContent = 'Video Call';
     } else if (type === 'location') {
-      // For location messages, validate metadata
+      // For location messages, validate metadata and convert coordinates to numbers
       if (!metadata || !metadata.location || !Array.isArray(metadata.location.coordinates) || metadata.location.coordinates.length !== 2) {
         return res.status(400).json({
           success: false,
           error: 'Location messages require valid coordinates in metadata'
         });
       }
-      const [longitude, latitude] = metadata.location.coordinates;
-      if (isNaN(longitude) || isNaN(latitude) ||
-          longitude < -180 || longitude > 180 ||
-          latitude < -90 || latitude > 90) {
+      // Convert coordinates to numbers
+      const coords = metadata.location.coordinates.map(coord => Number(coord));
+      if (coords.some(coord => isNaN(coord))) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid coordinate values. Must be numeric.'
+        });
+      }
+      const [longitude, latitude] = coords;
+      if (longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
         return res.status(400).json({
           success: false,
           error: 'Invalid coordinates. Longitude must be between -180 and 180, latitude between -90 and 90'
         });
       }
+      // Update metadata with converted coordinates
+      metadata.location.coordinates = coords;
       processedContent = content || ''; // Content can be empty for location messages
     }
 
@@ -353,7 +361,7 @@ router.get('/unread/count', protect, asyncHandler(async (req, res) => {
   logger.debug(`Getting unread message count for user ${req.user._id}`);
 
   try {
-    // Convert user ID to ObjectId with the 'new' keyword
+    // Convert user ID to ObjectId
     const recipientId = new mongoose.Types.ObjectId(req.user._id);
 
     // Get total count of unread messages
@@ -382,19 +390,15 @@ router.get('/unread/count', protect, asyncHandler(async (req, res) => {
       }
     ]);
 
-    // If there are unread messages, get sender details
+    // Get sender details if unread messages exist
     let detailedUnread = [];
     if (unreadBySender.length > 0) {
-      // Extract sender IDs
       const senderIds = unreadBySender.map(item => item._id);
-
-      // Get sender info
       const senders = await User.find(
         { _id: { $in: senderIds } },
         { nickname: 1, photos: 1 }
       ).lean();
 
-      // Combine sender info with unread counts
       detailedUnread = unreadBySender.map(item => {
         const sender = senders.find(s => s._id.toString() === item._id.toString());
         return {
@@ -464,9 +468,7 @@ router.delete('/:id', protect, asyncHandler(async (req, res) => {
       } else if (isRecipient) {
         message.deletedByRecipient = true;
       }
-
       if (message.deletedBySender && message.deletedByRecipient) {
-        // If both parties deleted, remove entirely
         await Message.deleteOne({ _id: message._id });
         logger.info(`Message ${req.params.id} permanently deleted`);
       } else {
@@ -474,7 +476,6 @@ router.delete('/:id', protect, asyncHandler(async (req, res) => {
         logger.info(`Message ${req.params.id} marked as deleted for ${isSender ? 'sender' : 'recipient'}`);
       }
     } else if (deleteMode === 'both' && isSender) {
-      // Sender can delete for both
       await Message.deleteOne({ _id: message._id });
       logger.info(`Message ${req.params.id} permanently deleted by sender for both users`);
     } else {

@@ -1,5 +1,5 @@
 // client/src/context/ChatContext.js
-import React, { createContext, useReducer, useContext, useCallback, useState, useEffect } from 'react';
+import React, { createContext, useReducer, useContext, useCallback, useState, useEffect, useRef } from 'react';
 import apiService from '../services/apiService';
 import socketService from '../services/socketService';
 import { toast } from 'react-toastify';
@@ -38,11 +38,12 @@ export const ChatProvider = ({ children }) => {
   const [unreadError, setUnreadError] = useState(null);
   const [lastUnreadFetch, setLastUnreadFetch] = useState(0);
   const [unreadRetryCount, setUnreadRetryCount] = useState(0);
+  const messagesEndRef = useRef(null);
+  const chatInputRef = useRef(null);
 
   // Fetch messages for a conversation
   const getMessages = useCallback(async (userId) => {
     if (!userId) return;
-
     try {
       const response = await apiService.get(`/messages/${userId}`);
       if (response.success) {
@@ -59,52 +60,35 @@ export const ChatProvider = ({ children }) => {
   }, []);
 
   /**
-   * Mark a message as read
-   * IMPORTANT: This needs to be defined BEFORE it's used in any hook
+   * Mark a message as read.
    */
   const markMessageRead = useCallback(async (messageId) => {
     try {
       await apiService.put(`/messages/${messageId}/read`);
-      // We're defining getUnreadMessages later, so we need to use a function reference here
-      setUnreadMessages(prev => {
-        // Remove the marked message from unread messages
-        return prev.filter(msg => msg._id !== messageId);
-      });
+      setUnreadMessages(prev => prev.filter(msg => msg._id !== messageId));
     } catch (error) {
       console.error('Error marking message as read:', error);
     }
   }, []);
 
-  // Get unread messages with improved error handling and retry logic
+  // Get unread messages with error handling and retry logic.
   const getUnreadMessages = useCallback(async (force = false) => {
-    // Prevent frequent calls
     const now = Date.now();
-    const minInterval = 10000; // Minimum 10 seconds between calls
-
-    if (!force && now - lastUnreadFetch < minInterval) {
-      return;
-    }
-
-    // Check if we've attempted too many retries
+    const minInterval = 10000; // 10 seconds between calls
+    if (!force && now - lastUnreadFetch < minInterval) return;
     if (unreadRetryCount > 5) {
       console.warn('Too many failed attempts to fetch unread messages, giving up');
       setUnreadError('Unable to fetch unread messages after multiple attempts');
       return;
     }
-
     if (loadingUnread) return;
-
     setLoadingUnread(true);
     setLastUnreadFetch(now);
-
     try {
       const response = await apiService.get('/messages/unread/count');
       if (response && response.success) {
-        // Reset retry count on success
         setUnreadRetryCount(0);
         setUnreadError(null);
-
-        // Ensure we always have a valid array
         const messageData = Array.isArray(response.bySender) ? response.bySender : [];
         setUnreadMessages(messageData);
         return response;
@@ -113,17 +97,10 @@ export const ChatProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Error fetching unread messages:', error);
-
-      // Increment retry count
       setUnreadRetryCount(prev => prev + 1);
       setUnreadError(error.message || 'Error fetching unread messages');
-
-      // Schedule retry with exponential backoff
       const backoffTime = Math.min(30000, 1000 * Math.pow(2, unreadRetryCount));
-      setTimeout(() => {
-        getUnreadMessages(true);
-      }, backoffTime);
-
+      setTimeout(() => { getUnreadMessages(true); }, backoffTime);
       return null;
     } finally {
       setLoadingUnread(false);
@@ -132,119 +109,44 @@ export const ChatProvider = ({ children }) => {
 
   /**
    * Send a message to a recipient with proper formatting.
+   * Supports text, wink, and video messages.
    */
-  const sendMessage = useCallback(async (recipient, type, content, metadata = null) => {
+  const sendMessage = useCallback(async (recipient, type, content) => {
     dispatch({ type: 'SENDING_MESSAGE' });
     try {
-      // Prepare message data based on message type
       let messageData = { recipient, type };
       if (type === 'text') {
         messageData.content = content;
+        // Remove metadata for non-location messages
       } else if (type === 'wink') {
         messageData.content = '😉';
       } else if (type === 'video') {
         messageData.content = 'Video Call';
-      } else if (type === 'location') {
-        if (metadata && metadata.location) {
-          messageData.metadata = { location: metadata.location };
-          messageData.content = content || 'Shared location';
-        } else {
-          throw new Error('Invalid location data');
-        }
       } else {
-        messageData.content = content || '';
-        if (metadata) {
-          messageData.metadata = metadata;
-        }
+        // For unsupported types, throw an error
+        throw new Error(`Unsupported message type: ${type}`);
       }
-
-      // Send the message to the API endpoint
       const data = await apiService.post('/messages', messageData);
       if (!data.success) {
         throw new Error(data.error || 'Failed to send message');
       }
       const message = data.data;
-
-      // Try to send via socket for real-time delivery
       try {
         await socketService.sendMessage(recipient, type, message._id);
       } catch (socketErr) {
         console.warn('Socket delivery failed, but message is saved:', socketErr);
       }
-
       dispatch({ type: 'SEND_MESSAGE', payload: message });
       return message;
     } catch (err) {
       const errorMsg = err.error || err.message || 'Failed to send message';
       dispatch({ type: 'MESSAGE_ERROR', payload: errorMsg });
-      return null;
+      throw err;
     }
-  }, []);
+  }, [dispatch]);
 
   /**
-   * Send a location message using proper formatting.
-   */
-  const sendLocationMessage = useCallback(async (recipient, locationData) => {
-    try {
-      if (!locationData || typeof locationData !== 'object') {
-        throw new Error('Invalid location data');
-      }
-      let coordinates;
-      if ('lat' in locationData && 'lng' in locationData) {
-        const lat = parseFloat(locationData.lat);
-        const lng = parseFloat(locationData.lng);
-        if (isNaN(lat) || isNaN(lng)) {
-          throw new Error('Invalid coordinates values');
-        }
-        coordinates = [lng, lat]; // [longitude, latitude]
-      } else if (Array.isArray(locationData.coordinates) && locationData.coordinates.length === 2) {
-        const longitude = parseFloat(locationData.coordinates[0]);
-        const latitude = parseFloat(locationData.coordinates[1]);
-        if (isNaN(longitude) || isNaN(latitude)) {
-          throw new Error('Invalid coordinates values');
-        }
-        coordinates = [longitude, latitude];
-      } else if ('longitude' in locationData && 'latitude' in locationData) {
-        const longitude = parseFloat(locationData.longitude);
-        const latitude = parseFloat(locationData.latitude);
-        if (isNaN(longitude) || isNaN(latitude)) {
-          throw new Error('Invalid coordinates values');
-        }
-        coordinates = [longitude, latitude];
-      } else {
-        throw new Error('Location must include valid coordinates');
-      }
-      if (coordinates[0] < -180 || coordinates[0] > 180 ||
-          coordinates[1] < -90 || coordinates[1] > 90) {
-        throw new Error('Coordinates out of valid range');
-      }
-      const messageData = {
-        recipient,
-        type: 'location',
-        content: locationData.address || locationData.name || 'Shared location',
-        metadata: {
-          location: {
-            coordinates,
-            name: locationData.name || '',
-            address: locationData.address || ''
-          }
-        }
-      };
-      return await sendMessage(
-        recipient,
-        'location',
-        messageData.content,
-        messageData.metadata
-      );
-    } catch (err) {
-      const errorMsg = err.message || 'Failed to send location';
-      dispatch({ type: 'MESSAGE_ERROR', payload: errorMsg });
-      return null;
-    }
-  }, [sendMessage]);
-
-  /**
-   * Send typing indicator
+   * Send typing indicator.
    */
   const sendTyping = useCallback((recipientId) => {
     if (!recipientId) return;
@@ -252,7 +154,7 @@ export const ChatProvider = ({ children }) => {
   }, []);
 
   /**
-   * Initiate a video call
+   * Initiate a video call.
    */
   const initiateVideoCall = useCallback((recipientId) => {
     if (!recipientId) {
@@ -269,69 +171,40 @@ export const ChatProvider = ({ children }) => {
   }, []);
 
   /**
-   * Clear error state
+   * Clear error state.
    */
   const clearError = useCallback(() => {
     dispatch({ type: 'CLEAR_ERROR' });
   }, []);
 
-  // Effect to fetch unread messages on mount and set up socket listeners
   useEffect(() => {
     let isMounted = true;
-
-    // Initial fetch
     getUnreadMessages(true);
-
-    // Set up polling with increasing intervals if there are failures
-    let pollInterval = 30000; // Start with 30 seconds
+    let pollInterval = 30000;
     let pollTimer = null;
-
     const pollUnreadMessages = () => {
       if (isMounted) {
         getUnreadMessages().finally(() => {
-          // Calculate next interval based on success/failure
-          if (unreadError) {
-            pollInterval = Math.min(pollInterval * 1.5, 300000); // Max 5 minutes
-          } else {
-            pollInterval = 30000; // Reset to normal on success
-          }
-
-          if (isMounted) {
-            pollTimer = setTimeout(pollUnreadMessages, pollInterval);
-          }
+          pollInterval = unreadError ? Math.min(pollInterval * 1.5, 300000) : 30000;
+          if (isMounted) pollTimer = setTimeout(pollUnreadMessages, pollInterval);
         });
       }
     };
-
-    // Start polling
     pollTimer = setTimeout(pollUnreadMessages, pollInterval);
-
-    // Set up socket listeners for new messages
     const handleNewMessage = (message) => {
       if (currentChat && message.sender === currentChat._id) {
-        // Add to current conversation
         dispatch({ type: 'SEND_MESSAGE', payload: message });
-        // Mark as read automatically
         markMessageRead(message._id);
       } else {
-        // Update unread count
         getUnreadMessages(true);
-        // Show notification
         toast.info(`New message from ${message.senderName || 'Someone'}`);
       }
     };
-
     const handleTyping = (data) => {
-      setTypingUsers(prev => ({
-        ...prev,
-        [data.userId]: Date.now()
-      }));
+      setTypingUsers(prev => ({ ...prev, [data.userId]: Date.now() }));
     };
-
-    // Connect socket handlers
     socketService.on('newMessage', handleNewMessage);
     socketService.on('userTyping', handleTyping);
-
     return () => {
       isMounted = false;
       if (pollTimer) clearTimeout(pollTimer);
@@ -352,7 +225,7 @@ export const ChatProvider = ({ children }) => {
         loadingUnread,
         unreadError,
         sendMessage,
-        sendLocationMessage,
+        // Removed sendLocationMessage from context
         getMessages,
         getUnreadMessages,
         setCurrentChat,

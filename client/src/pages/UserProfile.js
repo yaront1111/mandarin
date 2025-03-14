@@ -1,11 +1,14 @@
 // client/src/pages/UserProfile.js
 import React, { useEffect, useState } from 'react';
-import { FaArrowLeft, FaHeart, FaComment, FaEllipsisH,
-  FaShieldAlt, FaMapMarkerAlt, FaCalendarAlt, FaRegClock,
-  FaCheck, FaChevronRight, FaChevronLeft, FaLock, FaUserAlt, FaTrophy
+import {
+  FaArrowLeft, FaHeart, FaComment, FaEllipsisH,
+  FaMapMarkerAlt, FaCalendarAlt, FaRegClock,
+  FaCheck, FaChevronRight, FaChevronLeft, FaLock,
+  FaUserAlt, FaTrophy
 } from 'react-icons/fa';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useUser, useChat, useAuth } from '../context';
+import EmbeddedChat from '../components/EmbeddedChat';
 import { toast } from 'react-toastify';
 
 const UserProfile = () => {
@@ -19,13 +22,14 @@ const UserProfile = () => {
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [showActions, setShowActions] = useState(false);
 
+  // Load user data and messages when component mounts
   useEffect(() => {
     if (id) {
       getUser(id);
-      getMessages(id);
     }
-  }, [id, getUser, getMessages]);
+  }, [id, getUser]);
 
+  // Redirect if user not found after loading
   useEffect(() => {
     if (!loading && !profileUser && id) {
       toast.error('User profile not found');
@@ -39,10 +43,15 @@ const UserProfile = () => {
 
   const handleLike = () => {
     console.log('Liked user:', profileUser?._id);
+    toast.success(`You liked ${profileUser?.nickname}`);
   };
 
   const handleMessage = () => {
     setShowChat(true);
+  };
+
+  const handleCloseChat = () => {
+    setShowChat(false);
   };
 
   const handleRequestAccess = (photoId) => {
@@ -110,7 +119,7 @@ const UserProfile = () => {
           <FaArrowLeft /> Back
         </button>
 
-        <div className="profile-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
+        <div className="profile-layout">
           {/* Left: Photos */}
           <div className="profile-photos-section">
             {profileUser.photos && profileUser.photos.length > 0 ? (
@@ -139,53 +148,27 @@ const UserProfile = () => {
                     </>
                   )}
                   {profileUser.isOnline && (
-                    <div className="online-badge" style={{
-                      position: 'absolute',
-                      top: '16px',
-                      left: '16px',
-                      background: '#33D685',
-                      color: '#fff',
-                      padding: '4px 8px',
-                      borderRadius: '12px',
-                      fontSize: '0.8rem'
-                    }}>
+                    <div className="online-badge">
                       Online Now
                     </div>
                   )}
                 </div>
                 {profileUser.photos.length > 1 && (
-                  <div className="photo-thumbnails mt-3" style={{ display: 'flex', gap: '8px' }}>
+                  <div className="photo-thumbnails mt-3">
                     {profileUser.photos.map((photo, index) => (
                       <div
                         key={index}
                         className={`photo-thumbnail ${index === activePhotoIndex ? 'active' : ''}`}
                         onClick={() => setActivePhotoIndex(index)}
-                        style={{ cursor: 'pointer' }}
                       >
                         {photo.isPrivate ? (
-                          <div
-                            style={{
-                              width: '60px',
-                              height: '60px',
-                              background: '#eee',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              borderRadius: '8px'
-                            }}
-                          >
+                          <div className="private-thumbnail">
                             <FaLock />
                           </div>
                         ) : (
                           <img
                             src={photo.url}
                             alt={`${profileUser.nickname} ${index + 1}`}
-                            style={{
-                              width: '60px',
-                              height: '60px',
-                              objectFit: 'cover',
-                              borderRadius: '8px'
-                            }}
                           />
                         )}
                       </div>
@@ -194,53 +177,32 @@ const UserProfile = () => {
                 )}
               </div>
             ) : (
-              <div
-                style={{
-                  width: '100%',
-                  height: '400px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: '#f0f0f0'
-                }}
-              >
-                <FaUserAlt style={{ fontSize: '80px', color: '#ccc' }} />
-                <p style={{ marginLeft: '8px' }}>No photos available</p>
+              <div className="no-photo-placeholder">
+                <FaUserAlt />
+                <p>No photos available</p>
               </div>
             )}
-            <div className="quick-actions d-flex align-items-center mt-3" style={{ gap: '8px' }}>
+            <div className="quick-actions">
               <button className="btn btn-outline" onClick={handleLike}>
                 <FaHeart />
-                <span style={{ marginLeft: '8px' }}>Like</span>
+                <span>Like</span>
               </button>
               <button className="btn btn-primary" onClick={handleMessage}>
                 <FaComment />
-                <span style={{ marginLeft: '8px' }}>Message</span>
+                <span>Message</span>
               </button>
               <button
                 className="btn btn-subtle"
                 onClick={() => setShowActions(!showActions)}
-                style={{ marginLeft: 'auto' }}
               >
                 <FaEllipsisH />
               </button>
               {showActions && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    background: '#fff',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
-                    borderRadius: '8px',
-                    right: '0',
-                    padding: '8px',
-                    marginTop: '40px',
-                    zIndex: 10
-                  }}
-                >
-                  <button className="btn btn-link" style={{ display: 'block', width: '100%', textAlign: 'left' }}>
+                <div className="actions-dropdown">
+                  <button className="dropdown-item">
                     Block User
                   </button>
-                  <button className="btn btn-link" style={{ display: 'block', width: '100%', textAlign: 'left' }}>
+                  <button className="dropdown-item">
                     Report User
                   </button>
                 </div>
@@ -250,31 +212,22 @@ const UserProfile = () => {
 
           {/* Right: Details */}
           <div className="profile-details-section">
-            <div className="user-headline d-flex align-items-center">
-              <h1 style={{ marginRight: '8px' }}>
+            <div className="user-headline">
+              <h1>
                 {profileUser.nickname}, {profileUser.details?.age || '?'}
               </h1>
               {profileUser.role === 'premium' && (
-                <div
-                  className="d-flex align-items-center"
-                  style={{
-                    background: '#ff3366',
-                    color: '#fff',
-                    padding: '4px 8px',
-                    borderRadius: '8px',
-                    fontSize: '0.8rem'
-                  }}
-                >
-                  <FaTrophy style={{ marginRight: '4px' }} /> Premium
+                <div className="premium-badge">
+                  <FaTrophy /> Premium
                 </div>
               )}
             </div>
-            <div className="user-location d-flex align-items-center mb-2">
+            <div className="user-location">
               <FaMapMarkerAlt />
               <span>{profileUser.details?.location || 'Unknown location'}</span>
             </div>
-            <div className="d-flex align-items-center text-light mb-4" style={{ gap: '16px' }}>
-              <div className="d-flex align-items-center" style={{ gap: '4px' }}>
+            <div className="user-activity">
+              <div className="activity-item">
                 <FaRegClock />
                 <span>
                   {profileUser.isOnline
@@ -282,7 +235,7 @@ const UserProfile = () => {
                     : `Last active ${new Date(profileUser.lastActive).toLocaleDateString()}`}
                 </span>
               </div>
-              <div className="d-flex align-items-center" style={{ gap: '4px' }}>
+              <div className="activity-item">
                 <FaCalendarAlt />
                 <span>Member since {new Date(profileUser.createdAt).toLocaleDateString()}</span>
               </div>
@@ -296,34 +249,26 @@ const UserProfile = () => {
             {profileUser.details?.interests?.length > 0 && (
               <div className="profile-section">
                 <h2>Interests</h2>
-                <div className="d-flex flex-wrap" style={{ gap: '8px' }}>
+                <div className="interests-tags">
                   {profileUser.details.interests.map((interest) => (
                     <span
                       key={interest}
                       className={`interest-tag ${
-                        commonInterests.includes(interest) ? 'selected' : ''
+                        commonInterests.includes(interest) ? 'common' : ''
                       }`}
                     >
                       {interest}
                       {commonInterests.includes(interest) && (
-                        <FaCheck style={{ marginLeft: '4px' }} />
+                        <FaCheck className="common-icon" />
                       )}
                     </span>
                   ))}
                 </div>
               </div>
             )}
-            <div className="compatibility-section mt-4">
+            <div className="compatibility-section">
               <h2>Compatibility</h2>
-              <div
-                className="compatibility-score d-flex align-items-center"
-                style={{
-                  background: 'rgba(255, 51, 102, 0.08)',
-                  padding: '16px',
-                  borderRadius: '8px',
-                  marginTop: '8px'
-                }}
-              >
+              <div className="compatibility-score">
                 <div className="score-circle">
                   <svg viewBox="0 0 100 100">
                     <circle className="score-bg" cx="50" cy="50" r="45" />
@@ -338,10 +283,10 @@ const UserProfile = () => {
                   </svg>
                   <div className="score-value">{compatibility}%</div>
                 </div>
-                <div className="compatibility-details ml-4">
-                  <h4 style={{ marginBottom: '8px' }}>Common Interests</h4>
+                <div className="compatibility-details">
+                  <h4>Common Interests</h4>
                   {commonInterests.length > 0 ? (
-                    <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                    <ul className="common-interests-list">
                       {commonInterests.map((interest) => (
                         <li key={interest}>{interest}</li>
                       ))}
@@ -355,31 +300,16 @@ const UserProfile = () => {
           </div>
         </div>
 
+        {/* Embedded Chat */}
         {showChat && (
-          <div
-            style={{
-              position: 'fixed',
-              bottom: '0',
-              right: '0',
-              width: '400px',
-              backgroundColor: '#fff',
-              boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
-              borderTopLeftRadius: '8px',
-              borderTopRightRadius: '8px',
-              zIndex: 999
-            }}
-          >
-            <div className="d-flex justify-content-between align-items-center p-3 border-bottom">
-              <h4 className="mb-0">Chat with {profileUser.nickname}</h4>
-              <button className="btn btn-link" onClick={() => setShowChat(false)}>
-                Close
-              </button>
-            </div>
-            <div style={{ padding: '16px' }}>
-              {/* Example chatbox placeholder or real ChatBox component */}
-              <p>ChatBox goes here...</p>
-            </div>
-          </div>
+          <>
+            <div className="chat-overlay" onClick={handleCloseChat}></div>
+            <EmbeddedChat
+              recipient={profileUser}
+              isOpen={showChat}
+              onClose={handleCloseChat}
+            />
+          </>
         )}
       </div>
     </div>

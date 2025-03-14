@@ -7,19 +7,24 @@ import {
   FaHeart,
   FaComments,
   FaBell,
-  FaUserCircle
+  FaUserCircle,
+  FaTimes
 } from 'react-icons/fa';
-import { useAuth, useUser } from '../context';
+import { useAuth, useUser, useChat } from '../context';
+import EmbeddedChat from '../components/EmbeddedChat';
+import { toast } from 'react-toastify';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { users, getUsers, loading } = useUser();
+  const { unreadMessages } = useChat();
+
   const [activeTab, setActiveTab] = useState('discover');
   const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({
-    ageMin: 0,
-    ageMax: 150,
+    ageMin: 18,
+    ageMax: 99,
     distance: 100,
     online: false,
     verified: false,
@@ -27,7 +32,11 @@ const Dashboard = () => {
     interests: []
   });
 
-  // Fetch users on mount and set up periodic refresh and visibility listener.
+  // New state for chat functionality
+  const [chatUser, setChatUser] = useState(null);
+  const [showChat, setShowChat] = useState(false);
+
+  // Fetch users on mount and set up periodic refresh
   useEffect(() => {
     getUsers();
 
@@ -45,15 +54,18 @@ const Dashboard = () => {
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Cleanup on unmount.
+    // Cleanup on unmount
     return () => {
       clearInterval(refreshInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [getUsers]);
 
-  // Filter users based on filterValues.
+  // Filter users based on filterValues
   const filteredUsers = users.filter(u => {
+    // Don't show current user
+    if (u._id === user?._id) return false;
+
     const userAge = u.details?.age || 25;
     if (userAge < filterValues.ageMin || userAge > filterValues.ageMax) return false;
     if (filterValues.online && !u.isOnline) return false;
@@ -66,7 +78,7 @@ const Dashboard = () => {
     return true;
   });
 
-  // Custom sorting: online users first, then by lastActive descending.
+  // Custom sorting: online users first, then by lastActive descending
   const sortedUsers = [...filteredUsers].sort((a, b) => {
     if (a.isOnline && !b.isOnline) return -1;
     if (!a.isOnline && b.isOnline) return 1;
@@ -92,13 +104,32 @@ const Dashboard = () => {
     navigate(`/user/${userId}`);
   };
 
-  const navigateToMessages = (e) => {
-    e?.stopPropagation();
-    navigate('/messages');
+  const handleMessageUser = (e, user) => {
+    e.stopPropagation(); // Prevent card click navigation
+    setChatUser(user);
+    setShowChat(true);
+  };
+
+  const closeChat = () => {
+    setShowChat(false);
+    setChatUser(null);
   };
 
   const navigateToProfile = () => {
     navigate('/profile');
+  };
+
+  // Check if a user has unread messages - with proper null/undefined checks
+  const hasUnreadMessages = (userId) => {
+    return Array.isArray(unreadMessages) &&
+           unreadMessages.some(msg => msg.sender === userId);
+  };
+
+  // Count unread messages for a user - with proper null/undefined checks
+  const unreadCount = (userId) => {
+    return Array.isArray(unreadMessages)
+           ? unreadMessages.filter(msg => msg.sender === userId).length
+           : 0;
   };
 
   return (
@@ -122,19 +153,13 @@ const Dashboard = () => {
               <FaHeart className="tab-icon" />
               <span>Matches</span>
             </button>
-            <button
-              className={`tab-button ${activeTab === 'messages' ? 'active' : ''}`}
-              onClick={navigateToMessages}
-            >
-              <FaComments className="tab-icon" />
-              <span>Messages</span>
-              <span className="notification-badge">3</span>
-            </button>
           </div>
           <div className="header-actions d-flex align-items-center">
             <button className="header-action-button">
               <FaBell />
-              <span className="notification-badge">2</span>
+              {unreadMessages && unreadMessages.length > 0 && (
+                <span className="notification-badge">{unreadMessages.length}</span>
+              )}
             </button>
             <div className="user-avatar-dropdown">
               {user?.photos?.length > 0 ? (
@@ -162,9 +187,7 @@ const Dashboard = () => {
           <h1>
             {activeTab === 'discover'
               ? 'Discover People'
-              : activeTab === 'matches'
-              ? 'Your Matches'
-              : 'Messages'}
+              : 'Your Matches'}
           </h1>
           <div className="content-actions d-flex align-items-center">
             <div className="filter-button d-none d-md-flex" onClick={() => setShowFilters(!showFilters)}>
@@ -183,8 +206,8 @@ const Dashboard = () => {
                 <label>Min: {filterValues.ageMin}</label>
                 <input
                   type="range"
-                  min="0"
-                  max="150"
+                  min="18"
+                  max="99"
                   value={filterValues.ageMin}
                   onChange={(e) =>
                     setFilterValues({ ...filterValues, ageMin: parseInt(e.target.value) })
@@ -193,8 +216,8 @@ const Dashboard = () => {
                 <label>Max: {filterValues.ageMax}</label>
                 <input
                   type="range"
-                  min="0"
-                  max="150"
+                  min="18"
+                  max="99"
                   value={filterValues.ageMax}
                   onChange={(e) =>
                     setFilterValues({ ...filterValues, ageMax: parseInt(e.target.value) })
@@ -273,8 +296,8 @@ const Dashboard = () => {
                 className="btn btn-outline"
                 onClick={() =>
                   setFilterValues({
-                    ageMin: 0,
-                    ageMax: 150,
+                    ageMin: 18,
+                    ageMax: 99,
                     distance: 100,
                     online: false,
                     verified: false,
@@ -296,11 +319,7 @@ const Dashboard = () => {
         )}
 
         {/* Users Grid */}
-        <div className="users-grid mt-4" style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-          gap: '24px'
-        }}>
+        <div className="users-grid mt-4">
           {loading ? (
             <div className="loading-container">
               <div className="spinner spinner-dark"></div>
@@ -313,78 +332,75 @@ const Dashboard = () => {
                 className="user-card"
                 onClick={() => navigateToUserProfile(matchedUser._id)}
               >
-                <div className="user-card-photo" style={{ position: 'relative', height: '280px', overflow: 'hidden' }}>
+                <div className="user-card-photo">
                   {matchedUser.photos && matchedUser.photos.length > 0 ? (
                     <img
                       src={matchedUser.photos[0].url}
                       alt={matchedUser.nickname}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s ease' }}
                     />
                   ) : (
-                    <FaUserCircle style={{ fontSize: '80px', color: '#ccc', margin: '50px auto' }} />
+                    <FaUserCircle className="avatar-placeholder" />
                   )}
                   {matchedUser.isOnline && (
-                    <div className="online-indicator" style={{
-                      position: 'absolute',
-                      top: '16px',
-                      right: '16px',
-                      width: '12px',
-                      height: '12px',
-                      borderRadius: '50%',
-                      backgroundColor: 'var(--success)',
-                      border: '2px solid var(--white)'
-                    }}></div>
+                    <div className="online-indicator"></div>
                   )}
                 </div>
-                <div className="user-card-info" style={{ padding: '16px' }}>
-                  <h3 style={{ fontSize: '1.125rem', marginBottom: '8px', color: 'var(--text-dark)' }}>
-                    {matchedUser.nickname}, {matchedUser.details?.age || '?'}
-                  </h3>
-                  <p style={{ fontSize: '0.875rem', color: 'var(--text-light)' }}>
-                    {matchedUser.details?.location || 'Unknown location'}
-                  </p>
-                  <div className="user-actions" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'auto' }}>
-                    <button
-                      className="card-action-button like"
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        width: '48%',
-                        padding: '8px',
-                        borderRadius: '8px',
-                        backgroundColor: 'var(--light)',
-                        color: 'var(--text-medium)',
-                        border: 'none',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <FaHeart />
-                    </button>
-                    <button
-                      className="card-action-button message"
-                      onClick={(e) => { e.stopPropagation(); navigateToMessages(); }}
-                      style={{
-                        width: '48%',
-                        padding: '8px',
-                        borderRadius: '8px',
-                        backgroundColor: 'var(--light)',
-                        color: 'var(--text-medium)',
-                        border: 'none',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <FaComments />
-                    </button>
+                <div className="user-card-info">
+                  <div className="d-flex justify-content-between align-items-center">
+                    <h3>
+                      {matchedUser.nickname}, {matchedUser.details?.age || '?'}
+                    </h3>
+                    {hasUnreadMessages(matchedUser._id) && (
+                      <span className="unread-badge">{unreadCount(matchedUser._id)}</span>
+                    )}
                   </div>
+                  <p>{matchedUser.details?.location || 'Unknown location'}</p>
+
+                  {/* We replace the dual action buttons with a single chat button */}
+                  <button
+                    className="user-card-chat-btn"
+                    onClick={(e) => handleMessageUser(e, matchedUser)}
+                  >
+                    <FaComments /> Chat Now
+                  </button>
                 </div>
               </div>
             ))
           ) : (
-            <div className="loading-container">
-              <p>No users found.</p>
+            <div className="no-results">
+              <p>No users found matching your criteria.</p>
+              <button
+                className="btn btn-primary mt-2"
+                onClick={() => {
+                  setFilterValues({
+                    ageMin: 18,
+                    ageMax: 99,
+                    distance: 100,
+                    online: false,
+                    verified: false,
+                    withPhotos: false,
+                    interests: []
+                  });
+                }}
+              >
+                Reset Filters
+              </button>
             </div>
           )}
         </div>
       </main>
+
+      {/* Embedded Chat */}
+      {showChat && chatUser && (
+        <>
+          <div className="chat-overlay" onClick={closeChat}></div>
+          <EmbeddedChat
+            recipient={chatUser}
+            isOpen={showChat}
+            onClose={closeChat}
+          />
+        </>
+      )}
     </div>
   );
 };
