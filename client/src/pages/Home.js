@@ -1,20 +1,23 @@
+"use client"
+
 // client/src/pages/Home.js
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { FaArrowRight } from 'react-icons/fa';
+import { useState } from "react"
+import { Link, useNavigate } from "react-router-dom"
+import { FaArrowRight } from "react-icons/fa"
+import { ThemeToggle } from "../components/theme-toggle.tsx"
 
 const Home = () => {
-  const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const navigate = useNavigate()
+  const [email, setEmail] = useState("")
 
   const handleStartNow = () => {
-    navigate('/register');
-  };
+    navigate("/register")
+  }
 
   const handleEmailSubmit = (e) => {
-    e.preventDefault();
-    navigate('/register', { state: { email } });
-  };
+    e.preventDefault()
+    navigate("/register", { state: { email } })
+  }
 
   return (
     <div className="modern-home-page">
@@ -23,13 +26,24 @@ const Home = () => {
         <div className="container d-flex justify-content-between align-items-center">
           <div className="logo">Mandarin</div>
           <nav className="d-none d-md-flex main-tabs">
-            <Link to="/about" className="tab-button">About</Link>
-            <Link to="/safety" className="tab-button">Safety</Link>
-            <Link to="/support" className="tab-button">Support</Link>
+            <Link to="/about" className="tab-button">
+              About
+            </Link>
+            <Link to="/safety" className="tab-button">
+              Safety
+            </Link>
+            <Link to="/support" className="tab-button">
+              Support
+            </Link>
           </nav>
           <div className="header-actions d-flex align-items-center">
-            <Link to="/login" className="btn btn-outline btn-sm">Login</Link>
-            <Link to="/register" className="btn btn-primary btn-sm">Register</Link>
+            <ThemeToggle />
+            <Link to="/login" className="btn btn-outline btn-sm">
+              Login
+            </Link>
+            <Link to="/register" className="btn btn-primary btn-sm">
+              Register
+            </Link>
           </div>
         </div>
       </header>
@@ -39,16 +53,16 @@ const Home = () => {
         <div className="hero-content">
           <h1>Find Your Perfect Connection</h1>
           <p>
-            Discover genuine connections in a safe, discreet environment designed
-            for adults seeking meaningful encounters.
+            Discover genuine connections in a safe, discreet environment designed for adults seeking meaningful
+            encounters.
           </p>
           <div className="hero-actions">
-            <form onSubmit={handleEmailSubmit} style={{ display: 'flex', gap: '8px' }}>
+            <form onSubmit={handleEmailSubmit} style={{ display: "flex", gap: "8px" }}>
               <input
                 type="email"
                 placeholder="Enter your email"
                 className="form-control"
-                style={{ maxWidth: '250px' }}
+                style={{ maxWidth: "250px" }}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -81,9 +95,15 @@ const Home = () => {
             <Link to="/privacy">Privacy</Link>
           </div>
           <div className="footer-social">
-            <a href="#" className="social-icon">FB</a>
-            <a href="#" className="social-icon">IG</a>
-            <a href="#" className="social-icon">TW</a>
+            <a href="#" className="social-icon">
+              FB
+            </a>
+            <a href="#" className="social-icon">
+              IG
+            </a>
+            <a href="#" className="social-icon">
+              TW
+            </a>
           </div>
         </div>
         <div className="footer-bottom">
@@ -91,7 +111,7 @@ const Home = () => {
         </div>
       </footer>
     </div>
-  );
-};
+  )
+}
 
-export default Home;
+export default Home

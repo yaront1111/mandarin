@@ -1,16 +1,30 @@
-// client/src/pages/UserProfile.js
-import React, { useEffect, useState } from 'react';
-import {
-  FaArrowLeft, FaHeart, FaComment, FaEllipsisH,
-  FaMapMarkerAlt, FaCalendarAlt, FaRegClock,
-  FaCheck, FaChevronRight, FaChevronLeft, FaLock,
-  FaUserAlt, FaTrophy
-} from 'react-icons/fa';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useUser, useChat, useAuth } from '../context';
-import EmbeddedChat from '../components/EmbeddedChat';
-import { toast } from 'react-toastify';
+"use client"
 
+// client/src/pages/UserProfile.js
+import { useEffect, useState } from "react"
+import {
+  FaArrowLeft,
+  FaHeart,
+  FaComment,
+  FaEllipsisH,
+  FaMapMarkerAlt,
+  FaCalendarAlt,
+  FaRegClock,
+  FaCheck,
+  FaChevronRight,
+  FaChevronLeft,
+  FaLock,
+  FaUserAlt,
+  FaTrophy,
+  FaFlag,
+  FaBan,
+} from "react-icons/fa"
+import { useParams, useNavigate } from "react-router-dom"
+import { useUser, useChat, useAuth } from "../context"
+import EmbeddedChat from "../components/EmbeddedChat"
+import { toast } from "react-toastify"
+
+// Update the UserProfile component with a more modern design
 const UserProfile = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -21,6 +35,7 @@ const UserProfile = () => {
   const [showChat, setShowChat] = useState(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [showActions, setShowActions] = useState(false);
+  const [showAllInterests, setShowAllInterests] = useState(false);
 
   // Load user data and messages when component mounts
   useEffect(() => {
@@ -116,17 +131,17 @@ const UserProfile = () => {
     <div className="modern-user-profile">
       <div className="container profile-content">
         <button className="back-button" onClick={handleBack}>
-          <FaArrowLeft /> Back
+          <FaArrowLeft /> Back to Discover
         </button>
 
         <div className="profile-layout">
           {/* Left: Photos */}
           <div className="profile-photos-section">
             {profileUser.photos && profileUser.photos.length > 0 ? (
-              <div>
+              <div className="photo-gallery-container">
                 <div className="gallery-photo">
                   <img
-                    src={profileUser.photos[activePhotoIndex].url}
+                    src={profileUser.photos[activePhotoIndex].url || "/placeholder.svg"}
                     alt={profileUser.nickname}
                   />
                   {profileUser.photos.length > 1 && (
@@ -149,12 +164,13 @@ const UserProfile = () => {
                   )}
                   {profileUser.isOnline && (
                     <div className="online-badge">
+                      <span className="pulse"></span>
                       Online Now
                     </div>
                   )}
                 </div>
                 {profileUser.photos.length > 1 && (
-                  <div className="photo-thumbnails mt-3">
+                  <div className="photo-thumbnails">
                     {profileUser.photos.map((photo, index) => (
                       <div
                         key={index}
@@ -167,7 +183,7 @@ const UserProfile = () => {
                           </div>
                         ) : (
                           <img
-                            src={photo.url}
+                            src={photo.url || "/placeholder.svg"}
                             alt={`${profileUser.nickname} ${index + 1}`}
                           />
                         )}
@@ -191,22 +207,24 @@ const UserProfile = () => {
                 <FaComment />
                 <span>Message</span>
               </button>
-              <button
-                className="btn btn-subtle"
-                onClick={() => setShowActions(!showActions)}
-              >
-                <FaEllipsisH />
-              </button>
-              {showActions && (
-                <div className="actions-dropdown">
-                  <button className="dropdown-item">
-                    Block User
-                  </button>
-                  <button className="dropdown-item">
-                    Report User
-                  </button>
-                </div>
-              )}
+              <div className="more-actions-dropdown">
+                <button
+                  className="btn btn-subtle"
+                  onClick={() => setShowActions(!showActions)}
+                >
+                  <FaEllipsisH />
+                </button>
+                {showActions && (
+                  <div className="actions-dropdown">
+                    <button className="dropdown-item">
+                      <FaFlag /> Report User
+                    </button>
+                    <button className="dropdown-item">
+                      <FaBan /> Block User
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -225,13 +243,16 @@ const UserProfile = () => {
             <div className="user-location">
               <FaMapMarkerAlt />
               <span>{profileUser.details?.location || 'Unknown location'}</span>
+              <div className={`online-status ${profileUser.isOnline ? 'online' : ''}`}>
+                {profileUser.isOnline ? 'Online now' : 'Offline'}
+              </div>
             </div>
             <div className="user-activity">
               <div className="activity-item">
                 <FaRegClock />
                 <span>
                   {profileUser.isOnline
-                    ? 'Online now'
+                    ? 'Active now'
                     : `Last active ${new Date(profileUser.lastActive).toLocaleDateString()}`}
                 </span>
               </div>
@@ -240,32 +261,7 @@ const UserProfile = () => {
                 <span>Member since {new Date(profileUser.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
-            {profileUser.details?.bio && (
-              <div className="profile-section">
-                <h2>About Me</h2>
-                <p>{profileUser.details.bio}</p>
-              </div>
-            )}
-            {profileUser.details?.interests?.length > 0 && (
-              <div className="profile-section">
-                <h2>Interests</h2>
-                <div className="interests-tags">
-                  {profileUser.details.interests.map((interest) => (
-                    <span
-                      key={interest}
-                      className={`interest-tag ${
-                        commonInterests.includes(interest) ? 'common' : ''
-                      }`}
-                    >
-                      {interest}
-                      {commonInterests.includes(interest) && (
-                        <FaCheck className="common-icon" />
-                      )}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+
             <div className="compatibility-section">
               <h2>Compatibility</h2>
               <div className="compatibility-score">
@@ -284,19 +280,97 @@ const UserProfile = () => {
                   <div className="score-value">{compatibility}%</div>
                 </div>
                 <div className="compatibility-details">
-                  <h4>Common Interests</h4>
-                  {commonInterests.length > 0 ? (
-                    <ul className="common-interests-list">
-                      {commonInterests.map((interest) => (
-                        <li key={interest}>{interest}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p>No common interests yet.</p>
-                  )}
+                  <div className="compatibility-factor">
+                    <span>Location</span>
+                    <div className="factor-bar">
+                      <div
+                        className="factor-fill"
+                        style={{
+                          width: profileUser.details?.location === currentUser.details?.location ? '100%' : '30%'
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                  <div className="compatibility-factor">
+                    <span>Age</span>
+                    <div className="factor-bar">
+                      <div
+                        className="factor-fill"
+                        style={{
+                          width: Math.abs((profileUser.details?.age || 0) - (currentUser.details?.age || 0)) <= 5
+                            ? '90%' : Math.abs((profileUser.details?.age || 0) - (currentUser.details?.age || 0)) <= 10
+                            ? '60%' : '30%'
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                  <div className="compatibility-factor">
+                    <span>Interests</span>
+                    <div className="factor-bar">
+                      <div
+                        className="factor-fill"
+                        style={{
+                          width: `${Math.min(100, commonInterests.length * 20)}%`
+                        }}
+                      ></div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
+
+            {profileUser.details?.bio && (
+              <div className="profile-section">
+                <h2>About Me</h2>
+                <p className="about-text">{profileUser.details.bio}</p>
+              </div>
+            )}
+
+            {profileUser.details?.interests?.length > 0 && (
+              <div className="profile-section">
+                <h2>Interests</h2>
+                <div className="interests-tags">
+                  {(showAllInterests
+                    ? profileUser.details.interests
+                    : profileUser.details.interests.slice(0, 8)
+                  ).map((interest) => (
+                    <span
+                      key={interest}
+                      className={`interest-tag ${
+                        commonInterests.includes(interest) ? 'common' : ''
+                      }`}
+                    >
+                      {interest}
+                      {commonInterests.includes(interest) && (
+                        <FaCheck className="common-icon" />
+                      )}
+                    </span>
+                  ))}
+                  {!showAllInterests && profileUser.details.interests.length > 8 && (
+                    <button
+                      className="show-more-interests"
+                      onClick={() => setShowAllInterests(true)}
+                    >
+                      +{profileUser.details.interests.length - 8} more
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {commonInterests.length > 0 && (
+              <div className="profile-section">
+                <h2>Common Interests</h2>
+                <div className="common-interests">
+                  {commonInterests.map((interest) => (
+                    <div key={interest} className="common-interest-item">
+                      <FaCheck />
+                      <span>{interest}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -316,4 +390,4 @@ const UserProfile = () => {
   );
 };
 
-export default UserProfile;
+export default UserProfile
