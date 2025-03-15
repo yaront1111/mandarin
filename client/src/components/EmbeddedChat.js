@@ -1,6 +1,5 @@
 "use client"
 
-// Fixed EmbeddedChat.js with proper attachment handling
 import React, { useState, useEffect, useRef } from "react"
 import {
   FaSmile,
@@ -13,9 +12,15 @@ import {
   FaHeart,
   FaSpinner,
   FaFile,
+  FaImage,
+  FaFileAlt,
+  FaFilePdf,
+  FaFileAudio,
+  FaFileVideo,
 } from "react-icons/fa"
 import { useAuth, useChat } from "../context"
 import { toast } from "react-toastify"
+import apiService from "../services/apiService"
 
 /**
  * EmbeddedChat - A compact chat component that can be embedded in user profiles.
@@ -43,8 +48,9 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const [newMessage, setNewMessage] = useState("")
   const [showEmojis, setShowEmojis] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [attachment, setAttachment] = useState(null) // Fixed: Properly use attachment state
-  const [isUploading, setIsUploading] = useState(false) // Added for upload status
+  const [attachment, setAttachment] = useState(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   const messagesEndRef = useRef(null)
   const chatInputRef = useRef(null)
@@ -60,6 +66,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         .catch((err) => {
           console.error("Failed to load messages:", err)
           setIsLoading(false)
+          toast.error("Failed to load messages. Please try again.")
         })
     }
   }, [recipient, isOpen, getMessages])
@@ -80,8 +87,25 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+      // Clear any uploads in progress
+      if (isUploading) {
+        // In a production environment, you might want to cancel any ongoing uploads
+        setIsUploading(false)
+      }
     }
-  }, [])
+  }, [isUploading])
+
+  // Get the file icon based on file type
+  const getFileIcon = (file) => {
+    if (!file) return <FaFile />;
+
+    const fileType = file.type;
+    if (fileType.startsWith('image/')) return <FaImage />;
+    if (fileType.startsWith('video/')) return <FaFileVideo />;
+    if (fileType.startsWith('audio/')) return <FaFileAudio />;
+    if (fileType === 'application/pdf') return <FaFilePdf />;
+    return <FaFileAlt />;
+  };
 
   // Handle sending a text message
   const handleSendMessage = async (e) => {
@@ -89,10 +113,40 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
     // If there's an attachment, handle it first
     if (attachment) {
-      // In a real implementation, you would upload the file here
-      // For now, we'll just show a toast message
-      toast.info(`File attachment functionality is not implemented yet.`)
-      setAttachment(null) // Clear the attachment after handling
+      try {
+        setIsUploading(true)
+
+        // Create a FormData object for the file upload
+        const formData = new FormData()
+        formData.append("file", attachment)
+        formData.append("recipient", recipient._id)
+
+        // Upload the file using apiService
+        const response = await apiService.upload("/messages/attachments", formData, (progress) => {
+          setUploadProgress(progress)
+        })
+
+        if (response.success) {
+          // Send a message with the attachment reference
+          await sendMessage(recipient._id, "file", attachment.name, {
+            fileUrl: response.data.url,
+            fileType: attachment.type,
+            fileName: attachment.name,
+            fileSize: attachment.size
+          })
+
+          toast.success("File sent successfully")
+        } else {
+          throw new Error(response.error || "Failed to upload file")
+        }
+      } catch (error) {
+        console.error("Failed to upload attachment:", error)
+        toast.error(error.message || "Failed to send file. Please try again.")
+      } finally {
+        setIsUploading(false)
+        setUploadProgress(0)
+        setAttachment(null)
+      }
       return
     }
 
@@ -141,6 +195,25 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         return
       }
 
+      // Validate file type
+      const allowedTypes = [
+        // Images
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+        // Documents
+        'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain',
+        // Audio
+        'audio/mpeg', 'audio/wav',
+        // Video - be cautious with video size
+        'video/mp4', 'video/quicktime'
+      ];
+
+      if (!allowedTypes.includes(file.type)) {
+        toast.error("File type not supported.")
+        e.target.value = null
+        return
+      }
+
       setAttachment(file)
       toast.info(`Selected file: ${file.name}`)
       e.target.value = null
@@ -155,6 +228,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   // Remove the current attachment
   const handleRemoveAttachment = () => {
     setAttachment(null)
+    setUploadProgress(0)
   }
 
   // Handle video call
@@ -221,6 +295,53 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // If chat is not open, render nothing
   if (!isOpen) return null
+
+  // Render file attachment message
+  const renderFileMessage = (message) => {
+    const { metadata } = message;
+    if (!metadata || !metadata.fileUrl) {
+      return <p className="message-content">Attachment unavailable</p>;
+    }
+
+    const isImage = metadata.fileType && metadata.fileType.startsWith('image/');
+
+    return (
+      <div className="file-message">
+        {isImage ? (
+          <img
+            src={metadata.fileUrl}
+            alt={metadata.fileName || "Image"}
+            className="image-attachment"
+          />
+        ) : (
+          <div className="file-attachment">
+            {metadata.fileType && metadata.fileType.startsWith('video/') ? (
+              <FaFileVideo className="file-icon" />
+            ) : metadata.fileType && metadata.fileType.startsWith('audio/') ? (
+              <FaFileAudio className="file-icon" />
+            ) : metadata.fileType === 'application/pdf' ? (
+              <FaFilePdf className="file-icon" />
+            ) : (
+              <FaFileAlt className="file-icon" />
+            )}
+            <span className="file-name">{metadata.fileName || "File"}</span>
+            <span className="file-size">
+              {metadata.fileSize ? `(${Math.round(metadata.fileSize / 1024)} KB)` : ""}
+            </span>
+            <a
+              href={metadata.fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="download-link"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Download
+            </a>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className={`embedded-chat ${embedded ? "embedded" : "standalone"}`}>
@@ -298,6 +419,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                       <span className="message-time">{formatMessageTime(message.createdAt)}</span>
                     </div>
                   )}
+                  {message.type === "file" && renderFileMessage(message)}
                 </div>
               ))}
             </React.Fragment>
@@ -325,13 +447,20 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       {attachment && (
         <div className="attachment-preview">
           <div className="attachment-info">
-            <FaFile className="attachment-icon" />
+            {getFileIcon(attachment)}
             <span className="attachment-name">{attachment.name}</span>
             <span className="attachment-size">({Math.round(attachment.size / 1024)} KB)</span>
           </div>
-          <button className="remove-attachment" onClick={handleRemoveAttachment}>
-            <FaTimes />
-          </button>
+          {isUploading ? (
+            <div className="upload-progress-container">
+              <div className="upload-progress-bar" style={{ width: `${uploadProgress}%` }}></div>
+              <span className="upload-progress-text">{uploadProgress}%</span>
+            </div>
+          ) : (
+            <button className="remove-attachment" onClick={handleRemoveAttachment}>
+              <FaTimes />
+            </button>
+          )}
         </div>
       )}
 
@@ -343,6 +472,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           onClick={() => setShowEmojis(!showEmojis)}
           title="Add Emoji"
           aria-label="Add emoji"
+          disabled={isUploading}
         >
           <FaSmile />
         </button>
@@ -388,6 +518,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           style={{ display: "none" }}
           onChange={handleFileChange}
           aria-hidden="true"
+          accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,audio/mpeg,audio/wav,video/mp4,video/quicktime"
         />
         <button
           type="button"
