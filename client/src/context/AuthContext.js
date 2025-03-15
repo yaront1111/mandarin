@@ -1,460 +1,363 @@
-// client/src/context/AuthContext.js
-import React, {
-  createContext,
-  useReducer,
-  useContext,
-  useEffect,
-  useCallback,
-  useRef
-} from 'react';
-import axios from 'axios';
-import { toast } from 'react-toastify';
-import apiService from '../services/apiService';
-import socketService from '../services/socketService';
+"use client"
 
-const AuthContext = createContext({});
+// Upgraded AuthContext.js with improved token handling and security
+import { createContext, useState, useContext, useEffect, useCallback } from "react"
+import { toast } from "react-toastify"
+import apiService from "../services/apiService"
+import { getToken, setToken, removeToken } from "../utils/tokenStorage"
 
-// Reducer to manage auth state
-const authReducer = (state, action) => {
-  switch (action.type) {
-    case 'LOGIN':
-      sessionStorage.setItem('token', action.payload.token);
-      return {
-        ...state,
-        token: action.payload.token,
-        isAuthenticated: true,
-        loading: false,
-        user: action.payload.data,
-        error: null
-      };
-    case 'REGISTER':
-      sessionStorage.setItem('token', action.payload.token);
-      return {
-        ...state,
-        token: action.payload.token,
-        isAuthenticated: true,
-        loading: false,
-        user: action.payload.data,
-        error: null
-      };
-    case 'USER_LOADED':
-      return {
-        ...state,
-        isAuthenticated: true,
-        loading: false,
-        user: action.payload,
-        error: null
-      };
-    case 'AUTH_ERROR':
-    case 'LOGIN_FAIL':
-    case 'REGISTER_FAIL':
-      sessionStorage.removeItem('token');
-      return {
-        ...state,
-        token: null,
-        isAuthenticated: false,
-        loading: false,
-        user: null,
-        error: action.payload
-      };
-    case 'LOGOUT':
-      sessionStorage.removeItem('token');
-      return {
-        ...state,
-        token: null,
-        isAuthenticated: false,
-        loading: false,
-        user: null,
-        error: null
-      };
-    case 'CLEAR_ERROR':
-      return { ...state, error: null };
-    case 'SET_LOADING':
-      return { ...state, loading: action.payload };
-    case 'TOKEN_REFRESHED':
-      sessionStorage.setItem('token', action.payload);
-      return {
-        ...state,
-        token: action.payload,
-        error: null
-      };
-    default:
-      return state;
-  }
-};
+const AuthContext = createContext()
+
+export const useAuth = () => useContext(AuthContext)
+
+// Create and export the authApiService for authentication-specific API calls
+export const authApiService = {
+  register: async (userData) => {
+    try {
+      return await apiService.post("/auth/register", userData)
+    } catch (err) {
+      throw err
+    }
+  },
+
+  login: async (credentials) => {
+    try {
+      return await apiService.post("/auth/login", credentials)
+    } catch (err) {
+      throw err
+    }
+  },
+
+  logout: async () => {
+    try {
+      return await apiService.post("/auth/logout")
+    } catch (err) {
+      throw err
+    }
+  },
+
+  verifyEmail: async (token) => {
+    try {
+      return await apiService.post("/auth/verify-email", { token })
+    } catch (err) {
+      throw err
+    }
+  },
+
+  requestPasswordReset: async (email) => {
+    try {
+      return await apiService.post("/auth/forgot-password", { email })
+    } catch (err) {
+      throw err
+    }
+  },
+
+  resetPassword: async (token, password) => {
+    try {
+      return await apiService.post("/auth/reset-password", { token, password })
+    } catch (err) {
+      throw err
+    }
+  },
+
+  changePassword: async (currentPassword, newPassword) => {
+    try {
+      return await apiService.post("/auth/change-password", { currentPassword, newPassword })
+    } catch (err) {
+      throw err
+    }
+  },
+
+  getCurrentUser: async () => {
+    try {
+      return await apiService.get("/auth/me")
+    } catch (err) {
+      throw err
+    }
+  },
+
+  refreshToken: async (token) => {
+    try {
+      return await apiService.post("/auth/refresh-token", { token })
+    } catch (err) {
+      throw err
+    }
+  },
+}
 
 export const AuthProvider = ({ children }) => {
-  const initialState = {
-    token: sessionStorage.getItem('token'),
-    isAuthenticated: null,
-    loading: true,
-    user: null,
-    error: null
-  };
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
 
-  const [state, dispatch] = useReducer(authReducer, initialState);
-  const refreshTokenPromise = useRef(null);
-  const tokenRefreshTimer = useRef(null);
-  const isMounted = useRef(true);
+  // Clear any error
+  const clearError = useCallback(() => {
+    setError(null)
+  }, [])
 
-  useEffect(() => {
-    return () => {
-      isMounted.current = false;
-      if (tokenRefreshTimer.current) {
-        clearTimeout(tokenRefreshTimer.current);
-      }
-    };
-  }, []);
-
-  // Set the auth token in apiService and axios defaults
-  const setAuthToken = useCallback((token) => {
-    if (token) {
-      apiService.setAuthToken(token);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    } else {
-      apiService.setAuthToken(null);
-      delete axios.defaults.headers.common['Authorization'];
-    }
-  }, []);
-
-  // Check if the JWT token is expired (with a 30-second buffer)
-  const isTokenExpired = useCallback((token) => {
-    if (!token) return true;
+  // Register a new user
+  const register = useCallback(async (userData) => {
+    setLoading(true)
+    setError(null)
     try {
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(window.atob(base64));
-      const now = Math.floor(Date.now() / 1000) + 30;
-      return payload.exp < now;
-    } catch (error) {
-      console.warn('Error parsing JWT token:', error);
-      return true;
-    }
-  }, []);
-
-  // Calculate seconds until token expiry
-  const getTokenExpiryTime = useCallback((token) => {
-    if (!token) return 0;
-    try {
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(window.atob(base64));
-      if (payload.exp) {
-        const now = Math.floor(Date.now() / 1000);
-        return payload.exp - now;
-      }
-      return 0;
-    } catch (error) {
-      console.warn('Error parsing JWT token expiry:', error);
-      return 0;
-    }
-  }, []);
-
-  // Improved token refresh logic with proper request queuing and socket reconnection
-  const refreshToken = useCallback(async () => {
-    if (refreshTokenPromise.current) {
-      return refreshTokenPromise.current;
-    }
-
-    refreshTokenPromise.current = (async () => {
-      try {
-        const currentToken = sessionStorage.getItem('token');
-        if (!currentToken) {
-          throw new Error('No token available for refresh');
-        }
-        // Clear any existing token refresh timer
-        if (tokenRefreshTimer.current) {
-          clearTimeout(tokenRefreshTimer.current);
-          tokenRefreshTimer.current = null;
-        }
-        const result = await apiService.post('/auth/refresh-token', { token: currentToken });
-        if (result.success && result.token) {
-          sessionStorage.setItem('token', result.token);
-          setAuthToken(result.token);
-          if (isMounted.current) {
-            dispatch({ type: 'TOKEN_REFRESHED', payload: result.token });
-          }
-          // Reconnect socket with the new token
-          socketService.reconnect(result.token);
-          // Schedule next token refresh
-          const expiryTime = getTokenExpiryTime(result.token);
-          if (expiryTime > 0) {
-            const refreshDelay = Math.min(expiryTime - 300, Math.max(expiryTime / 2, 60));
-            tokenRefreshTimer.current = setTimeout(() => {
-              if (isMounted.current && sessionStorage.getItem('token')) {
-                refreshToken().catch(err => console.error('Scheduled token refresh failed:', err));
-              }
-            }, refreshDelay * 1000);
-          }
-          return result.token;
-        } else {
-          throw new Error('Failed to refresh token');
-        }
-      } catch (err) {
-        console.error('Token refresh failed:', err);
-        if (isMounted.current) {
-          const errorMsg = err.error || err.message || 'Session expired. Please login again.';
-          toast.error(errorMsg);
-          await logout();
-        }
-        throw err;
-      } finally {
-        refreshTokenPromise.current = null;
-      }
-    })();
-
-    return refreshTokenPromise.current;
-  }, [setAuthToken, getTokenExpiryTime]);
-
-  // Axios interceptor to retry requests after refreshing token on 401 errors
-  useEffect(() => {
-    const interceptor = axios.interceptors.response.use(
-      response => response,
-      async error => {
-        const originalRequest = error.config;
-        if (error.response && error.response.status === 401 && !originalRequest._retry) {
-          originalRequest._retry = true;
-          try {
-            const newToken = await refreshToken();
-            originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
-            return axios(originalRequest);
-          } catch (err) {
-            return Promise.reject(err);
-          }
-        }
-        return Promise.reject(error);
-      }
-    );
-    return () => axios.interceptors.response.eject(interceptor);
-  }, [refreshToken]);
-
-  // Load user data using the current token
-  const loadUser = useCallback(async () => {
-    const token = sessionStorage.getItem('token');
-    if (!token) {
-      dispatch({ type: 'AUTH_ERROR', payload: 'No token found' });
-      return null;
-    }
-    if (isTokenExpired(token)) {
-      try {
-        await refreshToken();
-      } catch (err) {
-        dispatch({ type: 'AUTH_ERROR', payload: 'Session expired. Please login again.' });
-        return null;
-      }
-    }
-    dispatch({ type: 'SET_LOADING', payload: true });
-    try {
-      const currentToken = sessionStorage.getItem('token');
-      setAuthToken(currentToken);
-      const result = await apiService.get('/auth/me');
-      if (result.success && result.data) {
-        dispatch({ type: 'USER_LOADED', payload: result.data });
-        return result.data;
+      const response = await authApiService.register(userData)
+      if (response.success) {
+        toast.success("Registration successful! Please check your email to verify your account.")
+        return response
       } else {
-        throw new Error('Invalid response from server');
+        throw new Error(response.error || "Registration failed")
       }
     } catch (err) {
-      if (err.status === 401) {
-        try {
-          await refreshToken();
-          return loadUser();
-        } catch (refreshErr) {
-          dispatch({ type: 'AUTH_ERROR', payload: refreshErr.message || 'Authentication failed' });
-          return null;
-        }
-      }
-      dispatch({ type: 'AUTH_ERROR', payload: err.message || 'Failed to load user' });
-      return null;
-    }
-  }, [setAuthToken, isTokenExpired, refreshToken]);
-
-  const register = async (formData) => {
-    dispatch({ type: 'SET_LOADING', payload: true });
-    try {
-      const registrationData = { ...formData };
-      if (registrationData.details) {
-        if (registrationData.details.interests && !Array.isArray(registrationData.details.interests)) {
-          registrationData.details.interests = registrationData.details.interests
-            .toString()
-            .split(',')
-            .map(item => item.trim())
-            .filter(Boolean);
-        }
-        if (registrationData.details.lookingFor && !Array.isArray(registrationData.details.lookingFor)) {
-          registrationData.details.lookingFor = registrationData.details.lookingFor
-            .toString()
-            .split(',')
-            .map(item => item.trim())
-            .filter(Boolean);
-        }
-      }
-      const result = await apiService.post('/auth/register', registrationData);
-      if (result.success && result.token) {
-        sessionStorage.setItem('token', result.token);
-        setAuthToken(result.token);
-        dispatch({ type: 'REGISTER', payload: result });
-        toast.success('Registration successful');
-        const user = await loadUser();
-        if (user) {
-          // Initialize socket connection after user is loaded
-          socketService.init(user._id.toString(), result.token);
-        }
-        return true;
-      } else {
-        throw new Error('Invalid response format');
-      }
-    } catch (err) {
-      const errorMsg = err.error || err.message || 'Registration failed';
-      toast.error(errorMsg);
-      dispatch({ type: 'REGISTER_FAIL', payload: errorMsg });
-      return false;
-    }
-  };
-
-  const login = async (formData) => {
-    dispatch({ type: 'SET_LOADING', payload: true });
-    try {
-      const result = await apiService.post('/auth/login', formData);
-      if (result.success && result.token) {
-        sessionStorage.setItem('token', result.token);
-        setAuthToken(result.token);
-        dispatch({ type: 'LOGIN', payload: result });
-        toast.success('Login successful');
-        const user = await loadUser();
-        if (user) {
-          // Initialize socket connection after user is loaded
-          socketService.init(user._id.toString(), result.token);
-        }
-        // Schedule token refresh based on expiry
-        const expiryTime = getTokenExpiryTime(result.token);
-        if (expiryTime > 0) {
-          const refreshDelay = Math.min(expiryTime - 300, Math.max(expiryTime / 2, 60));
-          tokenRefreshTimer.current = setTimeout(() => {
-            if (sessionStorage.getItem('token')) {
-              refreshToken().catch(err => console.error('Scheduled token refresh failed:', err));
-            }
-          }, refreshDelay * 1000);
-        }
-        return true;
-      } else {
-        throw new Error('Invalid response format');
-      }
-    } catch (err) {
-      const errorMsg = err.error || err.message || 'Login failed';
-      toast.error(errorMsg);
-      dispatch({ type: 'LOGIN_FAIL', payload: errorMsg });
-      return false;
-    }
-  };
-
-  const logout = useCallback(async () => {
-    socketService.disconnect();
-    try {
-      if (state.token) {
-        setAuthToken(state.token);
-        await apiService.post('/auth/logout');
-      }
-      toast.info('Logged out successfully');
-    } catch (err) {
-      console.warn('Logout error:', err.message);
+      const errorMessage = err.error || err.message || "Registration failed"
+      setError(errorMessage)
+      toast.error(errorMessage)
+      throw err
     } finally {
-      setAuthToken(null);
-      dispatch({ type: 'LOGOUT' });
+      setLoading(false)
     }
-  }, [state.token, setAuthToken]);
+  }, [])
 
-  const clearErrors = () => dispatch({ type: 'CLEAR_ERROR' });
-
-  // Initialize authentication state on app load
-  useEffect(() => {
-    const token = sessionStorage.getItem('token');
-    if (token) {
-      if (isTokenExpired(token)) {
-        refreshToken()
-          .then(() => loadUser())
-          .then(user => {
-            if (user) {
-              socketService.init(user._id.toString(), sessionStorage.getItem('token'));
-            }
-          })
-          .catch(() => {
-            sessionStorage.removeItem('token');
-            dispatch({ type: 'AUTH_ERROR', payload: 'Session expired. Please login again.' });
-            dispatch({ type: 'SET_LOADING', payload: false });
-          });
+  // Verify email with token
+  const verifyEmail = useCallback(async (token) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await authApiService.verifyEmail(token)
+      if (response.success) {
+        toast.success("Email verified successfully! You can now log in.")
+        return response
       } else {
-        setAuthToken(token);
-        loadUser().then(user => {
-          if (user) {
-            socketService.init(user._id.toString(), token);
-          }
-        });
-        const expiryTime = getTokenExpiryTime(token);
-        if (expiryTime > 0) {
-          tokenRefreshTimer.current = setTimeout(() => {
-            if (sessionStorage.getItem('token')) {
-              refreshToken();
-            }
-          }, Math.min(expiryTime - 300, Math.max(expiryTime / 2, 60)) * 1000);
-        }
+        throw new Error(response.error || "Email verification failed")
       }
-    } else {
-      dispatch({ type: 'SET_LOADING', payload: false });
+    } catch (err) {
+      const errorMessage = err.error || err.message || "Email verification failed"
+      setError(errorMessage)
+      toast.error(errorMessage)
+      throw err
+    } finally {
+      setLoading(false)
     }
-  }, [loadUser, setAuthToken, isTokenExpired, getTokenExpiryTime, refreshToken]);
+  }, [])
 
-  // Periodic token check for long sessions
+  // Log in a user
+  const login = useCallback(async (credentials, rememberMe = false) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await authApiService.login(credentials)
+      if (response.success && response.token) {
+        setToken(response.token, rememberMe)
+        setUser(response.user)
+        setIsAuthenticated(true)
+        toast.success(`Welcome back, ${response.user.nickname}!`)
+        return response
+      } else {
+        throw new Error(response.error || "Login failed")
+      }
+    } catch (err) {
+      const errorMessage = err.error || err.message || "Login failed"
+      setError(errorMessage)
+      toast.error(errorMessage)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Log out a user
+  const logout = useCallback(async () => {
+    setLoading(true)
+    try {
+      await authApiService.logout()
+      removeToken()
+      setUser(null)
+      setIsAuthenticated(false)
+      toast.info("You have been logged out")
+    } catch (err) {
+      console.error("Logout error:", err)
+      // Still remove token and user data even if API call fails
+      removeToken()
+      setUser(null)
+      setIsAuthenticated(false)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Refresh the auth token
+  const refreshToken = useCallback(async () => {
+    try {
+      const token = getToken()
+      if (!token) return null
+
+      const response = await authApiService.refreshToken(token)
+      if (response.success && response.token) {
+        setToken(response.token, localStorage.getItem("token") !== null)
+        return response.token
+      }
+      return null
+    } catch (err) {
+      console.error("Token refresh error:", err)
+      return null
+    }
+  }, [])
+
+  // Request password reset
+  const requestPasswordReset = useCallback(async (email) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await authApiService.requestPasswordReset(email)
+      if (response.success) {
+        toast.success("Password reset instructions sent to your email")
+        return response
+      } else {
+        throw new Error(response.error || "Password reset request failed")
+      }
+    } catch (err) {
+      const errorMessage = err.error || err.message || "Password reset request failed"
+      setError(errorMessage)
+      toast.error(errorMessage)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Reset password with token
+  const resetPassword = useCallback(async (token, newPassword) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await authApiService.resetPassword(token, newPassword)
+      if (response.success) {
+        toast.success("Password reset successful! You can now log in with your new password.")
+        return response
+      } else {
+        throw new Error(response.error || "Password reset failed")
+      }
+    } catch (err) {
+      const errorMessage = err.error || err.message || "Password reset failed"
+      setError(errorMessage)
+      toast.error(errorMessage)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Change password (when logged in)
+  const changePassword = useCallback(async (currentPassword, newPassword) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await authApiService.changePassword(currentPassword, newPassword)
+      if (response.success) {
+        toast.success("Password changed successfully!")
+        return response
+      } else {
+        throw new Error(response.error || "Password change failed")
+      }
+    } catch (err) {
+      const errorMessage = err.error || err.message || "Password change failed"
+      setError(errorMessage)
+      toast.error(errorMessage)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Get current user profile
+  const getCurrentUser = useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await authApiService.getCurrentUser()
+      if (response.success) {
+        setUser(response.data)
+        setIsAuthenticated(true)
+        return response.data
+      } else {
+        throw new Error(response.error || "Failed to get user profile")
+      }
+    } catch (err) {
+      console.error("Get current user error:", err)
+      setUser(null)
+      setIsAuthenticated(false)
+      return null
+    } finally {
+      setLoading(false)
+      setAuthChecked(true)
+    }
+  }, [])
+
+  // Check authentication status on mount
   useEffect(() => {
-    let tokenCheckInterval;
-    if (state.token) {
-      const expiryTime = getTokenExpiryTime(state.token);
-      const checkInterval = expiryTime < 600 ? 60000 : 300000;
-      tokenCheckInterval = setInterval(() => {
-        const token = sessionStorage.getItem('token');
-        if (token && isTokenExpired(token)) {
-          refreshToken().catch(() => {
-            toast.error('Your session has expired. Please log in again.');
-            logout();
-          });
+    const checkAuth = async () => {
+      const token = getToken()
+      if (token) {
+        try {
+          await getCurrentUser()
+        } catch (err) {
+          console.error("Auth check error:", err)
+          // If token is invalid or expired, try to refresh it
+          const newToken = await refreshToken()
+          if (newToken) {
+            await getCurrentUser()
+          } else {
+            setUser(null)
+            setIsAuthenticated(false)
+            removeToken()
+          }
+        } finally {
+          setAuthChecked(true)
         }
-      }, checkInterval);
+      } else {
+        setUser(null)
+        setIsAuthenticated(false)
+        setAuthChecked(true)
+      }
     }
+
+    checkAuth()
+  }, [getCurrentUser, refreshToken])
+
+  // Listen for auth logout events (e.g., from API service)
+  useEffect(() => {
+    const handleLogout = () => {
+      setUser(null)
+      setIsAuthenticated(false)
+      removeToken()
+    }
+
+    window.addEventListener("authLogout", handleLogout)
     return () => {
-      if (tokenCheckInterval) clearInterval(tokenCheckInterval);
-    };
-  }, [state.token, isTokenExpired, logout, refreshToken, getTokenExpiryTime]);
+      window.removeEventListener("authLogout", handleLogout)
+    }
+  }, [])
 
-  return (
-    <AuthContext.Provider
-      value={{
-        token: state.token,
-        isAuthenticated: state.isAuthenticated,
-        loading: state.loading,
-        user: state.user,
-        error: state.error,
-        register,
-        login,
-        logout,
-        clearErrors,
-        loadUser,
-        refreshToken,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
-};
-
-/**
- * Custom hook to access auth context.
- */
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+  // Context value
+  const value = {
+    user,
+    loading,
+    error,
+    isAuthenticated,
+    authChecked,
+    register,
+    verifyEmail,
+    login,
+    logout,
+    refreshToken,
+    requestPasswordReset,
+    resetPassword,
+    changePassword,
+    getCurrentUser,
+    clearError,
   }
-  return context;
-};
 
-export const authApiService = apiService;
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export default AuthContext

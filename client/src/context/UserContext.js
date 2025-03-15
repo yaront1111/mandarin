@@ -1,104 +1,95 @@
+"use client"
+
 // client/src/context/UserContext.js
-import React, {
-  createContext,
-  useReducer,
-  useContext,
-  useEffect,
-  useCallback,
-  useRef
-} from 'react';
-import { toast } from 'react-toastify';
-import apiService from '../services/apiService';
-import { useAuth } from './AuthContext';
+import { createContext, useReducer, useContext, useEffect, useCallback, useRef } from "react"
+import { toast } from "react-toastify"
+import apiService from "../services/apiService"
+import { useAuth } from "./AuthContext"
 
 // Create UserContext
-const UserContext = createContext();
+const UserContext = createContext()
 
 // User reducer to handle state updates
 const userReducer = (state, action) => {
   switch (action.type) {
-    case 'SET_LOADING':
-      return { ...state, loading: action.payload };
-    case 'GET_USERS':
-      return { ...state, users: action.payload, loading: false };
-    case 'GET_USER':
+    case "SET_LOADING":
+      return { ...state, loading: action.payload }
+    case "GET_USERS":
+      return { ...state, users: action.payload, loading: false }
+    case "GET_USER":
       return {
         ...state,
         currentUser: action.payload.user,
         messages: action.payload.messages,
-        loading: false
-      };
-    case 'USER_ONLINE':
+        loading: false,
+      }
+    case "USER_ONLINE":
       return {
         ...state,
-        users: state.users.map(user =>
-          user._id === action.payload.userId
-            ? { ...user, isOnline: true, lastActive: Date.now() }
-            : user
+        users: state.users.map((user) =>
+          user._id === action.payload.userId ? { ...user, isOnline: true, lastActive: Date.now() } : user,
         ),
         currentUser:
           state.currentUser && state.currentUser._id === action.payload.userId
             ? { ...state.currentUser, isOnline: true, lastActive: Date.now() }
-            : state.currentUser
-      };
-    case 'USER_OFFLINE':
+            : state.currentUser,
+      }
+    case "USER_OFFLINE":
       return {
         ...state,
-        users: state.users.map(user =>
-          user._id === action.payload.userId
-            ? { ...user, isOnline: false, lastActive: Date.now() }
-            : user
+        users: state.users.map((user) =>
+          user._id === action.payload.userId ? { ...user, isOnline: false, lastActive: Date.now() } : user,
         ),
         currentUser:
           state.currentUser && state.currentUser._id === action.payload.userId
             ? { ...state.currentUser, isOnline: false, lastActive: Date.now() }
-            : state.currentUser
-      };
-    case 'UPLOAD_PHOTO':
+            : state.currentUser,
+      }
+    case "UPLOAD_PHOTO":
       return {
         ...state,
         currentUser: state.currentUser
           ? { ...state.currentUser, photos: [...(state.currentUser.photos || []), action.payload] }
           : state.currentUser,
-        uploadingPhoto: false
-      };
-    case 'UPLOADING_PHOTO':
-      return { ...state, uploadingPhoto: true };
-    case 'PHOTO_PERMISSION_REQUESTED':
+        uploadingPhoto: false,
+      }
+    case "UPLOADING_PHOTO":
+      return { ...state, uploadingPhoto: true }
+    case "PHOTO_PERMISSION_REQUESTED":
       return {
         ...state,
-        photoPermissions: [...state.photoPermissions, action.payload]
-      };
-    case 'PHOTO_PERMISSION_UPDATED':
+        photoPermissions: [...state.photoPermissions, action.payload],
+      }
+    case "PHOTO_PERMISSION_UPDATED":
       return {
         ...state,
-        photoPermissions: state.photoPermissions.map(permission =>
-          permission._id === action.payload._id ? action.payload : permission
-        )
-      };
-    case 'UPDATE_PROFILE':
+        photoPermissions: state.photoPermissions.map((permission) =>
+          permission._id === action.payload._id ? action.payload : permission,
+        ),
+      }
+    case "UPDATE_PROFILE":
       return {
         ...state,
         currentUser: { ...state.currentUser, ...action.payload },
-        updatingProfile: false
-      };
-    case 'UPDATING_PROFILE':
-      return { ...state, updatingProfile: true };
-    case 'USER_ERROR':
-      toast.error(action.payload);
+        updatingProfile: false,
+      }
+    case "UPDATING_PROFILE":
+      return { ...state, updatingProfile: true }
+    case "USER_ERROR":
+      toast.error(action.payload)
       return {
         ...state,
         error: action.payload,
         loading: false,
         uploadingPhoto: false,
-        updatingProfile: false
-      };
-    case 'CLEAR_ERROR':
-      return { ...state, error: null };
+        updatingProfile: false,
+      }
+    case "CLEAR_ERROR":
+      return { ...state, error: null }
     default:
-      return state;
+      return state
   }
-};
+}
 
 // Initial state for the user context
 const initialState = {
@@ -110,97 +101,97 @@ const initialState = {
   uploadingPhoto: false,
   updatingProfile: false,
   error: null,
-};
+}
 
 export const UserProvider = ({ children }) => {
-  const [state, dispatch] = useReducer(userReducer, initialState);
-  const { user, isAuthenticated } = useAuth();
+  const [state, dispatch] = useReducer(userReducer, initialState)
+  const { user, isAuthenticated } = useAuth()
 
   // Use a ref to store the debounce timeout ID
-  const debounceTimeoutRef = useRef(null);
+  const debounceTimeoutRef = useRef(null)
 
   // getUsers function: fetches all users and updates state
   const getUsers = useCallback(async () => {
-    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: "SET_LOADING", payload: true })
     try {
-      const data = await apiService.get('/users');
+      const data = await apiService.get("/users")
       if (data.success) {
-        dispatch({ type: 'GET_USERS', payload: data.data });
+        dispatch({ type: "GET_USERS", payload: data.data })
       } else {
-        throw new Error(data.error || 'Failed to fetch users');
+        throw new Error(data.error || "Failed to fetch users")
       }
     } catch (err) {
-      const errorMsg = err.error || err.message || 'Failed to fetch users';
-      dispatch({ type: 'USER_ERROR', payload: errorMsg });
+      const errorMsg = err.error || err.message || "Failed to fetch users"
+      dispatch({ type: "USER_ERROR", payload: errorMsg })
     }
-  }, []);
+  }, [])
 
   // Debounced getUsers: cancels previous timeout and calls getUsers after 500ms delay.
   const debouncedGetUsers = useCallback(() => {
     if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
+      clearTimeout(debounceTimeoutRef.current)
     }
     debounceTimeoutRef.current = setTimeout(() => {
       if (isAuthenticated && user) {
-        getUsers();
+        getUsers()
       }
-    }, 500);
-  }, [isAuthenticated, user, getUsers]);
+    }, 500)
+  }, [isAuthenticated, user, getUsers])
 
   // Initial data loading: call debouncedGetUsers when authenticated user is available.
   useEffect(() => {
     if (isAuthenticated && user) {
-      debouncedGetUsers();
+      debouncedGetUsers()
     }
     // Cleanup the debounce timeout on unmount.
     return () => {
-      if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
-    };
-  }, [isAuthenticated, user, debouncedGetUsers]);
+      if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current)
+    }
+  }, [isAuthenticated, user, debouncedGetUsers])
 
   /**
    * Get a specific user profile and message history.
    * @param {string} id - User ID.
    */
   const getUser = useCallback(async (id) => {
-    if (!id) return;
-    dispatch({ type: 'SET_LOADING', payload: true });
+    if (!id) return
+    dispatch({ type: "SET_LOADING", payload: true })
     try {
-      const data = await apiService.get(`/users/${id}`);
+      const data = await apiService.get(`/users/${id}`)
       if (data.success) {
-        dispatch({ type: 'GET_USER', payload: data.data });
-        return data.data;
+        dispatch({ type: "GET_USER", payload: data.data })
+        return data.data
       } else {
-        throw new Error(data.error || 'Failed to fetch user');
+        throw new Error(data.error || "Failed to fetch user")
       }
     } catch (err) {
-      const errorMsg = err.error || err.message || 'Failed to fetch user';
-      dispatch({ type: 'USER_ERROR', payload: errorMsg });
-      return null;
+      const errorMsg = err.error || err.message || "Failed to fetch user"
+      dispatch({ type: "USER_ERROR", payload: errorMsg })
+      return null
     }
-  }, []);
+  }, [])
 
   /**
    * Update the current user's profile.
    * @param {Object} profileData - Data to update.
    */
   const updateProfile = useCallback(async (profileData) => {
-    dispatch({ type: 'UPDATING_PROFILE', payload: true });
+    dispatch({ type: "UPDATING_PROFILE", payload: true })
     try {
-      const data = await apiService.put('/users/profile', profileData);
+      const data = await apiService.put("/users/profile", profileData)
       if (data.success) {
-        dispatch({ type: 'UPDATE_PROFILE', payload: data.data });
-        toast.success('Profile updated successfully');
-        return data.data;
+        dispatch({ type: "UPDATE_PROFILE", payload: data.data })
+        toast.success("Profile updated successfully")
+        return data.data
       } else {
-        throw new Error(data.error || 'Failed to update profile');
+        throw new Error(data.error || "Failed to update profile")
       }
     } catch (err) {
-      const errorMsg = err.error || err.message || 'Failed to update profile';
-      dispatch({ type: 'USER_ERROR', payload: errorMsg });
-      return null;
+      const errorMsg = err.error || err.message || "Failed to update profile"
+      dispatch({ type: "USER_ERROR", payload: errorMsg })
+      return null
     }
-  }, []);
+  }, [])
 
   /**
    * Upload a photo.
@@ -208,31 +199,31 @@ export const UserProvider = ({ children }) => {
    * @param {boolean} isPrivate - Whether photo is private.
    */
   const uploadPhoto = useCallback(async (file, isPrivate) => {
-    dispatch({ type: 'UPLOADING_PHOTO', payload: true });
+    dispatch({ type: "UPLOADING_PHOTO", payload: true })
     try {
-      const formData = new FormData();
-      formData.append('photo', file);
-      formData.append('isPrivate', isPrivate);
+      const formData = new FormData()
+      formData.append("photo", file)
+      formData.append("isPrivate", isPrivate)
 
       // Use apiService.upload which supports progress tracking.
-      const data = await apiService.upload('/users/photos', formData, (progress) => {
+      const data = await apiService.upload("/users/photos", formData, (progress) => {
         // Optional: update UI progress state here
-        console.log(`Upload progress: ${progress}%`);
-      });
+        console.log(`Upload progress: ${progress}%`)
+      })
 
       if (data.success) {
-        dispatch({ type: 'UPLOAD_PHOTO', payload: data.data });
-        toast.success(`${isPrivate ? 'Private' : 'Public'} photo uploaded successfully`);
-        return data.data;
+        dispatch({ type: "UPLOAD_PHOTO", payload: data.data })
+        toast.success(`${isPrivate ? "Private" : "Public"} photo uploaded successfully`)
+        return data.data
       } else {
-        throw new Error(data.error || 'Failed to upload photo');
+        throw new Error(data.error || "Failed to upload photo")
       }
     } catch (err) {
-      const errorMsg = err.error || err.message || 'Failed to upload photo';
-      dispatch({ type: 'USER_ERROR', payload: errorMsg });
-      return null;
+      const errorMsg = err.error || err.message || "Failed to upload photo"
+      dispatch({ type: "USER_ERROR", payload: errorMsg })
+      return null
     }
-  }, []);
+  }, [])
 
   /**
    * Request permission to view a private photo.
@@ -241,20 +232,20 @@ export const UserProvider = ({ children }) => {
    */
   const requestPhotoPermission = useCallback(async (photoId, userId) => {
     try {
-      const data = await apiService.post(`/photos/${photoId}/request`, { userId });
+      const data = await apiService.post(`/photos/${photoId}/request`, { userId })
       if (data.success) {
-        dispatch({ type: 'PHOTO_PERMISSION_REQUESTED', payload: data.data });
-        toast.success('Photo access request sent');
-        return data.data;
+        dispatch({ type: "PHOTO_PERMISSION_REQUESTED", payload: data.data })
+        toast.success("Photo access request sent")
+        return data.data
       } else {
-        throw new Error(data.error || 'Failed to request photo access');
+        throw new Error(data.error || "Failed to request photo access")
       }
     } catch (err) {
-      const errorMsg = err.error || err.message || 'Failed to request photo access';
-      dispatch({ type: 'USER_ERROR', payload: errorMsg });
-      return null;
+      const errorMsg = err.error || err.message || "Failed to request photo access"
+      dispatch({ type: "USER_ERROR", payload: errorMsg })
+      return null
     }
-  }, []);
+  }, [])
 
   /**
    * Update a photo permission request (approve or reject).
@@ -263,40 +254,43 @@ export const UserProvider = ({ children }) => {
    */
   const updatePhotoPermission = useCallback(async (permissionId, status) => {
     try {
-      const data = await apiService.put(`/photos/permissions/${permissionId}`, { status });
+      const data = await apiService.put(`/photos/permissions/${permissionId}`, { status })
       if (data.success) {
-        dispatch({ type: 'PHOTO_PERMISSION_UPDATED', payload: data.data });
-        toast.success(`Photo access ${status}`);
-        return data.data;
+        dispatch({ type: "PHOTO_PERMISSION_UPDATED", payload: data.data })
+        toast.success(`Photo access ${status}`)
+        return data.data
       } else {
-        throw new Error(data.error || `Failed to ${status} photo access`);
+        throw new Error(data.error || `Failed to ${status} photo access`)
       }
     } catch (err) {
-      const errorMsg = err.error || err.message || `Failed to ${status} photo access`;
-      dispatch({ type: 'USER_ERROR', payload: errorMsg });
-      return null;
+      const errorMsg = err.error || err.message || `Failed to ${status} photo access`
+      dispatch({ type: "USER_ERROR", payload: errorMsg })
+      return null
     }
-  }, []);
+  }, [])
 
   /**
    * Refresh user data: refetch current user data and user list.
    * @param {string|null} userId - Optional user ID to refresh.
    */
-  const refreshUserData = useCallback(async (userId = null) => {
-    if (userId) {
-      await getUser(userId);
-    } else if (state.currentUser) {
-      await getUser(state.currentUser._id);
-    }
-    await getUsers();
-  }, [state.currentUser, getUser, getUsers]);
+  const refreshUserData = useCallback(
+    async (userId = null) => {
+      if (userId) {
+        await getUser(userId)
+      } else if (state.currentUser) {
+        await getUser(state.currentUser._id)
+      }
+      await getUsers()
+    },
+    [state.currentUser, getUser, getUsers],
+  )
 
   /**
    * Clear error state.
    */
   const clearError = useCallback(() => {
-    dispatch({ type: 'CLEAR_ERROR' });
-  }, []);
+    dispatch({ type: "CLEAR_ERROR" })
+  }, [])
 
   return (
     <UserContext.Provider
@@ -321,16 +315,16 @@ export const UserProvider = ({ children }) => {
     >
       {children}
     </UserContext.Provider>
-  );
-};
+  )
+}
 
 /**
  * Custom hook to access the user context.
  */
 export const useUser = () => {
-  const context = useContext(UserContext);
+  const context = useContext(UserContext)
   if (context === undefined) {
-    throw new Error('useUser must be used within a UserProvider');
+    throw new Error("useUser must be used within a UserProvider")
   }
-  return context;
-};
+  return context
+}

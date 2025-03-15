@@ -9,16 +9,16 @@ const tokenStorage = {
    * @param {boolean} rememberMe - Whether to persist token in localStorage
    */
   setToken: (token, rememberMe = false) => {
-    if (!token) return;
+    if (!token) return
 
     // Always store in sessionStorage for current session
-    sessionStorage.setItem('token', token);
+    sessionStorage.setItem("token", token)
 
     // Optionally store in localStorage for persistence
     if (rememberMe) {
-      localStorage.setItem('token', token);
+      localStorage.setItem("token", token)
     } else {
-      localStorage.removeItem('token');
+      localStorage.removeItem("token")
     }
   },
 
@@ -28,26 +28,26 @@ const tokenStorage = {
    */
   getToken: () => {
     // First try sessionStorage (current session)
-    let token = sessionStorage.getItem('token');
+    let token = sessionStorage.getItem("token")
 
     // If not found, try localStorage (remembered session)
     if (!token) {
-      token = localStorage.getItem('token');
+      token = localStorage.getItem("token")
       // If found in localStorage, also set in sessionStorage
       if (token) {
-        sessionStorage.setItem('token', token);
+        sessionStorage.setItem("token", token)
       }
     }
 
-    return token;
+    return token
   },
 
   /**
    * Remove token from all storage
    */
   removeToken: () => {
-    sessionStorage.removeItem('token');
-    localStorage.removeItem('token');
+    sessionStorage.removeItem("token")
+    localStorage.removeItem("token")
   },
 
   /**
@@ -55,7 +55,7 @@ const tokenStorage = {
    * @returns {boolean} - True if token exists
    */
   hasToken: () => {
-    return !!tokenStorage.getToken();
+    return !!tokenStorage.getToken()
   },
 
   /**
@@ -64,15 +64,15 @@ const tokenStorage = {
    * @returns {object|null} - Decoded payload or null if invalid
    */
   parseToken: (token) => {
-    if (!token) return null;
+    if (!token) return null
     try {
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(window.atob(base64));
-      return payload;
+      const base64Url = token.split(".")[1]
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/")
+      const payload = JSON.parse(window.atob(base64))
+      return payload
     } catch (error) {
-      console.warn('Error parsing token:', error);
-      return null;
+      console.warn("Error parsing token:", error)
+      return null
     }
   },
 
@@ -82,12 +82,12 @@ const tokenStorage = {
    * @returns {boolean} - True if token is expired or invalid
    */
   isTokenExpired: (token) => {
-    const payload = tokenStorage.parseToken(token);
-    if (!payload || !payload.exp) return true;
+    const payload = tokenStorage.parseToken(token)
+    if (!payload || !payload.exp) return true
 
     // Add 30-second buffer to account for clock differences
-    const now = Math.floor(Date.now() / 1000) + 30;
-    return payload.exp < now;
+    const now = Math.floor(Date.now() / 1000) + 30
+    return payload.exp < now
   },
 
   /**
@@ -96,13 +96,13 @@ const tokenStorage = {
    * @returns {number} - Seconds until expiry, 0 if expired or invalid
    */
   getExpiryTime: (token) => {
-    const payload = tokenStorage.parseToken(token);
-    if (!payload || !payload.exp) return 0;
+    const payload = tokenStorage.parseToken(token)
+    if (!payload || !payload.exp) return 0
 
-    const now = Math.floor(Date.now() / 1000);
-    const timeLeft = payload.exp - now;
+    const now = Math.floor(Date.now() / 1000)
+    const timeLeft = payload.exp - now
 
-    return timeLeft > 0 ? timeLeft : 0;
+    return timeLeft > 0 ? timeLeft : 0
   },
 
   /**
@@ -110,12 +110,16 @@ const tokenStorage = {
    * @returns {string|null} - User ID from token or null if not available
    */
   getUserId: () => {
-    const token = tokenStorage.getToken();
-    if (!token) return null;
+    const token = tokenStorage.getToken()
+    if (!token) return null
 
-    const payload = tokenStorage.parseToken(token);
-    return payload && payload.id ? payload.id : null;
-  }
-};
+    const payload = tokenStorage.parseToken(token)
+    return payload && payload.id ? payload.id : null
+  },
+}
 
-export default tokenStorage;
+export const getToken = tokenStorage.getToken
+export const setToken = tokenStorage.setToken
+export const removeToken = tokenStorage.removeToken
+
+export default tokenStorage

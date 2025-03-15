@@ -1,5 +1,4 @@
-// server/routes/userRoutes.js
-
+// Fixed userRoutes.js with proper file cleanup
 const express = require("express")
 const multer = require("multer")
 const path = require("path")
@@ -344,6 +343,7 @@ router.post(
   upload.single("photo"),
   asyncHandler(async (req, res) => {
     logger.debug(`Processing photo upload for user ${req.user._id}`)
+    let filePath = null
 
     try {
       if (!req.file) {
@@ -362,7 +362,7 @@ router.post(
         })
       }
 
-      const filePath = path.join(config.FILE_UPLOAD_PATH, req.file.filename)
+      filePath = path.join(config.FILE_UPLOAD_PATH, req.file.filename)
       const fileBuffer = fs.readFileSync(filePath)
       const fileType = await fileTypeFromBuffer(fileBuffer)
 
@@ -381,6 +381,7 @@ router.post(
       try {
         const image = sharp(filePath)
         const metadata = await image.metadata()
+        const resizedFilePath = filePath + "_resized"
 
         // Resize if larger than 1200x1200
         if (metadata.width > 1200 || metadata.height > 1200) {
@@ -389,10 +390,10 @@ router.post(
               fit: "inside",
               withoutEnlargement: true,
             })
-            .toFile(filePath + "_resized")
+            .toFile(resizedFilePath)
 
           fs.unlinkSync(filePath)
-          fs.renameSync(filePath + "_resized", filePath)
+          fs.renameSync(resizedFilePath, filePath)
         }
 
         const photoMetadata = {
@@ -416,14 +417,18 @@ router.post(
 
         res.status(200).json({ success: true, data: newPhoto, isProfilePhoto: isFirstPhoto })
       } catch (processingErr) {
-        fs.unlinkSync(filePath)
+        // Clean up file if processing fails
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath)
+        }
         throw processingErr
       }
     } catch (err) {
       logger.error(`Error uploading photo: ${err.message}`)
-      if (req.file) {
+      // Ensure file cleanup in case of any error
+      if (filePath && fs.existsSync(filePath)) {
         try {
-          fs.unlinkSync(path.join(config.FILE_UPLOAD_PATH, req.file.filename))
+          fs.unlinkSync(filePath)
         } catch (unlinkErr) {
           logger.error(`Error deleting uploaded file after error: ${unlinkErr.message}`)
         }

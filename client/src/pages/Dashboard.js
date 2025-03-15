@@ -12,7 +12,6 @@ import {
   FaThLarge,
   FaList,
   FaFilter,
-  FaTimes,
 } from "react-icons/fa"
 import { toast } from "react-toastify"
 import { useAuth } from "../context"
@@ -25,7 +24,7 @@ const Dashboard = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { users, getUsers, loading } = useUser()
-  const { unreadMessages, searchMessages } = useChat() // Moved hook call outside conditional
+  const { unreadMessages } = useChat()
 
   const [activeTab, setActiveTab] = useState("discover")
   const [showFilters, setShowFilters] = useState(false)
@@ -43,43 +42,6 @@ const Dashboard = () => {
   const [chatUser, setChatUser] = useState(null)
   const [showChat, setShowChat] = useState(false)
   const [viewMode, setViewMode] = useState("grid") // 'grid' or 'list'
-
-  // Add message search functionality to Dashboard
-
-  // Add these new state variables and functions
-  const [searchQuery, setSearchQuery] = useState("")
-  const [searchResults, setSearchResults] = useState([])
-  const [isSearching, setIsSearching] = useState(false)
-  const [showSearchResults, setShowSearchResults] = useState(false)
-
-  // Add search function
-  const handleMessageSearch = async (e) => {
-    e?.preventDefault()
-
-    if (!searchQuery.trim() || searchQuery.length < 2) {
-      toast.info("Please enter at least 2 characters to search")
-      return
-    }
-
-    setIsSearching(true)
-    setShowSearchResults(true)
-
-    try {
-      const results = await searchMessages(searchQuery.trim())
-
-      if (results.success) {
-        setSearchResults(results.data || [])
-      } else {
-        throw new Error(results.error || "Search failed")
-      }
-    } catch (error) {
-      console.error("Search error:", error)
-      toast.error(error.message || "Failed to search messages")
-      setSearchResults([])
-    } finally {
-      setIsSearching(false)
-    }
-  }
 
   // Fetch users on mount and set up periodic refresh
   useEffect(() => {
@@ -233,21 +195,6 @@ const Dashboard = () => {
       <main className="dashboard-content">
         <div className="content-header d-flex justify-content-between align-items-center">
           <h1>{activeTab === "discover" ? "Discover People" : "Your Matches"}</h1>
-          {/* Add this inside the content-header div, after the h1 element */}
-          <div className="search-container">
-            <form onSubmit={handleMessageSearch} className="search-form">
-              <input
-                type="text"
-                placeholder="Search messages..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="search-input"
-              />
-              <button type="submit" className="search-button" disabled={isSearching}>
-                {isSearching ? <div className="spinner spinner-sm"></div> : <FaSearch />}
-              </button>
-            </form>
-          </div>
           <div className="content-actions d-flex align-items-center gap-2">
             <div className="view-toggle d-none d-md-flex">
               <button
@@ -391,60 +338,6 @@ const Dashboard = () => {
                 Apply Filters
               </button>
             </div>
-          </div>
-        )}
-
-        {/* Add search results display */}
-        {showSearchResults && (
-          <div className="search-results-container animate-fade-in">
-            <div className="search-results-header">
-              <h3>Search Results</h3>
-              <button
-                className="close-search-btn"
-                onClick={() => {
-                  setShowSearchResults(false)
-                  setSearchResults([])
-                }}
-              >
-                <FaTimes />
-              </button>
-            </div>
-
-            {isSearching ? (
-              <div className="loading-container">
-                <div className="spinner spinner-dark"></div>
-                <p className="loading-text">Searching messages...</p>
-              </div>
-            ) : searchResults.length > 0 ? (
-              <div className="search-results-list">
-                {searchResults.map((result) => (
-                  <div
-                    key={result._id}
-                    className="search-result-item"
-                    onClick={() => {
-                      // Open chat with this user
-                      const conversationUser = result.conversationWith
-                      if (conversationUser) {
-                        const user = users.find((u) => u._id === conversationUser._id)
-                        if (user) {
-                          handleMessageUser(null, user)
-                        }
-                      }
-                    }}
-                  >
-                    <div className="result-user">
-                      <strong>{result.conversationWith?.nickname || "Unknown"}</strong>
-                      <span className="result-time">{new Date(result.createdAt).toLocaleString()}</span>
-                    </div>
-                    <p className="result-content">{result.content}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="no-results">
-                <p>No messages found matching "{searchQuery}"</p>
-              </div>
-            )}
           </div>
         )}
 

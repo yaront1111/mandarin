@@ -1,7 +1,6 @@
 "use client"
 
-// client/src/components/ChatComponents.js
-
+// Fixed ChatComponents.js with proper initialization of initializePeerConnection
 import React, { useState, useEffect, useRef, useCallback, memo } from "react"
 import { useAuth, useChat } from "../context"
 import {
@@ -15,8 +14,8 @@ import {
   FaPaperclip,
   FaSpinner,
 } from "react-icons/fa"
-import { toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { toast } from "react-toastify"
+import "react-toastify/dist/ReactToastify.css"
 
 // Common emojis available for the emoji picker.
 const commonEmojis = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"]
@@ -317,6 +316,74 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
   const remoteVideoRef = useRef(null)
   const peerConnectionRef = useRef(null)
 
+  // Define initializePeerConnection before using it in useEffect
+  const initializePeerConnection = useCallback(
+    (stream) => {
+      try {
+        // Create RTCPeerConnection
+        const configuration = {
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.google.com:19302" }],
+        }
+
+        const peerConnection = new RTCPeerConnection(configuration)
+        peerConnectionRef.current = peerConnection
+
+        // Add local stream tracks to peer connection
+        stream.getTracks().forEach((track) => {
+          peerConnection.addTrack(track, stream)
+        })
+
+        // Handle incoming remote stream
+        peerConnection.ontrack = (event) => {
+          if (event.streams && event.streams[0]) {
+            setRemoteStream(event.streams[0])
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.srcObject = event.streams[0]
+            }
+            setConnectionStatus("connected")
+          }
+        }
+
+        // Handle ICE candidates
+        peerConnection.onicecandidate = (event) => {
+          if (event.candidate) {
+            // Send the ICE candidate to the remote peer via your signaling server
+            // This would typically use your socket connection
+            // socket.emit('ice-candidate', { candidate: event.candidate, to: peer.id });
+          }
+        }
+
+        // Handle connection state changes
+        peerConnection.onconnectionstatechange = () => {
+          switch (peerConnection.connectionState) {
+            case "connected":
+              setConnectionStatus("connected")
+              break
+            case "disconnected":
+            case "failed":
+              setConnectionStatus("error")
+              toast.error("Call connection failed")
+              break
+            case "closed":
+              // Handle call ended
+              break
+            default:
+              break
+          }
+        }
+
+        // If this is the caller, create and send an offer
+        if (!isIncoming) {
+          createAndSendOffer(peerConnection)
+        }
+      } catch (error) {
+        console.error("Error setting up peer connection:", error)
+        setConnectionStatus("error")
+      }
+    },
+    [isIncoming],
+  )
+
   useEffect(() => {
     // Initialize media stream
     const setupMediaStream = async () => {
@@ -330,7 +397,7 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
 
         // If this is an incoming call that's already been answered, establish connection
         if (!isIncoming && peer) {
-          initializePeerConnection(stream);
+          initializePeerConnection(stream)
         }
       } catch (err) {
         console.error("Error accessing media devices:", err)
@@ -350,104 +417,34 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
         remoteStream.getTracks().forEach((track) => track.stop())
       }
       if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
+        peerConnectionRef.current.close()
       }
     }
   }, [initializePeerConnection, isIncoming, peer, remoteStream])
 
-  // Initialize WebRTC peer connection
-  const initializePeerConnection = useCallback((stream) => {
-    try {
-      // Create RTCPeerConnection
-      const configuration = {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-      };
-
-      const peerConnection = new RTCPeerConnection(configuration);
-      peerConnectionRef.current = peerConnection;
-
-      // Add local stream tracks to peer connection
-      stream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, stream);
-      });
-
-      // Handle incoming remote stream
-      peerConnection.ontrack = (event) => {
-        if (event.streams && event.streams[0]) {
-          setRemoteStream(event.streams[0]);
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = event.streams[0];
-          }
-          setConnectionStatus("connected");
-        }
-      };
-
-      // Handle ICE candidates
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          // Send the ICE candidate to the remote peer via your signaling server
-          // This would typically use your socket connection
-          // socket.emit('ice-candidate', { candidate: event.candidate, to: peer.id });
-        }
-      };
-
-      // Handle connection state changes
-      peerConnection.onconnectionstatechange = () => {
-        switch(peerConnection.connectionState) {
-          case "connected":
-            setConnectionStatus("connected");
-            break;
-          case "disconnected":
-          case "failed":
-            setConnectionStatus("error");
-            toast.error("Call connection failed");
-            break;
-          case "closed":
-            // Handle call ended
-            break;
-          default:
-            break;
-        }
-      };
-
-      // If this is the caller, create and send an offer
-      if (!isIncoming) {
-        createAndSendOffer(peerConnection);
-      }
-
-    } catch (error) {
-      console.error("Error setting up peer connection:", error);
-      setConnectionStatus("error");
-    }
-  }, [isIncoming]);
-
   // Create and send an offer (for the caller)
   const createAndSendOffer = async (peerConnection) => {
     try {
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
+      const offer = await peerConnection.createOffer()
+      await peerConnection.setLocalDescription(offer)
 
       // Send the offer to the remote peer via your signaling server
       // socket.emit('call-offer', { offer, to: peer.id });
-
     } catch (error) {
-      console.error("Error creating offer:", error);
-      setConnectionStatus("error");
+      console.error("Error creating offer:", error)
+      setConnectionStatus("error")
     }
-  };
+  }
 
   // Handle answering a call (for the recipient)
   const handleAnswer = async () => {
     if (!localStream) {
-      toast.error("Cannot answer: No local stream available");
-      return;
+      toast.error("Cannot answer: No local stream available")
+      return
     }
 
     try {
-      initializePeerConnection(localStream);
+      initializePeerConnection(localStream)
 
       // In a real implementation, you would:
       // 1. Receive the offer from the signaling server
@@ -456,35 +453,35 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
       // 4. Set it as the local description
       // 5. Send the answer back via the signaling server
 
-      if (onAnswer) onAnswer(true);
-      setConnectionStatus("connecting");
+      if (onAnswer) onAnswer(true)
+      setConnectionStatus("connecting")
     } catch (error) {
-      console.error("Error answering call:", error);
-      setConnectionStatus("error");
+      console.error("Error answering call:", error)
+      setConnectionStatus("error")
     }
-  };
+  }
 
   // Toggle mute
   const toggleMute = () => {
     if (localStream) {
-      const audioTracks = localStream.getAudioTracks();
-      audioTracks.forEach(track => {
-        track.enabled = !track.enabled;
-      });
-      setIsMuted(!isMuted);
+      const audioTracks = localStream.getAudioTracks()
+      audioTracks.forEach((track) => {
+        track.enabled = !track.enabled
+      })
+      setIsMuted(!isMuted)
     }
-  };
+  }
 
   // Toggle video
   const toggleVideo = () => {
     if (localStream) {
-      const videoTracks = localStream.getVideoTracks();
-      videoTracks.forEach(track => {
-        track.enabled = !track.enabled;
-      });
-      setIsVideoOff(!isVideoOff);
+      const videoTracks = localStream.getVideoTracks()
+      videoTracks.forEach((track) => {
+        track.enabled = !track.enabled
+      })
+      setIsVideoOff(!isVideoOff)
     }
-  };
+  }
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {

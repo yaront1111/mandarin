@@ -1,561 +1,237 @@
-// models/User.js
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
-const config = require('../config');
-const logger = require('../logger');
+// Upgraded User.js model with improved security and validation
+const mongoose = require("mongoose")
+const bcrypt = require("bcryptjs")
+const crypto = require("crypto")
+const validator = require("validator")
 
-// Photo Schema (sub-document)
-const PhotoSchema = new mongoose.Schema({
-  url: {
-    type: String,
-    required: [true, 'Photo URL is required'],
-    trim: true
+const photoSchema = new mongoose.Schema(
+  {
+    url: {
+      type: String,
+      required: [true, "Photo URL is required"],
+    },
+    isPrivate: {
+      type: Boolean,
+      default: false,
+    },
+    metadata: {
+      contentType: String,
+      size: Number,
+      dimensions: {
+        width: Number,
+        height: Number,
+      },
+    },
   },
-  isPrivate: {
-    type: Boolean,
-    default: false
-  },
-  order: {
-    type: Number,
-    default: 0  // 0 is default for profile photo
-  },
-  uploadedAt: {
-    type: Date,
-    default: Date.now
-  },
-  metadata: {
-    contentType: String,
-    size: Number, // in bytes
-    dimensions: {
-      width: Number,
-      height: Number
-    }
-  }
-}, { _id: true });
+  { timestamps: true },
+)
 
-// Settings Schema (sub-document)
-const SettingsSchema = new mongoose.Schema({
-  notifications: {
+const userSchema = new mongoose.Schema(
+  {
     email: {
-      enabled: { type: Boolean, default: true },
-      marketing: { type: Boolean, default: false },
-      messages: { type: Boolean, default: true },
-      matches: { type: Boolean, default: true }
-    },
-    push: {
-      enabled: { type: Boolean, default: true },
-      messages: { type: Boolean, default: true },
-      matches: { type: Boolean, default: true },
-      likes: { type: Boolean, default: true }
-    }
-  },
-  privacy: {
-    profileVisibility: {
       type: String,
-      enum: ['public', 'matches', 'private'],
-      default: 'public'
+      required: [true, "Email is required"],
+      unique: true,
+      lowercase: true,
+      validate: [validator.isEmail, "Please provide a valid email"],
+      index: true,
     },
-    showDistance: { type: Boolean, default: true },
-    showLastActive: { type: Boolean, default: true }
-  },
-  account: {
-    hideProfile: { type: Boolean, default: false },
-    deactivated: { type: Boolean, default: false },
-    deactivatedReason: { type: String },
-    deactivatedAt: { type: Date }
-  },
-  preferences: {
-    ageMin: { type: Number, default: 18 },
-    ageMax: { type: Number, default: 99 },
-    distance: { type: Number, default: 100 }, // km
-    interestedIn: {
-      type: [String],
-      enum: ['Male', 'Female', 'Other'],
-      default: ['Male', 'Female', 'Other']
-    }
-  }
-});
-
-// User Schema
-const UserSchema = new mongoose.Schema({
-  email: {
-    type: String,
-    required: [true, 'Please add an email'],
-    unique: true,
-    trim: true,
-    lowercase: true,
-    match: [
-      /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/,
-      'Please provide a valid email'
-    ],
-    index: true
-  },
-  password: {
-    type: String,
-    required: [true, 'Please add a password'],
-    minlength: [6, 'Password must be at least 6 characters'],
-    maxlength: [100, 'Password cannot exceed 100 characters'],
-    select: false
-  },
-  nickname: {
-    type: String,
-    required: [true, 'Please add a nickname'],
-    unique: true,
-    trim: true,
-    minlength: [3, 'Nickname must be at least 3 characters'],
-    maxlength: [50, 'Nickname cannot be more than 50 characters'],
-    match: [/^[a-zA-Z0-9_]+$/, 'Nickname can only contain letters, numbers, and underscores'],
-    index: true
-  },
-  details: {
-    age: {
-      type: Number,
-      min: [18, 'Age must be at least 18'],
-      max: [120, 'Age cannot exceed 120'],
-      required: [true, 'Age is required'],
-      index: true
-    },
-    gender: {
+    password: {
       type: String,
-      enum: {
-        values: ['Male', 'Female', 'Other'],
-        message: 'Gender must be Male, Female, or Other'
-      },
-      required: [true, 'Gender is required'],
-      index: true
+      required: [true, "Password is required"],
+      minlength: [8, "Password must be at least 8 characters"],
+      select: false,
     },
-    location: {
+    nickname: {
       type: String,
-      required: [true, 'Location is required'],
+      required: [true, "Nickname is required"],
       trim: true,
-      maxlength: [100, 'Location cannot exceed 100 characters'],
-      index: true
+      minlength: [3, "Nickname must be at least 3 characters"],
+      maxlength: [30, "Nickname cannot exceed 30 characters"],
+      index: true,
     },
-    coordinates: {
-      type: {
-        type: String,
-        enum: ['Point']
+    details: {
+      age: {
+        type: Number,
+        min: [18, "You must be at least 18 years old"],
+        max: [120, "Age cannot exceed 120"],
       },
-      coordinates: {
-        type: [Number],
+      gender: {
+        type: String,
+        enum: {
+          values: ["male", "female", "non-binary", "other"],
+          message: "Gender must be male, female, non-binary, or other",
+        },
+      },
+      location: {
+        type: String,
+        trim: true,
+        maxlength: [100, "Location cannot exceed 100 characters"],
+      },
+      bio: {
+        type: String,
+        trim: true,
+        maxlength: [500, "Bio cannot exceed 500 characters"],
+      },
+      interests: {
+        type: [String],
         validate: {
-          validator: function(v) {
-            return v.length === 2 &&
-              v[0] >= -180 && v[0] <= 180 &&
-              v[1] >= -90 && v[1] <= 90;
-          },
-          message: "Coordinates must be valid [longitude, latitude] pairs"
-        }
-      }
-    },
-    bio: {
-      type: String,
-      trim: true,
-      maxlength: [500, 'Bio cannot be more than 500 characters']
-    },
-    interests: {
-      type: [String],
-      validate: {
-        validator: function(v) {
-          return Array.isArray(v) && v.length <= 10;
+          validator: (interests) => interests.length <= 10,
+          message: "Cannot have more than 10 interests",
         },
-        message: "Cannot have more than 10 interests"
       },
-      default: []
     },
-    lookingFor: {
-      type: [String],
-      validate: {
-        validator: function(v) {
-          return Array.isArray(v) && v.length <= 5;
-        },
-        message: "Cannot have more than 5 relationship goals"
-      },
-      default: []
-    },
-    socialLinks: {
-      instagram: {
-        type: String,
-        trim: true,
-        match: [/^[a-zA-Z0-9_.]+$/, 'Invalid Instagram username']
-      },
-      facebook: {
-        type: String,
-        trim: true
-      },
-      twitter: {
-        type: String,
-        trim: true,
-        match: [/^[a-zA-Z0-9_]+$/, 'Invalid Twitter username']
-      }
-    }
-  },
-  photos: [PhotoSchema],
-  isOnline: {
-    type: Boolean,
-    default: false,
-    index: true
-  },
-  lastActive: {
-    type: Date,
-    default: Date.now,
-    index: true
-  },
-  role: {
-    type: String,
-    enum: ['user', 'premium', 'admin', 'moderator'],
-    default: 'user'
-  },
-  settings: {
-    type: SettingsSchema,
-    default: () => ({})
-  },
-  emailVerified: {
-    type: Boolean,
-    default: false
-  },
-  verification: {
-    emailToken: String,
-    emailTokenExpire: Date,
-    profileVerified: {
+    photos: [photoSchema],
+    isOnline: {
       type: Boolean,
-      default: false
+      default: false,
     },
-    profileVerificationSubmitted: {
+    lastActive: {
+      type: Date,
+      default: Date.now,
+    },
+    socketId: {
+      type: String,
+      default: null,
+    },
+    role: {
+      type: String,
+      enum: ["user", "moderator", "admin"],
+      default: "user",
+    },
+    isVerified: {
       type: Boolean,
-      default: false
-    }
-  },
-  resetPasswordToken: String,
-  resetPasswordExpire: Date,
-  refreshToken: String,
-  blocked: {
-    users: [{
-      type: mongoose.Schema.ObjectId,
-      ref: 'User'
-    }],
-    blockedBy: [{
-      type: mongoose.Schema.ObjectId,
-      ref: 'User'
-    }]
-  },
-  reports: [{
-    reportedBy: {
-      type: mongoose.Schema.ObjectId,
-      ref: 'User'
+      default: false,
     },
-    reason: {
-      type: String,
-      enum: ['inappropriate', 'spam', 'harassment', 'fake', 'other'],
-      required: true
-    },
-    details: String,
-    createdAt: {
-      type: Date,
-      default: Date.now
-    },
-    status: {
-      type: String,
-      enum: ['pending', 'reviewed', 'resolved', 'dismissed'],
-      default: 'pending'
-    }
-  }],
-  stats: {
-    profileViews: {
+    verificationToken: String,
+    verificationTokenExpires: Date,
+    passwordChangedAt: Date,
+    passwordResetToken: String,
+    passwordResetExpires: Date,
+    refreshToken: String,
+    refreshTokenExpires: Date,
+    loginAttempts: {
       type: Number,
-      default: 0
+      default: 0,
     },
-    likesReceived: {
-      type: Number,
-      default: 0
+    lockUntil: Date,
+    active: {
+      type: Boolean,
+      default: true,
+      select: false,
     },
-    likesSent: {
-      type: Number,
-      default: 0
-    },
-    matches: {
-      type: Number,
-      default: 0
-    },
-    messagesSent: {
-      type: Number,
-      default: 0
-    },
-    messagesReceived: {
-      type: Number,
-      default: 0
-    },
-    lastProfileUpdate: {
-      type: Date,
-      default: Date.now
-    }
   },
-  lastLogin: {
-    time: Date,
-    ip: String,
-    userAgent: String
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   },
-  failedLoginAttempts: {
-    type: Number,
-    default: 0
-  },
-  accountLocked: {
-    type: Boolean,
-    default: false
-  },
-  accountLockedUntil: Date,
-  createdAt: {
-    type: Date,
-    default: Date.now,
-    index: true
-  }
-}, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
-});
+)
 
-// Create indexes for efficient querying
-UserSchema.index({ 'details.age': 1, 'details.gender': 1 }); // For matching
-UserSchema.index({ 'details.coordinates': '2dsphere' }); // For geo queries
-UserSchema.index({ email: 1, nickname: 1 }, { unique: true }); // Compound index for unique fields
-UserSchema.index({ 'stats.profileViews': -1 }); // For popular profiles
-UserSchema.index({ isOnline: 1, lastActive: -1 }); // For active user filtering
+// Virtual field for age calculation
+userSchema.virtual("age").get(function () {
+  return this.details && this.details.age ? this.details.age : null
+})
 
-// Add virtual property for profile completion percentage
-UserSchema.virtual('profileCompletionPercentage').get(function() {
-  let totalFields = 8; // Count of essential profile fields
-  let completedFields = 0;
+// Index for efficient queries
+userSchema.index({ "details.location": "text", "details.interests": "text" })
+userSchema.index({ isOnline: 1, lastActive: -1 })
+userSchema.index({ email: 1, nickname: 1 })
 
-  if (this.details) {
-    if (this.details.age) completedFields++;
-    if (this.details.gender) completedFields++;
-    if (this.details.location) completedFields++;
-    if (this.details.bio && this.details.bio.length > 10) completedFields++;
-    if (this.details.interests && this.details.interests.length > 0) completedFields++;
-    if (this.details.lookingFor && this.details.lookingFor.length > 0) completedFields++;
-  }
-
-  if (this.photos && this.photos.length > 0) completedFields++;
-  if (this.emailVerified) completedFields++;
-
-  return Math.round((completedFields / totalFields) * 100);
-});
-
-// Virtual for profile photo url
-UserSchema.virtual('profilePhotoUrl').get(function() {
-  if (this.photos && this.photos.length > 0) {
-    // Find the photo with order 0 (profile photo) or fallback to first photo
-    const profilePhoto = this.photos.find(p => p.order === 0) || this.photos[0];
-    return profilePhoto.url;
-  }
-  return null;
-});
-
-// Check if user has photo permissions
-UserSchema.methods.hasPhotoPermission = function(photoId, userId) {
-  const photo = this.photos.id(photoId);
-  if (!photo) return false;
-  if (!photo.isPrivate) return true;
-
-  // Check permissions collection (this would ideally use a virtual or populate)
-  // This is a placeholder - you would implement the actual permission check based on your data structure
-  return false;
-};
-
-// Encrypt password using bcrypt
-UserSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) {
-    next();
-  }
+// Pre-save middleware to hash password
+userSchema.pre("save", async function (next) {
+  // Only hash the password if it's modified
+  if (!this.isModified("password")) return next()
 
   try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (err) {
-    logger.error(`Error hashing password: ${err.message}`);
-    next(err);
-  }
-});
+    // Hash password with cost factor of 12
+    this.password = await bcrypt.hash(this.password, 12)
 
-// Update lastProfileUpdate timestamp when profile details change
-UserSchema.pre('save', function(next) {
-  if (this.isModified('details') || this.isModified('photos')) {
-    this.stats.lastProfileUpdate = Date.now();
-  }
-  next();
-});
-
-// Generate and sign JWT token
-UserSchema.methods.getSignedJwtToken = function() {
-  return jwt.sign(
-    {
-      id: this._id,
-      role: this.role,
-      version: this.updatedAt // Include update timestamp for token invalidation
-    },
-    config.JWT_SECRET,
-    {
-      expiresIn: config.JWT_EXPIRE
+    // Update passwordChangedAt field
+    if (this.isModified("password") && !this.isNew) {
+      this.passwordChangedAt = Date.now() - 1000 // Subtract 1 second to ensure token is created after password change
     }
-  );
-};
 
-// Generate refresh token
-UserSchema.methods.generateRefreshToken = function() {
-  // Create refresh token with longer expiry
-  const refreshToken = crypto.randomBytes(20).toString('hex');
-
-  // Save hashed version of refresh token
-  this.refreshToken = crypto
-    .createHash('sha256')
-    .update(refreshToken)
-    .digest('hex');
-
-  return refreshToken;
-};
-
-// Match password
-UserSchema.methods.matchPassword = async function(enteredPassword) {
-  try {
-    return await bcrypt.compare(enteredPassword, this.password);
-  } catch (err) {
-    logger.error(`Error comparing passwords: ${err.message}`);
-    return false;
+    next()
+  } catch (error) {
+    next(error)
   }
-};
+})
 
-// Generate email verification token
-UserSchema.methods.generateEmailVerificationToken = function() {
-  // Generate token
-  const verificationToken = crypto.randomBytes(20).toString('hex');
+// Pre-find middleware to exclude inactive users
+userSchema.pre(/^find/, function (next) {
+  // 'this' refers to the current query
+  this.find({ active: { $ne: false } })
+  next()
+})
 
-  // Hash token and set to emailToken field
-  this.verification.emailToken = crypto
-    .createHash('sha256')
-    .update(verificationToken)
-    .digest('hex');
+// Method to check if password is correct
+userSchema.methods.correctPassword = async (candidatePassword, userPassword) =>
+  await bcrypt.compare(candidatePassword, userPassword)
 
-  // Set expiry
-  this.verification.emailTokenExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-
-  return verificationToken;
-};
-
-// Generate password reset token
-UserSchema.methods.generatePasswordResetToken = function() {
-  // Generate token
-  const resetToken = crypto.randomBytes(20).toString('hex');
-
-  // Hash token and set to resetPasswordToken field
-  this.resetPasswordToken = crypto
-    .createHash('sha256')
-    .update(resetToken)
-    .digest('hex');
-
-  // Set expiry
-  this.resetPasswordExpire = Date.now() + 1 * 60 * 60 * 1000; // 1 hour
-
-  return resetToken;
-};
-
-// Check if user has completed profile
-UserSchema.methods.hasCompletedProfile = function() {
-  return this.profileCompletionPercentage >= 80;
-};
-
-// Check if user has been inactive for a specified period
-UserSchema.methods.isInactiveSince = function(days) {
-  const threshold = new Date();
-  threshold.setDate(threshold.getDate() - days);
-  return this.lastActive < threshold;
-};
-
-// Method to safely return user data without sensitive fields
-UserSchema.methods.getSafeInfo = function() {
-  const userObject = this.toObject();
-
-  // Remove sensitive data
-  delete userObject.password;
-  delete userObject.resetPasswordToken;
-  delete userObject.resetPasswordExpire;
-  delete userObject.refreshToken;
-  delete userObject.verification;
-  delete userObject.failedLoginAttempts;
-
-  // Remove private settings for other users
-  if (!this._isSelfView) {
-    delete userObject.settings;
-    delete userObject.email;
-    delete userObject.stats;
-    delete userObject.blocked;
-    delete userObject.reports;
-
-    // Remove private photos
-    if (userObject.photos) {
-      userObject.photos = userObject.photos.filter(photo => !photo.isPrivate);
-    }
+// Method to check if password was changed after token was issued
+userSchema.methods.changedPasswordAfter = function (JWTTimestamp) {
+  if (this.passwordChangedAt) {
+    const changedTimestamp = Number.parseInt(this.passwordChangedAt.getTime() / 1000, 10)
+    return JWTTimestamp < changedTimestamp
   }
+  return false
+}
 
-  return userObject;
-};
+// Method to create password reset token
+userSchema.methods.createPasswordResetToken = function () {
+  const resetToken = crypto.randomBytes(32).toString("hex")
 
-// Method to check if user is blocked by another user
-UserSchema.methods.isBlockedBy = function(userId) {
-  return this.blocked.blockedBy.some(id => id.toString() === userId.toString());
-};
+  this.passwordResetToken = crypto.createHash("sha256").update(resetToken).digest("hex")
+  this.passwordResetExpires = Date.now() + 10 * 60 * 1000 // 10 minutes
 
-// Method to check if user has blocked another user
-UserSchema.methods.hasBlocked = function(userId) {
-  return this.blocked.users.some(id => id.toString() === userId.toString());
-};
+  return resetToken
+}
 
-// Track login attempt
-UserSchema.methods.trackLoginAttempt = async function(success, ip, userAgent) {
-  if (success) {
-    // Reset failed attempts on successful login
-    this.failedLoginAttempts = 0;
-    this.accountLocked = false;
-    this.accountLockedUntil = undefined;
+// Method to create email verification token
+userSchema.methods.createVerificationToken = function () {
+  const verificationToken = crypto.randomBytes(32).toString("hex")
 
-    // Update last login info
-    this.lastLogin = {
-      time: new Date(),
-      ip,
-      userAgent
-    };
+  this.verificationToken = crypto.createHash("sha256").update(verificationToken).digest("hex")
+  this.verificationTokenExpires = Date.now() + 24 * 60 * 60 * 1000 // 24 hours
+
+  return verificationToken
+}
+
+// Method to create refresh token
+userSchema.methods.createRefreshToken = function () {
+  const refreshToken = crypto.randomBytes(40).toString("hex")
+
+  this.refreshToken = crypto.createHash("sha256").update(refreshToken).digest("hex")
+  this.refreshTokenExpires = Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
+
+  return refreshToken
+}
+
+// Method to check if account is locked
+userSchema.methods.isLocked = function () {
+  return this.lockUntil && this.lockUntil > Date.now()
+}
+
+// Method to increment login attempts
+userSchema.methods.incrementLoginAttempts = async function () {
+  // Reset login attempts if lock has expired
+  if (this.lockUntil && this.lockUntil < Date.now()) {
+    this.loginAttempts = 1
+    this.lockUntil = undefined
   } else {
-    // Increment failed attempts
-    this.failedLoginAttempts += 1;
+    // Increment login attempts
+    this.loginAttempts += 1
 
-    // Lock account after X failed attempts
-    if (this.failedLoginAttempts >= 5) {
-      this.accountLocked = true;
-
-      // Lock for progressively longer periods
-      const lockMinutes = Math.min(30, Math.pow(2, this.failedLoginAttempts - 5)); // 1, 2, 4, 8, 16, 30 minutes
-      this.accountLockedUntil = new Date(Date.now() + lockMinutes * 60 * 1000);
-
-      logger.warn(`Account locked for ${lockMinutes} minutes due to failed login attempts: ${this.email}`);
+    // Lock account if max attempts reached
+    if (this.loginAttempts >= 5) {
+      this.lockUntil = Date.now() + 60 * 60 * 1000 // 1 hour
     }
   }
 
-  await this.save();
-};
+  await this.save()
+}
 
-// Add a method to increment message stats
-UserSchema.methods.incrementMessageStats = async function(isSender) {
-  const field = isSender ? 'stats.messagesSent' : 'stats.messagesReceived';
-  const update = { $inc: { [field]: 1 } };
+const User = mongoose.model("User", userSchema)
 
-  try {
-    await mongoose.model('User').findByIdAndUpdate(this._id, update);
-  } catch (err) {
-    logger.error(`Error incrementing message stats: ${err.message}`);
-  }
-};
-
-module.exports = mongoose.model('User', UserSchema);
+module.exports = User

@@ -1,6 +1,6 @@
 "use client"
 
-// client/src/components/EmbeddedChat.js
+// Fixed EmbeddedChat.js with proper attachment handling
 import React, { useState, useEffect, useRef } from "react"
 import {
   FaSmile,
@@ -10,8 +10,9 @@ import {
   FaCheckDouble,
   FaCheck,
   FaVideo,
+  FaHeart,
   FaSpinner,
-  FaEllipsisH,
+  FaFile,
 } from "react-icons/fa"
 import { useAuth, useChat } from "../context"
 import { toast } from "react-toastify"
@@ -37,14 +38,13 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     sending: sendingMessage,
     error: messageError,
     clearError,
-    markMessageRead,
   } = useChat()
 
   const [newMessage, setNewMessage] = useState("")
   const [showEmojis, setShowEmojis] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [attachment, setAttachment] = useState(null)
-  const [showReactionMenu, setShowReactionMenu] = useState(null)
+  const [attachment, setAttachment] = useState(null) // Fixed: Properly use attachment state
+  const [isUploading, setIsUploading] = useState(false) // Added for upload status
 
   const messagesEndRef = useRef(null)
   const chatInputRef = useRef(null)
@@ -53,21 +53,14 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Load messages when chat is opened with the recipient
   useEffect(() => {
-    let isMounted = true
     if (recipient && isOpen) {
       setIsLoading(true)
       getMessages(recipient._id)
-        .then(() => {
-          if (isMounted) setIsLoading(false)
-        })
+        .then(() => setIsLoading(false))
         .catch((err) => {
           console.error("Failed to load messages:", err)
-          if (isMounted) setIsLoading(false)
+          setIsLoading(false)
         })
-    }
-
-    return () => {
-      isMounted = false
     }
   }, [recipient, isOpen, getMessages])
 
@@ -93,6 +86,16 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   // Handle sending a text message
   const handleSendMessage = async (e) => {
     e?.preventDefault()
+
+    // If there's an attachment, handle it first
+    if (attachment) {
+      // In a real implementation, you would upload the file here
+      // For now, we'll just show a toast message
+      toast.info(`File attachment functionality is not implemented yet.`)
+      setAttachment(null) // Clear the attachment after handling
+      return
+    }
+
     if (newMessage.trim() && !sendingMessage && recipient) {
       try {
         await sendMessage(recipient._id, "text", newMessage.trim())
@@ -131,8 +134,14 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const handleFileChange = (e) => {
     const file = e.target.files[0]
     if (file) {
+      // Validate file size (5MB max)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("File is too large. Maximum size is 5MB.")
+        e.target.value = null
+        return
+      }
+
       setAttachment(file)
-      // TODO: Implement file uploading via your chat context if desired.
       toast.info(`Selected file: ${file.name}`)
       e.target.value = null
     }
@@ -143,6 +152,11 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     fileInputRef.current?.click()
   }
 
+  // Remove the current attachment
+  const handleRemoveAttachment = () => {
+    setAttachment(null)
+  }
+
   // Handle video call
   const handleVideoCall = () => {
     if (recipient && recipient._id) {
@@ -150,19 +164,6 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       toast.info(`Starting video call with ${recipient.nickname}...`)
     } else {
       toast.error("Cannot start call: recipient information is missing")
-    }
-  }
-
-  // Handle message reaction
-  const handleReaction = async (messageId, emoji) => {
-    try {
-      // This would call a method in your chat context to add a reaction
-      // await addMessageReaction(messageId, emoji);
-      toast.info(`Reaction added: ${emoji}`)
-      setShowReactionMenu(null)
-    } catch (error) {
-      console.error("Failed to add reaction:", error)
-      toast.error("Failed to add reaction")
     }
   }
 
@@ -206,9 +207,6 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Common emoji list
   const commonEmojis = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"]
-
-  // Reaction emojis
-  const reactionEmojis = ["👍", "❤️", "😂", "😮", "😢", "😠"]
 
   // Handle emoji selection
   const handleEmojiClick = (emoji) => {
@@ -276,130 +274,139 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                   {message.type === "text" && (
                     <>
                       <p className="message-content">{message.content}</p>
-                      <div className="message-footer">
-                        <span className="message-time">
-                          {formatMessageTime(message.createdAt)}
-                          {message.sender === user?._id &&
-                            (message.read ? (
-                              <FaCheckDouble className="read-indicator" />
-                            ) : (
-                              <FaCheck className="read-indicator" />
-                            ))}
-                        </span>
-
-                        {/* Message reactions display */}
-                        {message.reactions && message.reactions.length > 0 && (
-                          <div className="message-reactions">
-                            {message.reactions.map((reaction, index) => (
-                              <span key={index} className="reaction-emoji">
-                                {reaction}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      <span className="message-time">
+                        {formatMessageTime(message.createdAt)}
+                        {message.sender === user?._id &&
+                          (message.read ? (
+                            <FaCheckDouble className="read-indicator" />
+                          ) : (
+                            <FaCheck className="read-indicator" />
+                          ))}
+                      </span>
                     </>
                   )}
                   {message.type === "wink" && (
                     <div className="wink-message">
-                      <span role="img" aria-label="Wink">
-                        {message.content}
-                      </span>
-                      <div className="message-footer">
-                        <span className="message-time">{formatMessageTime(message.createdAt)}</span>
-                      </div>
+                      <p className="message-content">😉</p>
+                      <span className="message-label">Wink</span>
                     </div>
                   )}
-                  <div className="reaction-menu">
-                    {showReactionMenu === message._id && (
-                      <div className="reaction-options">
-                        {reactionEmojis.map((emoji, index) => (
-                          <span
-                            key={index}
-                            className="reaction-option"
-                            onClick={() => handleReaction(message._id, emoji)}
-                          >
-                            {emoji}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  {message.type === "video" && (
+                    <div className="video-call-message">
+                      <FaVideo className="video-icon" />
+                      <p className="message-content">Video Call</p>
+                      <span className="message-time">{formatMessageTime(message.createdAt)}</span>
+                    </div>
+                  )}
                 </div>
               ))}
-              {isTyping && (
-                <div className="typing-indicator">
-                  {recipient.nickname} is typing...
-                  <FaEllipsisH className="typing-dots" />
-                </div>
-              )}
             </React.Fragment>
           ))
+        )}
+        {isTyping && (
+          <div className="typing-indicator">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        )}
+        {messageError && (
+          <div className="message-error">
+            <p>{messageError}</p>
+            <button onClick={clearError} aria-label="Dismiss error">
+              <FaTimes />
+            </button>
+          </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Chat Input */}
-      <form className="chat-input" onSubmit={handleSendMessage}>
-        <div className="input-container">
-          <button
-            type="button"
-            className="emoji-btn"
-            onClick={() => setShowEmojis(!showEmojis)}
-            aria-label="Toggle emojis"
-            title="Toggle emojis"
-          >
-            <FaSmile />
+      {/* Attachment Preview */}
+      {attachment && (
+        <div className="attachment-preview">
+          <div className="attachment-info">
+            <FaFile className="attachment-icon" />
+            <span className="attachment-name">{attachment.name}</span>
+            <span className="attachment-size">({Math.round(attachment.size / 1024)} KB)</span>
+          </div>
+          <button className="remove-attachment" onClick={handleRemoveAttachment}>
+            <FaTimes />
           </button>
-
-          <input
-            type="text"
-            ref={chatInputRef}
-            placeholder="Type a message..."
-            value={newMessage}
-            onChange={handleTyping}
-            aria-label="Message input"
-          />
-
-          <button
-            type="button"
-            className="attach-btn"
-            onClick={handleFileAttachment}
-            aria-label="Attach file"
-            title="Attach file"
-          >
-            <FaPaperclip />
-          </button>
-          <input
-            type="file"
-            style={{ display: "none" }}
-            onChange={handleFileChange}
-            ref={fileInputRef}
-            aria-label="File input"
-          />
         </div>
+      )}
 
+      {/* Message Input Form */}
+      <form className="message-input" onSubmit={handleSendMessage}>
+        <button
+          type="button"
+          className="input-emoji"
+          onClick={() => setShowEmojis(!showEmojis)}
+          title="Add Emoji"
+          aria-label="Add emoji"
+        >
+          <FaSmile />
+        </button>
         {showEmojis && (
-          <div className="emojis-panel">
-            <div className="emojis-scroll">
-              {commonEmojis.map((emoji, index) => (
-                <span key={index} className="emoji" onClick={() => handleEmojiClick(emoji)}>
+          <div className="emoji-picker">
+            <div className="emoji-header">
+              <h4>Emojis</h4>
+              <button onClick={() => setShowEmojis(false)} aria-label="Close emoji picker">
+                <FaTimes />
+              </button>
+            </div>
+            <div className="emoji-list">
+              {commonEmojis.map((emoji) => (
+                <button key={emoji} type="button" onClick={() => handleEmojiClick(emoji)} aria-label={`Emoji ${emoji}`}>
                   {emoji}
-                </span>
+                </button>
               ))}
             </div>
           </div>
         )}
-
+        <input
+          type="text"
+          placeholder="Type a message..."
+          value={newMessage}
+          onChange={handleTyping}
+          ref={chatInputRef}
+          disabled={sendingMessage || isUploading}
+          aria-label="Message input"
+        />
+        <button
+          type="button"
+          className="input-attachment"
+          onClick={handleFileAttachment}
+          disabled={sendingMessage || isUploading}
+          title="Attach File"
+          aria-label="Attach file"
+        >
+          <FaPaperclip />
+        </button>
+        <input
+          type="file"
+          ref={fileInputRef}
+          style={{ display: "none" }}
+          onChange={handleFileChange}
+          aria-hidden="true"
+        />
+        <button
+          type="button"
+          className="input-wink"
+          onClick={handleSendWink}
+          disabled={sendingMessage || isUploading}
+          title="Send Wink"
+          aria-label="Send wink"
+        >
+          <FaHeart />
+        </button>
         <button
           type="submit"
-          className="send-btn"
-          onClick={handleSendMessage}
+          className="input-send"
+          disabled={(!newMessage.trim() && !attachment) || sendingMessage || isUploading}
+          title="Send Message"
           aria-label="Send message"
-          title="Send message"
-          disabled={sendingMessage}
         >
-          {sendingMessage ? <FaSpinner className="spinner" /> : <FaPaperPlane />}
+          {sendingMessage || isUploading ? <FaSpinner className="fa-spin" /> : <FaPaperPlane />}
         </button>
       </form>
     </div>

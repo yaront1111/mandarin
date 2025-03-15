@@ -1,4 +1,6 @@
-// client/src/context/index.js
-export { useAuth, AuthProvider, authApiService } from './AuthContext';
-export { useUser, UserProvider } from './UserContext';
-export { useChat, ChatProvider } from './ChatContext';
+// Re-export all context providers and hooks
+import { AuthProvider, useAuth } from "./AuthContext"
+import { ChatProvider, useChat } from "./ChatContext"
+import { UserProvider, useUser } from "./UserContext"
+
+export { AuthProvider, useAuth, ChatProvider, useChat, UserProvider, useUser }

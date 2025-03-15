@@ -1,46 +1,36 @@
+"use client"
+
 // client/src/App.js
-import React, { useEffect } from 'react';
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-} from 'react-router-dom';
-import {
-  Home,
-  Login,
-  Register,
-  Dashboard,
-  Profile,
-  UserProfile,
-  NotFound
-} from './pages';
-import { PrivateRoute } from './components';
-import './utils/apiDebugger';
-import { AuthProvider, UserProvider, ChatProvider, useAuth } from './context';
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-import './App.css';
+import { useEffect } from "react"
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
+import { Home, Login, Register, Dashboard, Profile, UserProfile, NotFound } from "./pages"
+import { PrivateRoute } from "./components"
+import "./utils/apiDebugger"
+import { AuthProvider, UserProvider, ChatProvider, useAuth } from "./context"
+import { ToastContainer } from "react-toastify"
+import "react-toastify/dist/ReactToastify.css"
+import "./App.css"
 
 // Apply React Router future flags if available
-if (typeof window !== 'undefined') {
-  window.__reactRouterFutureFlags = window.__reactRouterFutureFlags || {};
-  window.__reactRouterFutureFlags.v7_startTransition = true;
-  window.__reactRouterFutureFlags.v7_relativeSplatPath = true;
+if (typeof window !== "undefined") {
+  window.__reactRouterFutureFlags = window.__reactRouterFutureFlags || {}
+  window.__reactRouterFutureFlags.v7_startTransition = true
+  window.__reactRouterFutureFlags.v7_relativeSplatPath = true
 }
 
 const AppInitializer = ({ children }) => {
-  const { loadUser } = useAuth();
+  const { getCurrentUser } = useAuth()
 
   useEffect(() => {
     // Load token from sessionStorage and set it in apiService
-    const token = sessionStorage.getItem('token');
+    const token = sessionStorage.getItem("token")
     if (token) {
-      loadUser();
+      getCurrentUser()
     }
-  }, [loadUser]);
+  }, [getCurrentUser])
 
-  return children;
-};
+  return children
+}
 
 function App() {
   return (
@@ -102,7 +92,7 @@ function App() {
         </ChatProvider>
       </UserProvider>
     </AuthProvider>
-  );
+  )
 }
 
-export default App;
+export default App

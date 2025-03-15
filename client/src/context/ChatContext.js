@@ -1,362 +1,547 @@
 "use client"
 
-// client/src/context/ChatContext.js
-import { createContext, useReducer, useContext, useCallback, useState, useEffect, useRef } from "react"
+// Upgraded ChatContext.js with improved message handling and error recovery
+import { createContext, useState, useContext, useEffect, useCallback, useRef } from "react"
+import { toast } from "react-toastify"
 import apiService from "../services/apiService"
 import socketService from "../services/socketService"
-import { toast } from "react-toastify"
+import { useAuth } from "./AuthContext"
 
 const ChatContext = createContext()
 
-const initialState = {
-  messages: [],
-  sending: false,
-  error: null,
-}
-
-const chatReducer = (state, action) => {
-  switch (action.type) {
-    case "SENDING_MESSAGE":
-      return { ...state, sending: true, error: null }
-    case "SEND_MESSAGE":
-      return { ...state, sending: false, messages: [...state.messages, action.payload] }
-    case "MESSAGE_ERROR":
-      return { ...state, sending: false, error: action.payload }
-    case "SET_MESSAGES":
-      return { ...state, messages: action.payload }
-    case "UPDATE_MESSAGE":
-      return {
-        ...state,
-        messages: state.messages.map((msg) =>
-          msg._id === action.payload.messageId ? { ...msg, ...action.payload.updates } : msg,
-        ),
-      }
-    case "CLEAR_ERROR":
-      return { ...state, error: null }
-    default:
-      return state
-  }
-}
+export const useChat = () => useContext(ChatContext)
 
 export const ChatProvider = ({ children }) => {
-  const [state, dispatch] = useReducer(chatReducer, initialState)
-  const [currentChat, setCurrentChat] = useState(null)
+  const { user, isAuthenticated } = useAuth()
+  const [messages, setMessages] = useState([])
+  const [conversations, setConversations] = useState([])
+  const [unreadCounts, setUnreadCounts] = useState({})
   const [typingUsers, setTypingUsers] = useState({})
-  const [unreadMessages, setUnreadMessages] = useState([])
-  const [loadingUnread, setLoadingUnread] = useState(false)
-  const [unreadError, setUnreadError] = useState(null)
-  const [lastUnreadFetch, setLastUnreadFetch] = useState(0)
-  const [unreadRetryCount, setUnreadRetryCount] = useState(0)
-  const messagesEndRef = useRef(null)
-  const chatInputRef = useRef(null)
+  const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState(null)
+  const [socketConnected, setSocketConnected] = useState(false)
+  const [activeConversation, setActiveConversation] = useState(null)
 
-  // Fetch messages for a conversation
-  const getMessages = useCallback(async (userId) => {
-    if (!userId) return
-    try {
-      const response = await apiService.get(`/messages/${userId}`)
-      if (response.success) {
-        dispatch({ type: "SET_MESSAGES", payload: response.data || [] })
-        return response.data
-      } else {
-        throw new Error(response.error || "Failed to fetch messages")
+  // Refs to store event handlers for cleanup
+  const eventHandlersRef = useRef({
+    newMessage: null,
+    userTyping: null,
+    userOnline: null,
+    userOffline: null,
+    messagesRead: null,
+  })
+
+  // Clear any error
+  const clearError = useCallback(() => {
+    setError(null)
+  }, [])
+
+  // Initialize socket connection when user is authenticated
+  useEffect(() => {
+    if (isAuthenticated && user && user._id) {
+      const token = sessionStorage.getItem("token") || localStorage.getItem("token")
+      if (token) {
+        socketService.init(user._id, token)
+        setSocketConnected(socketService.isConnected())
       }
-    } catch (error) {
-      console.error("Error fetching messages:", error)
-      toast.error(error.message || "Failed to fetch messages")
-      return []
     }
-  }, [])
+  }, [isAuthenticated, user])
 
-  /**
-   * Mark a message as read.
-   */
-  const markMessageRead = useCallback(async (messageId) => {
-    try {
-      await apiService.put(`/messages/${messageId}/read`)
-      setUnreadMessages((prev) => prev.filter((msg) => msg._id !== messageId))
-    } catch (error) {
-      console.error("Error marking message as read:", error)
-    }
-  }, [])
+  // Setup socket event listeners
+  useEffect(() => {
+    if (!isAuthenticated || !user) return
 
-  // Get unread messages with error handling and retry logic.
-  const getUnreadMessages = useCallback(
-    async (force = false) => {
-      const now = Date.now()
-      const minInterval = 10000 // 10 seconds between calls
-      if (!force && now - lastUnreadFetch < minInterval) return
-      if (unreadRetryCount > 5) {
-        console.warn("Too many failed attempts to fetch unread messages, giving up")
-        setUnreadError("Unable to fetch unread messages after multiple attempts")
+    // Handler for new messages
+    const handleNewMessage = (message) => {
+      // Validate message object
+      if (!message || !message.sender || !message.recipient) {
+        console.error("Received invalid message object:", message)
         return
       }
-      if (loadingUnread) return
-      setLoadingUnread(true)
-      setLastUnreadFetch(now)
-      try {
-        const response = await apiService.get("/messages/unread/count")
-        if (response && response.success) {
-          setUnreadRetryCount(0)
-          setUnreadError(null)
-          const messageData = Array.isArray(response.bySender) ? response.bySender : []
-          setUnreadMessages(messageData)
-          return response
+
+      setMessages((prevMessages) => {
+        // Check if message already exists to prevent duplicates
+        const exists = prevMessages.some((m) => m._id === message._id)
+        if (exists) return prevMessages
+
+        // Add new message
+        const updatedMessages = [...prevMessages, message]
+
+        // Sort by creation date
+        return updatedMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+      })
+
+      // Update unread counts if message is not from current user
+      if (message.sender !== user._id) {
+        setUnreadCounts((prev) => ({
+          ...prev,
+          [message.sender]: (prev[message.sender] || 0) + 1,
+        }))
+
+        // Update conversations list
+        updateConversationsList(message)
+      }
+    }
+
+    // Handler for typing indicators
+    const handleUserTyping = (data) => {
+      if (!data || !data.sender) {
+        console.error("Received invalid typing data:", data)
+        return
+      }
+
+      setTypingUsers((prev) => ({
+        ...prev,
+        [data.sender]: Date.now(),
+      }))
+    }
+
+    // Handler for online status changes
+    const handleUserOnline = (data) => {
+      if (!data || !data.userId) {
+        console.error("Received invalid online status data:", data)
+        return
+      }
+
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.user._id === data.userId ? { ...conv, user: { ...conv.user, isOnline: true } } : conv,
+        ),
+      )
+    }
+
+    // Handler for offline status changes
+    const handleUserOffline = (data) => {
+      if (!data || !data.userId) {
+        console.error("Received invalid offline status data:", data)
+        return
+      }
+
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.user._id === data.userId ? { ...conv, user: { ...conv.user, isOnline: false } } : conv,
+        ),
+      )
+    }
+
+    // Handler for read receipts
+    const handleMessagesRead = (data) => {
+      if (!data || !data.reader || !data.messageIds || !Array.isArray(data.messageIds)) {
+        console.error("Received invalid read receipt data:", data)
+        return
+      }
+
+      if (data.reader !== user._id) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            data.messageIds.includes(msg._id) && msg.sender === user._id ? { ...msg, read: true } : msg,
+          ),
+        )
+      }
+    }
+
+    // Register event handlers
+    eventHandlersRef.current.newMessage = socketService.on("newMessage", handleNewMessage)
+    eventHandlersRef.current.userTyping = socketService.on("userTyping", handleUserTyping)
+    eventHandlersRef.current.userOnline = socketService.on("userOnline", handleUserOnline)
+    eventHandlersRef.current.userOffline = socketService.on("userOffline", handleUserOffline)
+    eventHandlersRef.current.messagesRead = socketService.on("messagesRead", handleMessagesRead)
+
+    // Cleanup function
+    return () => {
+      // Remove event handlers
+      if (eventHandlersRef.current.newMessage) socketService.off("newMessage", eventHandlersRef.current.newMessage)
+      if (eventHandlersRef.current.userTyping) socketService.off("userTyping", eventHandlersRef.current.userTyping)
+      if (eventHandlersRef.current.userOnline) socketService.off("userOnline", eventHandlersRef.current.userOnline)
+      if (eventHandlersRef.current.userOffline) socketService.off("userOffline", eventHandlersRef.current.userOffline)
+      if (eventHandlersRef.current.messagesRead)
+        socketService.off("messagesRead", eventHandlersRef.current.messagesRead)
+    }
+  }, [isAuthenticated, user])
+
+  // Update conversations list when a new message is received
+  const updateConversationsList = useCallback(
+    (message) => {
+      if (!message || !message.sender || !message.recipient || !user || !user._id) {
+        console.error("Invalid data for updateConversationsList:", { message, user })
+        return
+      }
+
+      const otherUserId = message.sender === user._id ? message.recipient : message.sender
+
+      // Validate otherUserId is a valid MongoDB ObjectId
+      if (!otherUserId || !/^[0-9a-fA-F]{24}$/.test(otherUserId)) {
+        console.error(`Invalid otherUserId: ${otherUserId}`)
+        return
+      }
+
+      setConversations((prev) => {
+        // Check if conversation already exists
+        const existingIndex = prev.findIndex((conv) => conv.user && conv.user._id === otherUserId)
+
+        if (existingIndex >= 0) {
+          // Update existing conversation
+          const updatedConversations = [...prev]
+          updatedConversations[existingIndex] = {
+            ...updatedConversations[existingIndex],
+            lastMessage: message,
+            updatedAt: message.createdAt,
+          }
+
+          // Sort by most recent message
+          return updatedConversations.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
         } else {
-          throw new Error(response?.error || "Failed to fetch unread messages")
+          // Fetch user info for new conversation
+          apiService
+            .get(`/users/${otherUserId}`)
+            .then((response) => {
+              if (response.success && response.data && response.data.user) {
+                setConversations((current) => {
+                  // Check again in case it was added while we were fetching
+                  if (current.some((conv) => conv.user && conv.user._id === otherUserId)) {
+                    return current
+                  }
+
+                  // Add new conversation
+                  const newConversation = {
+                    user: response.data.user,
+                    lastMessage: message,
+                    updatedAt: message.createdAt,
+                  }
+
+                  // Sort by most recent message
+                  return [...current, newConversation].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+                })
+              } else {
+                console.error("Invalid user data in response:", response)
+              }
+            })
+            .catch((err) => {
+              console.error("Error fetching user for conversation:", err)
+            })
+
+          return prev
         }
-      } catch (error) {
-        console.error("Error fetching unread messages:", error)
-        setUnreadRetryCount((prev) => prev + 1)
-        setUnreadError(error.message || "Error fetching unread messages")
-        const backoffTime = Math.min(30000, 1000 * Math.pow(2, unreadRetryCount))
-        setTimeout(() => {
-          getUnreadMessages(true)
-        }, backoffTime)
+      })
+    },
+    [user],
+  )
+
+  // Get messages for a specific recipient
+  const getMessages = useCallback(
+    async (recipientId) => {
+      if (!user || !recipientId) return []
+
+      // Validate recipientId format
+      if (!/^[0-9a-fA-F]{24}$/.test(recipientId)) {
+        console.error(`Invalid recipient ID format: ${recipientId}`)
+        setError(`Invalid recipient ID format: ${recipientId}`)
+        return []
+      }
+
+      setLoading(true)
+      setError(null)
+      try {
+        const response = await apiService.get(`/messages/${recipientId}`)
+        if (response.success) {
+          setMessages(response.data.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)))
+
+          // Mark messages as read
+          const unreadMessages = response.data.filter((msg) => msg.recipient === user._id && !msg.read)
+
+          if (unreadMessages.length > 0) {
+            const messageIds = unreadMessages.map((msg) => msg._id)
+            markMessagesAsRead(messageIds, recipientId)
+
+            // Update unread counts
+            setUnreadCounts((prev) => ({
+              ...prev,
+              [recipientId]: 0,
+            }))
+          }
+
+          setActiveConversation(recipientId)
+          return response.data
+        } else {
+          throw new Error(response.error || "Failed to get messages")
+        }
+      } catch (err) {
+        const errorMessage = err.error || err.message || "Failed to get messages"
+        setError(errorMessage)
+        toast.error(errorMessage)
+        return []
+      } finally {
+        setLoading(false)
+      }
+    },
+    [user],
+  )
+
+  // Get all conversations
+  const getConversations = useCallback(async () => {
+    if (!user) return []
+
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await apiService.get("/messages/conversations")
+      if (response.success) {
+        // Validate conversation data
+        const validConversations = response.data.filter(
+          (conv) => conv && conv.user && conv.user._id && /^[0-9a-fA-F]{24}$/.test(conv.user._id),
+        )
+
+        if (validConversations.length !== response.data.length) {
+          console.warn(`Filtered out ${response.data.length - validConversations.length} invalid conversations`)
+        }
+
+        setConversations(validConversations)
+
+        // Update unread counts
+        const counts = {}
+        validConversations.forEach((conv) => {
+          counts[conv.user._id] = conv.unreadCount || 0
+        })
+        setUnreadCounts(counts)
+
+        return validConversations
+      } else {
+        throw new Error(response.error || "Failed to get conversations")
+      }
+    } catch (err) {
+      const errorMessage = err.error || err.message || "Failed to get conversations"
+      setError(errorMessage)
+      console.error(errorMessage)
+      return []
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  // Send a message
+  const sendMessage = useCallback(
+    async (recipientId, type, content) => {
+      if (!user || !recipientId) {
+        setError("Cannot send message: Missing user or recipient")
+        return null
+      }
+
+      // Validate recipientId format (should be a valid MongoDB ObjectId)
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(recipientId)
+      if (!isValidObjectId) {
+        const errorMessage = `Invalid recipient ID format: ${recipientId}`
+        setError(errorMessage)
+        toast.error(errorMessage)
+        return null
+      }
+
+      setSending(true)
+      setError(null)
+      try {
+        // Log the request details for debugging
+        console.log("Sending message:", {
+          sender: user._id,
+          recipient: recipientId,
+          type,
+          contentLength: content ? content.length : 0,
+        })
+
+        // Try to send via socket first for real-time delivery
+        let socketResponse = null
+        try {
+          socketResponse = await socketService.sendMessage(recipientId, type, content)
+        } catch (socketError) {
+          console.warn("Socket message failed, falling back to API:", socketError)
+          // We'll fall back to API below
+        }
+
+        // If socket succeeds and doesn't return a temporary message
+        if (socketResponse && !socketResponse.pending) {
+          // Socket was successful
+          const newMessage = socketResponse
+          setMessages((prev) => {
+            // Check if message already exists to prevent duplicates
+            const exists = prev.some((m) => m._id === newMessage._id)
+            if (exists) return prev
+
+            return [...prev, newMessage].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+          })
+          updateConversationsList(newMessage)
+          setSending(false)
+          return newMessage
+        }
+
+        // If socket failed or returned a temporary message, use API as fallback
+        const apiResponse = await apiService.post("/messages", {
+          recipient: recipientId,
+          type,
+          content,
+        })
+
+        if (apiResponse.success) {
+          // Add message to state
+          const newMessage = apiResponse.data
+
+          setMessages((prev) => {
+            // Replace temporary message if it exists
+            if (socketResponse && socketResponse.pending) {
+              return prev
+                .filter((m) => m._id !== socketResponse._id) // Remove temp message
+                .concat(newMessage) // Add real message
+                .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+            }
+
+            // Check if message already exists to prevent duplicates
+            const exists = prev.some((m) => m._id === newMessage._id)
+            if (exists) return prev
+
+            return [...prev, newMessage].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+          })
+
+          updateConversationsList(newMessage)
+          return newMessage
+        } else {
+          throw new Error(apiResponse.error || "Failed to send message")
+        }
+      } catch (err) {
+        const errorMessage = err.error || err.message || "Failed to send message"
+        setError(errorMessage)
+        toast.error(errorMessage)
+        console.error("Send message error:", err)
         return null
       } finally {
-        setLoadingUnread(false)
+        setSending(false)
       }
     },
-    [lastUnreadFetch, loadingUnread, unreadRetryCount],
+    [user, updateConversationsList],
   )
 
-  /**
-   * Send a message to a recipient with proper formatting.
-   * Supports text, wink, and video messages.
-   */
-  const sendMessage = useCallback(
-    async (recipient, type, content) => {
-      dispatch({ type: "SENDING_MESSAGE" })
-      try {
-        const messageData = { recipient, type }
-        if (type === "text") {
-          messageData.content = content
-          // Remove metadata for non-location messages
-        } else if (type === "wink") {
-          messageData.content = "😉"
-        } else if (type === "video") {
-          messageData.content = "Video Call"
-        } else {
-          // For unsupported types, throw an error
-          throw new Error(`Unsupported message type: ${type}`)
-        }
-        const data = await apiService.post("/messages", messageData)
-        if (!data.success) {
-          throw new Error(data.error || "Failed to send message")
-        }
-        const message = data.data
-        try {
-          await socketService.sendMessage(recipient, type, message._id)
-        } catch (socketErr) {
-          console.warn("Socket delivery failed, but message is saved:", socketErr)
-        }
-        dispatch({ type: "SEND_MESSAGE", payload: message })
-        return message
-      } catch (err) {
-        const errorMsg = err.error || err.message || "Failed to send message"
-        dispatch({ type: "MESSAGE_ERROR", payload: errorMsg })
-        throw err
+  // Send typing indicator
+  const sendTyping = useCallback(
+    (recipientId) => {
+      if (!user || !recipientId) return
+
+      // Validate recipientId format before sending typing indicator
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(recipientId)
+      if (!isValidObjectId) {
+        console.error(`Invalid recipient ID format for typing indicator: ${recipientId}`)
+        return
       }
+
+      socketService.sendTyping(recipientId)
     },
-    [dispatch],
+    [user],
   )
 
-  /**
-   * Send typing indicator.
-   */
-  const sendTyping = useCallback((recipientId) => {
-    if (!recipientId) return
-    socketService.sendTyping(recipientId)
-  }, [])
+  // Mark messages as read
+  const markMessagesAsRead = useCallback(
+    (messageIds, senderId) => {
+      if (!user || !messageIds.length) return
 
-  /**
-   * Initiate a video call.
-   */
-  const initiateVideoCall = useCallback((recipientId) => {
-    if (!recipientId) {
-      toast.error("Cannot start call: No recipient selected")
-      return
-    }
-    try {
-      socketService.initiateVideoCall(recipientId)
-      toast.info("Calling...")
-    } catch (error) {
-      console.error("Error initiating call:", error)
-      toast.error("Failed to start call")
-    }
-  }, [])
-
-  /**
-   * Clear error state.
-   */
-  const clearError = useCallback(() => {
-    dispatch({ type: "CLEAR_ERROR" })
-  }, [])
-
-  /**
-   * Add a reaction to a message
-   * @param {string} messageId - The ID of the message to react to
-   * @param {string} emoji - The emoji reaction
-   */
-  const addMessageReaction = useCallback(
-    async (messageId, emoji) => {
-      try {
-        const response = await apiService.post(`/messages/${messageId}/reaction`, { emoji })
-        if (response.success) {
-          // Update the message in the state with the new reaction
-          dispatch({
-            type: "UPDATE_MESSAGE",
-            payload: {
-              messageId,
-              updates: { reactions: response.data.reactions },
-            },
-          })
-          return response.data
-        } else {
-          throw new Error(response.error || "Failed to add reaction")
-        }
-      } catch (error) {
-        console.error("Error adding reaction:", error)
-        toast.error(error.message || "Failed to add reaction")
-        throw error
+      // Validate senderId format
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(senderId)
+      if (!isValidObjectId) {
+        console.error(`Invalid sender ID format: ${senderId}`)
+        return
       }
+
+      // Update local state immediately
+      setMessages((prev) => prev.map((msg) => (messageIds.includes(msg._id) ? { ...msg, read: true } : msg)))
+
+      // Send read receipt via socket
+      socketService.socket?.emit("messageRead", {
+        reader: user._id,
+        sender: senderId,
+        messageIds,
+      })
+
+      // Also update via API for persistence
+      apiService.post("/messages/read", { messageIds }).catch((err) => {
+        console.error("Error marking messages as read:", err)
+      })
+
+      // Update unread counts
+      setUnreadCounts((prev) => ({
+        ...prev,
+        [senderId]: 0,
+      }))
     },
-    [dispatch],
+    [user],
   )
 
-  /**
-   * Remove a reaction from a message
-   * @param {string} messageId - The ID of the message
-   * @param {string} reactionId - The ID of the reaction to remove
-   */
-  const removeMessageReaction = useCallback(
-    async (messageId, reactionId) => {
-      try {
-        const response = await apiService.delete(`/messages/${messageId}/reaction/${reactionId}`)
-        if (response.success) {
-          // Update the message in the state with the updated reactions
-          dispatch({
-            type: "UPDATE_MESSAGE",
-            payload: {
-              messageId,
-              updates: { reactions: response.data.reactions },
-            },
-          })
-          return response.data
-        } else {
-          throw new Error(response.error || "Failed to remove reaction")
-        }
-      } catch (error) {
-        console.error("Error removing reaction:", error)
-        toast.error(error.message || "Failed to remove reaction")
-        throw error
+  // Initiate a video call
+  const initiateVideoCall = useCallback(
+    (recipientId) => {
+      if (!user || !recipientId) {
+        setError("Cannot initiate call: Missing user or recipient")
+        return null
       }
+
+      // Validate recipientId format
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(recipientId)
+      if (!isValidObjectId) {
+        const errorMessage = `Invalid recipient ID format for video call: ${recipientId}`
+        setError(errorMessage)
+        toast.error(errorMessage)
+        return null
+      }
+
+      return socketService.initiateVideoCall(recipientId)
     },
-    [dispatch],
+    [user],
   )
 
-  /**
-   * Search messages
-   * @param {string} query - The search query
-   * @param {string} conversationWith - Optional user ID to limit search to a specific conversation
-   * @param {object} options - Additional search options (page, limit)
-   */
-  const searchMessages = useCallback(async (query, conversationWith = null, options = {}) => {
-    try {
-      const params = {
-        query,
-        page: options.page || 1,
-        limit: options.limit || 20,
+  // Answer a video call
+  const answerVideoCall = useCallback(
+    (callerId, answer) => {
+      if (!user || !callerId) {
+        setError("Cannot answer call: Missing user or caller")
+        return null
       }
 
-      if (conversationWith) {
-        params.with = conversationWith
+      // Validate callerId format
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(callerId)
+      if (!isValidObjectId) {
+        const errorMessage = `Invalid caller ID format: ${callerId}`
+        setError(errorMessage)
+        toast.error(errorMessage)
+        return null
       }
 
-      const response = await apiService.get("/messages/search", params)
-      if (response.success) {
-        return response
-      } else {
-        throw new Error(response.error || "Failed to search messages")
-      }
-    } catch (error) {
-      console.error("Error searching messages:", error)
-      toast.error(error.message || "Failed to search messages")
-      throw error
-    }
-  }, [])
-
-  useEffect(() => {
-    let isMounted = true
-    getUnreadMessages(true)
-    let pollInterval = 30000
-    let pollTimer = null
-    const pollUnreadMessages = () => {
-      if (isMounted) {
-        getUnreadMessages().finally(() => {
-          pollInterval = unreadError ? Math.min(pollInterval * 1.5, 300000) : 30000
-          if (isMounted) pollTimer = setTimeout(pollUnreadMessages, pollInterval)
-        })
-      }
-    }
-    pollTimer = setTimeout(pollUnreadMessages, pollInterval)
-    const handleNewMessage = (message) => {
-      if (currentChat && message.sender === currentChat._id) {
-        dispatch({ type: "SEND_MESSAGE", payload: message })
-        markMessageRead(message._id)
-      } else {
-        getUnreadMessages(true)
-        toast.info(`New message from ${message.senderName || "Someone"}`)
-      }
-    }
-    const handleTyping = (data) => {
-      setTypingUsers((prev) => ({ ...prev, [data.userId]: Date.now() }))
-    }
-    socketService.on("newMessage", handleNewMessage)
-    socketService.on("userTyping", handleTyping)
-    return () => {
-      isMounted = false
-      if (pollTimer) clearTimeout(pollTimer)
-      socketService.off("newMessage", handleNewMessage)
-      socketService.off("userTyping", handleTyping)
-    }
-  }, [currentChat, getUnreadMessages, markMessageRead, unreadError])
-
-  return (
-    <ChatContext.Provider
-      value={{
-        messages: state.messages,
-        sending: state.sending,
-        error: state.error,
-        unreadMessages,
-        typingUsers,
-        currentChat,
-        loadingUnread,
-        unreadError,
-        sendMessage,
-        // Removed sendLocationMessage from context
-        getMessages,
-        getUnreadMessages,
-        setCurrentChat,
-        sendTyping,
-        initiateVideoCall,
-        markMessageRead,
-        clearError,
-        addMessageReaction,
-        removeMessageReaction,
-        searchMessages,
-      }}
-    >
-      {children}
-    </ChatContext.Provider>
+      return socketService.answerVideoCall(callerId, answer)
+    },
+    [user],
   )
-}
 
-export const useChat = () => {
-  const context = useContext(ChatContext)
-  if (context === undefined) {
-    throw new Error("useChat must be used within a ChatProvider")
+  // Get total unread message count
+  const getTotalUnreadCount = useCallback(() => {
+    return Object.values(unreadCounts).reduce((total, count) => total + count, 0)
+  }, [unreadCounts])
+
+  // Context value
+  const value = {
+    messages,
+    conversations,
+    unreadCounts,
+    typingUsers,
+    loading,
+    sending,
+    error,
+    socketConnected,
+    activeConversation,
+    getMessages,
+    getConversations,
+    sendMessage,
+    sendTyping,
+    markMessagesAsRead,
+    initiateVideoCall,
+    answerVideoCall,
+    getTotalUnreadCount,
+    clearError,
   }
-  return context
+
+  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
 }
+
+export default ChatContext

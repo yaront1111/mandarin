@@ -1,4 +1,4 @@
-// client/src/services/socketService.js
+// Enhanced socketService.js with improved connection handling and error recovery
 import io from "socket.io-client"
 import { toast } from "react-toastify"
 
@@ -6,406 +6,501 @@ class SocketService {
   constructor() {
     this.socket = null
     this.userId = null
-    this.connectionState = "disconnected" // 'connecting', 'connected', 'disconnected'
+    this.token = null
+    this.isConnecting = false
     this.reconnectAttempts = 0
     this.maxReconnectAttempts = 5
+    this.reconnectDelay = 2000
+    this.eventHandlers = {}
+    this.pendingMessages = []
     this.connectionTimeout = null
-    this.reconnectTimer = null
-    this.wasDisconnected = false
-    this.handlers = {
-      newMessage: [],
-      userOnline: [],
-      userOffline: [],
-      userTyping: [],
-      incomingCall: [],
-      callAnswered: [],
-      error: [],
+    this.heartbeatInterval = null
+    this.lastHeartbeat = null
+    this.serverUrl = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000"
+  }
+
+  /**
+   * Initialize socket connection
+   * @param {string} userId - User ID
+   * @param {string} token - Authentication token
+   */
+  init(userId, token) {
+    if (this.isConnecting) return
+
+    this.userId = userId
+    this.token = token
+    this.isConnecting = true
+
+    // Clear any existing connection timeout
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout)
+    }
+
+    // Set connection timeout
+    this.connectionTimeout = setTimeout(() => {
+      if (!this.socket || !this.socket.connected) {
+        console.error("Socket connection timeout")
+        this.isConnecting = false
+        toast.error("Chat connection timed out. Please refresh the page.")
+      }
+    }, 10000)
+
+    // Create socket connection with proper authentication
+    try {
+      console.log("Initializing socket with userId:", userId)
+
+      // Make sure we're using the correct URL
+      const serverUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin
+      console.log("Socket server URL:", serverUrl)
+
+      this.socket = io(serverUrl, {
+        query: { token }, // Pass token as a query parameter
+        auth: { token, userId }, // Also include in auth object for redundancy
+        reconnection: true,
+        reconnectionAttempts: this.maxReconnectAttempts,
+        reconnectionDelay: this.reconnectDelay,
+        timeout: 10000,
+        transports: ["websocket", "polling"],
+      })
+
+      // Setup event handlers
+      this._setupEventHandlers()
+
+      console.log("Socket connection initialized")
+    } catch (error) {
+      console.error("Socket initialization error:", error)
+      this.isConnecting = false
+      toast.error("Failed to connect to chat server. Please refresh the page.")
     }
   }
 
   /**
-   * Initialize the socket connection with improved error handling and manual reconnection logic.
-   * If a connection is already active or in progress, it reuses it.
-   * @param {string} userId - Current user ID.
-   * @param {string} token - Authentication token.
-   * @returns {SocketService} - This instance.
+   * Setup socket event handlers
    */
-  init(userId, token) {
-    // If we already have a socket connection for this user, don't create a new one
-    if (this.socket && this.userId === userId) {
-      if (this.socket.connected) {
-        console.log("Socket already connected, reusing connection")
-        return this
-      } else if (this.connectionState === "connecting") {
-        console.log("Socket already connecting, waiting for connection")
-        return this
-      }
-    }
+  _setupEventHandlers() {
+    if (!this.socket) return
 
-    // If we have an existing socket for a different user or in a disconnected state, clean it up
-    if (this.socket) {
-      this.disconnect()
-    }
-
-    this.userId = userId
-    this.connectionState = "connecting"
-
-    const socketUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin
-
-    // Clear any existing timers
-    if (this.connectionTimeout) clearTimeout(this.connectionTimeout)
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-
-    // Set a connection timeout: if not connected within 10 seconds, handle failure
-    this.connectionTimeout = setTimeout(() => {
-      if (this.connectionState !== "connected") {
-        console.error("Socket connection timeout")
-        this.connectionState = "disconnected"
-        this._handleConnectionFailure()
-      }
-    }, 10000)
-
-    // Create a new socket instance with manual reconnection (disable auto reconnection)
-    this.socket = io(socketUrl, {
-      autoConnect: true,
-      reconnection: false,
-      timeout: 20000,
-      query: { token },
-    })
-
-    // Successful connection
+    // Connection events
     this.socket.on("connect", () => {
-      console.log("Socket connected with ID:", this.socket.id)
-      this.connectionState = "connected"
+      console.log("Socket connected")
+      this.isConnecting = false
+      this.reconnectAttempts = 0
+
+      // Clear connection timeout
       if (this.connectionTimeout) {
         clearTimeout(this.connectionTimeout)
         this.connectionTimeout = null
       }
-      this.reconnectAttempts = 0
-      this.socket.emit("join", { userId: this.userId })
-      if (this.wasDisconnected) {
-        toast.success("Real-time connection restored")
-        this.wasDisconnected = false
-      }
+
+      // Start heartbeat
+      this._startHeartbeat()
+
+      // Process any pending messages
+      this._processPendingMessages()
+
+      // Notify user of connection
+      toast.success("Chat connection established")
     })
 
-    // Connection error handling with token validation
     this.socket.on("connect_error", (error) => {
       console.error("Socket connection error:", error)
-      if (error && error.message === "Authentication error") {
-        toast.error("Authentication failed. Please log in again.")
-        this.disconnect()
+      this.isConnecting = false
 
-        // Check if token is expired
-        const token = sessionStorage.getItem("token")
-        if (token) {
-          try {
-            const base64Url = token.split(".")[1]
-            const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/")
-            const payload = JSON.parse(window.atob(base64))
-            const now = Math.floor(Date.now() / 1000)
+      // Clear connection timeout
+      if (this.connectionTimeout) {
+        clearTimeout(this.connectionTimeout)
+        this.connectionTimeout = null
+      }
 
-            if (payload.exp < now) {
-              // Token is expired, try to refresh it
-              const authService = window.apiService || null
-              if (authService && typeof authService.refreshToken === "function") {
-                authService
-                  .refreshToken()
-                  .then((newToken) => {
-                    if (newToken) {
-                      // Retry connection with new token
-                      setTimeout(() => this.init(userId, newToken), 1000)
-                    } else {
-                      // Redirect to log in if refresh failed
-                      setTimeout(() => {
-                        window.location.href = "/login"
-                      }, 1500)
-                    }
-                  })
-                  .catch(() => {
-                    setTimeout(() => {
-                      window.location.href = "/login"
-                    }, 1500)
-                  })
-                return
-              }
-            }
-          } catch (e) {
-            console.error("Error parsing token:", e)
-          }
-        }
+      // Increment reconnect attempts
+      this.reconnectAttempts++
 
-        setTimeout(() => {
-          window.location.href = "/login"
-        }, 1500)
-      } else {
-        this._handleConnectionFailure()
+      // Show error message if max attempts reached
+      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        toast.error("Failed to connect to chat server. Please refresh the page.")
       }
     })
 
-    // Handle disconnections with better error recovery
     this.socket.on("disconnect", (reason) => {
-      console.log("Socket disconnected:", reason)
-      this.connectionState = "disconnected"
-      this.wasDisconnected = true
+      console.warn("Socket disconnected:", reason)
 
-      // If the server forcibly disconnects, try reconnecting after a short delay
-      if (reason === "io server disconnect") {
-        setTimeout(() => {
-          this._handleConnectionFailure()
-        }, 1000)
-      } else {
-        this._handleConnectionFailure()
-      }
-      toast.warn("Real-time connection lost. Attempting to reconnect...")
-    })
+      // Stop heartbeat
+      this._stopHeartbeat()
 
-    // Add handler for token expiration events from server
-    this.socket.on("tokenExpired", () => {
-      console.log("Token expired notification from server")
-      const authService = window.apiService || null
-      if (authService && typeof authService.refreshToken === "function") {
-        authService
-          .refreshToken()
-          .then((newToken) => {
-            if (newToken) {
-              this.reconnect(newToken)
-            }
-          })
-          .catch((err) => {
-            console.error("Failed to refresh token after expiry notification:", err)
-            toast.error("Your session has expired. Please log in again.")
-            setTimeout(() => {
-              window.location.href = "/login"
-            }, 1500)
-          })
+      // Show notification for unexpected disconnects
+      if (reason !== "io client disconnect") {
+        toast.warning("Chat connection lost. Attempting to reconnect...")
       }
     })
 
-    // Standard event listeners
-    this.socket.on("newMessage", (message) => {
-      this.handlers.newMessage.forEach((handler) => handler(message))
+    this.socket.on("reconnect", (attemptNumber) => {
+      console.log(`Socket reconnected after ${attemptNumber} attempts`)
+      toast.success("Chat connection restored")
     })
-    this.socket.on("userOnline", (data) => {
-      this.handlers.userOnline.forEach((handler) => handler(data))
+
+    this.socket.on("reconnect_attempt", (attemptNumber) => {
+      console.log(`Socket reconnect attempt ${attemptNumber}`)
     })
-    this.socket.on("userOffline", (data) => {
-      this.handlers.userOffline.forEach((handler) => handler(data))
+
+    this.socket.on("reconnect_error", (error) => {
+      console.error("Socket reconnect error:", error)
     })
-    this.socket.on("userTyping", (data) => {
-      this.handlers.userTyping.forEach((handler) => handler(data))
+
+    this.socket.on("reconnect_failed", () => {
+      console.error("Socket reconnect failed")
+      toast.error("Failed to reconnect to chat server. Please refresh the page.")
     })
-    this.socket.on("incomingCall", (data) => {
-      this.handlers.incomingCall.forEach((handler) => handler(data))
-    })
-    this.socket.on("callAnswered", (data) => {
-      this.handlers.callAnswered.forEach((handler) => handler(data))
-    })
+
+    // Server events
     this.socket.on("error", (error) => {
-      console.error("Socket error:", error)
-      this.handlers.error.forEach((handler) => handler(error))
+      console.error("Socket server error:", error)
+      toast.error(`Chat server error: ${error.message || "Unknown error"}`)
     })
 
-    return this
+    this.socket.on("pong", () => {
+      this.lastHeartbeat = Date.now()
+    })
   }
 
   /**
-   * Private method to handle connection failures using exponential backoff.
-   * It schedules a reconnection attempt if the maximum attempts haven't been reached.
+   * Start heartbeat to keep connection alive
    */
-  _handleConnectionFailure() {
-    // Prevent multiple concurrent reconnection timers.
-    if (this.reconnectTimer) return
-    toast.error("Could not establish real-time connection. Retrying...")
+  _startHeartbeat() {
+    this._stopHeartbeat()
 
-    const backoffTime = Math.min(30000, 1000 * Math.pow(2, this.reconnectAttempts))
-    this.reconnectAttempts++
-    console.log(`Reconnect attempt ${this.reconnectAttempts} scheduled in ${backoffTime / 1000}s`)
+    this.lastHeartbeat = Date.now()
+    this.heartbeatInterval = setInterval(() => {
+      if (this.socket && this.socket.connected) {
+        this.socket.emit("ping")
 
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null
-      if (this.reconnectAttempts <= this.maxReconnectAttempts) {
-        if (this.userId) {
-          const token = sessionStorage.getItem("token")
-          if (token) {
-            this.init(this.userId, token)
-          } else {
-            console.error("No token available for reconnection")
-            toast.error("Authentication expired. Please refresh the page.")
-          }
+        // Check if we've received a pong recently
+        const now = Date.now()
+        if (this.lastHeartbeat && now - this.lastHeartbeat > 30000) {
+          console.warn("No heartbeat received for 30 seconds, reconnecting...")
+          this.reconnect()
         }
-      } else {
-        toast.error("Could not reconnect. Please refresh the page.")
       }
-    }, backoffTime)
+    }, 15000)
   }
 
   /**
-   * Check if the socket is currently connected.
-   * @returns {boolean} True if connected.
+   * Stop heartbeat interval
+   */
+  _stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+      this.heartbeatInterval = null
+    }
+  }
+
+  /**
+   * Process any pending messages
+   */
+  _processPendingMessages() {
+    if (!this.socket || !this.socket.connected || this.pendingMessages.length === 0) return
+
+    console.log(`Processing ${this.pendingMessages.length} pending messages`)
+
+    // Process each pending message
+    this.pendingMessages.forEach((message) => {
+      this.socket.emit(message.event, message.data)
+    })
+
+    // Clear pending messages
+    this.pendingMessages = []
+  }
+
+  /**
+   * Check if socket is connected
+   * @returns {boolean} - True if connected
    */
   isConnected() {
     return this.socket && this.socket.connected
   }
 
   /**
-   * Register an event handler.
-   * @param {string} event - Event name.
-   * @param {Function} handler - Handler function.
-   * @returns {Function} Unsubscribe function.
+   * Reconnect to socket server
    */
-  on(event, handler) {
-    if (!this.handlers[event]) {
-      this.handlers[event] = []
-    }
-    this.handlers[event].push(handler)
-    return () => {
-      this.handlers[event] = this.handlers[event].filter((h) => h !== handler)
-    }
-  }
-
-  /**
-   * Remove an event handler.
-   * @param {string} event - Event name.
-   * @param {Function} handler - Handler function.
-   */
-  off(event, handler) {
-    if (!this.handlers[event]) return
-    if (handler) {
-      this.handlers[event] = this.handlers[event].filter((h) => h !== handler)
-    } else {
-      this.handlers[event] = []
-    }
-  }
-
-  /**
-   * Send a private message.
-   * @param {string} recipient - Recipient user ID.
-   * @param {string} type - Message type (e.g., 'text', 'video').
-   * @param {string} content - Message content.
-   * @returns {Promise} Resolves when the message is acknowledged.
-   */
-  sendMessage(recipient, type, content) {
-    return new Promise((resolve, reject) => {
-      if (!this.isConnected()) {
-        toast.warning("Connection lost. Attempting to reconnect...")
-        this._handleConnectionFailure()
-        reject(new Error("Socket not connected"))
-        return
-      }
-      const message = { sender: this.userId, recipient, type, content }
-      this.socket.emit("privateMessage", message, (response) => {
-        if (response && response.error) {
-          reject(new Error(response.error))
-        } else {
-          resolve(response)
-        }
-      })
-    })
-  }
-
-  /**
-   * Send a typing indicator to a recipient.
-   * @param {string} recipient - Recipient user ID.
-   */
-  sendTyping(recipient) {
-    if (!this.isConnected()) {
-      this._handleConnectionFailure()
-      return
-    }
-    this.socket.emit("typing", { sender: this.userId, recipient })
-  }
-
-  /**
-   * Initiate a video call.
-   * @param {string} recipient - Recipient user ID.
-   * @returns {Promise} Resolves when the call is initiated.
-   */
-  initiateVideoCall(recipient) {
-    return new Promise((resolve, reject) => {
-      if (!this.isConnected()) {
-        toast.warning("Connection lost. Please refresh the page.")
-        reject(new Error("Socket not connected"))
-        return
-      }
-      this.socket.emit("videoCallRequest", { caller: this.userId, recipient }, (response) => {
-        if (response && response.error) {
-          reject(new Error(response.error))
-        } else {
-          resolve(response)
-        }
-      })
-    })
-  }
-
-  /**
-   * Answer a video call.
-   * @param {string} caller - Caller user ID.
-   * @param {boolean} answer - Accept or decline the call.
-   * @returns {Promise} Resolves when the answer is sent.
-   */
-  answerVideoCall(caller, answer) {
-    return new Promise((resolve, reject) => {
-      if (!this.isConnected()) {
-        toast.warning("Connection lost. Please refresh the page.")
-        reject(new Error("Socket not connected"))
-        return
-      }
-      this.socket.emit("videoCallAnswer", { caller, recipient: this.userId, answer }, (response) => {
-        if (response && response.error) {
-          reject(new Error(response.error))
-        } else {
-          resolve(response)
-        }
-      })
-    })
-  }
-
-  /**
-   * Manually reconnect the socket with a new token.
-   * @param {string} token - Authentication token.
-   * @returns {boolean} True if reconnection was attempted.
-   */
-  // Improved reconnection with token refresh
-  reconnect(token) {
-    if (!this.userId) {
-      console.error("Cannot reconnect: no user ID")
-      return false
-    }
-
-    // Disconnect existing socket if any
+  reconnect() {
     if (this.socket) {
       this.socket.disconnect()
     }
 
-    // Start fresh connection with new token
-    this.init(this.userId, token)
-    return true
+    this.init(this.userId, this.token)
   }
 
   /**
-   * Disconnect the socket and clean up timers and handlers.
+   * Register event handler
+   * @param {string} event - Event name
+   * @param {Function} callback - Event callback
+   * @returns {Function} - Function to remove event handler
+   */
+  on(event, callback) {
+    if (!this.socket) return null
+
+    // Register handler
+    this.socket.on(event, callback)
+
+    // Store handler reference
+    if (!this.eventHandlers[event]) {
+      this.eventHandlers[event] = []
+    }
+    this.eventHandlers[event].push(callback)
+
+    // Return function to remove handler
+    return callback
+  }
+
+  /**
+   * Remove event handler
+   * @param {string} event - Event name
+   * @param {Function} callback - Event callback
+   */
+  off(event, callback) {
+    if (!this.socket || !callback) return
+
+    // Remove handler
+    this.socket.off(event, callback)
+
+    // Remove from stored handlers
+    if (this.eventHandlers[event]) {
+      this.eventHandlers[event] = this.eventHandlers[event].filter((handler) => handler !== callback)
+    }
+  }
+
+  /**
+   * Send a message
+   * @param {string} recipientId - Recipient ID
+   * @param {string} type - Message type
+   * @param {string} content - Message content
+   * @returns {Promise<Object>} - Message object
+   */
+  async sendMessage(recipientId, type, content) {
+    return new Promise((resolve, reject) => {
+      // Check if socket is connected
+      if (!this.socket || !this.socket.connected) {
+        console.warn("Socket not connected, attempting to reconnect...")
+
+        // Try to reconnect
+        if (this.userId && this.token) {
+          this.reconnect()
+
+          // Queue message for later (optional)
+          this.pendingMessages.push({
+            event: "sendMessage",
+            data: { recipientId, type, content },
+          })
+
+          // Fall back to API-based message sending
+          console.log("Falling back to API-based message sending")
+
+          // Return a placeholder message that the API can update later
+          const tempMessage = {
+            _id: `temp-${Date.now()}`,
+            sender: this.userId,
+            recipient: recipientId,
+            type,
+            content,
+            createdAt: new Date().toISOString(),
+            read: false,
+            pending: true,
+          }
+
+          resolve(tempMessage)
+          return
+        }
+
+        reject(new Error("Socket not connected"))
+        return
+      }
+
+      // Validate parameters
+      if (!recipientId || !type || !content) {
+        reject(new Error("Invalid message parameters"))
+        return
+      }
+
+      // Validate recipientId format
+      if (!/^[0-9a-fA-F]{24}$/.test(recipientId)) {
+        reject(new Error(`Invalid recipient ID format: ${recipientId}`))
+        return
+      }
+
+      // Set timeout for response
+      const timeout = setTimeout(() => {
+        this.socket.off("messageSent", handleMessageSent)
+        this.socket.off("messageError", handleMessageError)
+        reject(new Error("Message send timeout"))
+      }, 5000)
+
+      // Handle message sent
+      const handleMessageSent = (message) => {
+        clearTimeout(timeout)
+        this.socket.off("messageSent", handleMessageSent)
+        this.socket.off("messageError", handleMessageError)
+        resolve(message)
+      }
+
+      // Handle message error
+      const handleMessageError = (error) => {
+        clearTimeout(timeout)
+        this.socket.off("messageSent", handleMessageSent)
+        this.socket.off("messageError", handleMessageError)
+        reject(new Error(error.message || "Failed to send message"))
+      }
+
+      // Register handlers
+      this.socket.once("messageSent", handleMessageSent)
+      this.socket.once("messageError", handleMessageError)
+
+      // Send message
+      this.socket.emit("sendMessage", { recipientId, type, content })
+    })
+  }
+
+  /**
+   * Send typing indicator
+   * @param {string} recipientId - Recipient ID
+   */
+  sendTyping(recipientId) {
+    if (!this.socket || !this.socket.connected) {
+      return
+    }
+
+    // Validate recipientId format
+    if (!recipientId || !/^[0-9a-fA-F]{24}$/.test(recipientId)) {
+      console.error(`Invalid recipient ID format for typing: ${recipientId}`)
+      return
+    }
+
+    this.socket.emit("typing", { recipientId })
+  }
+
+  /**
+   * Initiate a video call
+   * @param {string} recipientId - Recipient ID
+   * @returns {Promise<Object>} - Call object
+   */
+  initiateVideoCall(recipientId) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error("Socket not connected"))
+        return
+      }
+
+      // Validate recipientId format
+      if (!recipientId || !/^[0-9a-fA-F]{24}$/.test(recipientId)) {
+        reject(new Error(`Invalid recipient ID format: ${recipientId}`))
+        return
+      }
+
+      // Set timeout for response
+      const timeout = setTimeout(() => {
+        this.socket.off("callInitiated", handleCallInitiated)
+        this.socket.off("callError", handleCallError)
+        reject(new Error("Call initiation timeout"))
+      }, 10000)
+
+      // Handle call initiated
+      const handleCallInitiated = (callData) => {
+        clearTimeout(timeout)
+        this.socket.off("callInitiated", handleCallInitiated)
+        this.socket.off("callError", handleCallError)
+        resolve(callData)
+      }
+
+      // Handle call error
+      const handleCallError = (error) => {
+        clearTimeout(timeout)
+        this.socket.off("callInitiated", handleCallInitiated)
+        this.socket.off("callError", handleCallError)
+        reject(new Error(error.message || "Failed to initiate call"))
+      }
+
+      // Register handlers
+      this.socket.once("callInitiated", handleCallInitiated)
+      this.socket.once("callError", handleCallError)
+
+      // Initiate call
+      this.socket.emit("initiateCall", { recipientId })
+    })
+  }
+
+  /**
+   * Answer a video call
+   * @param {string} callerId - Caller ID
+   * @param {boolean} accept - Whether to accept the call
+   * @returns {Promise<Object>} - Call object
+   */
+  answerVideoCall(callerId, accept) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error("Socket not connected"))
+        return
+      }
+
+      // Validate callerId format
+      if (!callerId || !/^[0-9a-fA-F]{24}$/.test(callerId)) {
+        reject(new Error(`Invalid caller ID format: ${callerId}`))
+        return
+      }
+
+      // Set timeout for response
+      const timeout = setTimeout(() => {
+        this.socket.off("callAnswered", handleCallAnswered)
+        this.socket.off("callError", handleCallError)
+        reject(new Error("Call answer timeout"))
+      }, 10000)
+
+      // Handle call answered
+      const handleCallAnswered = (callData) => {
+        clearTimeout(timeout)
+        this.socket.off("callAnswered", handleCallAnswered)
+        this.socket.off("callError", handleCallError)
+        resolve(callData)
+      }
+
+      // Handle call error
+      const handleCallError = (error) => {
+        clearTimeout(timeout)
+        this.socket.off("callAnswered", handleCallAnswered)
+        this.socket.off("callError", handleCallError)
+        reject(new Error(error.message || "Failed to answer call"))
+      }
+
+      // Register handlers
+      this.socket.once("callAnswered", handleCallAnswered)
+      this.socket.once("callError", handleCallError)
+
+      // Answer call
+      this.socket.emit("answerCall", { callerId, accept })
+    })
+  }
+
+  /**
+   * Disconnect socket
    */
   disconnect() {
-    if (this.connectionTimeout) {
-      clearTimeout(this.connectionTimeout)
-      this.connectionTimeout = null
-    }
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer)
-      this.reconnectTimer = null
-    }
     if (this.socket) {
       this.socket.disconnect()
       this.socket = null
     }
-    this.userId = null
-    this.connectionState = "disconnected"
-    Object.keys(this.handlers).forEach((event) => {
-      this.handlers[event] = []
-    })
+
+    // Stop heartbeat
+    this._stopHeartbeat()
+
+    // Clear connection timeout
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout)
+      this.connectionTimeout = null
+    }
+
+    // Clear event handlers
+    this.eventHandlers = {}
   }
 }
 
+// Create singleton instance
 const socketService = new SocketService()
+
 export default socketService
