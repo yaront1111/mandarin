@@ -5,6 +5,12 @@ const { protect, asyncHandler } = require("../middleware/auth")
 const logger = require("../logger")
 const mongoose = require("mongoose")
 const router = express.Router()
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const config = require('../config');
+const { fileTypeFromBuffer } = require('file-type');
+const sharp = require('sharp');
 
 // Rate limiting middleware for message endpoints
 const rateLimit = require("express-rate-limit")
@@ -38,6 +44,166 @@ const sanitizeText = (text) => {
   if (!text) return ""
   return text.trim().replace(/[<>]/g, "").substr(0, 2000)
 }
+
+// Configure multer storage for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadPath = path.join(process.cwd(), config.FILE_UPLOAD_PATH, 'messages');
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    const fileExt = path.extname(file.originalname).toLowerCase();
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${fileExt}`;
+    cb(null, uniqueName);
+  },
+});
+
+// Configure multer upload with file type filtering
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+    files: 1,
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedMimeTypes = [
+      // Images
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+      // Documents
+      'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+      // Audio
+      'audio/mpeg', 'audio/wav',
+      // Video
+      'video/mp4', 'video/quicktime'
+    ];
+
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      return cb(null, true);
+    }
+    cb(new Error('Invalid file type. Only images, documents, audio, and videos are allowed.'));
+  },
+});
+
+/**
+ * @route   POST /api/messages/attachments
+ * @desc    Upload file attachment for messages
+ * @access  Private
+ */
+router.post(
+  '/attachments',
+  protect,
+  upload.single('file'),
+  asyncHandler(async (req, res) => {
+    logger.debug(`Processing message attachment upload for user ${req.user._id}`);
+    let filePath = null;
+
+    try {
+      if (!req.file) {
+        logger.warn("File upload failed: No file provided");
+        return res.status(400).json({ success: false, error: "Please upload a file" });
+      }
+
+      // Validate recipient ID if provided
+      if (req.body.recipient && !isValidObjectId(req.body.recipient)) {
+        // Remove the uploaded file
+        fs.unlinkSync(path.join(req.file.destination, req.file.filename));
+        return res.status(400).json({
+          success: false,
+          error: "Invalid recipient ID format",
+        });
+      }
+
+      filePath = path.join(req.file.destination, req.file.filename);
+      const fileBuffer = fs.readFileSync(filePath);
+
+      // Verify file type
+      const fileType = await fileTypeFromBuffer(fileBuffer);
+      if (!fileType) {
+        fs.unlinkSync(filePath);
+        return res.status(400).json({
+          success: false,
+          error: "File type could not be determined"
+        });
+      }
+
+      let fileMetadata = {
+        contentType: fileType.mime,
+        size: req.file.size,
+      };
+
+      // If it's an image, get dimensions and create thumbnail
+      if (fileType.mime.startsWith('image/')) {
+        // Process image and create thumbnail
+        try {
+          const image = sharp(filePath);
+          const metadata = await image.metadata();
+
+          fileMetadata.dimensions = {
+            width: metadata.width,
+            height: metadata.height
+          };
+
+          // Create thumbnail for images
+          const thumbnailPath = filePath + '_thumb';
+          await image
+            .resize(300, 300, {
+              fit: 'inside',
+              withoutEnlargement: true
+            })
+            .toFile(thumbnailPath);
+
+          fileMetadata.thumbnail = `/uploads/messages/${req.file.filename}_thumb`;
+        } catch (processError) {
+          logger.error(`Error processing image: ${processError.message}`);
+          // Continue without thumbnail if processing fails
+        }
+      }
+
+      // Construct the file URL
+      const fileUrl = `/uploads/messages/${req.file.filename}`;
+
+      // Return success response
+      res.status(200).json({
+        success: true,
+        data: {
+          url: fileUrl,
+          mimeType: fileType.mime,
+          fileName: req.file.originalname,
+          fileSize: req.file.size,
+          metadata: fileMetadata
+        }
+      });
+
+      logger.info(`Message attachment uploaded: ${fileUrl} (${fileType.mime})`);
+    } catch (err) {
+      logger.error(`Error uploading message attachment: ${err.message}`);
+
+      // Clean up file on error
+      if (filePath && fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+
+          // Also remove thumbnail if it exists
+          const thumbnailPath = filePath + '_thumb';
+          if (fs.existsSync(thumbnailPath)) {
+            fs.unlinkSync(thumbnailPath);
+          }
+        } catch (unlinkErr) {
+          logger.error(`Error deleting uploaded file after error: ${unlinkErr.message}`);
+        }
+      }
+
+      res.status(400).json({
+        success: false,
+        error: err.message || "Failed to upload file"
+      });
+    }
+  })
+);
 
 /**
  * @route   GET /api/messages/:userId
@@ -84,7 +250,7 @@ router.get(
         }
       }
 
-      if (req.query.type && ["text", "wink", "video"].includes(req.query.type)) {
+      if (req.query.type && ["text", "wink", "video", "file"].includes(req.query.type)) {
         query.type = req.query.type
       }
 
@@ -128,7 +294,7 @@ router.get(
 
 /**
  * @route   POST /api/messages
- * @desc    Send a new message (supports location messages)
+ * @desc    Send a new message
  * @access  Private
  */
 router.post(
@@ -147,6 +313,7 @@ router.post(
           error: "Recipient is required",
         })
       }
+
       if (!isValidObjectId(recipient)) {
         return res.status(400).json({
           success: false,
@@ -154,7 +321,8 @@ router.post(
         })
       }
 
-      const validTypes = ["text", "wink", "video", "location"]
+      // Update valid types to include 'file'
+      const validTypes = ["text", "wink", "video", "file", "location"]
       if (!type || !validTypes.includes(type)) {
         return res.status(400).json({
           success: false,
@@ -162,6 +330,7 @@ router.post(
         })
       }
 
+      // Type-specific validation
       if (type === "text" && (!content || content.trim().length === 0)) {
         return res.status(400).json({
           success: false,
@@ -176,30 +345,25 @@ router.post(
         })
       }
 
-      if (recipient === req.user._id.toString()) {
-        return res.status(400).json({
-          success: false,
-          error: "Cannot send message to yourself",
-        })
+      // Add validation for file messages
+      if (type === "file") {
+        if (!metadata || !metadata.fileUrl) {
+          return res.status(400).json({
+            success: false,
+            error: "File URL is required for file messages",
+          })
+        }
+
+        if (!metadata.fileName) {
+          return res.status(400).json({
+            success: false,
+            error: "File name is required for file messages",
+          })
+        }
       }
 
-      const recipientUser = await User.findById(recipient)
-      if (!recipientUser) {
-        return res.status(404).json({
-          success: false,
-          error: "Recipient not found",
-        })
-      }
-
-      // Process message content based on type
-      let processedContent = ""
-      if (type === "text") {
-        processedContent = sanitizeText(content)
-      } else if (type === "wink") {
-        processedContent = "😉"
-      } else if (type === "video") {
-        processedContent = "Video Call"
-      } else if (type === "location") {
+      // Location validation
+      if (type === "location") {
         // For location messages, validate metadata and convert coordinates to numbers
         if (
           !metadata ||
@@ -229,7 +393,35 @@ router.post(
         }
         // Update metadata with converted coordinates
         metadata.location.coordinates = coords
-        processedContent = content || "" // Content can be empty for location messages
+      }
+
+      if (recipient === req.user._id.toString()) {
+        return res.status(400).json({
+          success: false,
+          error: "Cannot send message to yourself",
+        })
+      }
+
+      const recipientUser = await User.findById(recipient)
+      if (!recipientUser) {
+        return res.status(404).json({
+          success: false,
+          error: "Recipient not found",
+        })
+      }
+
+      // Process message content based on type
+      let processedContent = ""
+      if (type === "text") {
+        processedContent = sanitizeText(content)
+      } else if (type === "wink") {
+        processedContent = "😉"
+      } else if (type === "video") {
+        processedContent = "Video Call"
+      } else if (type === "file") {
+        processedContent = metadata.fileName || "File"
+      } else if (type === "location") {
+        processedContent = content || "Location" // Content can be empty for location messages
       }
 
       const message = await Message.create({
@@ -316,6 +508,64 @@ router.put(
     }
   }),
 )
+
+/**
+ * @route   POST /api/messages/read
+ * @desc    Mark multiple messages as read
+ * @access  Private
+ */
+router.post(
+  "/read",
+  protect,
+  asyncHandler(async (req, res) => {
+    const { messageIds } = req.body;
+    logger.debug(`Marking multiple messages as read for user ${req.user._id}`);
+
+    try {
+      if (!messageIds || !Array.isArray(messageIds) || messageIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Message IDs array is required",
+        });
+      }
+
+      // Validate all IDs
+      const invalidIds = messageIds.filter(id => !isValidObjectId(id));
+      if (invalidIds.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid message ID format: ${invalidIds.join(', ')}`,
+        });
+      }
+
+      // Update messages
+      const result = await Message.updateMany(
+        {
+          _id: { $in: messageIds },
+          recipient: req.user._id,
+          read: false,
+        },
+        {
+          read: true,
+          readAt: new Date(),
+        }
+      );
+
+      logger.debug(`Marked ${result.modifiedCount} of ${messageIds.length} messages as read`);
+
+      res.status(200).json({
+        success: true,
+        count: result.modifiedCount,
+      });
+    } catch (err) {
+      logger.error(`Error marking messages as read: ${err.message}`);
+      res.status(500).json({
+        success: false,
+        error: "Server error while marking messages as read",
+      });
+    }
+  })
+);
 
 /**
  * @route   PUT /api/messages/conversation/:userId/read
@@ -482,6 +732,37 @@ router.delete(
       const isRecipient = message.recipient.toString() === req.user._id.toString()
       const deleteMode = req.query.mode || "self"
 
+      // If message is a file type, potentially delete the file
+      if (message.type === "file" && isSender && (deleteMode === "both" || (message.deletedByRecipient && deleteMode === "self"))) {
+        try {
+          // Extract file URL from metadata
+          if (message.metadata && message.metadata.fileUrl) {
+            const fileUrl = message.metadata.fileUrl;
+            // Convert URL to file path
+            const filePath = path.join(
+              process.cwd(),
+              fileUrl.replace(/^\/uploads/, config.FILE_UPLOAD_PATH)
+            );
+
+            // Delete file if it exists
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+              logger.info(`Deleted file: ${filePath}`);
+
+              // Delete thumbnail if it exists
+              const thumbnailPath = filePath + '_thumb';
+              if (fs.existsSync(thumbnailPath)) {
+                fs.unlinkSync(thumbnailPath);
+                logger.info(`Deleted thumbnail: ${thumbnailPath}`);
+              }
+            }
+          }
+        } catch (fileErr) {
+          logger.error(`Error deleting file for message ${req.params.id}: ${fileErr.message}`);
+          // Continue with message deletion even if file deletion fails
+        }
+      }
+
       if (deleteMode === "self") {
         if (isSender) {
           message.deletedBySender = true
@@ -606,6 +887,98 @@ router.get(
       res.status(500).json({
         success: false,
         error: "Server error while searching messages",
+      })
+    }
+  }),
+)
+
+/**
+ * @route   GET /api/messages/conversations
+ * @desc    Get all conversations for the current user
+ * @access  Private
+ */
+router.get(
+  "/conversations",
+  protect,
+  asyncHandler(async (req, res) => {
+    logger.debug(`Getting conversations for user ${req.user._id}`)
+
+    try {
+      // Get most recent message with each user
+      const conversations = await Message.aggregate([
+        {
+          $match: {
+            $or: [{ sender: mongoose.Types.ObjectId(req.user._id) }, { recipient: mongoose.Types.ObjectId(req.user._id) }],
+          },
+        },
+        {
+          $sort: { createdAt: -1 },
+        },
+        {
+          $group: {
+            _id: {
+              $cond: [
+                { $eq: ["$sender", mongoose.Types.ObjectId(req.user._id)] },
+                "$recipient",
+                "$sender",
+              ],
+            },
+            lastMessage: { $first: "$$ROOT" },
+            unreadCount: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $eq: ["$recipient", mongoose.Types.ObjectId(req.user._id)] },
+                      { $eq: ["$read", false] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+        {
+          $sort: { "lastMessage.createdAt": -1 },
+        },
+      ])
+
+      // Get user details for each conversation
+      const userIds = conversations.map((conv) => conv._id)
+      const users = await User.find({ _id: { $in: userIds } }).select("nickname photos isOnline lastActive")
+
+      // Combine conversation data with user data
+      const result = conversations.map((conv) => {
+        const user = users.find((u) => u._id.toString() === conv._id.toString())
+        if (!user) {
+          // Skip conversations with users who no longer exist
+          return null
+        }
+        return {
+          user: {
+            _id: user._id,
+            nickname: user.nickname,
+            photo: user.photos && user.photos.length > 0 ? user.photos[0].url : null,
+            isOnline: user.isOnline,
+            lastActive: user.lastActive,
+          },
+          lastMessage: conv.lastMessage,
+          unreadCount: conv.unreadCount,
+          updatedAt: conv.lastMessage.createdAt,
+        }
+      }).filter(Boolean) // Remove any null entries (where user not found)
+
+      res.status(200).json({
+        success: true,
+        data: result,
+      })
+    } catch (err) {
+      logger.error(`Error getting conversations: ${err.message}`)
+      res.status(500).json({
+        success: false,
+        error: "Server error while getting conversations",
       })
     }
   }),

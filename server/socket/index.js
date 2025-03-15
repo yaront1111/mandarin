@@ -141,6 +141,9 @@ const initSocketServer = (server) => {
       // Store socket auth timestamp for periodic revalidation
       socket.authTimestamp = Date.now();
 
+      // Set userId for easier access
+      socket.userId = user._id.toString();
+
       logger.debug(`Socket ${socket.id} authenticated for user ${user.nickname} (${user._id})`);
       next();
     } catch (err) {
@@ -242,14 +245,15 @@ const initSocketServer = (server) => {
     });
 
     // Handle private messages with rate limiting and validation
-    socket.on('privateMessage', async ({ sender, recipient, type, content }, callback) => {
+    socket.on('privateMessage', async (message, callback) => {
       try {
         // Apply rate limiting
         try {
-          await messageLimiter.consume(sender);
+          await messageLimiter.consume(socket.userId);
         } catch (err) {
-          logger.warn(`Rate limit exceeded for messages by user ${sender}`);
+          logger.warn(`Rate limit exceeded for messages by user ${socket.userId}`);
           if (callback) callback({
+            success: false,
             error: 'Too many messages. Please slow down.',
             code: 'RATE_LIMIT'
           });
@@ -257,70 +261,128 @@ const initSocketServer = (server) => {
         }
 
         // Verify that the sender is the authenticated user
-        if (sender !== socket.user._id.toString()) {
-          logger.warn(`Unauthorized message attempt by ${socket.user._id} for user ${sender}`);
-          if (callback) callback({ error: 'Unauthorized sender', code: 'UNAUTHORIZED' });
+        if (message.sender !== socket.userId) {
+          logger.warn(`Unauthorized message attempt by ${socket.user._id} for user ${message.sender}`);
+          if (callback) callback({
+            success: false,
+            error: 'Unauthorized sender',
+            code: 'UNAUTHORIZED'
+          });
           return;
         }
 
         // Validate message type
-        const validTypes = ['text', 'wink', 'video'];
-        if (!validTypes.includes(type)) {
-          logger.warn(`Invalid message type: ${type}`);
-          if (callback) callback({ error: 'Invalid message type', code: 'INVALID_TYPE' });
+        const validTypes = ['text', 'wink', 'video', 'file'];
+        if (!validTypes.includes(message.type)) {
+          logger.warn(`Invalid message type: ${message.type}`);
+          if (callback) callback({
+            success: false,
+            error: `Invalid message type. Must be one of: ${validTypes.join(', ')}`,
+            code: 'INVALID_TYPE'
+          });
           return;
         }
 
         // Validate content based on type
-        if (type === 'text') {
-          if (!content || content.length === 0) {
-            if (callback) callback({ error: 'Message content is required', code: 'EMPTY_CONTENT' });
+        if (message.type === 'text') {
+          if (!message.content || message.content.length === 0) {
+            if (callback) callback({
+              success: false,
+              error: 'Message content is required',
+              code: 'EMPTY_CONTENT'
+            });
             return;
           }
 
           // Limit message length
-          if (content.length > 2000) {
-            if (callback) callback({ error: 'Message too long (max 2000 characters)', code: 'CONTENT_TOO_LONG' });
+          if (message.content.length > 2000) {
+            if (callback) callback({
+              success: false,
+              error: 'Message too long (max 2000 characters)',
+              code: 'CONTENT_TOO_LONG'
+            });
+            return;
+          }
+        }
+
+        // Add file-specific validation
+        if (message.type === 'file') {
+          // Ensure metadata with file information exists
+          if (!message.metadata || !message.metadata.fileUrl) {
+            if (callback) callback({
+              success: false,
+              error: 'File URL is required for file messages',
+              code: 'MISSING_FILE_URL'
+            });
+            return;
+          }
+
+          // Validate file metadata
+          if (!message.metadata.fileName) {
+            if (callback) callback({
+              success: false,
+              error: 'File name is required for file messages',
+              code: 'MISSING_FILE_NAME'
+            });
             return;
           }
         }
 
         // Validate recipient
-        if (!mongoose.Types.ObjectId.isValid(recipient)) {
-          logger.warn(`Invalid recipient ID format: ${recipient}`);
-          if (callback) callback({ error: 'Invalid recipient ID', code: 'INVALID_RECIPIENT' });
+        if (!mongoose.Types.ObjectId.isValid(message.recipient)) {
+          logger.warn(`Invalid recipient ID format: ${message.recipient}`);
+          if (callback) callback({
+            success: false,
+            error: 'Invalid recipient ID',
+            code: 'INVALID_RECIPIENT'
+          });
           return;
         }
 
         // Check if recipient exists
-        const recipientUser = await User.findById(recipient);
+        const recipientUser = await User.findById(message.recipient);
         if (!recipientUser) {
-          logger.warn(`Recipient not found: ${recipient}`);
-          if (callback) callback({ error: 'Recipient not found', code: 'RECIPIENT_NOT_FOUND' });
+          logger.warn(`Recipient not found: ${message.recipient}`);
+          if (callback) callback({
+            success: false,
+            error: 'Recipient not found',
+            code: 'RECIPIENT_NOT_FOUND'
+          });
           return;
         }
 
         // Create message in database
-        const message = await Message.create({
-          sender,
-          recipient,
-          type,
-          content: type === 'text' ? content.trim() : content // Sanitize text content
+        const newMessage = new Message({
+          sender: message.sender,
+          recipient: message.recipient,
+          type: message.type,
+          content: message.type === 'text' ? message.content.trim() : (message.content || ''),
+          metadata: message.metadata || {}
         });
 
+        await newMessage.save();
+
         // Add sender name to outgoing message
-        const enrichedMessage = message.toObject();
+        const enrichedMessage = newMessage.toObject();
         enrichedMessage.senderName = socket.user.nickname;
 
-        // Emit to recipient's room
-        io.to(recipient).emit('newMessage', enrichedMessage);
+        // Send to recipient's room
+        io.to(message.recipient).emit('newMessage', enrichedMessage);
 
-        logger.debug(`Message sent from ${sender} to ${recipient} (type: ${type})`);
+        logger.debug(`Message sent from ${message.sender} to ${message.recipient} (type: ${message.type})`);
 
-        if (callback) callback({ success: true, message: enrichedMessage });
+        // Return success with the message object
+        if (callback) callback({
+          success: true,
+          message: enrichedMessage
+        });
       } catch (err) {
         logger.error(`Error sending private message: ${err.message}`);
-        if (callback) callback({ error: err.message || 'Failed to send message', code: 'SERVER_ERROR' });
+        if (callback) callback({
+          success: false,
+          error: err.message || 'Failed to send message',
+          code: 'SERVER_ERROR'
+        });
       }
     });
 
@@ -335,7 +397,7 @@ const initSocketServer = (server) => {
       }
 
       // Verify sender is the authenticated user
-      if (sender !== socket.user._id.toString()) {
+      if (sender !== socket.userId) {
         logger.warn(`Unauthorized typing indicator from ${socket.user._id} for user ${sender}`);
         return;
       }
@@ -363,6 +425,7 @@ const initSocketServer = (server) => {
         } catch (err) {
           logger.warn(`Call rate limit exceeded for user ${caller}`);
           if (callback) callback({
+            success: false,
             error: 'Too many call attempts. Please wait a moment.',
             code: 'RATE_LIMIT'
           });
@@ -370,16 +433,24 @@ const initSocketServer = (server) => {
         }
 
         // Verify caller is the authenticated user
-        if (caller !== socket.user._id.toString()) {
+        if (caller !== socket.userId) {
           logger.warn(`Unauthorized call request from ${socket.user._id} for user ${caller}`);
-          if (callback) callback({ error: 'Unauthorized caller', code: 'UNAUTHORIZED' });
+          if (callback) callback({
+            success: false,
+            error: 'Unauthorized caller',
+            code: 'UNAUTHORIZED'
+          });
           return;
         }
 
         // Validate recipient
         if (!mongoose.Types.ObjectId.isValid(recipient)) {
           logger.warn(`Invalid recipient ID for call: ${recipient}`);
-          if (callback) callback({ error: 'Invalid recipient ID', code: 'INVALID_RECIPIENT' });
+          if (callback) callback({
+            success: false,
+            error: 'Invalid recipient ID',
+            code: 'INVALID_RECIPIENT'
+          });
           return;
         }
 
@@ -387,7 +458,11 @@ const initSocketServer = (server) => {
         const recipientUser = await User.findById(recipient);
         if (!recipientUser) {
           logger.warn(`Call recipient not found: ${recipient}`);
-          if (callback) callback({ error: 'Recipient not found', code: 'RECIPIENT_NOT_FOUND' });
+          if (callback) callback({
+            success: false,
+            error: 'Recipient not found',
+            code: 'RECIPIENT_NOT_FOUND'
+          });
           return;
         }
 
@@ -397,7 +472,11 @@ const initSocketServer = (server) => {
 
         if (!isRecipientOnline) {
           logger.warn(`Call recipient is offline: ${recipient}`);
-          if (callback) callback({ error: 'Recipient is offline', code: 'RECIPIENT_OFFLINE' });
+          if (callback) callback({
+            success: false,
+            error: 'Recipient is offline',
+            code: 'RECIPIENT_OFFLINE'
+          });
           return;
         }
 
@@ -411,33 +490,48 @@ const initSocketServer = (server) => {
         logger.info(`Video call initiated from ${caller} to ${recipient}`);
 
         // Also log this as a message in the database for history
-        await Message.create({
+        const callMessage = await Message.create({
           sender: caller,
           recipient,
           type: 'video',
           content: 'Video call'
         });
 
-        if (callback) callback({ success: true });
+        if (callback) callback({
+          success: true,
+          callId: callMessage._id
+        });
       } catch (err) {
         logger.error(`Error initiating video call: ${err.message}`);
-        if (callback) callback({ error: 'Failed to initiate call', code: 'SERVER_ERROR' });
+        if (callback) callback({
+          success: false,
+          error: 'Failed to initiate call',
+          code: 'SERVER_ERROR'
+        });
       }
     });
 
     // Video call answer with acknowledgments
     socket.on('videoCallAnswer', ({ caller, recipient, answer }, callback) => {
       // Verify recipient is the authenticated user
-      if (recipient !== socket.user._id.toString()) {
+      if (recipient !== socket.userId) {
         logger.warn(`Unauthorized call answer from ${socket.user._id} for user ${recipient}`);
-        if (callback) callback({ error: 'Unauthorized recipient', code: 'UNAUTHORIZED' });
+        if (callback) callback({
+          success: false,
+          error: 'Unauthorized recipient',
+          code: 'UNAUTHORIZED'
+        });
         return;
       }
 
       // Validate caller ID
       if (!mongoose.Types.ObjectId.isValid(caller)) {
         logger.warn(`Invalid caller ID for call answer: ${caller}`);
-        if (callback) callback({ error: 'Invalid caller ID', code: 'INVALID_CALLER' });
+        if (callback) callback({
+          success: false,
+          error: 'Invalid caller ID',
+          code: 'INVALID_CALLER'
+        });
         return;
       }
 
@@ -458,16 +552,24 @@ const initSocketServer = (server) => {
     socket.on('messageRead', async ({ messageId, reader }, callback) => {
       try {
         // Verify reader is the authenticated user
-        if (reader !== socket.user._id.toString()) {
+        if (reader !== socket.userId) {
           logger.warn(`Unauthorized read receipt from ${socket.user._id} for user ${reader}`);
-          if (callback) callback({ error: 'Unauthorized reader', code: 'UNAUTHORIZED' });
+          if (callback) callback({
+            success: false,
+            error: 'Unauthorized reader',
+            code: 'UNAUTHORIZED'
+          });
           return;
         }
 
         // Validate message ID
         if (!mongoose.Types.ObjectId.isValid(messageId)) {
           logger.warn(`Invalid message ID format: ${messageId}`);
-          if (callback) callback({ error: 'Invalid message ID', code: 'INVALID_MESSAGE_ID' });
+          if (callback) callback({
+            success: false,
+            error: 'Invalid message ID',
+            code: 'INVALID_MESSAGE_ID'
+          });
           return;
         }
 
@@ -479,13 +581,18 @@ const initSocketServer = (server) => {
 
         if (!message) {
           logger.warn(`Message not found or user not authorized to mark as read: ${messageId}`);
-          if (callback) callback({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+          if (callback) callback({
+            success: false,
+            error: 'Message not found',
+            code: 'MESSAGE_NOT_FOUND'
+          });
           return;
         }
 
         // Only update if not already read
         if (!message.read) {
           message.read = true;
+          message.readAt = new Date();
           await message.save();
 
           // Notify the sender that the message was read
@@ -501,7 +608,11 @@ const initSocketServer = (server) => {
         if (callback) callback({ success: true });
       } catch (err) {
         logger.error(`Error processing message read receipt: ${err.message}`);
-        if (callback) callback({ error: 'Failed to process read receipt', code: 'SERVER_ERROR' });
+        if (callback) callback({
+          success: false,
+          error: 'Failed to process read receipt',
+          code: 'SERVER_ERROR'
+        });
       }
     });
 
@@ -509,16 +620,24 @@ const initSocketServer = (server) => {
     socket.on('markConversationRead', async ({ conversationWith, reader }, callback) => {
       try {
         // Verify reader is the authenticated user
-        if (reader !== socket.user._id.toString()) {
+        if (reader !== socket.userId) {
           logger.warn(`Unauthorized batch read from ${socket.user._id} for user ${reader}`);
-          if (callback) callback({ error: 'Unauthorized reader', code: 'UNAUTHORIZED' });
+          if (callback) callback({
+            success: false,
+            error: 'Unauthorized reader',
+            code: 'UNAUTHORIZED'
+          });
           return;
         }
 
         // Validate conversation partner ID
         if (!mongoose.Types.ObjectId.isValid(conversationWith)) {
           logger.warn(`Invalid conversation partner ID: ${conversationWith}`);
-          if (callback) callback({ error: 'Invalid ID', code: 'INVALID_ID' });
+          if (callback) callback({
+            success: false,
+            error: 'Invalid ID',
+            code: 'INVALID_ID'
+          });
           return;
         }
 
@@ -537,7 +656,7 @@ const initSocketServer = (server) => {
               recipient: reader,
               read: false
             },
-            { read: true }
+            { read: true, readAt: new Date() }
           );
 
           // Notify the conversation partner about batch read
@@ -550,10 +669,17 @@ const initSocketServer = (server) => {
           logger.debug(`${unreadMessages.length} messages marked as read for conversation between ${reader} and ${conversationWith}`);
         }
 
-        if (callback) callback({ success: true, count: unreadMessages.length });
+        if (callback) callback({
+          success: true,
+          count: unreadMessages.length
+        });
       } catch (err) {
         logger.error(`Error marking conversation as read: ${err.message}`);
-        if (callback) callback({ error: 'Failed to mark conversation as read', code: 'SERVER_ERROR' });
+        if (callback) callback({
+          success: false,
+          error: 'Failed to mark conversation as read',
+          code: 'SERVER_ERROR'
+        });
       }
     });
 

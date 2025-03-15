@@ -1,4 +1,4 @@
-// Upgraded server.js with improved error handling and security
+// Upgraded server.js with improved error handling, security, and file handling
 const express = require("express")
 const http = require("http")
 const socketIo = require("socket.io")
@@ -13,11 +13,12 @@ const hpp = require("hpp")
 const compression = require("compression")
 const cookieParser = require("cookie-parser")
 const { createAdapter } = require("@socket.io/mongo-adapter")
+const fs = require("fs")
 
 const config = require("./config")
 const logger = require("./logger")
 const routes = require("./routes")
-const { User } = require("./models")
+const { User, Message } = require("./models")
 const { verifySocketToken } = require("./middleware/auth")
 
 // Initialize Express app
@@ -49,7 +50,10 @@ const apiLimiter = rateLimit({
   max: 100, // limit each IP to 100 requests per windowMs
   standardHeaders: true,
   legacyHeaders: false,
-  message: "Too many requests from this IP, please try again after 15 minutes",
+  message: {
+    success: false,
+    error: "Too many requests from this IP, please try again after 15 minutes",
+  }
 })
 
 // Apply rate limiting to API routes
@@ -80,8 +84,32 @@ app.use(compression())
 // Set static folder
 app.use(express.static(path.join(__dirname, "public")))
 
-// Serve uploaded files
-app.use("/uploads", express.static(path.join(__dirname, config.FILE_UPLOAD_PATH)))
+// Ensure upload directories exist
+const uploadsPath = path.join(__dirname, config.FILE_UPLOAD_PATH);
+const messageUploadsPath = path.join(uploadsPath, 'messages');
+
+if (!fs.existsSync(uploadsPath)) {
+  fs.mkdirSync(uploadsPath, { recursive: true });
+  logger.info(`Created uploads directory: ${uploadsPath}`);
+}
+
+if (!fs.existsSync(messageUploadsPath)) {
+  fs.mkdirSync(messageUploadsPath, { recursive: true });
+  logger.info(`Created message uploads directory: ${messageUploadsPath}`);
+}
+
+// Serve uploaded files with security and caching
+app.use('/uploads', express.static(uploadsPath, {
+  maxAge: 86400000, // 24 hours
+  etag: true,
+  lastModified: true
+}));
+
+app.use('/uploads/messages', express.static(messageUploadsPath, {
+  maxAge: 86400000, // 24 hours
+  etag: true,
+  lastModified: true
+}));
 
 // API routes
 app.use("/api", routes)
@@ -183,31 +211,75 @@ io.on("connection", async (socket) => {
       }
     })
 
-    // Handle private messages
+    // Handle private messages with file support
     socket.on("privateMessage", async (message, callback) => {
       try {
         if (message.sender !== socket.userId) {
           throw new Error("Sender ID does not match socket user")
         }
 
+        // Update valid types to include 'file'
+        const validTypes = ["text", "wink", "video", "file"]
+        if (!validTypes.includes(message.type)) {
+          throw new Error(`Invalid message type. Must be one of: ${validTypes.join(", ")}`)
+        }
+
+        // Validate content based on type
+        if (message.type === "text") {
+          if (!message.content || message.content.length === 0) {
+            throw new Error("Message content is required")
+          }
+
+          // Limit message length
+          if (message.content.length > 2000) {
+            throw new Error("Message too long (max 2000 characters)")
+          }
+        }
+
+        // Add file-specific validation
+        if (message.type === "file") {
+          if (!message.metadata || !message.metadata.fileUrl) {
+            throw new Error("File URL is required for file messages")
+          }
+
+          if (!message.metadata.fileName) {
+            throw new Error("File name is required for file messages")
+          }
+        }
+
+        // Validate recipient format
+        if (!mongoose.Types.ObjectId.isValid(message.recipient)) {
+          throw new Error("Invalid recipient ID format")
+        }
+
+        // Check if recipient exists
+        const recipientExists = await User.exists({ _id: message.recipient })
+        if (!recipientExists) {
+          throw new Error("Recipient not found")
+        }
+
         // Create message in database
-        const { Message } = require("./models")
         const newMessage = new Message({
           sender: message.sender,
           recipient: message.recipient,
           type: message.type,
-          content: message.content,
+          content: message.type === "text" ? message.content.trim() : (message.content || ""),
+          metadata: message.metadata || {},
         })
 
         await newMessage.save()
 
+        // Add sender info to message
+        const enhancedMessage = newMessage.toObject()
+        enhancedMessage.senderName = socket.user.nickname
+
         // Send to recipient if online
-        io.to(message.recipient).emit("newMessage", newMessage)
+        io.to(message.recipient).emit("newMessage", enhancedMessage)
 
         // Acknowledge message receipt
-        if (callback) callback({ success: true, messageId: newMessage._id })
+        if (callback) callback({ success: true, message: enhancedMessage })
 
-        logger.debug(`Private message sent: ${newMessage._id}`)
+        logger.debug(`${message.type} message sent: ${newMessage._id}`)
       } catch (error) {
         logger.error(`Error sending private message: ${error.message}`)
         if (callback) callback({ success: false, error: error.message })
@@ -247,7 +319,6 @@ io.on("connection", async (socket) => {
         })
 
         // Create a call record in the database
-        const { Message } = require("./models")
         const callMessage = new Message({
           sender: data.caller,
           recipient: data.recipient,
@@ -312,7 +383,6 @@ io.on("connection", async (socket) => {
       try {
         if (data.reader !== socket.userId) return
 
-        const { Message } = require("./models")
         await Message.updateMany(
           { _id: { $in: data.messageIds }, recipient: socket.userId },
           { $set: { read: true, readAt: new Date() } },

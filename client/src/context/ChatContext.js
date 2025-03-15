@@ -1,6 +1,6 @@
 "use client"
 
-// Upgraded ChatContext.js with improved message handling and error recovery
+// Upgraded ChatContext.js with improved message handling and file upload support
 import { createContext, useState, useContext, useEffect, useCallback, useRef } from "react"
 import { toast } from "react-toastify"
 import apiService from "../services/apiService"
@@ -19,6 +19,7 @@ export const ChatProvider = ({ children }) => {
   const [typingUsers, setTypingUsers] = useState({})
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
   const [socketConnected, setSocketConnected] = useState(false)
   const [activeConversation, setActiveConversation] = useState(null)
@@ -319,9 +320,81 @@ export const ChatProvider = ({ children }) => {
     }
   }, [user])
 
+  // Upload a file and get its URL
+  const uploadFile = useCallback(
+    async (file, recipientId) => {
+      if (!user || !file) {
+        setError("Cannot upload file: Missing user or file")
+        return null
+      }
+
+      // Validate file size (max 5MB)
+      const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+      if (file.size > MAX_FILE_SIZE) {
+        const errorMessage = `File is too large (max 5MB allowed)`
+        setError(errorMessage)
+        toast.error(errorMessage)
+        return null
+      }
+
+      // Validate file type
+      const allowedTypes = [
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+        'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain',
+        'audio/mpeg', 'audio/wav',
+        'video/mp4', 'video/quicktime'
+      ]
+
+      if (!allowedTypes.includes(file.type)) {
+        const errorMessage = `Invalid file type. Only images, documents, audio, and videos are allowed.`
+        setError(errorMessage)
+        toast.error(errorMessage)
+        return null
+      }
+
+      // Validate recipientId if provided
+      if (recipientId && !/^[0-9a-fA-F]{24}$/.test(recipientId)) {
+        const errorMessage = `Invalid recipient ID format: ${recipientId}`
+        setError(errorMessage)
+        toast.error(errorMessage)
+        return null
+      }
+
+      setUploading(true)
+      setError(null)
+      try {
+        // Create FormData for file upload
+        const formData = new FormData()
+        formData.append('file', file)
+        if (recipientId) {
+          formData.append('recipient', recipientId)
+        }
+
+        // Upload file
+        const response = await apiService.postFormData('/messages/attachments', formData)
+
+        if (response.success) {
+          return response.data
+        } else {
+          throw new Error(response.error || "Failed to upload file")
+        }
+      } catch (err) {
+        const errorMessage = err.error || err.message || "Failed to upload file"
+        setError(errorMessage)
+        toast.error(errorMessage)
+        console.error("File upload error:", err)
+        return null
+      } finally {
+        setUploading(false)
+      }
+    },
+    [user]
+  )
+
   // Send a message
   const sendMessage = useCallback(
-    async (recipientId, type, content) => {
+    async (recipientId, type, content, metadata = {}) => {
       if (!user || !recipientId) {
         setError("Cannot send message: Missing user or recipient")
         return null
@@ -345,12 +418,28 @@ export const ChatProvider = ({ children }) => {
           recipient: recipientId,
           type,
           contentLength: content ? content.length : 0,
+          metadata
         })
+
+        // Validate message type
+        const validTypes = ["text", "wink", "video", "file"]
+        if (!type || !validTypes.includes(type)) {
+          throw new Error(`Invalid message type. Must be one of: ${validTypes.join(", ")}`)
+        }
+
+        // Type-specific validation
+        if (type === "text" && (!content || content.trim().length === 0)) {
+          throw new Error("Message content is required for text messages")
+        }
+
+        if (type === "file" && (!metadata || !metadata.fileUrl)) {
+          throw new Error("File URL is required for file messages")
+        }
 
         // Try to send via socket first for real-time delivery
         let socketResponse = null
         try {
-          socketResponse = await socketService.sendMessage(recipientId, type, content)
+          socketResponse = await socketService.sendMessage(recipientId, type, content, metadata)
         } catch (socketError) {
           console.warn("Socket message failed, falling back to API:", socketError)
           // We'll fall back to API below
@@ -377,6 +466,7 @@ export const ChatProvider = ({ children }) => {
           recipient: recipientId,
           type,
           content,
+          metadata
         })
 
         if (apiResponse.success) {
@@ -415,6 +505,48 @@ export const ChatProvider = ({ children }) => {
       }
     },
     [user, updateConversationsList],
+  )
+
+  // Send a file message - combines uploadFile and sendMessage
+  const sendFileMessage = useCallback(
+    async (recipientId, file) => {
+      if (!user || !recipientId || !file) {
+        setError("Cannot send file: Missing user, recipient, or file")
+        return null
+      }
+
+      try {
+        // First upload the file
+        const fileData = await uploadFile(file, recipientId)
+        if (!fileData) {
+          throw new Error("Failed to upload file")
+        }
+
+        // Then send a message with the file data
+        const metadata = {
+          fileUrl: fileData.url,
+          fileName: fileData.fileName || file.name,
+          fileSize: fileData.fileSize || file.size,
+          mimeType: fileData.mimeType || file.type,
+          ...fileData.metadata
+        }
+
+        // Send file message
+        return await sendMessage(
+          recipientId,
+          "file",
+          fileData.fileName || file.name,
+          metadata
+        )
+      } catch (err) {
+        const errorMessage = err.error || err.message || "Failed to send file message"
+        setError(errorMessage)
+        toast.error(errorMessage)
+        console.error("Send file message error:", err)
+        return null
+      }
+    },
+    [user, uploadFile, sendMessage]
   )
 
   // Send typing indicator
@@ -527,12 +659,15 @@ export const ChatProvider = ({ children }) => {
     typingUsers,
     loading,
     sending,
+    uploading,
     error,
     socketConnected,
     activeConversation,
     getMessages,
     getConversations,
     sendMessage,
+    sendFileMessage,
+    uploadFile,
     sendTyping,
     markMessagesAsRead,
     initiateVideoCall,
