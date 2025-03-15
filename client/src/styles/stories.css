@@ -1,0 +1,230 @@
+/* Stories Carousel Styles */
+.stories-carousel-container {
+  width: 100%;
+  overflow-x: auto;
+  padding: 10px 0;
+  margin-bottom: 20px;
+}
+
+.stories-carousel {
+  display: flex;
+  gap: 15px;
+  padding: 0 15px;
+}
+
+.stories-carousel-loading,
+.stories-carousel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 20px;
+  color: #888;
+}
+
+.spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top-color: #3498db;
+  animation: spin 1s ease-in-out infinite;
+  margin-bottom: 10px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Story Thumbnail Styles */
+.story-thumbnail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  min-width: 70px;
+}
+
+.story-avatar-border {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  padding: 2px;
+  background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+  margin-bottom: 5px;
+}
+
+.story-avatar-border.viewed {
+  background: #ccc;
+}
+
+.story-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid white;
+}
+
+.story-username {
+  font-size: 12px;
+  max-width: 70px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.story-timestamp {
+  font-size: 10px;
+  color: #888;
+}
+
+/* Stories Viewer Styles */
+.stories-viewer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.9);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.stories-viewer-container {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  height: 80vh;
+  max-height: 700px;
+  background-color: #000;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.stories-viewer-header {
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
+
+.stories-progress-container {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.stories-progress-bar {
+  height: 3px;
+  flex-grow: 1;
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.stories-progress-bar.completed {
+  background-color: white;
+}
+
+.stories-progress-fill {
+  height: 100%;
+  background-color: white;
+  border-radius: 3px;
+}
+
+.stories-user-info {
+  display: flex;
+  align-items: center;
+}
+
+.stories-user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin-right: 10px;
+  object-fit: cover;
+}
+
+.stories-username {
+  color: white;
+  font-weight: bold;
+  margin-right: 10px;
+}
+
+.stories-timestamp {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+}
+
+.stories-close-btn {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.stories-viewer-content {
+  flex-grow: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.stories-media {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.stories-text-content {
+  padding: 20px;
+  color: white;
+  font-size: 24px;
+  text-align: center;
+  background-color: #333;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.stories-caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 15px;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+}
+
+.stories-viewer-navigation {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+.stories-nav-left,
+.stories-nav-right {
+  width: 50%;
+  height: 100%;
+  z-index: 5;
+}

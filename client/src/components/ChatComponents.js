@@ -133,17 +133,33 @@ export const ChatBox = ({ recipient }) => {
   // Virtualize messages: calculate and render only the messages in view (with a buffer).
   useEffect(() => {
     if (!messageContainerRef.current || messages.length === 0) return
+
     const container = messageContainerRef.current
     const containerHeight = container.clientHeight
     const messageHeight = 80 // Approximate height (in pixels) per message.
-    const buffer = 5 // Extra messages above and below the view.
+    const buffer = 10 // Increased buffer for smoother scrolling
+
+    // Calculate visible range with improved buffer
     const startIndex = Math.max(0, Math.floor(scrollPosition / messageHeight) - buffer)
     const endIndex = Math.min(
       messages.length - 1,
       Math.ceil((scrollPosition + containerHeight) / messageHeight) + buffer,
     )
-    setVisibleMessages(messages.slice(startIndex, endIndex + 1))
-  }, [messages, scrollPosition])
+
+    // Only update if the visible range has changed significantly
+    if (
+      visibleMessages.length === 0 ||
+      Math.abs(startIndex - visibleMessages[0]?.index) > 3 ||
+      Math.abs(endIndex - visibleMessages[visibleMessages.length - 1]?.index) > 3
+    ) {
+      setVisibleMessages(
+        messages.slice(startIndex, endIndex + 1).map((msg, idx) => ({
+          ...msg,
+          index: startIndex + idx,
+        })),
+      )
+    }
+  }, [messages, scrollPosition, visibleMessages])
 
   // Auto-scroll to bottom when new messages arrive, if user is near the bottom.
   useEffect(() => {
@@ -410,14 +426,27 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
 
     // Cleanup function
     return () => {
+      // Properly stop all tracks in the streams
       if (localStream) {
-        localStream.getTracks().forEach((track) => track.stop())
+        localStream.getTracks().forEach((track) => {
+          track.stop()
+        })
       }
       if (remoteStream) {
-        remoteStream.getTracks().forEach((track) => track.stop())
+        remoteStream.getTracks().forEach((track) => {
+          track.stop()
+        })
       }
+      // Close and cleanup peer connection
       if (peerConnectionRef.current) {
+        // Remove all event listeners
+        if (peerConnectionRef.current.ontrack) peerConnectionRef.current.ontrack = null
+        if (peerConnectionRef.current.onicecandidate) peerConnectionRef.current.onicecandidate = null
+        if (peerConnectionRef.current.onconnectionstatechange) peerConnectionRef.current.onconnectionstatechange = null
+
+        // Close the connection
         peerConnectionRef.current.close()
+        peerConnectionRef.current = null
       }
     }
   }, [initializePeerConnection, isIncoming, peer, remoteStream])

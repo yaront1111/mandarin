@@ -1,13 +1,21 @@
-// routes/index.js
-const express = require('express');
-const router = express.Router();
+const express = require("express")
+const router = express.Router()
 
-const authRoutes = require('./authRoutes');
-const userRoutes = require('./userRoutes');
-const messageRoutes = require('./messageRoutes');
+// Import route files
+const authRoutes = require("./authRoutes")
+const userRoutes = require("./userRoutes")
+const messageRoutes = require("./messageRoutes")
+const storyRoutes = require("./storyRoutes")
 
-router.use('/auth', authRoutes);
-router.use('/users', userRoutes);
-router.use('/messages', messageRoutes);
+// Mount routes
+router.use("/auth", authRoutes)
+router.use("/users", userRoutes)
+router.use("/messages", messageRoutes)
+router.use("/stories", storyRoutes)
 
-module.exports = router;
+// Health check route
+router.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" })
+})
+
+module.exports = router

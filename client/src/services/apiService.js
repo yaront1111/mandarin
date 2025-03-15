@@ -593,12 +593,13 @@ class ApiService {
 
     // Handle network errors (no response)
     if (!error.response) {
-      const errorMsg = navigator.onLine
-        ? "Network error. Please check your connection."
-        : "You are currently offline. Request has been queued."
+      const isOffline = !navigator.onLine
+      const errorMsg = isOffline
+        ? "You are currently offline. Request has been queued."
+        : "Network error. Please check your connection."
 
       // If offline, queue non-GET requests for later
-      if (!navigator.onLine && error.config && error.config.method !== "get") {
+      if (isOffline && error.config && error.config.method !== "get") {
         this.logger.warn(`Offline detected. Queueing request: ${error.config.method} ${error.config.url}`)
         this.requestQueue.add({
           url: error.config.url,
@@ -611,13 +612,17 @@ class ApiService {
         // Show queued notification
         toast.info("You are offline. Your action will be processed when connection is restored.")
       } else {
-        toast.error(errorMsg)
+        // Only show toast if we're not offline or if it's a GET request
+        if (!isOffline || error.config?.method === "get") {
+          toast.error(errorMsg)
+        }
       }
 
       return Promise.reject({
         success: false,
         error: errorMsg,
-        isOffline: !navigator.onLine,
+        isOffline,
+        originalError: error,
       })
     }
 
@@ -810,6 +815,8 @@ class ApiService {
             // Special options for refresh request
             headers: { "x-no-cache": "true" },
             _isRefreshRequest: true,
+            // Add timeout to prevent hanging
+            timeout: 10000,
           },
         )
 
@@ -824,6 +831,20 @@ class ApiService {
 
           // Process queued requests
           this._retryQueuedRequests(token)
+
+          // Set up timer for next refresh based on token expiration
+          try {
+            const payload = JSON.parse(atob(token.split(".")[1]))
+            if (payload.exp) {
+              const expiresIn = payload.exp * 1000 - Date.now() - 60000 // Refresh 1 minute before expiry
+              if (expiresIn > 0) {
+                this.tokenRefreshTimer = setTimeout(() => this.refreshToken(), expiresIn)
+                this.logger.debug(`Scheduled next token refresh in ${Math.round(expiresIn / 1000)} seconds`)
+              }
+            }
+          } catch (e) {
+            this.logger.error("Error scheduling token refresh:", e)
+          }
 
           return token
         } else {
@@ -847,7 +868,10 @@ class ApiService {
         return null
       } finally {
         // Clear refresh promise to allow future refresh attempts
-        this.refreshTokenPromise = null
+        // Add a small delay to prevent immediate retry on failure
+        setTimeout(() => {
+          this.refreshTokenPromise = null
+        }, 1000)
       }
     })()
 

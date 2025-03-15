@@ -1,10 +1,11 @@
-// index.js
-const User = require('./User');
-const PhotoPermission = require('./PhotoPermission');
-const Message = require('./Message');
+const User = require("./User")
+const Message = require("./Message")
+const PhotoPermission = require("./PhotoPermission")
+const Story = require("./Story")
 
 module.exports = {
   User,
+  Message,
   PhotoPermission,
-  Message
-};
+  Story,
+}

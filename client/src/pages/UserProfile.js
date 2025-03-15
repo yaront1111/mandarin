@@ -1,7 +1,7 @@
 "use client"
 
 // client/src/pages/UserProfile.js
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import {
   FaArrowLeft,
   FaHeart,
@@ -20,8 +20,10 @@ import {
   FaBan,
 } from "react-icons/fa"
 import { useParams, useNavigate } from "react-router-dom"
-import { useUser, useChat, useAuth } from "../context"
+import { useUser, useChat, useAuth, useStories } from "../context" // Add useStories
 import EmbeddedChat from "../components/EmbeddedChat"
+import StoriesViewer from "../components/Stories/StoriesViewer" // Import StoriesViewer
+import StoryThumbnail from "../components/Stories/StoryThumbnail" // Import StoryThumbnail
 import { toast } from "react-toastify"
 import apiService from "../services/apiService"
 
@@ -31,45 +33,58 @@ const UserProfile = () => {
   const navigate = useNavigate()
   const { user: currentUser } = useAuth()
   const { getUser, currentUser: profileUser, loading, requestPhotoPermission } = useUser()
-  const { messages, getMessages, sendMessage } = useChat()
+  const {} = useChat() // Will be used in future implementation
+  const { loadUserStories, hasUnviewedStories } = useStories() // Add stories context
 
   const [showChat, setShowChat] = useState(false)
   const [activePhotoIndex, setActivePhotoIndex] = useState(0)
   const [showActions, setShowActions] = useState(false)
   const [showAllInterests, setShowAllInterests] = useState(false)
-
-  // Implement photo permissions UI in UserProfile.js
+  const [showStories, setShowStories] = useState(false) // Add state for stories viewer
 
   // Add state for photo permissions
   const [requestingPermission, setRequestingPermission] = useState(false)
   const [permissionStatus, setPermissionStatus] = useState({})
+  const [photoLoadError, setPhotoLoadError] = useState({})
+
+  // Memoized function to handle image loading errors
+  const handleImageError = useCallback((photoId) => {
+    setPhotoLoadError((prev) => ({
+      ...prev,
+      [photoId]: true,
+    }))
+  }, [])
 
   // Add function to handle permission requests
-  const handleRequestAccess = async (photoId) => {
-    if (profileUser) {
-      setRequestingPermission(true)
-      try {
-        const result = await requestPhotoPermission(photoId, profileUser._id)
-        if (result) {
-          setPermissionStatus((prev) => ({
-            ...prev,
-            [photoId]: "pending",
-          }))
-          toast.success("Photo access requested")
-        }
-      } catch (error) {
-        console.error("Error requesting photo access:", error)
-        toast.error(error.message || "Failed to request photo access")
-      } finally {
-        setRequestingPermission(false)
+  const handleRequestAccess = async (photoId, e) => {
+    if (e) {
+      e.stopPropagation() // Prevent event bubbling
+    }
+
+    if (!profileUser || requestingPermission) return
+
+    setRequestingPermission(true)
+    try {
+      const result = await requestPhotoPermission(photoId, profileUser._id)
+      if (result) {
+        setPermissionStatus((prev) => ({
+          ...prev,
+          [photoId]: "pending",
+        }))
+        toast.success("Photo access requested")
       }
+    } catch (error) {
+      console.error("Error requesting photo access:", error)
+      toast.error(error.message || "Failed to request photo access")
+    } finally {
+      setRequestingPermission(false)
     }
   }
 
   // Add useEffect to load permission statuses
   useEffect(() => {
     const loadPhotoPermissions = async () => {
-      if (profileUser && profileUser.photos) {
+      if (profileUser && profileUser.photos && profileUser.photos.length > 0) {
         try {
           // This would be an API call to get permission statuses
           const permissions = await apiService.get(`/users/${profileUser._id}/photo-permissions`)
@@ -87,15 +102,31 @@ const UserProfile = () => {
       }
     }
 
-    loadPhotoPermissions()
+    if (profileUser) {
+      loadPhotoPermissions()
+    }
   }, [profileUser])
 
   // Load user data and messages when component mounts
   useEffect(() => {
     if (id) {
       getUser(id)
+      // Load user stories
+      loadUserStories(id)
     }
-  }, [id, getUser])
+
+    // Reset states when user changes
+    setActivePhotoIndex(0)
+    setShowAllInterests(false)
+    setShowActions(false)
+    setPhotoLoadError({})
+
+    return () => {
+      // Clean up any pending operations when component unmounts
+      setShowChat(false)
+      setShowStories(false)
+    }
+  }, [id, getUser, loadUserStories])
 
   // Redirect if user not found after loading
   useEffect(() => {
@@ -110,8 +141,10 @@ const UserProfile = () => {
   }
 
   const handleLike = () => {
-    console.log("Liked user:", profileUser?._id)
-    toast.success(`You liked ${profileUser?.nickname}`)
+    if (!profileUser) return
+
+    console.log("Liked user:", profileUser._id)
+    toast.success(`You liked ${profileUser.nickname}`)
   }
 
   const handleMessage = () => {
@@ -120,6 +153,16 @@ const UserProfile = () => {
 
   const handleCloseChat = () => {
     setShowChat(false)
+  }
+
+  // Handle opening stories viewer
+  const handleViewStories = () => {
+    setShowStories(true)
+  }
+
+  // Handle closing stories viewer
+  const handleCloseStories = () => {
+    setShowStories(false)
   }
 
   const nextPhoto = () => {
@@ -183,13 +226,53 @@ const UserProfile = () => {
         <div className="profile-layout">
           {/* Left: Photos */}
           <div className="profile-photos-section">
+            {/* Add Stories Thumbnail */}
+            <div className="profile-stories">
+              <StoryThumbnail
+                user={profileUser}
+                hasUnviewedStories={hasUnviewedStories(profileUser._id)}
+                onClick={handleViewStories}
+              />
+            </div>
+
             {profileUser.photos && profileUser.photos.length > 0 ? (
               <div className="photo-gallery-container">
                 <div className="gallery-photo">
-                  <img
-                    src={profileUser.photos[activePhotoIndex].url || "/placeholder.svg"}
-                    alt={profileUser.nickname}
-                  />
+                  {profileUser.photos[activePhotoIndex].isPrivate &&
+                  (!permissionStatus[profileUser.photos[activePhotoIndex]._id] ||
+                    permissionStatus[profileUser.photos[activePhotoIndex]._id] !== "approved") ? (
+                    <div className="private-photo-placeholder">
+                      <FaLock className="lock-icon" />
+                      <p>Private Photo</p>
+                      {!permissionStatus[profileUser.photos[activePhotoIndex]._id] && (
+                        <button
+                          className="request-access-btn"
+                          onClick={() => handleRequestAccess(profileUser.photos[activePhotoIndex]._id)}
+                          disabled={requestingPermission}
+                        >
+                          {requestingPermission ? "Requesting..." : "Request Access"}
+                        </button>
+                      )}
+                      {permissionStatus[profileUser.photos[activePhotoIndex]._id] === "pending" && (
+                        <p className="permission-status pending">Request Pending</p>
+                      )}
+                      {permissionStatus[profileUser.photos[activePhotoIndex]._id] === "rejected" && (
+                        <p className="permission-status rejected">Access Denied</p>
+                      )}
+                    </div>
+                  ) : (
+                    <img
+                      src={profileUser.photos[activePhotoIndex].url || "/placeholder.svg"}
+                      alt={profileUser.nickname}
+                      onError={() => handleImageError(profileUser.photos[activePhotoIndex]._id)}
+                      style={{ display: photoLoadError[profileUser.photos[activePhotoIndex]._id] ? "none" : "block" }}
+                    />
+                  )}
+                  {photoLoadError[profileUser.photos[activePhotoIndex]._id] && (
+                    <div className="image-error-placeholder">
+                      <p>Image could not be loaded</p>
+                    </div>
+                  )}
                   {profileUser.isOnline && (
                     <div className="online-badge">
                       <span className="pulse"></span>
@@ -231,10 +314,7 @@ const UserProfile = () => {
                             ) : (
                               <button
                                 className="request-access-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleRequestAccess(photo._id)
-                                }}
+                                onClick={(e) => handleRequestAccess(photo._id, e)}
                                 disabled={requestingPermission}
                               >
                                 {requestingPermission ? "Requesting..." : "Request Access"}
@@ -242,7 +322,16 @@ const UserProfile = () => {
                             )}
                           </div>
                         ) : (
-                          <img src={photo.url || "/placeholder.svg"} alt={`${profileUser.nickname} ${index + 1}`} />
+                          <img
+                            src={photo.url || "/placeholder.svg"}
+                            alt={`${profileUser.nickname} ${index + 1}`}
+                            onError={() => handleImageError(photo._id)}
+                          />
+                        )}
+                        {photoLoadError[photo._id] && (
+                          <div className="thumbnail-error">
+                            <FaUserAlt />
+                          </div>
                         )}
                       </div>
                     ))}
@@ -430,6 +519,9 @@ const UserProfile = () => {
             <EmbeddedChat recipient={profileUser} isOpen={showChat} onClose={handleCloseChat} />
           </>
         )}
+
+        {/* Stories Viewer */}
+        {showStories && <StoriesViewer userId={profileUser._id} onClose={handleCloseStories} />}
       </div>
     </div>
   )

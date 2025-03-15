@@ -87,25 +87,29 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
-      // Clear any uploads in progress
+      // Properly clean up any uploads in progress
       if (isUploading) {
-        // In a production environment, you might want to cancel any ongoing uploads
+        // Cancel any ongoing uploads
         setIsUploading(false)
+        setAttachment(null)
+        setUploadProgress(0)
+        // In a production environment, you would also want to abort the fetch/axios request
+        // if you have access to the abort controller
       }
     }
   }, [isUploading])
 
   // Get the file icon based on file type
   const getFileIcon = (file) => {
-    if (!file) return <FaFile />;
+    if (!file) return <FaFile />
 
-    const fileType = file.type;
-    if (fileType.startsWith('image/')) return <FaImage />;
-    if (fileType.startsWith('video/')) return <FaFileVideo />;
-    if (fileType.startsWith('audio/')) return <FaFileAudio />;
-    if (fileType === 'application/pdf') return <FaFilePdf />;
-    return <FaFileAlt />;
-  };
+    const fileType = file.type
+    if (fileType.startsWith("image/")) return <FaImage />
+    if (fileType.startsWith("video/")) return <FaFileVideo />
+    if (fileType.startsWith("audio/")) return <FaFileAudio />
+    if (fileType === "application/pdf") return <FaFilePdf />
+    return <FaFileAlt />
+  }
 
   // Handle sending a text message
   const handleSendMessage = async (e) => {
@@ -132,7 +136,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             fileUrl: response.data.url,
             fileType: attachment.type,
             fileName: attachment.name,
-            fileSize: attachment.size
+            fileSize: attachment.size,
           })
 
           toast.success("File sent successfully")
@@ -198,15 +202,22 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       // Validate file type
       const allowedTypes = [
         // Images
-        'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/gif",
         // Documents
-        'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'text/plain',
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain",
         // Audio
-        'audio/mpeg', 'audio/wav',
+        "audio/mpeg",
+        "audio/wav",
         // Video - be cautious with video size
-        'video/mp4', 'video/quicktime'
-      ];
+        "video/mp4",
+        "video/quicktime",
+      ]
 
       if (!allowedTypes.includes(file.type)) {
         toast.error("File type not supported.")
@@ -298,36 +309,34 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Render file attachment message
   const renderFileMessage = (message) => {
-    const { metadata } = message;
+    const { metadata } = message
     if (!metadata || !metadata.fileUrl) {
-      return <p className="message-content">Attachment unavailable</p>;
+      return <p className="message-content">Attachment unavailable</p>
     }
 
-    const isImage = metadata.fileType && metadata.fileType.startsWith('image/');
+    const isImage = metadata.fileType && metadata.fileType.startsWith("image/")
 
     return (
       <div className="file-message">
         {isImage ? (
           <img
-            src={metadata.fileUrl}
+            src={metadata.fileUrl || "/placeholder.svg"}
             alt={metadata.fileName || "Image"}
             className="image-attachment"
           />
         ) : (
           <div className="file-attachment">
-            {metadata.fileType && metadata.fileType.startsWith('video/') ? (
+            {metadata.fileType && metadata.fileType.startsWith("video/") ? (
               <FaFileVideo className="file-icon" />
-            ) : metadata.fileType && metadata.fileType.startsWith('audio/') ? (
+            ) : metadata.fileType && metadata.fileType.startsWith("audio/") ? (
               <FaFileAudio className="file-icon" />
-            ) : metadata.fileType === 'application/pdf' ? (
+            ) : metadata.fileType === "application/pdf" ? (
               <FaFilePdf className="file-icon" />
             ) : (
               <FaFileAlt className="file-icon" />
             )}
             <span className="file-name">{metadata.fileName || "File"}</span>
-            <span className="file-size">
-              {metadata.fileSize ? `(${Math.round(metadata.fileSize / 1024)} KB)` : ""}
-            </span>
+            <span className="file-size">{metadata.fileSize ? `(${Math.round(metadata.fileSize / 1024)} KB)` : ""}</span>
             <a
               href={metadata.fileUrl}
               target="_blank"
@@ -340,8 +349,8 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           </div>
         )}
       </div>
-    );
-  };
+    )
+  }
 
   return (
     <div className={`embedded-chat ${embedded ? "embedded" : "standalone"}`}>

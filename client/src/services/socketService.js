@@ -222,11 +222,46 @@ class SocketService {
    * Reconnect to socket server
    */
   reconnect() {
-    if (this.socket) {
-      this.socket.disconnect()
+    // Don't attempt to reconnect if we're already connecting
+    if (this.isConnecting) {
+      console.log("Already attempting to connect, skipping reconnect")
+      return
     }
 
-    this.init(this.userId, this.token)
+    // Properly disconnect existing socket
+    if (this.socket) {
+      try {
+        this.socket.disconnect()
+      } catch (err) {
+        console.error("Error disconnecting socket:", err)
+      }
+      this.socket = null
+    }
+
+    // Reset connection state
+    this.isConnecting = false
+    this.reconnectAttempts = 0
+
+    // Clear any existing intervals/timeouts
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+      this.heartbeatInterval = null
+    }
+
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout)
+      this.connectionTimeout = null
+    }
+
+    // Only attempt reconnect if we have credentials
+    if (this.userId && this.token) {
+      console.log("Attempting to reconnect socket...")
+      setTimeout(() => {
+        this.init(this.userId, this.token)
+      }, 1000) // Small delay before reconnecting
+    } else {
+      console.warn("Cannot reconnect: missing userId or token")
+    }
   }
 
   /**
@@ -277,40 +312,38 @@ class SocketService {
    */
   async sendMessage(recipientId, type, content) {
     return new Promise((resolve, reject) => {
+      // Create a unique message ID for tracking
+      const tempMessageId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
       // Check if socket is connected
       if (!this.socket || !this.socket.connected) {
-        console.warn("Socket not connected, attempting to reconnect...")
+        console.warn("Socket not connected, queueing message and attempting to reconnect...")
+
+        // Create a temporary message object
+        const tempMessage = {
+          _id: tempMessageId,
+          sender: this.userId,
+          recipient: recipientId,
+          type,
+          content,
+          createdAt: new Date().toISOString(),
+          read: false,
+          pending: true,
+        }
+
+        // Queue message for later
+        this.pendingMessages.push({
+          event: "sendMessage",
+          data: { recipientId, type, content, tempMessageId },
+        })
 
         // Try to reconnect
         if (this.userId && this.token) {
           this.reconnect()
-
-          // Queue message for later (optional)
-          this.pendingMessages.push({
-            event: "sendMessage",
-            data: { recipientId, type, content },
-          })
-
-          // Fall back to API-based message sending
-          console.log("Falling back to API-based message sending")
-
-          // Return a placeholder message that the API can update later
-          const tempMessage = {
-            _id: `temp-${Date.now()}`,
-            sender: this.userId,
-            recipient: recipientId,
-            type,
-            content,
-            createdAt: new Date().toISOString(),
-            read: false,
-            pending: true,
-          }
-
-          resolve(tempMessage)
-          return
         }
 
-        reject(new Error("Socket not connected"))
+        // Return the temporary message
+        resolve(tempMessage)
         return
       }
 
@@ -330,7 +363,26 @@ class SocketService {
       const timeout = setTimeout(() => {
         this.socket.off("messageSent", handleMessageSent)
         this.socket.off("messageError", handleMessageError)
-        reject(new Error("Message send timeout"))
+
+        // If timeout occurs, return temporary message and queue for retry
+        const tempMessage = {
+          _id: tempMessageId,
+          sender: this.userId,
+          recipient: recipientId,
+          type,
+          content,
+          createdAt: new Date().toISOString(),
+          read: false,
+          pending: true,
+        }
+
+        this.pendingMessages.push({
+          event: "sendMessage",
+          data: { recipientId, type, content, tempMessageId },
+        })
+
+        resolve(tempMessage)
+        console.warn("Message send timeout, queued for retry")
       }, 5000)
 
       // Handle message sent
@@ -353,8 +405,8 @@ class SocketService {
       this.socket.once("messageSent", handleMessageSent)
       this.socket.once("messageError", handleMessageError)
 
-      // Send message
-      this.socket.emit("sendMessage", { recipientId, type, content })
+      // Send message with temp ID for tracking
+      this.socket.emit("sendMessage", { recipientId, type, content, tempMessageId })
     })
   }
 
