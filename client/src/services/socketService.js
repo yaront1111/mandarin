@@ -9,14 +9,16 @@ class SocketService {
     this.token = null
     this.isConnecting = false
     this.reconnectAttempts = 0
-    this.maxReconnectAttempts = 5
-    this.reconnectDelay = 2000
+    this.maxReconnectAttempts = 10 // Increased from 5
+    this.reconnectDelay = 5000 // Increased from 2000
     this.eventHandlers = {}
     this.pendingMessages = []
     this.connectionTimeout = null
     this.heartbeatInterval = null
     this.lastHeartbeat = null
     this.serverUrl = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000"
+    this.showConnectionToasts = false
+    this.forceReconnectTimeout = null
   }
 
   /**
@@ -43,14 +45,14 @@ class SocketService {
         this.isConnecting = false
         toast.error("Chat connection timed out. Please refresh the page.")
       }
-    }, 10000)
+    }, 20000) // Increased from 10000
 
     // Create socket connection with proper authentication
     try {
       console.log("Initializing socket with userId:", userId)
 
       // Make sure we're using the correct URL
-      const serverUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin
+      const serverUrl = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000"
       console.log("Socket server URL:", serverUrl)
 
       this.socket = io(serverUrl, {
@@ -59,19 +61,47 @@ class SocketService {
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectDelay,
-        timeout: 10000,
+        reconnectionDelayMax: 30000, // Maximum reconnection delay of 30 seconds
+        timeout: 20000, // Increased from 10000
         transports: ["websocket", "polling"],
+        forceNew: false, // Don't force a new connection
+        multiplex: true, // Allow connection multiplexing
+        upgrade: true, // Allow transport upgrades
+        pingInterval: 45000, // Increased from default (25000)
+        pingTimeout: 90000, // Increased from default (60000)
       })
 
       // Setup event handlers
       this._setupEventHandlers()
 
       console.log("Socket connection initialized")
+
+      // Set up a force reconnect every 30 minutes to refresh the connection
+      this._setupForceReconnect()
     } catch (error) {
       console.error("Socket initialization error:", error)
       this.isConnecting = false
       toast.error("Failed to connect to chat server. Please refresh the page.")
     }
+  }
+
+  /**
+   * Setup periodic force reconnect to keep connection fresh
+   */
+  _setupForceReconnect() {
+    // Clear any existing force reconnect timeout
+    if (this.forceReconnectTimeout) {
+      clearTimeout(this.forceReconnectTimeout)
+    }
+
+    // Set up a new force reconnect timeout (30 minutes)
+    this.forceReconnectTimeout = setTimeout(
+      () => {
+        console.log("Performing scheduled reconnection to refresh socket connection")
+        this.reconnect()
+      },
+      30 * 60 * 1000,
+    ) // 30 minutes
   }
 
   /**
@@ -98,8 +128,13 @@ class SocketService {
       // Process any pending messages
       this._processPendingMessages()
 
-      // Notify user of connection
-      toast.success("Chat connection established")
+      // Only show toast if we're showing connection toasts or if this is a reconnection
+      if (this.showConnectionToasts || this.reconnectAttempts > 0) {
+        toast.success("Chat connection established")
+      }
+
+      // Reset force reconnect timer
+      this._setupForceReconnect()
     })
 
     this.socket.on("connect_error", (error) => {
@@ -128,7 +163,7 @@ class SocketService {
       this._stopHeartbeat()
 
       // Show notification for unexpected disconnects
-      if (reason !== "io client disconnect") {
+      if (reason !== "io client disconnect" && reason !== "transport close") {
         toast.warning("Chat connection lost. Attempting to reconnect...")
       }
     })
@@ -136,6 +171,9 @@ class SocketService {
     this.socket.on("reconnect", (attemptNumber) => {
       console.log(`Socket reconnected after ${attemptNumber} attempts`)
       toast.success("Chat connection restored")
+
+      // Reset force reconnect timer
+      this._setupForceReconnect()
     })
 
     this.socket.on("reconnect_attempt", (attemptNumber) => {
@@ -175,12 +213,13 @@ class SocketService {
 
         // Check if we've received a pong recently
         const now = Date.now()
-        if (this.lastHeartbeat && now - this.lastHeartbeat > 30000) {
-          console.warn("No heartbeat received for 30 seconds, reconnecting...")
+        if (this.lastHeartbeat && now - this.lastHeartbeat > 60000) {
+          // Increased from 30000
+          console.warn("No heartbeat received for 60 seconds, reconnecting...")
           this.reconnect()
         }
       }
-    }, 15000)
+    }, 30000) // Increased from 15000
   }
 
   /**
@@ -253,12 +292,17 @@ class SocketService {
       this.connectionTimeout = null
     }
 
+    if (this.forceReconnectTimeout) {
+      clearTimeout(this.forceReconnectTimeout)
+      this.forceReconnectTimeout = null
+    }
+
     // Only attempt reconnect if we have credentials
     if (this.userId && this.token) {
       console.log("Attempting to reconnect socket...")
       setTimeout(() => {
         this.init(this.userId, this.token)
-      }, 1000) // Small delay before reconnecting
+      }, 2000) // Increased from 1000
     } else {
       console.warn("Cannot reconnect: missing userId or token")
     }
@@ -383,7 +427,7 @@ class SocketService {
 
         resolve(tempMessage)
         console.warn("Message send timeout, queued for retry")
-      }, 5000)
+      }, 10000) // Increased from 5000
 
       // Handle message sent
       const handleMessageSent = (message) => {
@@ -451,7 +495,7 @@ class SocketService {
         this.socket.off("callInitiated", handleCallInitiated)
         this.socket.off("callError", handleCallError)
         reject(new Error("Call initiation timeout"))
-      }, 10000)
+      }, 15000) // Increased from 10000
 
       // Handle call initiated
       const handleCallInitiated = (callData) => {
@@ -502,7 +546,7 @@ class SocketService {
         this.socket.off("callAnswered", handleCallAnswered)
         this.socket.off("callError", handleCallError)
         reject(new Error("Call answer timeout"))
-      }, 10000)
+      }, 15000) // Increased from 10000
 
       // Handle call answered
       const handleCallAnswered = (callData) => {
@@ -533,6 +577,12 @@ class SocketService {
    * Disconnect socket
    */
   disconnect() {
+    // Clear force reconnect timeout
+    if (this.forceReconnectTimeout) {
+      clearTimeout(this.forceReconnectTimeout)
+      this.forceReconnectTimeout = null
+    }
+
     if (this.socket) {
       this.socket.disconnect()
       this.socket = null
@@ -549,6 +599,14 @@ class SocketService {
 
     // Clear event handlers
     this.eventHandlers = {}
+  }
+
+  /**
+   * Enable or disable connection toast notifications
+   * @param {boolean} enable - Whether to enable connection toasts
+   */
+  setShowConnectionToasts(enable) {
+    this.showConnectionToasts = enable
   }
 }
 

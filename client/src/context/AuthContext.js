@@ -149,9 +149,33 @@ export const AuthProvider = ({ children }) => {
       const response = await authApiService.login(credentials)
       if (response.success && response.token) {
         setToken(response.token, rememberMe)
-        setUser(response.user)
+
+        // Check if user data exists in the response
+        if (response.user) {
+          setUser(response.user)
+          // Only use nickname if it exists
+          const welcomeMessage = response.user.nickname ? `Welcome back, ${response.user.nickname}!` : "Welcome back!"
+          toast.success(welcomeMessage)
+        } else {
+          // If no user data in response, fetch it
+          try {
+            const userResponse = await authApiService.getCurrentUser()
+            if (userResponse.success && userResponse.data) {
+              setUser(userResponse.data)
+              const welcomeMessage = userResponse.data.nickname
+                ? `Welcome back, ${userResponse.data.nickname}!`
+                : "Welcome back!"
+              toast.success(welcomeMessage)
+            } else {
+              toast.success("Welcome back!")
+            }
+          } catch (userErr) {
+            console.error("Error fetching user data:", userErr)
+            toast.success("Welcome back!")
+          }
+        }
+
         setIsAuthenticated(true)
-        toast.success(`Welcome back, ${response.user.nickname}!`)
         return response
       } else {
         throw new Error(response.error || "Login failed")

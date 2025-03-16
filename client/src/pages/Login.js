@@ -23,11 +23,17 @@ const Login = () => {
     if (isAuthenticated) {
       navigate(from)
     }
+  }, [isAuthenticated, navigate, from])
+
+  useEffect(() => {
+    // Only set email from location state on initial mount
     if (location.state?.email) {
       setFormData((prev) => ({ ...prev, email: location.state.email }))
     }
+    // Clear any previous errors when component mounts
     clearError()
-  }, [isAuthenticated, navigate, from, location.state?.email, clearError])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Empty dependency array means this only runs once on mount
 
   useEffect(() => {
     if (error) {

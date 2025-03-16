@@ -65,7 +65,7 @@ const StoriesViewer = ({ storyId, onClose }) => {
         clearInterval(progressInterval.current)
       }
     }
-  }, [currentStoryIndex, stories, paused, onClose])
+  }, [currentStoryIndex, stories, paused, onClose, progressStep])
 
   const handlePrevStory = () => {
     if (currentStoryIndex > 0) {
@@ -90,6 +90,26 @@ const StoriesViewer = ({ storyId, onClose }) => {
   }
 
   const currentStory = stories[currentStoryIndex]
+
+  // Get background style for text stories
+  const getBackgroundStyle = () => {
+    if (currentStory.mediaType === "text" && currentStory.backgroundStyle) {
+      const styles = { background: currentStory.backgroundStyle }
+      if (currentStory.extraStyles) {
+        return { ...styles, ...currentStory.extraStyles }
+      }
+      return styles
+    }
+    return {}
+  }
+
+  // Get font style for text stories
+  const getFontStyle = () => {
+    if (currentStory.mediaType === "text" && currentStory.fontStyle) {
+      return { fontFamily: currentStory.fontStyle }
+    }
+    return {}
+  }
 
   return (
     <div className="stories-viewer-overlay">
@@ -121,15 +141,23 @@ const StoriesViewer = ({ storyId, onClose }) => {
         </div>
 
         <div className="stories-viewer-content" onClick={togglePause}>
-          {currentStory.mediaType.startsWith("image") ? (
+          {currentStory.mediaType === "text" ? (
+            <div
+              className="stories-text-content"
+              style={{
+                ...getBackgroundStyle(),
+                ...getFontStyle(),
+              }}
+            >
+              {currentStory.text}
+            </div>
+          ) : currentStory.mediaType.startsWith("image") ? (
             <img src={currentStory.mediaUrl || "/placeholder.svg"} alt="Story" className="stories-media" />
           ) : currentStory.mediaType.startsWith("video") ? (
             <video src={currentStory.mediaUrl} className="stories-media" autoPlay muted loop />
           ) : (
             <div className="stories-text-content">{currentStory.text}</div>
           )}
-
-          {currentStory.text && currentStory.mediaUrl && <div className="stories-caption">{currentStory.text}</div>}
         </div>
 
         <div className="stories-viewer-navigation">
@@ -137,6 +165,25 @@ const StoriesViewer = ({ storyId, onClose }) => {
           <div className="stories-nav-right" onClick={handleNextStory}></div>
         </div>
       </div>
+
+      {/* Add CSS for text stories */}
+      <style jsx>{`
+        .stories-text-content {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 30px;
+          text-align: center;
+          font-size: 24px;
+          font-weight: bold;
+          color: white;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+          word-wrap: break-word;
+          border-radius: 8px;
+        }
+      `}</style>
     </div>
   )
 }

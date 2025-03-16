@@ -8,8 +8,63 @@ import { toast } from "react-toastify"
 import { FaUserCircle, FaBell, FaSearch, FaHeart, FaTimes, FaExclamationTriangle } from "react-icons/fa"
 import { ThemeToggle } from "./theme-toggle.tsx"
 
+// Add dropdown menu styles
+const dropdownStyles = `
+  .dropdown-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    min-width: 180px;
+    padding: 8px 0;
+    margin-top: 8px;
+  }
+  
+  .dropdown-menu.show {
+    display: block;
+  }
+  
+  .dropdown-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .dropdown-item:hover {
+    background-color: #f5f5f5;
+  }
+  
+  .dropdown-divider {
+    height: 1px;
+    background-color: #e9ecef;
+    margin: 4px 0;
+  }
+  
+  .text-danger {
+    color: #dc3545;
+  }
+  
+  .dropdown {
+    position: relative;
+  }
+`
+
 // Modern Navbar Component
 export const Navbar = () => {
+  // Add the styles to the document
+  useEffect(() => {
+    const styleElement = document.createElement("style")
+    styleElement.innerHTML = dropdownStyles
+    document.head.appendChild(styleElement)
+
+    return () => {
+      document.head.removeChild(styleElement)
+    }
+  }, [])
+
   const { isAuthenticated, logout, user } = useAuth()
   const navigate = useNavigate()
 
@@ -56,16 +111,38 @@ export const Navbar = () => {
                 <FaBell />
               </button>
               <div className="user-avatar-dropdown">
-                {user?.photos?.length > 0 ? (
-                  <img
-                    src={user.photos[0].url || "/placeholder.svg"}
-                    alt={user.nickname}
-                    className="user-avatar"
-                    onClick={navigateToProfile}
-                  />
-                ) : (
-                  <FaUserCircle className="user-avatar" style={{ fontSize: "32px" }} onClick={navigateToProfile} />
-                )}
+                <div className="dropdown">
+                  {user?.photos?.length > 0 ? (
+                    <img
+                      src={user.photos[0].url || "/placeholder.svg"}
+                      alt={user.nickname}
+                      className="user-avatar dropdown-toggle"
+                      onClick={() => document.getElementById("user-dropdown").classList.toggle("show")}
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                    />
+                  ) : (
+                    <FaUserCircle
+                      className="user-avatar dropdown-toggle"
+                      style={{ fontSize: "32px" }}
+                      onClick={() => document.getElementById("user-dropdown").classList.toggle("show")}
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                    />
+                  )}
+                  <div id="user-dropdown" className="dropdown-menu dropdown-menu-end">
+                    <div className="dropdown-item" onClick={navigateToProfile}>
+                      Profile
+                    </div>
+                    <div className="dropdown-item" onClick={() => navigate("/settings")}>
+                      Settings
+                    </div>
+                    <div className="dropdown-divider"></div>
+                    <div className="dropdown-item text-danger" onClick={handleLogout}>
+                      Logout
+                    </div>
+                  </div>
+                </div>
               </div>
             </>
           ) : (

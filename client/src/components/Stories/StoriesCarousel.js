@@ -6,16 +6,22 @@ import StoryThumbnail from "./StoryThumbnail"
 import "../../styles/stories.css"
 
 const StoriesCarousel = ({ onStoryClick }) => {
-  const { stories, fetchStories } = useStories()
+  const storiesContext = useStories()
+  const { stories = [], fetchStories } = storiesContext || {}
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const loadStories = async () => {
       try {
-        await fetchStories()
+        // Check if fetchStories exists before calling it
+        if (typeof fetchStories === "function") {
+          await fetchStories()
+        } else {
+          console.log("Stories functionality is not available")
+          setLoading(false)
+        }
       } catch (error) {
         console.error("Error loading stories:", error)
-      } finally {
         setLoading(false)
       }
     }

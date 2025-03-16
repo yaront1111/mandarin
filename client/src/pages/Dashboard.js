@@ -12,20 +12,28 @@ import {
   FaThLarge,
   FaList,
   FaFilter,
+  FaSignOutAlt,
+  FaCog,
+  FaUser,
+  FaPlus,
+  FaChevronDown,
 } from "react-icons/fa"
 import { toast } from "react-toastify"
 import { useAuth } from "../context"
 import { useUser } from "../context"
 import { useChat } from "../context"
+import { useStories } from "../context" // Import Stories context
 import EmbeddedChat from "../components/EmbeddedChat"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
-import StoriesCarousel from "../components/Stories/StoriesCarousel" // Import StoriesCarousel
+import StoriesCarousel from "../components/Stories/StoriesCarousel"
+import StoryCreator from "../components/Stories/StoryCreator" // Import StoryCreator
 
 const Dashboard = () => {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, logout } = useAuth() // Add logout from AuthContext
   const { users, getUsers, loading } = useUser()
   const { unreadMessages } = useChat()
+  const { createStory } = useStories() // Add Stories context
 
   const [activeTab, setActiveTab] = useState("discover")
   const [showFilters, setShowFilters] = useState(false)
@@ -39,11 +47,13 @@ const Dashboard = () => {
     interests: [],
   })
 
-  // New state for chat functionality
+  // New state for user dropdown, chat, and story creation
+  const [showUserDropdown, setShowUserDropdown] = useState(false)
   const [chatUser, setChatUser] = useState(null)
   const [showChat, setShowChat] = useState(false)
   const [viewMode, setViewMode] = useState("grid") // 'grid' or 'list'
   const [imageLoadErrors, setImageLoadErrors] = useState({})
+  const [showStoryCreator, setShowStoryCreator] = useState(false)
 
   // Handle image loading errors
   const handleImageError = useCallback((userId) => {
@@ -80,6 +90,20 @@ const Dashboard = () => {
       setChatUser(null)
     }
   }, [getUsers])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showUserDropdown && !event.target.closest(".user-avatar-dropdown")) {
+        setShowUserDropdown(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [showUserDropdown])
 
   // Memoized filtered users to avoid recalculation on every render
   const filteredUsers = useMemo(() => {
@@ -152,6 +176,32 @@ const Dashboard = () => {
     navigate("/profile")
   }
 
+  const navigateToSettings = () => {
+    navigate("/settings")
+  }
+
+  const handleLogout = () => {
+    logout()
+    navigate("/login")
+    toast.success("You have been logged out")
+  }
+
+  // Handle story creation
+  const handleCreateStory = (storyData) => {
+    if (createStory) {
+      createStory(storyData)
+        .then(() => {
+          setShowStoryCreator(false)
+          toast.success("Your story has been created!")
+        })
+        .catch((error) => {
+          toast.error("Failed to create story: " + (error.message || "Unknown error"))
+        })
+    } else {
+      toast.error("Story creation is not available right now")
+    }
+  }
+
   // Reset image load errors when filter changes
   useEffect(() => {
     setImageLoadErrors({})
@@ -217,19 +267,49 @@ const Dashboard = () => {
               )}
             </button>
             <div className="user-avatar-dropdown">
-              {user?.photos?.length > 0 ? (
-                <img
-                  src={user.photos[0].url || "/placeholder.svg"}
-                  alt={user.nickname}
-                  className="user-avatar"
-                  onClick={navigateToProfile}
-                  onError={() => handleImageError("current-user")}
-                />
-              ) : (
-                <FaUserCircle className="user-avatar" style={{ fontSize: "32px" }} onClick={navigateToProfile} />
-              )}
-              {imageLoadErrors["current-user"] && (
-                <FaUserCircle className="user-avatar" style={{ fontSize: "32px" }} onClick={navigateToProfile} />
+              <div
+                className="avatar-container"
+                onClick={() => setShowUserDropdown(!showUserDropdown)}
+                aria-expanded={showUserDropdown}
+              >
+                {user?.photos?.length > 0 ? (
+                  <img
+                    src={user.photos[0].url || "/placeholder.svg"}
+                    alt={user.nickname}
+                    className="user-avatar"
+                    onError={() => handleImageError("current-user")}
+                  />
+                ) : (
+                  <FaUserCircle className="user-avatar" style={{ fontSize: "32px" }} />
+                )}
+                {imageLoadErrors["current-user"] && (
+                  <FaUserCircle className="user-avatar" style={{ fontSize: "32px" }} />
+                )}
+                <FaChevronDown className="dropdown-icon" />
+              </div>
+
+              {/* User dropdown menu */}
+              {showUserDropdown && (
+                <div className="user-dropdown-menu">
+                  <div className="dropdown-user-info">
+                    <strong>{user?.nickname || "User"}</strong>
+                    <span>{user?.email || ""}</span>
+                  </div>
+                  <div className="dropdown-divider"></div>
+                  <button className="dropdown-item" onClick={navigateToProfile}>
+                    <FaUser className="dropdown-icon" />
+                    <span>Profile</span>
+                  </button>
+                  <button className="dropdown-item" onClick={navigateToSettings}>
+                    <FaCog className="dropdown-icon" />
+                    <span>Settings</span>
+                  </button>
+                  <div className="dropdown-divider"></div>
+                  <button className="dropdown-item logout" onClick={handleLogout}>
+                    <FaSignOutAlt className="dropdown-icon" />
+                    <span>Logout</span>
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -239,8 +319,21 @@ const Dashboard = () => {
       {/* Content */}
       <main className="dashboard-content">
         <div className="container">
-          {/* Add Stories Carousel */}
-          <StoriesCarousel />
+          {/* Stories Section with Create Story Button */}
+          <div className="stories-section">
+            <div className="stories-header d-flex justify-content-between align-items-center mb-3">
+              <h2>Stories</h2>
+              <button
+                className="btn btn-primary create-story-btn"
+                onClick={() => setShowStoryCreator(true)}
+                aria-label="Create a new story"
+              >
+                <FaPlus className="me-2 d-none d-sm-inline" />
+                <span className="d-none d-md-inline">Create Story</span>
+              </button>
+            </div>
+            <StoriesCarousel onStoryClick={(storyId) => navigate(`/story/${storyId}`)} />
+          </div>
 
           <div className="content-header d-flex justify-content-between align-items-center">
             <h1>{activeTab === "discover" ? "Discover People" : "Your Matches"}</h1>
@@ -494,6 +587,130 @@ const Dashboard = () => {
           <EmbeddedChat recipient={chatUser} isOpen={showChat} onClose={closeChat} />
         </>
       )}
+
+      {/* Story Creator Modal */}
+      {showStoryCreator && (
+        <>
+          <div className="modal-overlay" onClick={() => setShowStoryCreator(false)}></div>
+          <div className="story-creator-modal">
+            <StoryCreator onClose={() => setShowStoryCreator(false)} onSubmit={handleCreateStory} />
+          </div>
+        </>
+      )}
+
+      {/* Add CSS for new components */}
+      <style jsx>{`
+        /* User Dropdown Menu Styles */
+        .avatar-container {
+          display: flex;
+          align-items: center;
+          cursor: pointer;
+        }
+        
+        .dropdown-icon {
+          margin-left: 5px;
+          font-size: 12px;
+          transition: transform 0.2s;
+        }
+        
+        .user-dropdown-menu {
+          position: absolute;
+          top: 100%;
+          right: 0;
+          width: 220px;
+          background: var(--bg-card);
+          border-radius: 8px;
+          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+          z-index: 1000;
+          overflow: hidden;
+          margin-top: 8px;
+        }
+        
+        .dropdown-user-info {
+          padding: 12px 16px;
+          display: flex;
+          flex-direction: column;
+        }
+        
+        .dropdown-user-info span {
+          font-size: 0.8rem;
+          opacity: 0.7;
+          margin-top: 4px;
+        }
+        
+        .dropdown-divider {
+          height: 1px;
+          background: rgba(0, 0, 0, 0.1);
+          margin: 4px 0;
+        }
+        
+        .dropdown-item {
+          display: flex;
+          align-items: center;
+          padding: 10px 16px;
+          width: 100%;
+          text-align: left;
+          background: none;
+          border: none;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+        
+        .dropdown-item:hover {
+          background: rgba(0, 0, 0, 0.05);
+        }
+        
+        .dropdown-item .dropdown-icon {
+          margin-right: 10px;
+          margin-left: 0;
+          font-size: 16px;
+        }
+        
+        .dropdown-item.logout {
+          color: #e74c3c;
+        }
+        
+        /* Stories Section Styles */
+        .stories-section {
+          margin-bottom: 30px;
+        }
+        
+        .stories-header {
+          margin-top: 20px;
+        }
+        
+        .create-story-btn {
+          display: flex;
+          align-items: center;
+          padding: 8px 16px;
+          border-radius: 20px;
+        }
+        
+        /* Modal Styles */
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          z-index: 1000;
+        }
+        
+        .story-creator-modal {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          z-index: 1001;
+          width: 90%;
+          max-width: 500px;
+          background: var(--bg-card);
+          border-radius: 12px;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+          overflow: hidden;
+        }
+      `}</style>
     </div>
   )
 }
