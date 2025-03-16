@@ -17,10 +17,15 @@ class SocketService {
     this.heartbeatInterval = null
     this.lastHeartbeat = null
     this.connectionLostTimeout = null
-    this.serverUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin || "http://localhost:5000"
+    this.serverUrl =
+      process.env.REACT_APP_SOCKET_URL ||
+      (window.location.hostname.includes("localhost")
+        ? `http://${window.location.hostname}:5000`
+        : window.location.origin)
     this.showConnectionToasts = false
     this.forceReconnectTimeout = null
     this.abortController = null
+    this.debugMode = process.env.NODE_ENV !== "production"
   }
 
   /**
@@ -60,10 +65,10 @@ class SocketService {
 
     // Create socket connection with proper authentication
     try {
-      console.log("Initializing socket with userId:", userId)
+      this._log("Initializing socket with userId:", userId)
 
       // Make sure we're using the correct URL
-      console.log("Socket server URL:", this.serverUrl)
+      this._log("Socket server URL:", this.serverUrl)
 
       // Create socket instance with optimization options
       this.socket = io(this.serverUrl, {
@@ -73,9 +78,9 @@ class SocketService {
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectDelay,
         reconnectionDelayMax: 30000, // Maximum reconnection delay of 30 seconds
-        timeout: 20000,
+        timeout: 30000, // Increase timeout to 30 seconds
         transports: ["websocket", "polling"],
-        forceNew: false, // Don't force a new connection
+        forceNew: true, // Force a new connection to avoid issues with existing connections
         multiplex: true, // Allow connection multiplexing
         upgrade: true, // Allow transport upgrades
         pingInterval: 45000,
@@ -83,23 +88,26 @@ class SocketService {
         perMessageDeflate: true, // Enable compression
         autoConnect: true,
         volatile: false, // Make sure messages are delivered
-        path: window.location.origin.includes('localhost') ? '/socket.io' : '/socket.io',
+        path: "/socket.io", // Explicitly set the path to avoid issues
       })
+
+      // Add debug logging right after socket initialization to help diagnose issues
+      this._log(`Attempting socket connection to: ${this.serverUrl} with path: /socket.io`)
 
       // Setup event handlers
       this._setupEventHandlers()
 
-      console.log("Socket connection initialized")
+      this._log("Socket connection initialized")
 
       // Set up a force reconnect every 30 minutes to refresh the connection
       this._setupForceReconnect()
 
       // Listen for network status changes
-      window.addEventListener('online', this._handleOnline)
-      window.addEventListener('offline', this._handleOffline)
+      window.addEventListener("online", this._handleOnline)
+      window.addEventListener("offline", this._handleOffline)
 
       // Listen for page visibility changes
-      document.addEventListener('visibilitychange', this._handleVisibilityChange)
+      document.addEventListener("visibilitychange", this._handleVisibilityChange)
     } catch (error) {
       console.error("Socket initialization error:", error)
       this.isConnecting = false
@@ -108,10 +116,26 @@ class SocketService {
   }
 
   /**
+   * Internal logging method that respects debug mode
+   */
+  _log(...args) {
+    if (this.debugMode) {
+      console.log("[SocketService]", ...args)
+    }
+  }
+
+  /**
+   * Internal error logging method
+   */
+  _error(...args) {
+    console.error("[SocketService]", ...args)
+  }
+
+  /**
    * Handle when the browser comes online
    */
   _handleOnline = () => {
-    console.log("Browser went online, attempting reconnect")
+    this._log("Browser went online, attempting reconnect")
     if (!this.socket || !this.socket.connected) {
       this.reconnect()
     }
@@ -121,7 +145,7 @@ class SocketService {
    * Handle when the browser goes offline
    */
   _handleOffline = () => {
-    console.log("Browser went offline, socket may disconnect")
+    this._log("Browser went offline, socket may disconnect")
 
     // Clear ongoing timeouts/intervals when offline
     if (this.heartbeatInterval) {
@@ -144,8 +168,8 @@ class SocketService {
    * Handle page visibility changes
    */
   _handleVisibilityChange = () => {
-    if (document.visibilityState === 'visible') {
-      console.log("Tab became visible, checking connection")
+    if (document.visibilityState === "visible") {
+      this._log("Tab became visible, checking connection")
 
       // If socket exists but isn't connected, try to reconnect
       if (this.socket && !this.socket.connected && navigator.onLine) {
@@ -157,7 +181,7 @@ class SocketService {
         this._startHeartbeat()
       }
     } else {
-      console.log("Tab hidden, pausing heartbeat to save resources")
+      this._log("Tab hidden, pausing heartbeat to save resources")
 
       // Pause heartbeat to save resources when tab is not visible
       if (this.heartbeatInterval) {
@@ -179,10 +203,10 @@ class SocketService {
     // Set up a new force reconnect timeout (30 minutes)
     this.forceReconnectTimeout = setTimeout(
       () => {
-        console.log("Performing scheduled reconnection to refresh socket connection")
+        this._log("Performing scheduled reconnection to refresh socket connection")
         this.reconnect()
       },
-      30 * 60 * 1000
+      30 * 60 * 1000,
     )
   }
 
@@ -194,7 +218,7 @@ class SocketService {
 
     // Connection events
     this.socket.on("connect", () => {
-      console.log("Socket connected")
+      this._log("Socket connected successfully")
       this.isConnecting = false
       this.reconnectAttempts = 0
 
@@ -223,10 +247,13 @@ class SocketService {
 
       // Reset force reconnect timer
       this._setupForceReconnect()
+
+      // Emit a custom event that other components can listen for
+      window.dispatchEvent(new CustomEvent("socketConnected"))
     })
 
     this.socket.on("connect_error", (error) => {
-      console.error("Socket connection error:", error)
+      this._error("Socket connection error:", error)
       this.isConnecting = false
 
       // Clear connection timeout
@@ -241,11 +268,13 @@ class SocketService {
       // Show error message if max attempts reached
       if (this.reconnectAttempts >= this.maxReconnectAttempts) {
         toast.error("Failed to connect to chat server. Please refresh the page.")
+        // Emit a custom event that other components can listen for
+        window.dispatchEvent(new CustomEvent("socketConnectionFailed"))
       }
     })
 
     this.socket.on("disconnect", (reason) => {
-      console.warn("Socket disconnected:", reason)
+      this._log("Socket disconnected:", reason)
 
       // Stop heartbeat
       this._stopHeartbeat()
@@ -255,19 +284,15 @@ class SocketService {
         this.connectionLostTimeout = setTimeout(() => {
           if (!this.socket || !this.socket.connected) {
             toast.warning("Chat connection lost. Attempting to reconnect...")
+            // Emit a custom event that other components can listen for
+            window.dispatchEvent(new CustomEvent("socketDisconnected", { detail: { reason } }))
           }
         }, 5000) // Wait 5 seconds before showing the notification
-      }
-
-      // Show notification for unexpected disconnects
-      if (reason !== "io client disconnect" && reason !== "transport close") {
-        // Only show toast if the disconnect persists for a few seconds
-        // This is now handled by connectionLostTimeout
       }
     })
 
     this.socket.on("reconnect", (attemptNumber) => {
-      console.log(`Socket reconnected after ${attemptNumber} attempts`)
+      this._log(`Socket reconnected after ${attemptNumber} attempts`)
 
       // Clear connection lost timeout if it exists
       if (this.connectionLostTimeout) {
@@ -279,29 +304,59 @@ class SocketService {
 
       // Reset force reconnect timer
       this._setupForceReconnect()
+
+      // Emit a custom event that other components can listen for
+      window.dispatchEvent(new CustomEvent("socketReconnected", { detail: { attemptNumber } }))
     })
 
     this.socket.on("reconnect_attempt", (attemptNumber) => {
-      console.log(`Socket reconnect attempt ${attemptNumber}`)
+      this._log(`Socket reconnect attempt ${attemptNumber}`)
     })
 
     this.socket.on("reconnect_error", (error) => {
-      console.error("Socket reconnect error:", error)
+      this._error("Socket reconnect error:", error)
     })
 
     this.socket.on("reconnect_failed", () => {
-      console.error("Socket reconnect failed")
+      this._error("Socket reconnect failed")
       toast.error("Failed to reconnect to chat server. Please refresh the page.")
+      // Emit a custom event that other components can listen for
+      window.dispatchEvent(new CustomEvent("socketReconnectFailed"))
     })
 
     // Server events
     this.socket.on("error", (error) => {
-      console.error("Socket server error:", error)
+      this._error("Socket server error:", error)
       toast.error(`Chat server error: ${error.message || "Unknown error"}`)
     })
 
     this.socket.on("pong", () => {
       this.lastHeartbeat = Date.now()
+    })
+
+    // Handle auth errors specifically
+    this.socket.on("auth_error", (error) => {
+      this._error("Socket authentication error:", error)
+      toast.error("Authentication failed. Please log in again.")
+      // Trigger logout
+      window.dispatchEvent(new CustomEvent("authLogout"))
+    })
+
+    // Handle user status updates
+    this.socket.on("userOnline", (data) => {
+      window.dispatchEvent(
+        new CustomEvent("userStatusChanged", {
+          detail: { userId: data.userId, status: "online", timestamp: data.timestamp },
+        }),
+      )
+    })
+
+    this.socket.on("userOffline", (data) => {
+      window.dispatchEvent(
+        new CustomEvent("userStatusChanged", {
+          detail: { userId: data.userId, status: "offline", timestamp: data.timestamp },
+        }),
+      )
     })
   }
 
@@ -319,7 +374,7 @@ class SocketService {
         // Check if we've received a pong recently
         const now = Date.now()
         if (this.lastHeartbeat && now - this.lastHeartbeat > 60000) {
-          console.warn("No heartbeat received for 60 seconds, reconnecting...")
+          this._log("No heartbeat received for 60 seconds, reconnecting...")
           this.reconnect()
         }
       }
@@ -342,7 +397,7 @@ class SocketService {
   _processPendingMessages() {
     if (!this.socket || !this.socket.connected || this.pendingMessages.length === 0) return
 
-    console.log(`Processing ${this.pendingMessages.length} pending messages`)
+    this._log(`Processing ${this.pendingMessages.length} pending messages`)
 
     // Process each pending message
     const messages = [...this.pendingMessages]
@@ -367,7 +422,7 @@ class SocketService {
   reconnect() {
     // Don't attempt to reconnect if we're already connecting
     if (this.isConnecting) {
-      console.log("Already attempting to connect, skipping reconnect")
+      this._log("Already attempting to connect, skipping reconnect")
       return
     }
 
@@ -376,7 +431,7 @@ class SocketService {
       try {
         this.socket.disconnect()
       } catch (err) {
-        console.error("Error disconnecting socket:", err)
+        this._error("Error disconnecting socket:", err)
       }
       this.socket = null
     }
@@ -408,13 +463,13 @@ class SocketService {
 
     // Only attempt reconnect if we have credentials
     if (this.userId && this.token) {
-      console.log("Attempting to reconnect socket...")
+      this._log("Attempting to reconnect socket...")
       // Add a small delay before reconnecting
       setTimeout(() => {
         this.init(this.userId, this.token)
       }, 2000)
     } else {
-      console.warn("Cannot reconnect: missing userId or token")
+      this._log("Cannot reconnect: missing userId or token")
     }
   }
 
@@ -472,7 +527,7 @@ class SocketService {
 
       // Check if socket is connected
       if (!this.socket || !this.socket.connected) {
-        console.warn("Socket not connected, queueing message and attempting to reconnect...")
+        this._log("Socket not connected, queueing message and attempting to reconnect...")
 
         // Create a temporary message object
         const tempMessage = {
@@ -539,7 +594,7 @@ class SocketService {
         })
 
         resolve(tempMessage)
-        console.warn("Message send timeout, queued for retry")
+        this._log("Message send timeout, queued for retry")
       }, 10000)
 
       // Handle message sent
@@ -578,7 +633,7 @@ class SocketService {
 
     // Validate recipientId format
     if (!recipientId || !/^[0-9a-fA-F]{24}$/.test(recipientId)) {
-      console.error(`Invalid recipient ID format for typing: ${recipientId}`)
+      this._error(`Invalid recipient ID format for typing: ${recipientId}`)
       return
     }
 
@@ -687,6 +742,23 @@ class SocketService {
   }
 
   /**
+   * Get connection status
+   * @returns {Object} - Connection status object
+   */
+  getStatus() {
+    return {
+      connected: this.socket?.connected || false,
+      connecting: this.isConnecting,
+      reconnectAttempts: this.reconnectAttempts,
+      userId: this.userId,
+      serverUrl: this.serverUrl,
+      transport: this.socket?.io?.engine?.transport?.name || null,
+      pingInterval: this.socket?.io?.engine?.pingInterval || null,
+      pingTimeout: this.socket?.io?.engine?.pingTimeout || null,
+    }
+  }
+
+  /**
    * Disconnect socket
    */
   disconnect() {
@@ -697,9 +769,9 @@ class SocketService {
     }
 
     // Remove event listeners
-    window.removeEventListener('online', this._handleOnline)
-    window.removeEventListener('offline', this._handleOffline)
-    document.removeEventListener('visibilitychange', this._handleVisibilityChange)
+    window.removeEventListener("online", this._handleOnline)
+    window.removeEventListener("offline", this._handleOffline)
+    document.removeEventListener("visibilitychange", this._handleVisibilityChange)
 
     // Clear force reconnect timeout
     if (this.forceReconnectTimeout) {
@@ -715,8 +787,8 @@ class SocketService {
 
     if (this.socket) {
       // Remove all event handlers
-      Object.keys(this.eventHandlers).forEach(event => {
-        this.eventHandlers[event].forEach(handler => {
+      Object.keys(this.eventHandlers).forEach((event) => {
+        this.eventHandlers[event].forEach((handler) => {
           this.socket.off(event, handler)
         })
       })
@@ -752,6 +824,14 @@ class SocketService {
    */
   setShowConnectionToasts(enable) {
     this.showConnectionToasts = enable
+  }
+
+  /**
+   * Enable or disable debug mode
+   * @param {boolean} enable - Whether to enable debug mode
+   */
+  setDebugMode(enable) {
+    this.debugMode = enable
   }
 }
 

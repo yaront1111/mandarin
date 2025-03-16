@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, useCallback } from "react"
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react"
 import storiesService from "../services/storiesService"
 import { useAuth } from "./AuthContext"
 import { toast } from "react-toastify"
@@ -16,7 +16,9 @@ export const StoriesProvider = ({ children }) => {
   const [error, setError] = useState(null)
   const [viewedStories, setViewedStories] = useState({})
   const [lastFetch, setLastFetch] = useState(0)
-  const [refreshInterval, setRefreshInterval] = useState(null)
+
+  // Instead of state, use a ref for the refresh interval.
+  const refreshIntervalRef = useRef(null)
 
   // Clear error helper
   const clearError = useCallback(() => {
@@ -24,35 +26,38 @@ export const StoriesProvider = ({ children }) => {
   }, [])
 
   // Load all stories for the feed with caching
-  const loadStories = useCallback(async (forceRefresh = false) => {
-    // If we've fetched recently and not forcing a refresh, use cached data
-    const now = Date.now()
-    if (!forceRefresh && stories.length > 0 && now - lastFetch < 60000) {
-      console.log('Using cached stories data')
-      return stories
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await storiesService.getAllStories()
-      if (response.success) {
-        setStories(response.data || [])
-        setLastFetch(now)
-        return response.data || []
-      } else {
-        setError(response.message || "Failed to load stories")
-        return []
+  const loadStories = useCallback(
+    async (forceRefresh = false) => {
+      // If we've fetched recently and not forcing a refresh, use cached data
+      const now = Date.now()
+      if (!forceRefresh && stories.length > 0 && now - lastFetch < 60000) {
+        console.log("Using cached stories data")
+        return stories
       }
-    } catch (err) {
-      console.error("Error loading stories:", err)
-      setError(err.message || "An error occurred while loading stories")
-      return []
-    } finally {
-      setLoading(false)
-    }
-  }, [stories, lastFetch])
+
+      setLoading(true)
+      setError(null)
+
+      try {
+        const response = await storiesService.getAllStories()
+        if (response.success) {
+          setStories(response.data || [])
+          setLastFetch(now)
+          return response.data || []
+        } else {
+          setError(response.message || "Failed to load stories")
+          return []
+        }
+      } catch (err) {
+        console.error("Error loading stories:", err)
+        setError(err.message || "An error occurred while loading stories")
+        return []
+      } finally {
+        setLoading(false)
+      }
+    },
+    [stories, lastFetch]
+  )
 
   // Load stories for a specific user
   const loadUserStories = useCallback(async (userId) => {
@@ -69,18 +74,16 @@ export const StoriesProvider = ({ children }) => {
         const userStories = response.data || []
 
         // Update the stories array with the new user stories
-        setStories(prevStories => {
+        setStories((prevStories) => {
           // Create a map of existing stories by userId for efficient lookup
-          const storiesByUser = new Map(
-            prevStories.map(story => [story.user?._id, story])
-          )
+          const storiesByUser = new Map(prevStories.map((story) => [story.user?._id, story]))
 
           // Add or update the stories for this user
           if (userStories.length > 0) {
             storiesByUser.set(userId, {
               user: userStories[0].user,
               _id: userStories[0]._id,
-              createdAt: userStories[0].createdAt
+              createdAt: userStories[0].createdAt,
             })
           } else if (storiesByUser.has(userId)) {
             // Remove this user's stories if there are none
@@ -162,11 +165,7 @@ export const StoriesProvider = ({ children }) => {
 
         if (response.success) {
           // Remove the deleted story from state
-          setStories(prevStories => {
-            // Filter out the deleted story
-            return prevStories.filter(story => story._id !== storyId)
-          })
-
+          setStories((prevStories) => prevStories.filter((story) => story._id !== storyId))
           toast.success("Story deleted successfully")
           return response
         } else {
@@ -189,15 +188,8 @@ export const StoriesProvider = ({ children }) => {
       if (!user || !storyId) return false
 
       try {
-        // Call API to mark story as viewed
         await storiesService.markStoryAsViewed(storyId)
-
-        // Update local viewed stories state
-        setViewedStories(prev => ({
-          ...prev,
-          [storyId]: Date.now()
-        }))
-
+        setViewedStories((prev) => ({ ...prev, [storyId]: Date.now() }))
         return true
       } catch (err) {
         console.error(`Error marking story ${storyId} as viewed:`, err)
@@ -212,40 +204,38 @@ export const StoriesProvider = ({ children }) => {
     (userId) => {
       if (!stories || !userId || !user) return false
 
-      // Find stories for this user
-      const userStories = stories.filter(story =>
-        story.user && story.user._id === userId
-      )
-
+      const userStories = stories.filter((story) => story.user && story.user._id === userId)
       if (!userStories || userStories.length === 0) return false
 
-      // Check if any story is unviewed
-      return userStories.some(story => !viewedStories[story._id])
+      return userStories.some((story) => !viewedStories[story._id])
     },
     [stories, viewedStories, user]
   )
 
   // React to a story (like, etc.)
-  const reactToStory = useCallback(async (storyId, reactionType) => {
-    if (!user) {
-      toast.error("You must be logged in to react to a story")
-      return { success: false }
-    }
-
-    try {
-      const response = await storiesService.reactToStory(storyId, reactionType)
-      if (response.success) {
-        toast.success("Reaction added!")
+  const reactToStory = useCallback(
+    async (storyId, reactionType) => {
+      if (!user) {
+        toast.error("You must be logged in to react to a story")
+        return { success: false }
       }
-      return response
-    } catch (err) {
-      console.error("Error reacting to story:", err)
-      toast.error("Failed to add reaction")
-      return { success: false }
-    }
-  }, [user])
 
-  // Load viewed stories from local storage on mount
+      try {
+        const response = await storiesService.reactToStory(storyId, reactionType)
+        if (response.success) {
+          toast.success("Reaction added!")
+        }
+        return response
+      } catch (err) {
+        console.error("Error reacting to story:", err)
+        toast.error("Failed to add reaction")
+        return { success: false }
+      }
+    },
+    [user]
+  )
+
+  // Load viewed stories from localStorage on mount
   useEffect(() => {
     if (user) {
       const storedViewedStories = localStorage.getItem(`viewedStories_${user._id}`)
@@ -259,48 +249,47 @@ export const StoriesProvider = ({ children }) => {
     }
   }, [user])
 
-  // Save viewed stories to local storage when they change
+  // Save viewed stories to localStorage when they change
   useEffect(() => {
     if (user && Object.keys(viewedStories).length > 0) {
       localStorage.setItem(`viewedStories_${user._id}`, JSON.stringify(viewedStories))
     }
   }, [viewedStories, user])
 
-  // Set up periodic refresh for stories when authenticated
+  // Set up periodic refresh for stories when authenticated using a ref
   useEffect(() => {
-    // Clear existing interval if any
-    if (refreshInterval) {
-      clearInterval(refreshInterval)
+    // Clear any existing interval
+    if (refreshIntervalRef.current) {
+      clearInterval(refreshIntervalRef.current)
+      refreshIntervalRef.current = null
     }
 
     // Only set up refresh if user is authenticated
     if (isAuthenticated) {
       // Refresh stories every 5 minutes
-      const interval = setInterval(() => {
+      refreshIntervalRef.current = setInterval(() => {
         // Only refresh if tab is visible
-        if (document.visibilityState === 'visible') {
-          loadStories(true).catch(err => {
+        if (document.visibilityState === "visible") {
+          loadStories(true).catch((err) => {
             console.error("Error refreshing stories:", err)
           })
         }
       }, 5 * 60 * 1000) // 5 minutes
-
-      setRefreshInterval(interval)
     }
 
     // Cleanup on unmount
     return () => {
-      if (refreshInterval) {
-        clearInterval(refreshInterval)
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current)
+        refreshIntervalRef.current = null
       }
     }
-  }, [isAuthenticated, loadStories, refreshInterval])
+  }, [isAuthenticated, loadStories])
 
-  // Initial stories load
+  // Initial stories load when authenticated
   useEffect(() => {
-    // Only load stories if user is authenticated
     if (isAuthenticated) {
-      loadStories().catch(err => {
+      loadStories().catch((err) => {
         console.error("Error in initial stories load:", err)
       })
     }

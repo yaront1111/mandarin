@@ -212,15 +212,17 @@ const Dashboard = () => {
     (userId) => {
       return Array.isArray(unreadMessages) && unreadMessages.some((msg) => msg.sender === userId)
     },
-    [unreadMessages],
+    [unreadMessages]
   )
 
   // Count unread messages for a user - with proper null/undefined checks
   const unreadCount = useCallback(
     (userId) => {
-      return Array.isArray(unreadMessages) ? unreadMessages.filter((msg) => msg.sender === userId).length : 0
+      return Array.isArray(unreadMessages)
+        ? unreadMessages.filter((msg) => msg.sender === userId).length
+        : 0
     },
-    [unreadMessages],
+    [unreadMessages]
   )
 
   // Reset filters function
@@ -598,8 +600,8 @@ const Dashboard = () => {
         </>
       )}
 
-      {/* Add CSS for new components */}
-      <style jsx>{`
+      {/* Style block without the "jsx" attribute */}
+      <style>{`
         /* User Dropdown Menu Styles */
         .avatar-container {
           display: flex;
@@ -662,7 +664,6 @@ const Dashboard = () => {
         
         .dropdown-item .dropdown-icon {
           margin-right: 10px;
-          margin-left: 0;
           font-size: 16px;
         }
         

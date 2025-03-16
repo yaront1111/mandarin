@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useState, useContext, useEffect, useCallback } from "react"
+import { createContext, useState, useContext, useEffect, useCallback, useRef } from "react"
 import { toast } from "react-toastify"
 import apiService from "../services/apiService"
 import { getToken, setToken, removeToken, isTokenExpired } from "../utils/tokenStorage"
@@ -9,7 +9,7 @@ const AuthContext = createContext()
 
 export const useAuth = () => useContext(AuthContext)
 
-// Create and export the authApiService for authentication-specific API calls
+// Authentication-specific API calls
 export const authApiService = {
   register: async (userData) => {
     try {
@@ -90,39 +90,69 @@ export const AuthProvider = ({ children }) => {
   const [error, setError] = useState(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
-  const [tokenRefreshTimer, setTokenRefreshTimer] = useState(null)
+
+  // Use refs for the refresh token promise and timer
+  const refreshTokenPromiseRef = useRef(null)
+  const tokenRefreshTimerRef = useRef(null)
 
   // Clear any error
   const clearError = useCallback(() => {
     setError(null)
   }, [])
 
-  // Setup token refresh schedule
-  const scheduleTokenRefresh = useCallback((token) => {
-    // Clear any existing timer
-    if (tokenRefreshTimer) {
-      clearTimeout(tokenRefreshTimer)
-    }
-
+  // Logout is used in refreshToken; declare it first
+  const logout = useCallback(async () => {
+    setLoading(true)
     try {
-      // Parse token to get expiry
+      // Clear any scheduled token refresh timer
+      if (tokenRefreshTimerRef.current) {
+        clearTimeout(tokenRefreshTimerRef.current)
+        tokenRefreshTimerRef.current = null
+      }
+      // Attempt to notify server (continue even if it fails)
+      try {
+        await authApiService.logout()
+      } catch (err) {
+        console.warn("Logout API call failed:", err)
+      }
+      removeToken()
+      setUser(null)
+      setIsAuthenticated(false)
+      toast.info("You have been logged out")
+    } catch (err) {
+      console.error("Logout error:", err)
+      removeToken()
+      setUser(null)
+      setIsAuthenticated(false)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Schedule token refresh based on token expiry
+  const scheduleTokenRefresh = useCallback((token) => {
+    if (tokenRefreshTimerRef.current) {
+      clearTimeout(tokenRefreshTimerRef.current)
+      tokenRefreshTimerRef.current = null
+    }
+    try {
+      // Decode token to extract expiry
       const base64Url = token.split('.')[1]
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
       const payload = JSON.parse(atob(base64))
 
       if (payload.exp) {
-        // Set refresh to happen 5 minutes before expiry
         const expiresAt = payload.exp * 1000 // convert to milliseconds
         const now = Date.now()
-        const timeUntilRefresh = expiresAt - now - (5 * 60 * 1000) // 5 min before expiry
+        const timeUntilRefresh = expiresAt - now - (5 * 60 * 1000) // refresh 5 minutes before expiry
 
-        // Only schedule if expiry is more than 6 minutes away
-        if (timeUntilRefresh > 60000) {
+        if (timeUntilRefresh > 60000) { // schedule only if more than 1 minute remains
           console.log(`Scheduling token refresh in ${Math.round(timeUntilRefresh / 60000)} minutes`)
-          const timer = setTimeout(() => refreshToken(), timeUntilRefresh)
-          setTokenRefreshTimer(timer)
+          const timer = setTimeout(() => {
+            refreshToken()
+          }, timeUntilRefresh)
+          tokenRefreshTimerRef.current = timer
         } else {
-          // If token expires soon, refresh it right away
           console.log('Token expires soon, refreshing now')
           refreshToken()
         }
@@ -130,7 +160,63 @@ export const AuthProvider = ({ children }) => {
     } catch (e) {
       console.error('Error scheduling token refresh:', e)
     }
-  }, [tokenRefreshTimer])
+  }, [])
+
+  // Refresh the auth token with proper race condition handling
+  const refreshToken = useCallback(() => {
+    if (!isAuthenticated) return Promise.resolve(null)
+
+    // Return cached promise if refresh is already in progress
+    if (refreshTokenPromiseRef.current) {
+      return refreshTokenPromiseRef.current
+    }
+
+    refreshTokenPromiseRef.current = (async () => {
+      const token = getToken()
+      if (!token) return null
+
+      try {
+        console.log("Refreshing auth token...")
+        const response = await authApiService.refreshToken(token)
+
+        if (response.success && response.token) {
+          const newToken = response.token
+          // Preserve "remember me" setting by checking localStorage
+          const rememberMe = localStorage.getItem("token") !== null
+          setToken(newToken, rememberMe)
+          scheduleTokenRefresh(newToken)
+          console.log("Token refreshed successfully")
+          return newToken
+        } else {
+          throw new Error("Invalid refresh response")
+        }
+      } catch (err) {
+        console.error("Token refresh failed:", err)
+        // Clear the promise so future attempts can be made
+        refreshTokenPromiseRef.current = null
+
+        // If error indicates unauthorized or token expired, log out
+        if (err?.response?.status === 401) {
+          logout()
+        } else {
+          const currentToken = getToken()
+          if (currentToken && isTokenExpired(currentToken)) {
+            console.log("Token expired, logging out")
+            toast.error("Your session has expired. Please log in again.")
+            logout()
+          }
+        }
+        return null
+      } finally {
+        // Clear the promise after a delay to avoid immediate retry storms
+        setTimeout(() => {
+          refreshTokenPromiseRef.current = null
+        }, 1000)
+      }
+    })()
+
+    return refreshTokenPromiseRef.current
+  }, [isAuthenticated, logout, scheduleTokenRefresh])
 
   // Register a new user
   const register = useCallback(async (userData) => {
@@ -184,18 +270,13 @@ export const AuthProvider = ({ children }) => {
       const response = await authApiService.login(credentials)
       if (response.success && response.token) {
         setToken(response.token, rememberMe)
-
-        // Schedule token refresh based on expiry
         scheduleTokenRefresh(response.token)
 
-        // Check if user data exists in the response
         if (response.user) {
           setUser(response.user)
-          // Only use nickname if it exists
           const welcomeMessage = response.user.nickname ? `Welcome back, ${response.user.nickname}!` : "Welcome back!"
           toast.success(welcomeMessage)
         } else {
-          // If no user data in response, fetch it
           try {
             const userResponse = await authApiService.getCurrentUser()
             if (userResponse.success && userResponse.data) {
@@ -227,81 +308,6 @@ export const AuthProvider = ({ children }) => {
       setLoading(false)
     }
   }, [scheduleTokenRefresh])
-
-  // Log out a user
-  const logout = useCallback(async () => {
-    setLoading(true)
-    try {
-      // Clear token refresh timer
-      if (tokenRefreshTimer) {
-        clearTimeout(tokenRefreshTimer)
-        setTokenRefreshTimer(null)
-      }
-
-      // Attempt to notify server, but continue even if it fails
-      try {
-        await authApiService.logout()
-      } catch (err) {
-        console.warn("Logout API call failed:", err)
-      }
-
-      // Always remove token and user state
-      removeToken()
-      setUser(null)
-      setIsAuthenticated(false)
-      toast.info("You have been logged out")
-    } catch (err) {
-      console.error("Logout error:", err)
-      // Still remove token and user data even if API call fails
-      removeToken()
-      setUser(null)
-      setIsAuthenticated(false)
-    } finally {
-      setLoading(false)
-    }
-  }, [tokenRefreshTimer])
-
-  // Refresh the auth token
-  const refreshToken = useCallback(async () => {
-    // Don't attempt to refresh if not authenticated
-    if (!isAuthenticated) return null
-
-    try {
-      const token = getToken()
-      if (!token) return null
-
-      console.log("Refreshing auth token...")
-      const response = await authApiService.refreshToken(token)
-
-      if (response.success && response.token) {
-        const newToken = response.token
-
-        // Store token, preserving "remember me" setting
-        const rememberMe = localStorage.getItem("token") !== null
-        setToken(newToken, rememberMe)
-
-        // Schedule next refresh
-        scheduleTokenRefresh(newToken)
-
-        console.log("Token refreshed successfully")
-        return newToken
-      } else {
-        throw new Error("Invalid refresh response")
-      }
-    } catch (err) {
-      console.error("Token refresh failed:", err)
-
-      // If refresh fails, check if token is expired
-      const token = getToken()
-      if (token && isTokenExpired(token)) {
-        console.log("Token expired, logging out")
-        toast.error("Your session has expired. Please log in again.")
-        logout()
-      }
-
-      return null
-    }
-  }, [isAuthenticated, scheduleTokenRefresh, logout])
 
   // Request password reset
   const requestPasswordReset = useCallback(async (email) => {
@@ -409,7 +415,6 @@ export const AuthProvider = ({ children }) => {
               return
             }
           }
-
           await getCurrentUser()
         } catch (err) {
           console.error("Auth check error:", err)
@@ -426,24 +431,24 @@ export const AuthProvider = ({ children }) => {
     }
 
     checkAuth()
+  }, [getCurrentUser, refreshToken])
 
-    // Clean up token refresh timer on unmount
+  // Clean up token refresh timer on unmount
+  useEffect(() => {
     return () => {
-      if (tokenRefreshTimer) {
-        clearTimeout(tokenRefreshTimer)
+      if (tokenRefreshTimerRef.current) {
+        clearTimeout(tokenRefreshTimerRef.current)
       }
     }
-  }, [getCurrentUser, refreshToken, tokenRefreshTimer])
+  }, [])
 
-  // Listen for auth logout events (e.g., from API service)
+  // Listen for auth logout events (e.g., from other parts of the app)
   useEffect(() => {
     const handleLogout = () => {
-      // Clear token refresh timer
-      if (tokenRefreshTimer) {
-        clearTimeout(tokenRefreshTimer)
-        setTokenRefreshTimer(null)
+      if (tokenRefreshTimerRef.current) {
+        clearTimeout(tokenRefreshTimerRef.current)
+        tokenRefreshTimerRef.current = null
       }
-
       setUser(null)
       setIsAuthenticated(false)
       removeToken()
@@ -453,9 +458,8 @@ export const AuthProvider = ({ children }) => {
     return () => {
       window.removeEventListener("authLogout", handleLogout)
     }
-  }, [tokenRefreshTimer])
+  }, [])
 
-  // Context value
   const value = {
     user,
     loading,

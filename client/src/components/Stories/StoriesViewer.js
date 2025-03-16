@@ -5,7 +5,7 @@ import { useStories, useUser } from "../../context"
 import "../../styles/stories.css"
 
 const StoriesViewer = ({ storyId, userId, onClose }) => {
-  // We allow passing either storyId or userId to the component
+  // Allow passing either storyId or userId to the component
   const { stories = [], viewStory, loadUserStories } = useStories() || {}
   const { user } = useUser() || {}
 
@@ -16,9 +16,10 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   const [error, setError] = useState(null)
   const [userStories, setUserStories] = useState([])
 
+  // Use ref to hold the progress interval ID
   const progressInterval = useRef(null)
   const storyDuration = 5000 // 5 seconds per story
-  const progressStep = 100 / (storyDuration / 100) // Progress increment per 100ms
+  const progressStep = 100 / (storyDuration / 100) // Increment per 100ms
 
   // Load stories for specific user if userId is provided
   useEffect(() => {
@@ -29,7 +30,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       try {
         await loadUserStories(userId)
 
-        // Filter stories specifically for this user from the stories array
+        // Filter stories for this user
         const userSpecificStories = stories.filter(
           story => story.user && story.user._id === userId
         )
@@ -50,7 +51,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     fetchUserStories()
   }, [userId, loadUserStories, stories])
 
-  // Find the starting index based on storyId
+  // Set starting index based on storyId if provided
   useEffect(() => {
     if (storyId && stories && stories.length > 0) {
       const index = stories.findIndex((story) => story._id === storyId)
@@ -66,12 +67,17 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     }
   }, [storyId, stories])
 
-  // Determine which stories array to use
+  // Determine which stories to use based on whether userId is provided
   const currentStories = userId ? userStories : stories
 
-  // Mark story as viewed
+  // Mark story as viewed when it appears
   useEffect(() => {
-    if (viewStory && currentStories && currentStories.length > 0 && currentStoryIndex < currentStories.length) {
+    if (
+      viewStory &&
+      currentStories &&
+      currentStories.length > 0 &&
+      currentStoryIndex < currentStories.length
+    ) {
       const currentStory = currentStories[currentStoryIndex]
       if (currentStory && user && !currentStory.viewers?.includes(user._id)) {
         try {
@@ -83,25 +89,40 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     }
   }, [currentStoryIndex, currentStories, user, viewStory])
 
-  // Handle progress bar
+  // Handle progress bar with foolproof cleanup using useRef
   useEffect(() => {
-    if (paused || loading || error || !currentStories || currentStories.length === 0) return
-
-    setProgress(0)
-
-    if (progressInterval.current) {
-      clearInterval(progressInterval.current)
+    // Return early and clear any existing interval if conditions are not met
+    if (paused || loading || error || !currentStories || currentStories.length === 0) {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current)
+        progressInterval.current = null
+      }
+      return
     }
 
+    // Reset progress before starting a new interval
+    setProgress(0)
+
+    // Clear any existing interval
+    if (progressInterval.current) {
+      clearInterval(progressInterval.current)
+      progressInterval.current = null
+    }
+
+    // Create a new interval to update progress
     progressInterval.current = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
-          clearInterval(progressInterval.current)
-          // Move to next story
+          // Immediately clear the interval to stop further updates
+          if (progressInterval.current) {
+            clearInterval(progressInterval.current)
+            progressInterval.current = null
+          }
+          // Move to the next story if available, otherwise close
           if (currentStories && currentStoryIndex < currentStories.length - 1) {
             setCurrentStoryIndex((prev) => prev + 1)
           } else {
-            if (typeof onClose === 'function') onClose()
+            if (typeof onClose === "function") onClose()
           }
           return 0
         }
@@ -109,30 +130,38 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       })
     }, 100)
 
+    // Cleanup: ensure interval is cleared when dependencies change or component unmounts
     return () => {
       if (progressInterval.current) {
         clearInterval(progressInterval.current)
+        progressInterval.current = null
       }
     }
   }, [currentStoryIndex, currentStories, paused, onClose, progressStep, loading, error])
 
-  const handlePrevStory = useCallback((e) => {
-    if (e) e.stopPropagation()
-    if (currentStoryIndex > 0) {
-      setCurrentStoryIndex((prev) => prev - 1)
-      setProgress(0)
-    }
-  }, [currentStoryIndex])
+  const handlePrevStory = useCallback(
+    (e) => {
+      if (e) e.stopPropagation()
+      if (currentStoryIndex > 0) {
+        setCurrentStoryIndex((prev) => prev - 1)
+        setProgress(0)
+      }
+    },
+    [currentStoryIndex]
+  )
 
-  const handleNextStory = useCallback((e) => {
-    if (e) e.stopPropagation()
-    if (currentStories && currentStoryIndex < currentStories.length - 1) {
-      setCurrentStoryIndex((prev) => prev + 1)
-      setProgress(0)
-    } else {
-      if (typeof onClose === 'function') onClose()
-    }
-  }, [currentStoryIndex, currentStories, onClose])
+  const handleNextStory = useCallback(
+    (e) => {
+      if (e) e.stopPropagation()
+      if (currentStories && currentStoryIndex < currentStories.length - 1) {
+        setCurrentStoryIndex((prev) => prev + 1)
+        setProgress(0)
+      } else {
+        if (typeof onClose === "function") onClose()
+      }
+    },
+    [currentStoryIndex, currentStories, onClose]
+  )
 
   const togglePause = useCallback((e) => {
     e.stopPropagation()
@@ -147,7 +176,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       } else if (e.key === "ArrowRight" || e.key === " " || e.key === "Spacebar") {
         handleNextStory()
       } else if (e.key === "Escape") {
-        if (typeof onClose === 'function') onClose()
+        if (typeof onClose === "function") onClose()
       }
     }
 
@@ -155,9 +184,8 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [handlePrevStory, handleNextStory, onClose])
 
-  // Handle safe close
   const handleClose = () => {
-    if (typeof onClose === 'function') onClose()
+    if (typeof onClose === "function") onClose()
   }
 
   if (loading) {
@@ -178,7 +206,15 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
           <p style={{ color: "white" }}>{error}</p>
           <button
             onClick={handleClose}
-            style={{ marginTop: "20px", padding: "10px 20px", background: "#ff3366", color: "white", border: "none", borderRadius: "5px", cursor: "pointer" }}
+            style={{
+              marginTop: "20px",
+              padding: "10px 20px",
+              background: "#ff3366",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer",
+            }}
           >
             Close
           </button>
@@ -194,7 +230,15 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
           <p style={{ color: "white" }}>No stories available</p>
           <button
             onClick={handleClose}
-            style={{ marginTop: "20px", padding: "10px 20px", background: "#ff3366", color: "white", border: "none", borderRadius: "5px", cursor: "pointer" }}
+            style={{
+              marginTop: "20px",
+              padding: "10px 20px",
+              background: "#ff3366",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer",
+            }}
           >
             Close
           </button>
@@ -205,13 +249,23 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
 
   const currentStory = currentStories[currentStoryIndex]
 
-  // Safety check for currentStory
   if (!currentStory) {
     return (
       <div className="stories-viewer-overlay">
         <div className="stories-viewer-container" style={{ justifyContent: "center", alignItems: "center" }}>
           <p style={{ color: "white" }}>Story not available</p>
-          <button onClick={handleClose} style={{ marginTop: "20px", padding: "10px 20px", background: "#ff3366", color: "white", border: "none", borderRadius: "5px", cursor: "pointer" }}>
+          <button
+            onClick={handleClose}
+            style={{
+              marginTop: "20px",
+              padding: "10px 20px",
+              background: "#ff3366",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer",
+            }}
+          >
             Close
           </button>
         </div>
@@ -219,7 +273,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     )
   }
 
-  // Get background style for text stories
+  // Utility functions for styling text stories
   const getBackgroundStyle = () => {
     if (currentStory.mediaType === "text" && currentStory.backgroundStyle) {
       const styles = { background: currentStory.backgroundStyle }
@@ -231,7 +285,6 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     return {}
   }
 
-  // Get font style for text stories
   const getFontStyle = () => {
     if (currentStory.mediaType === "text" && currentStory.fontStyle) {
       return { fontFamily: currentStory.fontStyle }
@@ -239,22 +292,19 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     return {}
   }
 
-  // Get username with fallback
   const getUsername = () => {
     return currentStory.user?.username || "User"
   }
 
-  // Get profile picture with fallback
   const getProfilePicture = () => {
     return currentStory.user?.profilePicture || "/placeholder.svg?height=40&width=40"
   }
 
-  // Format timestamp with safety check
   const formatTimestamp = () => {
     try {
       return new Date(currentStory.createdAt).toLocaleTimeString([], {
         hour: "2-digit",
-        minute: "2-digit"
+        minute: "2-digit",
       })
     } catch (e) {
       return "Recently"
@@ -268,18 +318,12 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
           <div className="stories-progress-container">
             {currentStories.map((_, index) => (
               <div key={index} className={`stories-progress-bar ${index < currentStoryIndex ? "completed" : ""}`}>
-                {index === currentStoryIndex && (
-                  <div className="stories-progress-fill" style={{ width: `${progress}%` }} />
-                )}
+                {index === currentStoryIndex && <div className="stories-progress-fill" style={{ width: `${progress}%` }} />}
               </div>
             ))}
           </div>
           <div className="stories-user-info">
-            <img
-              src={getProfilePicture()}
-              alt={getUsername()}
-              className="stories-user-avatar"
-            />
+            <img src={getProfilePicture()} alt={getUsername()} className="stories-user-avatar" />
             <span className="stories-username">{getUsername()}</span>
             <span className="stories-timestamp">{formatTimestamp()}</span>
           </div>
@@ -290,13 +334,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
 
         <div className="stories-viewer-content" onClick={togglePause}>
           {currentStory.mediaType === "text" ? (
-            <div
-              className="stories-text-content"
-              style={{
-                ...getBackgroundStyle(),
-                ...getFontStyle(),
-              }}
-            >
+            <div className="stories-text-content" style={{ ...getBackgroundStyle(), ...getFontStyle() }}>
               {currentStory.text}
               {paused && (
                 <div className="pause-indicator">
@@ -313,8 +351,8 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
                 alt="Story"
                 className="stories-media"
                 onError={(e) => {
-                  e.target.onerror = null;
-                  e.target.src = "/placeholder.svg";
+                  e.target.onerror = null
+                  e.target.src = "/placeholder.svg"
                 }}
               />
               {paused && (
@@ -335,8 +373,8 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
                 loop
                 playsInline
                 onError={(e) => {
-                  e.target.onerror = null;
-                  console.error("Video failed to load:", e);
+                  e.target.onerror = null
+                  console.error("Video failed to load:", e)
                 }}
               />
               {paused && (

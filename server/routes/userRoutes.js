@@ -1,15 +1,14 @@
-// Fixed userRoutes.js with proper file cleanup
 const express = require("express")
 const multer = require("multer")
 const path = require("path")
 const fs = require("fs")
 const sharp = require("sharp")
 const { fileTypeFromBuffer } = require("file-type")
+const mongoose = require("mongoose")
 const { User, PhotoPermission, Message } = require("../models")
 const config = require("../config")
 const { protect, asyncHandler } = require("../middleware/auth")
 const logger = require("../logger")
-const mongoose = require("mongoose")
 
 const router = express.Router()
 
@@ -207,7 +206,6 @@ router.get(
         })
       }
 
-      // Get the user's photos
       const user = await User.findById(req.params.id).select("photos")
       if (!user) {
         return res.status(404).json({
@@ -216,7 +214,6 @@ router.get(
         })
       }
 
-      // Get private photo IDs
       const privatePhotoIds = user.photos.filter((photo) => photo.isPrivate).map((photo) => photo._id)
 
       if (privatePhotoIds.length === 0) {
@@ -226,13 +223,11 @@ router.get(
         })
       }
 
-      // Find permission requests for these photos by the current user
       const permissions = await PhotoPermission.find({
         photo: { $in: privatePhotoIds },
         requestedBy: req.user._id,
       })
 
-      // Format the response
       const formattedPermissions = permissions.map((permission) => ({
         photo: permission.photo,
         status: permission.status,
@@ -267,7 +262,6 @@ router.put(
     try {
       const { nickname, details } = req.body
 
-      // Example validation
       if (nickname && nickname.trim().length < 3) {
         return res.status(400).json({ success: false, error: "Nickname must be at least 3 characters" })
       }
@@ -344,6 +338,9 @@ router.post(
   asyncHandler(async (req, res) => {
     logger.debug(`Processing photo upload for user ${req.user._id}`)
     let filePath = null
+    let processingSuccessful = false
+    let createdThumbnail = false
+    let thumbnailPath = null
 
     try {
       if (!req.file) {
@@ -353,7 +350,7 @@ router.post(
 
       const isPrivate = req.body.isPrivate === "true" || req.body.isPrivate === true
 
-      // Check photo count
+      // Check photo count limit
       if (req.user.photos && req.user.photos.length >= 10) {
         fs.unlinkSync(path.join(config.FILE_UPLOAD_PATH, req.file.filename))
         return res.status(400).json({
@@ -383,7 +380,6 @@ router.post(
         const metadata = await image.metadata()
         const resizedFilePath = filePath + "_resized"
 
-        // Resize if larger than 1200x1200
         if (metadata.width > 1200 || metadata.height > 1200) {
           await image
             .resize(1200, 1200, {
@@ -395,6 +391,9 @@ router.post(
           fs.unlinkSync(filePath)
           fs.renameSync(resizedFilePath, filePath)
         }
+
+        // Mark processing as successful
+        processingSuccessful = true
 
         const photoMetadata = {
           contentType: metadata.format,
@@ -417,23 +416,22 @@ router.post(
 
         res.status(200).json({ success: true, data: newPhoto, isProfilePhoto: isFirstPhoto })
       } catch (processingErr) {
-        // Clean up file if processing fails
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath)
-        }
+        // Rethrow to be caught in outer catch block
         throw processingErr
       }
     } catch (err) {
       logger.error(`Error uploading photo: ${err.message}`)
-      // Ensure file cleanup in case of any error
-      if (filePath && fs.existsSync(filePath)) {
+      res.status(400).json({ success: false, error: err.message })
+    } finally {
+      // Guaranteed cleanup: if processing was not successful, remove the uploaded file
+      if ((!processingSuccessful) && filePath && fs.existsSync(filePath)) {
         try {
           fs.unlinkSync(filePath)
-        } catch (unlinkErr) {
-          logger.error(`Error deleting uploaded file after error: ${unlinkErr.message}`)
+          logger.debug(`Cleaned up failed upload file: ${filePath}`)
+        } catch (cleanupErr) {
+          logger.error(`Error during file cleanup: ${cleanupErr.message}`)
         }
       }
-      res.status(400).json({ success: false, error: err.message })
     }
   }),
 )
@@ -532,7 +530,6 @@ router.delete(
       return res.status(400).json({ success: false, error: "Cannot delete your only photo" })
     }
 
-    // Disallow deleting the profile photo unless you change it first
     if (user.photos[0]._id.toString() === photoId) {
       return res
         .status(400)
@@ -549,16 +546,14 @@ router.delete(
     const filePath = path.join(config.FILE_UPLOAD_PATH, filename)
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
 
-    // Optionally, you may want to delete related photo permissions if applicable
-
     logger.info(`Photo ${photoId} deleted for user ${req.user._id}`)
     res.status(200).json({ success: true, message: "Photo deleted successfully" })
   }),
 )
 
 /**
- * @route   POST /api/photos/:id/request
- * @desc    Request permission to view a private photo (FIXED RACE CONDITION)
+ * @route   POST /api/users/photos/:id/request
+ * @desc    Request permission to view a private photo (avoiding race conditions)
  * @access  Private
  */
 router.post(
@@ -591,17 +586,12 @@ router.post(
       return res.status(400).json({ success: false, error: "Photo is not private" })
     }
 
-    // ==============================
-    // FIXED: Use findOneAndUpdate with upsert to avoid race conditions
-    // ==============================
     const permission = await PhotoPermission.findOneAndUpdate(
       { photo: photoId, requestedBy: req.user._id },
       { $setOnInsert: { status: "pending", createdAt: new Date() } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
     )
 
-    // If this permission document was NOT just created (i.e., createdAt is older),
-    // it means a request already exists.
     if (permission.createdAt && new Date(permission.createdAt).getTime() < Date.now() - 1000) {
       logger.warn(`Photo access request failed: Request already exists`)
       return res.status(400).json({ success: false, error: "Permission request already exists" })
@@ -687,7 +677,6 @@ router.put(
       return res.status(404).json({ success: false, error: "Permission request not found" })
     }
 
-    // Ensure the current user is the owner of the photo in question
     const owner = await User.findOne({ _id: req.user._id, "photos._id": permission.photo })
     if (!owner) {
       logger.warn(`User ${req.user._id} not authorized to update permission ${permissionId}`)

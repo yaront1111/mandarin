@@ -1,6 +1,6 @@
 "use client"
 
-// Upgraded ChatContext.js with improved message handling and file upload support
+// ChatContext.js
 import { createContext, useState, useContext, useEffect, useCallback, useRef } from "react"
 import { toast } from "react-toastify"
 import apiService from "../services/apiService"
@@ -55,32 +55,22 @@ export const ChatProvider = ({ children }) => {
 
     // Handler for new messages
     const handleNewMessage = (message) => {
-      // Validate message object
       if (!message || !message.sender || !message.recipient) {
         console.error("Received invalid message object:", message)
         return
       }
-
       setMessages((prevMessages) => {
-        // Check if message already exists to prevent duplicates
         const exists = prevMessages.some((m) => m._id === message._id)
         if (exists) return prevMessages
-
-        // Add new message
         const updatedMessages = [...prevMessages, message]
-
-        // Sort by creation date
         return updatedMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
       })
 
-      // Update unread counts if message is not from current user
       if (message.sender !== user._id) {
         setUnreadCounts((prev) => ({
           ...prev,
           [message.sender]: (prev[message.sender] || 0) + 1,
         }))
-
-        // Update conversations list
         updateConversationsList(message)
       }
     }
@@ -91,7 +81,6 @@ export const ChatProvider = ({ children }) => {
         console.error("Received invalid typing data:", data)
         return
       }
-
       setTypingUsers((prev) => ({
         ...prev,
         [data.sender]: Date.now(),
@@ -104,7 +93,6 @@ export const ChatProvider = ({ children }) => {
         console.error("Received invalid online status data:", data)
         return
       }
-
       setConversations((prev) =>
         prev.map((conv) =>
           conv.user._id === data.userId ? { ...conv, user: { ...conv.user, isOnline: true } } : conv,
@@ -118,7 +106,6 @@ export const ChatProvider = ({ children }) => {
         console.error("Received invalid offline status data:", data)
         return
       }
-
       setConversations((prev) =>
         prev.map((conv) =>
           conv.user._id === data.userId ? { ...conv, user: { ...conv.user, isOnline: false } } : conv,
@@ -132,7 +119,6 @@ export const ChatProvider = ({ children }) => {
         console.error("Received invalid read receipt data:", data)
         return
       }
-
       if (data.reader !== user._id) {
         setMessages((prev) =>
           prev.map((msg) =>
@@ -151,7 +137,6 @@ export const ChatProvider = ({ children }) => {
 
     // Cleanup function
     return () => {
-      // Remove event handlers
       if (eventHandlersRef.current.newMessage) socketService.off("newMessage", eventHandlersRef.current.newMessage)
       if (eventHandlersRef.current.userTyping) socketService.off("userTyping", eventHandlersRef.current.userTyping)
       if (eventHandlersRef.current.userOnline) socketService.off("userOnline", eventHandlersRef.current.userOnline)
@@ -171,26 +156,20 @@ export const ChatProvider = ({ children }) => {
 
       const otherUserId = message.sender === user._id ? message.recipient : message.sender
 
-      // Validate otherUserId is a valid MongoDB ObjectId
       if (!otherUserId || !/^[0-9a-fA-F]{24}$/.test(otherUserId)) {
         console.error(`Invalid otherUserId: ${otherUserId}`)
         return
       }
 
       setConversations((prev) => {
-        // Check if conversation already exists
         const existingIndex = prev.findIndex((conv) => conv.user && conv.user._id === otherUserId)
-
         if (existingIndex >= 0) {
-          // Update existing conversation
           const updatedConversations = [...prev]
           updatedConversations[existingIndex] = {
             ...updatedConversations[existingIndex],
             lastMessage: message,
             updatedAt: message.createdAt,
           }
-
-          // Sort by most recent message
           return updatedConversations.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
         } else {
           // Fetch user info for new conversation
@@ -199,19 +178,14 @@ export const ChatProvider = ({ children }) => {
             .then((response) => {
               if (response.success && response.data && response.data.user) {
                 setConversations((current) => {
-                  // Check again in case it was added while we were fetching
                   if (current.some((conv) => conv.user && conv.user._id === otherUserId)) {
                     return current
                   }
-
-                  // Add new conversation
                   const newConversation = {
                     user: response.data.user,
                     lastMessage: message,
                     updatedAt: message.createdAt,
                   }
-
-                  // Sort by most recent message
                   return [...current, newConversation].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
                 })
               } else {
@@ -234,7 +208,6 @@ export const ChatProvider = ({ children }) => {
     async (recipientId) => {
       if (!user || !recipientId) return []
 
-      // Validate recipientId format
       if (!/^[0-9a-fA-F]{24}$/.test(recipientId)) {
         console.error(`Invalid recipient ID format: ${recipientId}`)
         setError(`Invalid recipient ID format: ${recipientId}`)
@@ -247,21 +220,15 @@ export const ChatProvider = ({ children }) => {
         const response = await apiService.get(`/messages/${recipientId}`)
         if (response.success) {
           setMessages(response.data.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)))
-
-          // Mark messages as read
           const unreadMessages = response.data.filter((msg) => msg.recipient === user._id && !msg.read)
-
           if (unreadMessages.length > 0) {
             const messageIds = unreadMessages.map((msg) => msg._id)
             markMessagesAsRead(messageIds, recipientId)
-
-            // Update unread counts
             setUnreadCounts((prev) => ({
               ...prev,
               [recipientId]: 0,
             }))
           }
-
           setActiveConversation(recipientId)
           return response.data
         } else {
@@ -288,24 +255,18 @@ export const ChatProvider = ({ children }) => {
     try {
       const response = await apiService.get("/messages/conversations")
       if (response.success) {
-        // Validate conversation data
         const validConversations = response.data.filter(
           (conv) => conv && conv.user && conv.user._id && /^[0-9a-fA-F]{24}$/.test(conv.user._id),
         )
-
         if (validConversations.length !== response.data.length) {
           console.warn(`Filtered out ${response.data.length - validConversations.length} invalid conversations`)
         }
-
         setConversations(validConversations)
-
-        // Update unread counts
         const counts = {}
         validConversations.forEach((conv) => {
           counts[conv.user._id] = conv.unreadCount || 0
         })
         setUnreadCounts(counts)
-
         return validConversations
       } else {
         throw new Error(response.error || "Failed to get conversations")
@@ -327,8 +288,6 @@ export const ChatProvider = ({ children }) => {
         setError("Cannot upload file: Missing user or file")
         return null
       }
-
-      // Validate file size (max 5MB)
       const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
       if (file.size > MAX_FILE_SIZE) {
         const errorMessage = `File is too large (max 5MB allowed)`
@@ -336,44 +295,41 @@ export const ChatProvider = ({ children }) => {
         toast.error(errorMessage)
         return null
       }
-
-      // Validate file type
       const allowedTypes = [
-        'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
-        'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'text/plain',
-        'audio/mpeg', 'audio/wav',
-        'video/mp4', 'video/quicktime'
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/gif",
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain",
+        "audio/mpeg",
+        "audio/wav",
+        "video/mp4",
+        "video/quicktime",
       ]
-
       if (!allowedTypes.includes(file.type)) {
         const errorMessage = `Invalid file type. Only images, documents, audio, and videos are allowed.`
         setError(errorMessage)
         toast.error(errorMessage)
         return null
       }
-
-      // Validate recipientId if provided
       if (recipientId && !/^[0-9a-fA-F]{24}$/.test(recipientId)) {
         const errorMessage = `Invalid recipient ID format: ${recipientId}`
         setError(errorMessage)
         toast.error(errorMessage)
         return null
       }
-
       setUploading(true)
       setError(null)
       try {
-        // Create FormData for file upload
         const formData = new FormData()
-        formData.append('file', file)
+        formData.append("file", file)
         if (recipientId) {
-          formData.append('recipient', recipientId)
+          formData.append("recipient", recipientId)
         }
-
-        // Upload file
-        const response = await apiService.postFormData('/messages/attachments', formData)
-
+        const response = await apiService.postFormData("/messages/attachments", formData)
         if (response.success) {
           return response.data
         } else {
@@ -392,15 +348,13 @@ export const ChatProvider = ({ children }) => {
     [user]
   )
 
-  // Send a message
+  // Updated sendMessage with duplicate handling using a unique client-generated ID
   const sendMessage = useCallback(
     async (recipientId, type, content, metadata = {}) => {
       if (!user || !recipientId) {
         setError("Cannot send message: Missing user or recipient")
         return null
       }
-
-      // Validate recipientId format (should be a valid MongoDB ObjectId)
       const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(recipientId)
       if (!isValidObjectId) {
         const errorMessage = `Invalid recipient ID format: ${recipientId}`
@@ -408,88 +362,77 @@ export const ChatProvider = ({ children }) => {
         toast.error(errorMessage)
         return null
       }
-
       setSending(true)
       setError(null)
+
+      // Generate a unique client message ID and add it to the metadata for deduplication
+      const clientMessageId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      const enhancedMetadata = { ...metadata, clientMessageId }
+
       try {
-        // Log the request details for debugging
         console.log("Sending message:", {
           sender: user._id,
           recipient: recipientId,
           type,
           contentLength: content ? content.length : 0,
-          metadata
+          metadata: enhancedMetadata,
         })
 
-        // Validate message type
         const validTypes = ["text", "wink", "video", "file"]
         if (!type || !validTypes.includes(type)) {
           throw new Error(`Invalid message type. Must be one of: ${validTypes.join(", ")}`)
         }
-
-        // Type-specific validation
         if (type === "text" && (!content || content.trim().length === 0)) {
           throw new Error("Message content is required for text messages")
         }
-
-        if (type === "file" && (!metadata || !metadata.fileUrl)) {
+        if (type === "file" && (!enhancedMetadata || !enhancedMetadata.fileUrl)) {
           throw new Error("File URL is required for file messages")
         }
 
-        // Try to send via socket first for real-time delivery
+        // Try to send via socket first using the enhanced metadata
         let socketResponse = null
         try {
-          socketResponse = await socketService.sendMessage(recipientId, type, content, metadata)
+          socketResponse = await socketService.sendMessage(recipientId, type, content, enhancedMetadata)
         } catch (socketError) {
           console.warn("Socket message failed, falling back to API:", socketError)
-          // We'll fall back to API below
         }
 
-        // If socket succeeds and doesn't return a temporary message
         if (socketResponse && !socketResponse.pending) {
-          // Socket was successful
-          const newMessage = socketResponse
           setMessages((prev) => {
-            // Check if message already exists to prevent duplicates
-            const exists = prev.some((m) => m._id === newMessage._id)
+            const exists = prev.some(
+              (m) => m.metadata?.clientMessageId === clientMessageId || m._id === socketResponse._id
+            )
             if (exists) return prev
-
-            return [...prev, newMessage].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+            return [...prev, socketResponse].sort(
+              (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+            )
           })
-          updateConversationsList(newMessage)
+          updateConversationsList(socketResponse)
           setSending(false)
-          return newMessage
+          return socketResponse
         }
 
-        // If socket failed or returned a temporary message, use API as fallback
+        // API fallback with the same enhanced metadata
         const apiResponse = await apiService.post("/messages", {
           recipient: recipientId,
           type,
           content,
-          metadata
+          metadata: enhancedMetadata,
         })
 
         if (apiResponse.success) {
-          // Add message to state
           const newMessage = apiResponse.data
-
           setMessages((prev) => {
-            // Replace temporary message if it exists
-            if (socketResponse && socketResponse.pending) {
-              return prev
-                .filter((m) => m._id !== socketResponse._id) // Remove temp message
-                .concat(newMessage) // Add real message
-                .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
-            }
-
-            // Check if message already exists to prevent duplicates
-            const exists = prev.some((m) => m._id === newMessage._id)
+            const exists = prev.some(
+              (m) => m.metadata?.clientMessageId === clientMessageId || m._id === newMessage._id
+            )
             if (exists) return prev
-
-            return [...prev, newMessage].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+            return [...prev, newMessage].sort(
+              (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+            )
           })
-
           updateConversationsList(newMessage)
+          setSending(false)
           return newMessage
         } else {
           throw new Error(apiResponse.error || "Failed to send message")
@@ -504,34 +447,28 @@ export const ChatProvider = ({ children }) => {
         setSending(false)
       }
     },
-    [user, updateConversationsList],
+    [user, updateConversationsList]
   )
 
-  // Send a file message - combines uploadFile and sendMessage
+  // Send a file message – combines file upload and sendMessage
   const sendFileMessage = useCallback(
     async (recipientId, file) => {
       if (!user || !recipientId || !file) {
         setError("Cannot send file: Missing user, recipient, or file")
         return null
       }
-
       try {
-        // First upload the file
         const fileData = await uploadFile(file, recipientId)
         if (!fileData) {
           throw new Error("Failed to upload file")
         }
-
-        // Then send a message with the file data
         const metadata = {
           fileUrl: fileData.url,
           fileName: fileData.fileName || file.name,
           fileSize: fileData.fileSize || file.size,
           mimeType: fileData.mimeType || file.type,
-          ...fileData.metadata
+          ...fileData.metadata,
         }
-
-        // Send file message
         return await sendMessage(
           recipientId,
           "file",
@@ -553,53 +490,44 @@ export const ChatProvider = ({ children }) => {
   const sendTyping = useCallback(
     (recipientId) => {
       if (!user || !recipientId) return
-
-      // Validate recipientId format before sending typing indicator
       const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(recipientId)
       if (!isValidObjectId) {
         console.error(`Invalid recipient ID format for typing indicator: ${recipientId}`)
         return
       }
-
       socketService.sendTyping(recipientId)
     },
-    [user],
+    [user]
   )
 
   // Mark messages as read
   const markMessagesAsRead = useCallback(
     (messageIds, senderId) => {
       if (!user || !messageIds.length) return
-
-      // Validate senderId format
       const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(senderId)
       if (!isValidObjectId) {
         console.error(`Invalid sender ID format: ${senderId}`)
         return
       }
-
-      // Update local state immediately
-      setMessages((prev) => prev.map((msg) => (messageIds.includes(msg._id) ? { ...msg, read: true } : msg)))
-
-      // Send read receipt via socket
+      setMessages((prev) =>
+        prev.map((msg) => (messageIds.includes(msg._id) ? { ...msg, read: true } : msg))
+      )
       socketService.socket?.emit("messageRead", {
         reader: user._id,
         sender: senderId,
         messageIds,
       })
-
-      // Also update via API for persistence
-      apiService.post("/messages/read", { messageIds }).catch((err) => {
-        console.error("Error marking messages as read:", err)
-      })
-
-      // Update unread counts
+      apiService
+        .post("/messages/read", { messageIds })
+        .catch((err) => {
+          console.error("Error marking messages as read:", err)
+        })
       setUnreadCounts((prev) => ({
         ...prev,
         [senderId]: 0,
       }))
     },
-    [user],
+    [user]
   )
 
   // Initiate a video call
@@ -609,8 +537,6 @@ export const ChatProvider = ({ children }) => {
         setError("Cannot initiate call: Missing user or recipient")
         return null
       }
-
-      // Validate recipientId format
       const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(recipientId)
       if (!isValidObjectId) {
         const errorMessage = `Invalid recipient ID format for video call: ${recipientId}`
@@ -618,10 +544,9 @@ export const ChatProvider = ({ children }) => {
         toast.error(errorMessage)
         return null
       }
-
       return socketService.initiateVideoCall(recipientId)
     },
-    [user],
+    [user]
   )
 
   // Answer a video call
@@ -631,8 +556,6 @@ export const ChatProvider = ({ children }) => {
         setError("Cannot answer call: Missing user or caller")
         return null
       }
-
-      // Validate callerId format
       const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(callerId)
       if (!isValidObjectId) {
         const errorMessage = `Invalid caller ID format: ${callerId}`
@@ -640,10 +563,9 @@ export const ChatProvider = ({ children }) => {
         toast.error(errorMessage)
         return null
       }
-
       return socketService.answerVideoCall(callerId, answer)
     },
-    [user],
+    [user]
   )
 
   // Get total unread message count
@@ -651,7 +573,6 @@ export const ChatProvider = ({ children }) => {
     return Object.values(unreadCounts).reduce((total, count) => total + count, 0)
   }, [unreadCounts])
 
-  // Context value
   const value = {
     messages,
     conversations,

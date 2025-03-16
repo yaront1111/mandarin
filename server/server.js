@@ -1,7 +1,6 @@
 // Import required modules
 const express = require("express")
 const http = require("http")
-const socketIo = require("socket.io")
 const mongoose = require("mongoose")
 const cors = require("cors")
 const path = require("path")
@@ -97,46 +96,22 @@ mongoose
     process.exit(1)
   })
 
-// Socket.IO setup
-const io = socketIo(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-})
+// Socket.IO setup - now async
+const initSocketServer = require("./socket/index")
 
-// Socket.IO connection handler
-io.on("connection", (socket) => {
-  logger.info(`Socket connected: ${socket.id}`)
-
-  // Handle disconnection
-  socket.on("disconnect", () => {
-    logger.info(`Socket disconnected: ${socket.id}`)
-  })
-})
-
-// Serve React app in production
-if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "../client/build")))
-  app.get("*", (req, res) => {
-    res.sendFile(path.resolve(__dirname, "../client/build", "index.html"))
-  })
-}
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  logger.error(`Error [${req.id}]: ${err.message}`)
-  res.status(500).json({
-    success: false,
-    error: process.env.NODE_ENV === "production" ? "Server Error" : err.message,
-  })
-})
-
-// Start server
+// Start server and initialize Socket.IO
 const PORT = process.env.PORT || config.PORT || 5000
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   logger.info(`Server running in ${process.env.NODE_ENV || "development"} mode on port ${PORT}`)
+
+  try {
+    // Initialize Socket.IO after server is listening
+    const io = await initSocketServer(server)
+    // Store io in app for potential use in routes
+    app.set("io", io)
+  } catch (err) {
+    logger.error(`Failed to initialize Socket.IO: ${err.message}`)
+  }
 })
 
 // Handle unhandled promise rejections
@@ -148,4 +123,4 @@ process.on("unhandledRejection", (err) => {
   }
 })
 
-module.exports = { app, server, io }
+module.exports = { app, server }
