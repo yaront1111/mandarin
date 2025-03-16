@@ -26,6 +26,7 @@ import { useStories } from "../context" // Import Stories context
 import EmbeddedChat from "../components/EmbeddedChat"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
 import StoriesCarousel from "../components/Stories/StoriesCarousel"
+import StoriesViewer from "../components/Stories/StoriesViewer" // Import StoriesViewer
 import StoryCreator from "../components/Stories/StoryCreator" // Import StoryCreator
 
 const Dashboard = () => {
@@ -54,6 +55,10 @@ const Dashboard = () => {
   const [viewMode, setViewMode] = useState("grid") // 'grid' or 'list'
   const [imageLoadErrors, setImageLoadErrors] = useState({})
   const [showStoryCreator, setShowStoryCreator] = useState(false)
+
+  // Add state for story viewing
+  const [viewingStoryId, setViewingStoryId] = useState(null)
+  const [creatingStory, setCreatingStory] = useState(false)
 
   // Handle image loading errors
   const handleImageError = useCallback((userId) => {
@@ -188,15 +193,25 @@ const Dashboard = () => {
 
   // Handle story creation
   const handleCreateStory = (storyData) => {
-    if (createStory) {
+    if (createStory && !creatingStory) {
+      setCreatingStory(true)
       createStory(storyData)
-        .then(() => {
+        .then((response) => {
           setShowStoryCreator(false)
-          toast.success("Your story has been created!")
+          if (response.success) {
+            toast.success("Your story has been created!")
+          } else {
+            throw new Error(response.message || "Failed to create story")
+          }
         })
         .catch((error) => {
           toast.error("Failed to create story: " + (error.message || "Unknown error"))
         })
+        .finally(() => {
+          setCreatingStory(false)
+        })
+    } else if (creatingStory) {
+      toast.info("Story creation in progress, please wait...")
     } else {
       toast.error("Story creation is not available right now")
     }
@@ -329,12 +344,15 @@ const Dashboard = () => {
                 className="btn btn-primary create-story-btn"
                 onClick={() => setShowStoryCreator(true)}
                 aria-label="Create a new story"
+                disabled={creatingStory}
               >
                 <FaPlus className="me-2 d-none d-sm-inline" />
-                <span className="d-none d-md-inline">Create Story</span>
+                <span className="d-none d-md-inline">
+                  {creatingStory ? "Creating..." : "Create Story"}
+                </span>
               </button>
             </div>
-            <StoriesCarousel onStoryClick={(storyId) => navigate(`/story/${storyId}`)} />
+            <StoriesCarousel onStoryClick={(storyId) => setViewingStoryId(storyId)} />
           </div>
 
           <div className="content-header d-flex justify-content-between align-items-center">
@@ -592,15 +610,20 @@ const Dashboard = () => {
 
       {/* Story Creator Modal */}
       {showStoryCreator && (
-        <>
-          <div className="modal-overlay" onClick={() => setShowStoryCreator(false)}></div>
-          <div className="story-creator-modal">
-            <StoryCreator onClose={() => setShowStoryCreator(false)} onSubmit={handleCreateStory} />
-          </div>
-        </>
+        <StoryCreator
+          onClose={() => setShowStoryCreator(false)}
+          onSubmit={handleCreateStory}
+        />
       )}
 
-      {/* Style block without the "jsx" attribute */}
+      {/* Stories Viewer - Now using component-based approach instead of navigation */}
+      {viewingStoryId && (
+        <StoriesViewer
+          storyId={viewingStoryId}
+          onClose={() => setViewingStoryId(null)}
+        />
+      )}
+
       <style>{`
         /* User Dropdown Menu Styles */
         .avatar-container {
@@ -686,30 +709,11 @@ const Dashboard = () => {
           padding: 8px 16px;
           border-radius: 20px;
         }
-        
-        /* Modal Styles */
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.5);
-          z-index: 1000;
-        }
-        
-        .story-creator-modal {
-          position: fixed;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          z-index: 1001;
-          width: 90%;
-          max-width: 500px;
-          background: var(--bg-card);
-          border-radius: 12px;
-          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-          overflow: hidden;
+
+        /* Prevent multi-clicking during story creation */
+        .create-story-btn:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
         }
       `}</style>
     </div>

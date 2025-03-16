@@ -39,7 +39,7 @@ const FONT_OPTIONS = [
   { id: "font-5", name: "Bold", style: "'Impact', sans-serif" },
 ]
 
-const StoryCreator = ({ onClose, onStoryCreated }) => {
+const StoryCreator = ({ onClose, onSubmit }) => {
   const { user } = useAuth()
   const [text, setText] = useState("")
   const [selectedBackground, setSelectedBackground] = useState(BACKGROUND_OPTIONS[0])
@@ -78,6 +78,11 @@ const StoryCreator = ({ onClose, onStoryCreated }) => {
         mediaType: "text", // Set media type to text
       }
 
+      // Add any extra styles if present
+      if (selectedBackground.extraStyles) {
+        storyData.extraStyles = selectedBackground.extraStyles
+      }
+
       // Upload with progress tracking
       const response = await storiesService.createTextStory(storyData, (progressEvent) => {
         const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
@@ -88,8 +93,8 @@ const StoryCreator = ({ onClose, onStoryCreated }) => {
         toast.success("Story created successfully!")
 
         // Call callback if provided
-        if (onStoryCreated) {
-          onStoryCreated(response.data)
+        if (onSubmit) {
+          onSubmit(response.data)
         }
 
         // Close creator
@@ -263,122 +268,6 @@ const StoryCreator = ({ onClose, onStoryCreated }) => {
           </button>
         </div>
       </div>
-
-      {/* Add CSS for new components */}
-      <style jsx>{`
-        .story-preview {
-          width: 100%;
-          height: 200px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 20px;
-          margin-bottom: 20px;
-          text-align: center;
-          overflow: hidden;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-        
-        .story-text-content {
-          font-size: 24px;
-          font-weight: bold;
-          color: white;
-          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-          word-wrap: break-word;
-          max-width: 100%;
-        }
-        
-        .story-placeholder {
-          font-size: 18px;
-          color: rgba(255, 255, 255, 0.7);
-          font-style: italic;
-        }
-        
-        .story-creator-tabs {
-          display: flex;
-          border-bottom: 1px solid #eee;
-          margin-bottom: 15px;
-        }
-        
-        .tab-button {
-          flex: 1;
-          padding: 10px;
-          background: none;
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 5px;
-          color: #777;
-          transition: all 0.2s;
-        }
-        
-        .tab-button.active {
-          color: #2196F3;
-          border-bottom: 2px solid #2196F3;
-        }
-        
-        .tab-content {
-          margin-bottom: 20px;
-        }
-        
-        .text-tab textarea {
-          width: 100%;
-          padding: 12px;
-          border: 1px solid #ddd;
-          border-radius: 8px;
-          resize: none;
-          font-size: 16px;
-        }
-        
-        .character-count {
-          display: block;
-          text-align: right;
-          margin-top: 5px;
-          color: #777;
-        }
-        
-        .background-options, .font-options {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 10px;
-          margin-top: 10px;
-        }
-        
-        .background-option {
-          height: 60px;
-          border-radius: 8px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        
-        .background-option.selected {
-          transform: scale(0.95);
-          box-shadow: 0 0 0 3px #2196F3;
-        }
-        
-        .font-option {
-          padding: 10px;
-          border-radius: 8px;
-          background: #f5f5f5;
-          cursor: pointer;
-          text-align: center;
-          transition: all 0.2s;
-        }
-        
-        .font-option.selected {
-          background: #e3f2fd;
-          box-shadow: 0 0 0 2px #2196F3;
-        }
-        
-        @media (max-width: 576px) {
-          .background-options, .font-options {
-            grid-template-columns: repeat(3, 1fr);
-          }
-        }
-      `}</style>
     </div>
   )
 }

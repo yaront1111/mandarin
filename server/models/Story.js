@@ -5,7 +5,7 @@ const StorySchema = new Schema(
   {
     user: {
       type: Schema.Types.ObjectId,
-      ref: "user",
+      ref: "User",
       required: true,
     },
     mediaUrl: {
@@ -14,17 +14,40 @@ const StorySchema = new Schema(
     },
     mediaType: {
       type: String,
-      enum: ["image", "video"],
+      enum: ["image", "video", "text"],
       required: true,
     },
     caption: {
       type: String,
       default: "",
     },
+    // Text content for text stories
+    text: {
+      type: String,
+      default: "",
+    },
+    // Styling options for text stories
+    backgroundStyle: {
+      type: String,
+      default: "",
+    },
+    fontStyle: {
+      type: String,
+      default: "",
+    },
+    extraStyles: {
+      type: Object,
+      default: {},
+    },
+    // Duration in hours that the story should be available
+    duration: {
+      type: Number,
+      default: 24,
+    },
     viewers: [
       {
         type: Schema.Types.ObjectId,
-        ref: "user",
+        ref: "User",
       },
     ],
     // Optional metadata for the story
@@ -46,12 +69,13 @@ StorySchema.methods.addViewer = async function (userId) {
   return this
 }
 
-// Virtual for checking if story is expired (24 hours)
+// Virtual for checking if story is expired (based on duration)
 StorySchema.virtual("isExpired").get(function () {
   const now = new Date()
   const createdAt = new Date(this.createdAt)
+  const durationMs = (this.duration || 24) * 60 * 60 * 1000  // Convert hours to milliseconds
   const diff = now - createdAt
-  return diff > 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+  return diff > durationMs
 })
 
 // Virtual for getting view count

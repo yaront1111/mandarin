@@ -16,9 +16,11 @@ export const StoriesProvider = ({ children }) => {
   const [error, setError] = useState(null)
   const [viewedStories, setViewedStories] = useState({})
   const [lastFetch, setLastFetch] = useState(0)
+  const [isCreatingStory, setIsCreatingStory] = useState(false)
 
   // Instead of state, use a ref for the refresh interval.
   const refreshIntervalRef = useRef(null)
+  const storyOperationsInProgress = useRef(new Set())
 
   // Clear error helper
   const clearError = useCallback(() => {
@@ -35,12 +37,21 @@ export const StoriesProvider = ({ children }) => {
         return stories
       }
 
+      // Prevent concurrent loadStories operations
+      if (storyOperationsInProgress.current.has('loadStories')) {
+        console.log("Story loading already in progress, skipping duplicate request")
+        return stories
+      }
+
+      storyOperationsInProgress.current.add('loadStories')
       setLoading(true)
       setError(null)
 
       try {
         const response = await storiesService.getAllStories()
         if (response.success) {
+          // Add an ID to track API calls in debug logs
+          console.log(`[${now}] Stories loaded successfully:`, response.data?.length || 0)
           setStories(response.data || [])
           setLastFetch(now)
           return response.data || []
@@ -54,9 +65,11 @@ export const StoriesProvider = ({ children }) => {
         return []
       } finally {
         setLoading(false)
+        storyOperationsInProgress.current.delete('loadStories')
       }
     },
-    [stories, lastFetch]
+    // Remove 'stories' from dependencies to prevent unnecessary re-renders
+    [lastFetch]
   )
 
   // Load stories for a specific user
@@ -66,28 +79,42 @@ export const StoriesProvider = ({ children }) => {
       return []
     }
 
+    const operationKey = `loadUserStories-${userId}`
+    if (storyOperationsInProgress.current.has(operationKey)) {
+      console.log(`User story loading for ${userId} already in progress, skipping`)
+      return []
+    }
+
+    storyOperationsInProgress.current.add(operationKey)
+    setLoading(true)
+
     try {
-      setLoading(true)
       const response = await storiesService.getUserStories(userId)
 
       if (response.success) {
         const userStories = response.data || []
+        console.log(`Loaded ${userStories.length} stories for user ${userId}`)
 
-        // Update the stories array with the new user stories
+        // Update the stories array with the new user stories WITHOUT triggering
+        // a reload of all stories
         setStories((prevStories) => {
           // Create a map of existing stories by userId for efficient lookup
-          const storiesByUser = new Map(prevStories.map((story) => [story.user?._id, story]))
+          const storiesByUser = new Map()
 
-          // Add or update the stories for this user
+          // Only include stories from other users
+          prevStories.forEach(story => {
+            if (story.user && story.user._id !== userId) {
+              storiesByUser.set(story.user._id, story)
+            }
+          })
+
+          // Add this user's stories if they exist
           if (userStories.length > 0) {
             storiesByUser.set(userId, {
               user: userStories[0].user,
               _id: userStories[0]._id,
               createdAt: userStories[0].createdAt,
             })
-          } else if (storiesByUser.has(userId)) {
-            // Remove this user's stories if there are none
-            storiesByUser.delete(userId)
           }
 
           // Convert map back to array
@@ -104,6 +131,7 @@ export const StoriesProvider = ({ children }) => {
       return []
     } finally {
       setLoading(false)
+      storyOperationsInProgress.current.delete(operationKey)
     }
   }, [])
 
@@ -115,8 +143,22 @@ export const StoriesProvider = ({ children }) => {
         return { success: false, message: "You must be logged in to create a story" }
       }
 
+      // Prevent duplicate submissions
+      if (isCreatingStory) {
+        toast.info("A story is already being created, please wait")
+        return { success: false, message: "Story creation already in progress" }
+      }
+
+      setIsCreatingStory(true)
+      setLoading(true)
+
       try {
-        setLoading(true)
+        console.log("Creating story with data:", {
+          type: storyData.mediaType,
+          textLength: storyData.text?.length,
+          hasMedia: !!storyData.media
+        })
+
         let response
 
         // Check if it's a text or media story
@@ -129,8 +171,11 @@ export const StoriesProvider = ({ children }) => {
         if (response.success) {
           toast.success("Story created successfully!")
 
-          // Reload stories to include the new one
-          await loadStories(true)
+          // Add a small delay before reloading stories to ensure the server has processed the new story
+          setTimeout(async () => {
+            await loadStories(true)
+          }, 500)
+
           return response
         } else {
           throw new Error(response.message || "Failed to create story")
@@ -141,9 +186,10 @@ export const StoriesProvider = ({ children }) => {
         return { success: false, message: err.message || "Failed to create story" }
       } finally {
         setLoading(false)
+        setIsCreatingStory(false)
       }
     },
-    [user, loadStories]
+    [user, loadStories, isCreatingStory]
   )
 
   // Delete a story
@@ -159,8 +205,16 @@ export const StoriesProvider = ({ children }) => {
         return { success: false, message: "Invalid story ID" }
       }
 
+      const operationKey = `deleteStory-${storyId}`
+      if (storyOperationsInProgress.current.has(operationKey)) {
+        console.log(`Story deletion for ${storyId} already in progress, skipping`)
+        return { success: false, message: "Delete operation in progress" }
+      }
+
+      storyOperationsInProgress.current.add(operationKey)
+      setLoading(true)
+
       try {
-        setLoading(true)
         const response = await storiesService.deleteStory(storyId)
 
         if (response.success) {
@@ -177,6 +231,7 @@ export const StoriesProvider = ({ children }) => {
         return { success: false, message: err.message || "Failed to delete story" }
       } finally {
         setLoading(false)
+        storyOperationsInProgress.current.delete(operationKey)
       }
     },
     [user]
@@ -187,16 +242,31 @@ export const StoriesProvider = ({ children }) => {
     async (storyId) => {
       if (!user || !storyId) return false
 
+      // Prevent duplicate view operations
+      const operationKey = `viewStory-${storyId}`
+      if (storyOperationsInProgress.current.has(operationKey)) {
+        return false
+      }
+
+      storyOperationsInProgress.current.add(operationKey)
+
       try {
+        // Check if already viewed to reduce unnecessary API calls
+        if (viewedStories[storyId]) {
+          return true
+        }
+
         await storiesService.markStoryAsViewed(storyId)
         setViewedStories((prev) => ({ ...prev, [storyId]: Date.now() }))
         return true
       } catch (err) {
         console.error(`Error marking story ${storyId} as viewed:`, err)
         return false
+      } finally {
+        storyOperationsInProgress.current.delete(operationKey)
       }
     },
-    [user]
+    [user, viewedStories]
   )
 
   // Check if a user has any unviewed stories
@@ -220,6 +290,13 @@ export const StoriesProvider = ({ children }) => {
         return { success: false }
       }
 
+      const operationKey = `reactToStory-${storyId}-${reactionType}`
+      if (storyOperationsInProgress.current.has(operationKey)) {
+        return { success: false, message: "Reaction already in progress" }
+      }
+
+      storyOperationsInProgress.current.add(operationKey)
+
       try {
         const response = await storiesService.reactToStory(storyId, reactionType)
         if (response.success) {
@@ -230,6 +307,8 @@ export const StoriesProvider = ({ children }) => {
         console.error("Error reacting to story:", err)
         toast.error("Failed to add reaction")
         return { success: false }
+      } finally {
+        storyOperationsInProgress.current.delete(operationKey)
       }
     },
     [user]
