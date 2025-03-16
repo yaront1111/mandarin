@@ -1,6 +1,5 @@
 "use client"
 
-// Fixed ChatComponents.js with proper initialization of initializePeerConnection
 import React, { useState, useEffect, useRef, useCallback, memo } from "react"
 import { useAuth, useChat } from "../context"
 import {
@@ -47,6 +46,29 @@ const Message = memo(({ message, currentUserId, formattedTime }) => {
           <FaVideo /> Video Call
         </p>
       )}
+      {message.type === "file" && message.metadata && (
+        <div className="file-message">
+          {message.metadata.fileType?.startsWith("image/") ? (
+            <div className="image-attachment">
+              <img src={message.metadata.fileUrl} alt={message.metadata.fileName || "Image"} />
+              <span className="file-name">{message.metadata.fileName}</span>
+            </div>
+          ) : (
+            <div className="file-attachment">
+              <span className="file-icon">📎</span>
+              <span className="file-name">{message.metadata.fileName || "File"}</span>
+              <a
+                href={message.metadata.fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="download-link"
+              >
+                Download
+              </a>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 })
@@ -85,15 +107,20 @@ export const ChatBox = ({ recipient }) => {
     sendingMessage,
     messageError,
     clearError,
+    uploadFile,
+    sendFileMessage,
   } = useChat()
 
   const [newMessage, setNewMessage] = useState("")
   const [showEmojis, setShowEmojis] = useState(false)
   const [visibleMessages, setVisibleMessages] = useState([])
   const [scrollPosition, setScrollPosition] = useState(0)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   const messagesEndRef = useRef(null)
   const chatInputRef = useRef(null)
+  const fileInputRef = useRef(null)
   const typingTimeoutRef = useRef(null)
   const messageContainerRef = useRef(null)
 
@@ -132,7 +159,7 @@ export const ChatBox = ({ recipient }) => {
 
   // Virtualize messages: calculate and render only the messages in view (with a buffer).
   useEffect(() => {
-    if (!messageContainerRef.current || messages.length === 0) return
+    if (!messageContainerRef.current || !messages || messages.length === 0) return
 
     const container = messageContainerRef.current
     const containerHeight = container.clientHeight
@@ -163,7 +190,7 @@ export const ChatBox = ({ recipient }) => {
 
   // Auto-scroll to bottom when new messages arrive, if user is near the bottom.
   useEffect(() => {
-    if (messageContainerRef.current) {
+    if (messageContainerRef.current && messages && messages.length > 0) {
       const { scrollHeight, scrollTop, clientHeight } = messageContainerRef.current
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 200
       if (isNearBottom) {
@@ -175,13 +202,77 @@ export const ChatBox = ({ recipient }) => {
   // Handler for sending text messages.
   const handleSendMessage = async (e) => {
     e.preventDefault()
+
+    // If there's an attachment, send it first
+    if (attachment) {
+      handleSendAttachment()
+      return
+    }
+
     if (newMessage.trim() && !sendingMessage && recipient) {
       try {
         await sendMessage(recipient._id, "text", newMessage.trim())
         setNewMessage("")
       } catch (error) {
         console.error("Failed to send message:", error)
+        toast.error("Failed to send message. Please try again.")
       }
+    }
+  }
+
+  // Handler for file uploads
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    // Validate file size (max 5MB)
+    const MAX_SIZE = 5 * 1024 * 1024 // 5MB
+    if (file.size > MAX_SIZE) {
+      toast.error("File is too large. Maximum size is 5MB.")
+      return
+    }
+
+    // Set the attachment
+    setAttachment(file)
+  }
+
+  // Handle sending file attachment
+  const handleSendAttachment = async () => {
+    if (!attachment || !recipient) return
+
+    setIsUploading(true)
+    try {
+      // Send file message with progress tracking
+      await sendFileMessage(recipient._id, attachment, (progress) => {
+        setUploadProgress(progress)
+      })
+
+      // Reset attachment state
+      setAttachment(null)
+      setUploadProgress(0)
+
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    } catch (error) {
+      console.error("Failed to send attachment:", error)
+      toast.error("Failed to send file. Please try again.")
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  // Trigger file input click
+  const handleAttachmentClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  // Remove the selected attachment
+  const handleRemoveAttachment = () => {
+    setAttachment(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
     }
   }
 
@@ -192,6 +283,7 @@ export const ChatBox = ({ recipient }) => {
         await sendMessage(recipient._id, "wink", "😉")
       } catch (error) {
         console.error("Failed to send wink:", error)
+        toast.error("Failed to send wink. Please try again.")
       }
     }
   }
@@ -207,13 +299,22 @@ export const ChatBox = ({ recipient }) => {
     }, 300)
   }
 
+  // Handle emoji selection
+  const handleEmojiClick = (emoji) => {
+    setNewMessage((prev) => prev + emoji)
+    setShowEmojis(false)
+    chatInputRef.current?.focus()
+  }
+
   // Check if the recipient is currently typing.
-  const isTyping = recipient && typingUsers[recipient._id] && Date.now() - typingUsers[recipient._id] < 3000
+  const isTyping = recipient && typingUsers && typingUsers[recipient._id] && Date.now() - typingUsers[recipient._id] < 3000
 
   /**
    * Render visible messages while inserting date dividers when the date changes.
    */
   const renderMessages = () => {
+    if (!visibleMessages || visibleMessages.length === 0) return null
+
     let lastDate = ""
     return visibleMessages.map((message) => {
       const messageDate = new Date(message.createdAt).toLocaleDateString()
@@ -251,7 +352,7 @@ export const ChatBox = ({ recipient }) => {
 
       {/* Messages container with virtualization */}
       <div className="messages-container" ref={messageContainerRef}>
-        {messages.length === 0 ? (
+        {!messages || messages.length === 0 ? (
           <div className="no-messages">
             <p>No messages yet. Say hello!</p>
           </div>
@@ -270,17 +371,50 @@ export const ChatBox = ({ recipient }) => {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Attachment preview */}
+      {attachment && (
+        <div className="attachment-preview">
+          <div className="attachment-info">
+            <span className="attachment-icon">📎</span>
+            <span className="attachment-name">{attachment.name}</span>
+            <span className="attachment-size">({Math.round(attachment.size / 1024)} KB)</span>
+          </div>
+          {isUploading ? (
+            <div className="upload-progress">
+              <div className="progress-bar" style={{ width: `${uploadProgress}%` }}></div>
+              <span>{uploadProgress}%</span>
+            </div>
+          ) : (
+            <button className="remove-attachment" onClick={handleRemoveAttachment}>
+              <FaTimes />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Message input form */}
       <form className="message-form" onSubmit={handleSendMessage}>
-        <button type="button" className="input-attachment">
+        <button
+          type="button"
+          className="input-attachment"
+          onClick={handleAttachmentClick}
+          disabled={sendingMessage || isUploading}
+        >
           <FaPaperclip />
         </button>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          style={{ display: "none" }}
+          accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,audio/mpeg,audio/wav,video/mp4,video/quicktime"
+        />
         <input
           type="text"
           placeholder="Type a message..."
           value={newMessage}
           onChange={handleTyping}
-          disabled={sendingMessage}
+          disabled={sendingMessage || isUploading}
           ref={chatInputRef}
         />
         <button type="button" className="input-emoji" onClick={() => setShowEmojis(!showEmojis)}>
@@ -299,11 +433,7 @@ export const ChatBox = ({ recipient }) => {
                 <button
                   key={emoji}
                   type="button"
-                  onClick={() => {
-                    setNewMessage((prev) => prev + emoji)
-                    setShowEmojis(false)
-                    chatInputRef.current?.focus()
-                  }}
+                  onClick={() => handleEmojiClick(emoji)}
                 >
                   {emoji}
                 </button>
@@ -311,8 +441,12 @@ export const ChatBox = ({ recipient }) => {
             </div>
           </div>
         )}
-        <button type="submit" className="input-send" disabled={!newMessage.trim() || sendingMessage}>
-          {sendingMessage ? <FaSpinner className="fa-spin" /> : <FaPaperPlane />}
+        <button
+          type="submit"
+          className="input-send"
+          disabled={(!newMessage.trim() && !attachment) || sendingMessage || isUploading}
+        >
+          {sendingMessage || isUploading ? <FaSpinner className="fa-spin" /> : <FaPaperPlane />}
         </button>
       </form>
     </div>
@@ -338,7 +472,10 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
       try {
         // Create RTCPeerConnection
         const configuration = {
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.google.com:19302" }],
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.google.com:19302" }
+          ],
         }
 
         const peerConnection = new RTCPeerConnection(configuration)
@@ -449,7 +586,7 @@ export const VideoCall = ({ peer, isIncoming, onAnswer, onDecline, onEnd }) => {
         peerConnectionRef.current = null
       }
     }
-  }, [initializePeerConnection, isIncoming, peer, remoteStream])
+  }, [initializePeerConnection, isIncoming, peer])
 
   // Create and send an offer (for the caller)
   const createAndSendOffer = async (peerConnection) => {

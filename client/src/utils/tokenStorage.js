@@ -118,8 +118,13 @@ const tokenStorage = {
   },
 }
 
+// Export individual methods
 export const getToken = tokenStorage.getToken
 export const setToken = tokenStorage.setToken
 export const removeToken = tokenStorage.removeToken
+export const isTokenExpired = tokenStorage.isTokenExpired
+export const parseToken = tokenStorage.parseToken
+export const getExpiryTime = tokenStorage.getExpiryTime
+export const getUserId = tokenStorage.getUserId
 
 export default tokenStorage

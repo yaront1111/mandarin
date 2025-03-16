@@ -1,54 +1,73 @@
+// Import all components and re-export them for easier imports throughout the app
+
 // Layout Components
-import { Container, Row, Column, Card, Header, Footer, Sidebar, Modal, Spinner, Tooltip } from "./LayoutComponents"
+import { Navbar, Alert, PrivateRoute as LayoutPrivateRoute } from "./LayoutComponents"
 
 // User Components
-import { UserAvatar, UserCard, UserList, UserSearch, UserBadge } from "./UserComponents"
+import {
+  UserCard,
+  UserPhotoGallery,
+  UserPhotoViewer,
+  UserList,
+  UserFilter
+} from "./UserComponents"
 
 // Chat Components
-import { ChatWindow, ChatInput, ChatMessage, ChatList, VideoCall, AudioCall, EmbeddedChat } from "./ChatComponents"
+import {
+  ChatBox,
+  VideoCall,
+  Spinner
+} from "./ChatComponents"
+
+// Import EmbeddedChat as a named import
+import EmbeddedChat from "./EmbeddedChat"
 
 // Stories Components
-import { StoriesViewer, StoryCreator, StoryThumbnail, StoriesCarousel } from "./Stories/StoriesCarousel"
+import StoriesCarousel from "./Stories/StoriesCarousel"
+import StoriesViewer from "./Stories/StoriesViewer"
+import StoryCreator from "./Stories/StoryCreator"
+import StoryThumbnail from "./Stories/StoryThumbnail"
 
 // Error Boundary
 import ErrorBoundary from "./ErrorBoundary"
 
+// Import from PrivateRoute.jsx which is our main implementation
+import PrivateRoute from "./PrivateRoute.jsx"
+
 // Theme Toggle
-import ThemeToggle from "./theme-toggle"
+import { ThemeToggle } from "./theme-toggle.tsx"
 
 export {
   // Layout Components
-  Container,
-  Row,
-  Column,
-  Card,
-  Header,
-  Footer,
-  Sidebar,
-  Modal,
-  Spinner,
-  Tooltip,
+  Navbar,
+  Alert,
+  LayoutPrivateRoute,
+
   // User Components
-  UserAvatar,
   UserCard,
+  UserPhotoGallery,
+  UserPhotoViewer,
   UserList,
-  UserSearch,
-  UserBadge,
+  UserFilter,
+
   // Chat Components
-  ChatWindow,
-  ChatInput,
-  ChatMessage,
-  ChatList,
+  ChatBox,
   VideoCall,
-  AudioCall,
+  Spinner,
   EmbeddedChat,
+
   // Stories Components
+  StoriesCarousel,
   StoriesViewer,
   StoryCreator,
   StoryThumbnail,
-  StoriesCarousel,
+
   // Error Boundary
   ErrorBoundary,
+
+  // Auth Components
+  PrivateRoute,
+
   // Theme Toggle
   ThemeToggle,
 }

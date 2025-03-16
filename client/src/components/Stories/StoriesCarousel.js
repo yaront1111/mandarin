@@ -1,35 +1,53 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { useStories } from "../../context"
 import StoryThumbnail from "./StoryThumbnail"
 import "../../styles/stories.css"
 
 const StoriesCarousel = ({ onStoryClick }) => {
-  const storiesContext = useStories()
-  const { stories = [], fetchStories } = storiesContext || {}
+  const { stories = [], loadStories, loading: contextLoading } = useStories() || {}
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
+  // Load stories when component mounts
   useEffect(() => {
-    const loadStories = async () => {
+    const loadStoriesData = async () => {
       try {
-        // Check if fetchStories exists before calling it
-        if (typeof fetchStories === "function") {
-          await fetchStories()
+        setLoading(true)
+        setError(null)
+
+        // Check if loadStories exists before calling it
+        if (typeof loadStories === "function") {
+          await loadStories()
         } else {
-          console.log("Stories functionality is not available")
-          setLoading(false)
+          console.warn("Stories functionality is not available - loadStories function not found")
         }
+
+        // We still set loading to false even if loadStories doesn't exist
+        // This allows the component to degrade gracefully
+        setLoading(false)
       } catch (error) {
         console.error("Error loading stories:", error)
+        setError("Failed to load stories")
         setLoading(false)
       }
     }
 
-    loadStories()
-  }, [fetchStories])
+    loadStoriesData()
+  }, [loadStories])
 
-  if (loading) {
+  // Safely handle story click
+  const handleStoryClick = useCallback((storyId) => {
+    if (typeof onStoryClick === 'function') {
+      onStoryClick(storyId)
+    } else {
+      console.warn("Story click handler not provided")
+    }
+  }, [onStoryClick])
+
+  // Show loading state
+  if (loading || contextLoading) {
     return (
       <div className="stories-carousel-container">
         <div className="stories-carousel-loading">
@@ -40,21 +58,39 @@ const StoriesCarousel = ({ onStoryClick }) => {
     )
   }
 
-  if (!stories || stories.length === 0) {
+  // Show error state
+  if (error) {
     return (
       <div className="stories-carousel-container">
-        <div className="stories-carousel-empty">
-          <p>No stories available</p>
+        <div className="stories-carousel-error">
+          <p>{error}</p>
         </div>
       </div>
     )
   }
 
+  // Show empty state
+  if (!stories || stories.length === 0) {
+    return (
+      <div className="stories-carousel-container">
+        <div className="stories-carousel-empty">
+          <p>No stories available</p>
+          {/* We could add a "Create Story" button here */}
+        </div>
+      </div>
+    )
+  }
+
+  // Render stories carousel
   return (
     <div className="stories-carousel-container">
       <div className="stories-carousel">
         {stories.map((story) => (
-          <StoryThumbnail key={story._id} story={story} onClick={() => onStoryClick(story._id)} />
+          <StoryThumbnail
+            key={story._id || `story-${Math.random()}`}
+            story={story}
+            onClick={() => handleStoryClick(story._id)}
+          />
         ))}
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import {
   FaSmile,
   FaPaperPlane,
@@ -43,6 +43,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     sending: sendingMessage,
     error: messageError,
     clearError,
+    sendFileMessage,
   } = useChat()
 
   const [newMessage, setNewMessage] = useState("")
@@ -51,6 +52,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const [attachment, setAttachment] = useState(null)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [messagesData, setMessagesData] = useState([])
 
   const messagesEndRef = useRef(null)
   const chatInputRef = useRef(null)
@@ -59,22 +61,46 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Load messages when chat is opened with the recipient
   useEffect(() => {
+    let isMounted = true;
+
     if (recipient && isOpen) {
       setIsLoading(true)
       getMessages(recipient._id)
-        .then(() => setIsLoading(false))
+        .then((fetchedMessages) => {
+          if (isMounted) {
+            // Check if fetchedMessages is actually an array
+            if (Array.isArray(fetchedMessages)) {
+              setMessagesData(fetchedMessages)
+            }
+            setIsLoading(false)
+          }
+        })
         .catch((err) => {
           console.error("Failed to load messages:", err)
-          setIsLoading(false)
-          toast.error("Failed to load messages. Please try again.")
+          if (isMounted) {
+            setIsLoading(false)
+            toast.error("Failed to load messages. Please try again.")
+          }
         })
     }
+
+    // Cleanup function to prevent state updates on unmounted component
+    return () => {
+      isMounted = false;
+    }
   }, [recipient, isOpen, getMessages])
+
+  // Update local messages state when the context messages change
+  useEffect(() => {
+    if (Array.isArray(messages)) {
+      setMessagesData(messages)
+    }
+  }, [messages])
 
   // Auto-scroll to bottom when messages update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+  }, [messagesData])
 
   // Focus the input when chat opens
   useEffect(() => {
@@ -100,16 +126,16 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   }, [isUploading])
 
   // Get the file icon based on file type
-  const getFileIcon = (file) => {
+  const getFileIcon = useCallback((file) => {
     if (!file) return <FaFile />
 
-    const fileType = file.type
+    const fileType = file.type || "";
     if (fileType.startsWith("image/")) return <FaImage />
     if (fileType.startsWith("video/")) return <FaFileVideo />
     if (fileType.startsWith("audio/")) return <FaFileAudio />
     if (fileType === "application/pdf") return <FaFilePdf />
     return <FaFileAlt />
-  }
+  }, [])
 
   // Handle sending a text message
   const handleSendMessage = async (e) => {
@@ -117,40 +143,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
     // If there's an attachment, handle it first
     if (attachment) {
-      try {
-        setIsUploading(true)
-
-        // Create a FormData object for the file upload
-        const formData = new FormData()
-        formData.append("file", attachment)
-        formData.append("recipient", recipient._id)
-
-        // Upload the file using apiService
-        const response = await apiService.upload("/messages/attachments", formData, (progress) => {
-          setUploadProgress(progress)
-        })
-
-        if (response.success) {
-          // Send a message with the attachment reference
-          await sendMessage(recipient._id, "file", attachment.name, {
-            fileUrl: response.data.url,
-            fileType: attachment.type,
-            fileName: attachment.name,
-            fileSize: attachment.size,
-          })
-
-          toast.success("File sent successfully")
-        } else {
-          throw new Error(response.error || "Failed to upload file")
-        }
-      } catch (error) {
-        console.error("Failed to upload attachment:", error)
-        toast.error(error.message || "Failed to send file. Please try again.")
-      } finally {
-        setIsUploading(false)
-        setUploadProgress(0)
-        setAttachment(null)
-      }
+      await handleSendAttachment()
       return
     }
 
@@ -164,6 +157,33 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       }
     }
   }
+
+  // Handle sending file attachment
+  const handleSendAttachment = async () => {
+    if (!attachment || !recipient || isUploading) return;
+
+    setIsUploading(true);
+    try {
+      // Use the sendFileMessage from ChatContext
+      await sendFileMessage(recipient._id, attachment, (progress) => {
+        setUploadProgress(progress);
+      });
+
+      toast.success("File sent successfully");
+
+      // Reset attachment state after successful upload
+      setAttachment(null);
+      setUploadProgress(0);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (error) {
+      console.error("Failed to send attachment:", error);
+      toast.error(error.message || "Failed to send file. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   // Handle typing indicator
   const handleTyping = (e) => {
@@ -190,45 +210,45 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Handle file selection for attachment
   const handleFileChange = (e) => {
-    const file = e.target.files[0]
-    if (file) {
-      // Validate file size (5MB max)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("File is too large. Maximum size is 5MB.")
-        e.target.value = null
-        return
-      }
+    const file = e.target.files?.[0]
+    if (!file) return
 
-      // Validate file type
-      const allowedTypes = [
-        // Images
-        "image/jpeg",
-        "image/jpg",
-        "image/png",
-        "image/gif",
-        // Documents
-        "application/pdf",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "text/plain",
-        // Audio
-        "audio/mpeg",
-        "audio/wav",
-        // Video - be cautious with video size
-        "video/mp4",
-        "video/quicktime",
-      ]
-
-      if (!allowedTypes.includes(file.type)) {
-        toast.error("File type not supported.")
-        e.target.value = null
-        return
-      }
-
-      setAttachment(file)
-      toast.info(`Selected file: ${file.name}`)
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File is too large. Maximum size is 5MB.")
       e.target.value = null
+      return
     }
+
+    // Validate file type
+    const allowedTypes = [
+      // Images
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      // Documents
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain",
+      // Audio
+      "audio/mpeg",
+      "audio/wav",
+      // Video - be cautious with video size
+      "video/mp4",
+      "video/quicktime",
+    ]
+
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("File type not supported.")
+      e.target.value = null
+      return
+    }
+
+    setAttachment(file)
+    toast.info(`Selected file: ${file.name}`)
+    e.target.value = null
   }
 
   // Trigger file input when attachment button is clicked
@@ -240,6 +260,9 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const handleRemoveAttachment = () => {
     setAttachment(null)
     setUploadProgress(0)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
   }
 
   // Handle video call
@@ -253,34 +276,45 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   }
 
   // Format time for messages
-  const formatMessageTime = (timestamp) => {
+  const formatMessageTime = useCallback((timestamp) => {
     if (!timestamp) return ""
-    const date = new Date(timestamp)
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  }
+    try {
+      const date = new Date(timestamp)
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    } catch (e) {
+      console.error("Error formatting time:", e)
+      return ""
+    }
+  }, [])
 
   // Format the date for grouping messages
-  const formatMessageDate = (timestamp) => {
+  const formatMessageDate = useCallback((timestamp) => {
     if (!timestamp) return "Unknown date"
-    const date = new Date(timestamp)
-    const today = new Date()
-    const yesterday = new Date()
-    yesterday.setDate(yesterday.getDate() - 1)
+    try {
+      const date = new Date(timestamp)
+      const today = new Date()
+      const yesterday = new Date()
+      yesterday.setDate(yesterday.getDate() - 1)
 
-    if (date.toDateString() === today.toDateString()) {
-      return "Today"
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return "Yesterday"
-    } else {
-      return date.toLocaleDateString()
+      if (date.toDateString() === today.toDateString()) {
+        return "Today"
+      } else if (date.toDateString() === yesterday.toDateString()) {
+        return "Yesterday"
+      } else {
+        return date.toLocaleDateString()
+      }
+    } catch (e) {
+      console.error("Error formatting date:", e)
+      return "Unknown date"
     }
-  }
+  }, [])
 
   // Group messages by date
-  const groupMessagesByDate = () => {
+  const groupMessagesByDate = useCallback(() => {
     const groups = {}
-    if (!Array.isArray(messages)) return groups
-    messages.forEach((message) => {
+    if (!Array.isArray(messagesData)) return groups
+
+    messagesData.forEach((message) => {
       if (message && message.createdAt) {
         const date = formatMessageDate(message.createdAt)
         if (!groups[date]) groups[date] = []
@@ -288,7 +322,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       }
     })
     return groups
-  }
+  }, [messagesData, formatMessageDate])
 
   // Common emoji list
   const commonEmojis = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"]
@@ -303,6 +337,13 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   // Determine if the recipient is typing
   const isTyping =
     recipient && typingUsers && typingUsers[recipient._id] && Date.now() - typingUsers[recipient._id] < 3000
+
+  // Safely handle close event
+  const handleClose = () => {
+    if (typeof onClose === 'function') {
+      onClose()
+    }
+  }
 
   // If chat is not open, render nothing
   if (!isOpen) return null
@@ -323,6 +364,10 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             src={metadata.fileUrl || "/placeholder.svg"}
             alt={metadata.fileName || "Image"}
             className="image-attachment"
+            onError={(e) => {
+              e.target.onerror = null
+              e.target.src = "/placeholder.svg"
+            }}
           />
         ) : (
           <div className="file-attachment">
@@ -358,7 +403,15 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       <div className="chat-header">
         <div className="chat-user">
           {recipient.photos && recipient.photos.length > 0 ? (
-            <img src={recipient.photos[0].url || "/placeholder.svg"} alt={recipient.nickname} className="chat-avatar" />
+            <img
+              src={recipient.photos[0].url || "/placeholder.svg"}
+              alt={recipient.nickname}
+              className="chat-avatar"
+              onError={(e) => {
+                e.target.onerror = null
+                e.target.src = "/placeholder.svg"
+              }}
+            />
           ) : (
             <div className="chat-avatar-placeholder" />
           )}
@@ -375,10 +428,11 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             onClick={handleVideoCall}
             title="Start Video Call"
             aria-label="Start video call"
+            disabled={isUploading || sendingMessage}
           >
             <FaVideo />
           </button>
-          <button className="close-chat-btn" onClick={onClose} aria-label="Close chat" title="Close chat">
+          <button className="close-chat-btn" onClick={handleClose} aria-label="Close chat" title="Close chat">
             <FaTimes />
           </button>
         </div>
@@ -391,7 +445,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             <div className="spinner"></div>
             <p>Loading messages...</p>
           </div>
-        ) : messages.length === 0 ? (
+        ) : !messagesData || messagesData.length === 0 ? (
           <div className="no-messages">
             <p>No messages yet. Say hello!</p>
           </div>
@@ -466,7 +520,11 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
               <span className="upload-progress-text">{uploadProgress}%</span>
             </div>
           ) : (
-            <button className="remove-attachment" onClick={handleRemoveAttachment}>
+            <button
+              className="remove-attachment"
+              onClick={handleRemoveAttachment}
+              disabled={isUploading}
+            >
               <FaTimes />
             </button>
           )}
@@ -481,7 +539,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           onClick={() => setShowEmojis(!showEmojis)}
           title="Add Emoji"
           aria-label="Add emoji"
-          disabled={isUploading}
+          disabled={isUploading || sendingMessage}
         >
           <FaSmile />
         </button>

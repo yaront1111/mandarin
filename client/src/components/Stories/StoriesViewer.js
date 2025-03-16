@@ -4,17 +4,51 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useStories, useUser } from "../../context"
 import "../../styles/stories.css"
 
-const StoriesViewer = ({ storyId, onClose }) => {
-  const { stories, viewStory } = useStories()
-  const { user } = useUser()
+const StoriesViewer = ({ storyId, userId, onClose }) => {
+  // We allow passing either storyId or userId to the component
+  const { stories = [], viewStory, loadUserStories } = useStories() || {}
+  const { user } = useUser() || {}
+
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0)
   const [progress, setProgress] = useState(0)
   const [paused, setPaused] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [userStories, setUserStories] = useState([])
+
   const progressInterval = useRef(null)
   const storyDuration = 5000 // 5 seconds per story
   const progressStep = 100 / (storyDuration / 100) // Progress increment per 100ms
+
+  // Load stories for specific user if userId is provided
+  useEffect(() => {
+    const fetchUserStories = async () => {
+      if (!userId || !loadUserStories) return
+
+      setLoading(true)
+      try {
+        await loadUserStories(userId)
+
+        // Filter stories specifically for this user from the stories array
+        const userSpecificStories = stories.filter(
+          story => story.user && story.user._id === userId
+        )
+
+        if (userSpecificStories.length === 0) {
+          setError("No stories available for this user")
+        } else {
+          setUserStories(userSpecificStories)
+        }
+      } catch (err) {
+        console.error("Error loading user stories:", err)
+        setError("Failed to load stories")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchUserStories()
+  }, [userId, loadUserStories, stories])
 
   // Find the starting index based on storyId
   useEffect(() => {
@@ -32,10 +66,13 @@ const StoriesViewer = ({ storyId, onClose }) => {
     }
   }, [storyId, stories])
 
+  // Determine which stories array to use
+  const currentStories = userId ? userStories : stories
+
   // Mark story as viewed
   useEffect(() => {
-    if (stories && stories.length > 0 && currentStoryIndex < stories.length) {
-      const currentStory = stories[currentStoryIndex]
+    if (viewStory && currentStories && currentStories.length > 0 && currentStoryIndex < currentStories.length) {
+      const currentStory = currentStories[currentStoryIndex]
       if (currentStory && user && !currentStory.viewers?.includes(user._id)) {
         try {
           viewStory(currentStory._id)
@@ -44,11 +81,11 @@ const StoriesViewer = ({ storyId, onClose }) => {
         }
       }
     }
-  }, [currentStoryIndex, stories, user, viewStory])
+  }, [currentStoryIndex, currentStories, user, viewStory])
 
   // Handle progress bar
   useEffect(() => {
-    if (paused || loading || error) return
+    if (paused || loading || error || !currentStories || currentStories.length === 0) return
 
     setProgress(0)
 
@@ -61,10 +98,10 @@ const StoriesViewer = ({ storyId, onClose }) => {
         if (prev >= 100) {
           clearInterval(progressInterval.current)
           // Move to next story
-          if (stories && currentStoryIndex < stories.length - 1) {
+          if (currentStories && currentStoryIndex < currentStories.length - 1) {
             setCurrentStoryIndex((prev) => prev + 1)
           } else {
-            onClose()
+            if (typeof onClose === 'function') onClose()
           }
           return 0
         }
@@ -77,7 +114,7 @@ const StoriesViewer = ({ storyId, onClose }) => {
         clearInterval(progressInterval.current)
       }
     }
-  }, [currentStoryIndex, stories, paused, onClose, progressStep, loading, error])
+  }, [currentStoryIndex, currentStories, paused, onClose, progressStep, loading, error])
 
   const handlePrevStory = useCallback((e) => {
     if (e) e.stopPropagation()
@@ -89,13 +126,13 @@ const StoriesViewer = ({ storyId, onClose }) => {
 
   const handleNextStory = useCallback((e) => {
     if (e) e.stopPropagation()
-    if (stories && currentStoryIndex < stories.length - 1) {
+    if (currentStories && currentStoryIndex < currentStories.length - 1) {
       setCurrentStoryIndex((prev) => prev + 1)
       setProgress(0)
     } else {
-      onClose()
+      if (typeof onClose === 'function') onClose()
     }
-  }, [currentStoryIndex, stories, onClose])
+  }, [currentStoryIndex, currentStories, onClose])
 
   const togglePause = useCallback((e) => {
     e.stopPropagation()
@@ -110,13 +147,18 @@ const StoriesViewer = ({ storyId, onClose }) => {
       } else if (e.key === "ArrowRight" || e.key === " " || e.key === "Spacebar") {
         handleNextStory()
       } else if (e.key === "Escape") {
-        onClose()
+        if (typeof onClose === 'function') onClose()
       }
     }
 
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [handlePrevStory, handleNextStory, onClose])
+
+  // Handle safe close
+  const handleClose = () => {
+    if (typeof onClose === 'function') onClose()
+  }
 
   if (loading) {
     return (
@@ -135,7 +177,7 @@ const StoriesViewer = ({ storyId, onClose }) => {
         <div className="stories-viewer-container" style={{ justifyContent: "center", alignItems: "center" }}>
           <p style={{ color: "white" }}>{error}</p>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             style={{ marginTop: "20px", padding: "10px 20px", background: "#ff3366", color: "white", border: "none", borderRadius: "5px", cursor: "pointer" }}
           >
             Close
@@ -145,13 +187,13 @@ const StoriesViewer = ({ storyId, onClose }) => {
     )
   }
 
-  if (!stories || stories.length === 0 || currentStoryIndex >= stories.length) {
+  if (!currentStories || currentStories.length === 0 || currentStoryIndex >= currentStories.length) {
     return (
       <div className="stories-viewer-overlay">
         <div className="stories-viewer-container" style={{ justifyContent: "center", alignItems: "center" }}>
           <p style={{ color: "white" }}>No stories available</p>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             style={{ marginTop: "20px", padding: "10px 20px", background: "#ff3366", color: "white", border: "none", borderRadius: "5px", cursor: "pointer" }}
           >
             Close
@@ -161,7 +203,21 @@ const StoriesViewer = ({ storyId, onClose }) => {
     )
   }
 
-  const currentStory = stories[currentStoryIndex]
+  const currentStory = currentStories[currentStoryIndex]
+
+  // Safety check for currentStory
+  if (!currentStory) {
+    return (
+      <div className="stories-viewer-overlay">
+        <div className="stories-viewer-container" style={{ justifyContent: "center", alignItems: "center" }}>
+          <p style={{ color: "white" }}>Story not available</p>
+          <button onClick={handleClose} style={{ marginTop: "20px", padding: "10px 20px", background: "#ff3366", color: "white", border: "none", borderRadius: "5px", cursor: "pointer" }}>
+            Close
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   // Get background style for text stories
   const getBackgroundStyle = () => {
@@ -183,12 +239,34 @@ const StoriesViewer = ({ storyId, onClose }) => {
     return {}
   }
 
+  // Get username with fallback
+  const getUsername = () => {
+    return currentStory.user?.username || "User"
+  }
+
+  // Get profile picture with fallback
+  const getProfilePicture = () => {
+    return currentStory.user?.profilePicture || "/placeholder.svg?height=40&width=40"
+  }
+
+  // Format timestamp with safety check
+  const formatTimestamp = () => {
+    try {
+      return new Date(currentStory.createdAt).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      })
+    } catch (e) {
+      return "Recently"
+    }
+  }
+
   return (
     <div className="stories-viewer-overlay">
       <div className="stories-viewer-container">
         <div className="stories-viewer-header">
           <div className="stories-progress-container">
-            {stories.map((_, index) => (
+            {currentStories.map((_, index) => (
               <div key={index} className={`stories-progress-bar ${index < currentStoryIndex ? "completed" : ""}`}>
                 {index === currentStoryIndex && (
                   <div className="stories-progress-fill" style={{ width: `${progress}%` }} />
@@ -198,16 +276,14 @@ const StoriesViewer = ({ storyId, onClose }) => {
           </div>
           <div className="stories-user-info">
             <img
-              src={currentStory.user?.profilePicture || "/placeholder.svg?height=40&width=40"}
-              alt={currentStory.user?.username || "User"}
+              src={getProfilePicture()}
+              alt={getUsername()}
               className="stories-user-avatar"
             />
-            <span className="stories-username">{currentStory.user?.username || "User"}</span>
-            <span className="stories-timestamp">
-              {new Date(currentStory.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </span>
+            <span className="stories-username">{getUsername()}</span>
+            <span className="stories-timestamp">{formatTimestamp()}</span>
           </div>
-          <button className="stories-close-btn" onClick={onClose} aria-label="Close stories">
+          <button className="stories-close-btn" onClick={handleClose} aria-label="Close stories">
             ×
           </button>
         </div>
@@ -290,66 +366,6 @@ const StoriesViewer = ({ storyId, onClose }) => {
           <div className="stories-nav-right" onClick={handleNextStory}></div>
         </div>
       </div>
-
-      {/* Add CSS for text stories */}
-      <style jsx>{`
-        .stories-text-content {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 30px;
-          text-align: center;
-          font-size: 24px;
-          font-weight: bold;
-          color: white;
-          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-          word-wrap: break-word;
-          border-radius: 8px;
-          position: relative;
-        }
-        
-        .stories-image-container,
-        .stories-video-container {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          position: relative;
-        }
-        
-        .pause-indicator {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          background-color: rgba(0, 0, 0, 0.5);
-          width: 60px;
-          height: 60px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          animation: pulse 1.5s infinite;
-        }
-        
-        @keyframes pulse {
-          0% {
-            transform: translate(-50%, -50%) scale(1);
-            opacity: 0.8;
-          }
-          70% {
-            transform: translate(-50%, -50%) scale(1.1);
-            opacity: 1;
-          }
-          100% {
-            transform: translate(-50%, -50%) scale(1);
-            opacity: 0.8;
-          }
-        }
-      `}</style>
     </div>
   )
 }

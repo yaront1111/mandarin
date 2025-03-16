@@ -9,16 +9,18 @@ class SocketService {
     this.token = null
     this.isConnecting = false
     this.reconnectAttempts = 0
-    this.maxReconnectAttempts = 10 // Increased from 5
-    this.reconnectDelay = 5000 // Increased from 2000
+    this.maxReconnectAttempts = 10
+    this.reconnectDelay = 5000
     this.eventHandlers = {}
     this.pendingMessages = []
     this.connectionTimeout = null
     this.heartbeatInterval = null
     this.lastHeartbeat = null
-    this.serverUrl = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000"
+    this.connectionLostTimeout = null
+    this.serverUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin || "http://localhost:5000"
     this.showConnectionToasts = false
     this.forceReconnectTimeout = null
+    this.abortController = null
   }
 
   /**
@@ -28,6 +30,9 @@ class SocketService {
    */
   init(userId, token) {
     if (this.isConnecting) return
+
+    // Create new abort controller for potential request cancellation
+    this.abortController = new AbortController()
 
     this.userId = userId
     this.token = token
@@ -43,32 +48,42 @@ class SocketService {
       if (!this.socket || !this.socket.connected) {
         console.error("Socket connection timeout")
         this.isConnecting = false
-        toast.error("Chat connection timed out. Please refresh the page.")
+
+        // Check if the network is available
+        if (navigator.onLine) {
+          toast.error("Chat connection timed out. Please refresh the page.")
+        } else {
+          console.log("Network is offline, will retry when connection is available")
+        }
       }
-    }, 20000) // Increased from 10000
+    }, 20000)
 
     // Create socket connection with proper authentication
     try {
       console.log("Initializing socket with userId:", userId)
 
       // Make sure we're using the correct URL
-      const serverUrl = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000"
-      console.log("Socket server URL:", serverUrl)
+      console.log("Socket server URL:", this.serverUrl)
 
-      this.socket = io(serverUrl, {
+      // Create socket instance with optimization options
+      this.socket = io(this.serverUrl, {
         query: { token }, // Pass token as a query parameter
         auth: { token, userId }, // Also include in auth object for redundancy
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectDelay,
         reconnectionDelayMax: 30000, // Maximum reconnection delay of 30 seconds
-        timeout: 20000, // Increased from 10000
+        timeout: 20000,
         transports: ["websocket", "polling"],
         forceNew: false, // Don't force a new connection
         multiplex: true, // Allow connection multiplexing
         upgrade: true, // Allow transport upgrades
-        pingInterval: 45000, // Increased from default (25000)
-        pingTimeout: 90000, // Increased from default (60000)
+        pingInterval: 45000,
+        pingTimeout: 90000,
+        perMessageDeflate: true, // Enable compression
+        autoConnect: true,
+        volatile: false, // Make sure messages are delivered
+        path: window.location.origin.includes('localhost') ? '/socket.io' : '/socket.io',
       })
 
       // Setup event handlers
@@ -78,10 +93,77 @@ class SocketService {
 
       // Set up a force reconnect every 30 minutes to refresh the connection
       this._setupForceReconnect()
+
+      // Listen for network status changes
+      window.addEventListener('online', this._handleOnline)
+      window.addEventListener('offline', this._handleOffline)
+
+      // Listen for page visibility changes
+      document.addEventListener('visibilitychange', this._handleVisibilityChange)
     } catch (error) {
       console.error("Socket initialization error:", error)
       this.isConnecting = false
       toast.error("Failed to connect to chat server. Please refresh the page.")
+    }
+  }
+
+  /**
+   * Handle when the browser comes online
+   */
+  _handleOnline = () => {
+    console.log("Browser went online, attempting reconnect")
+    if (!this.socket || !this.socket.connected) {
+      this.reconnect()
+    }
+  }
+
+  /**
+   * Handle when the browser goes offline
+   */
+  _handleOffline = () => {
+    console.log("Browser went offline, socket may disconnect")
+
+    // Clear ongoing timeouts/intervals when offline
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+      this.heartbeatInterval = null
+    }
+
+    if (this.forceReconnectTimeout) {
+      clearTimeout(this.forceReconnectTimeout)
+      this.forceReconnectTimeout = null
+    }
+
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout)
+      this.connectionTimeout = null
+    }
+  }
+
+  /**
+   * Handle page visibility changes
+   */
+  _handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      console.log("Tab became visible, checking connection")
+
+      // If socket exists but isn't connected, try to reconnect
+      if (this.socket && !this.socket.connected && navigator.onLine) {
+        this.reconnect()
+      }
+
+      // Start heartbeat again if we're connected
+      if (this.socket && this.socket.connected) {
+        this._startHeartbeat()
+      }
+    } else {
+      console.log("Tab hidden, pausing heartbeat to save resources")
+
+      // Pause heartbeat to save resources when tab is not visible
+      if (this.heartbeatInterval) {
+        clearInterval(this.heartbeatInterval)
+        this.heartbeatInterval = null
+      }
     }
   }
 
@@ -100,8 +182,8 @@ class SocketService {
         console.log("Performing scheduled reconnection to refresh socket connection")
         this.reconnect()
       },
-      30 * 60 * 1000,
-    ) // 30 minutes
+      30 * 60 * 1000
+    )
   }
 
   /**
@@ -120,6 +202,12 @@ class SocketService {
       if (this.connectionTimeout) {
         clearTimeout(this.connectionTimeout)
         this.connectionTimeout = null
+      }
+
+      // Clear connection lost timeout if it exists
+      if (this.connectionLostTimeout) {
+        clearTimeout(this.connectionLostTimeout)
+        this.connectionLostTimeout = null
       }
 
       // Start heartbeat
@@ -162,14 +250,31 @@ class SocketService {
       // Stop heartbeat
       this._stopHeartbeat()
 
+      // Set a timeout to notify user of prolonged disconnect
+      if (!this.connectionLostTimeout) {
+        this.connectionLostTimeout = setTimeout(() => {
+          if (!this.socket || !this.socket.connected) {
+            toast.warning("Chat connection lost. Attempting to reconnect...")
+          }
+        }, 5000) // Wait 5 seconds before showing the notification
+      }
+
       // Show notification for unexpected disconnects
       if (reason !== "io client disconnect" && reason !== "transport close") {
-        toast.warning("Chat connection lost. Attempting to reconnect...")
+        // Only show toast if the disconnect persists for a few seconds
+        // This is now handled by connectionLostTimeout
       }
     })
 
     this.socket.on("reconnect", (attemptNumber) => {
       console.log(`Socket reconnected after ${attemptNumber} attempts`)
+
+      // Clear connection lost timeout if it exists
+      if (this.connectionLostTimeout) {
+        clearTimeout(this.connectionLostTimeout)
+        this.connectionLostTimeout = null
+      }
+
       toast.success("Chat connection restored")
 
       // Reset force reconnect timer
@@ -214,12 +319,11 @@ class SocketService {
         // Check if we've received a pong recently
         const now = Date.now()
         if (this.lastHeartbeat && now - this.lastHeartbeat > 60000) {
-          // Increased from 30000
           console.warn("No heartbeat received for 60 seconds, reconnecting...")
           this.reconnect()
         }
       }
-    }, 30000) // Increased from 15000
+    }, 30000)
   }
 
   /**
@@ -241,12 +345,12 @@ class SocketService {
     console.log(`Processing ${this.pendingMessages.length} pending messages`)
 
     // Process each pending message
-    this.pendingMessages.forEach((message) => {
+    const messages = [...this.pendingMessages]
+    this.pendingMessages = [] // Clear the queue before processing to avoid duplication
+
+    messages.forEach((message) => {
       this.socket.emit(message.event, message.data)
     })
-
-    // Clear pending messages
-    this.pendingMessages = []
   }
 
   /**
@@ -297,12 +401,18 @@ class SocketService {
       this.forceReconnectTimeout = null
     }
 
+    if (this.connectionLostTimeout) {
+      clearTimeout(this.connectionLostTimeout)
+      this.connectionLostTimeout = null
+    }
+
     // Only attempt reconnect if we have credentials
     if (this.userId && this.token) {
       console.log("Attempting to reconnect socket...")
+      // Add a small delay before reconnecting
       setTimeout(() => {
         this.init(this.userId, this.token)
-      }, 2000) // Increased from 1000
+      }, 2000)
     } else {
       console.warn("Cannot reconnect: missing userId or token")
     }
@@ -352,9 +462,10 @@ class SocketService {
    * @param {string} recipientId - Recipient ID
    * @param {string} type - Message type
    * @param {string} content - Message content
+   * @param {Object} metadata - Optional metadata
    * @returns {Promise<Object>} - Message object
    */
-  async sendMessage(recipientId, type, content) {
+  async sendMessage(recipientId, type, content, metadata = {}) {
     return new Promise((resolve, reject) => {
       // Create a unique message ID for tracking
       const tempMessageId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -370,6 +481,7 @@ class SocketService {
           recipient: recipientId,
           type,
           content,
+          metadata,
           createdAt: new Date().toISOString(),
           read: false,
           pending: true,
@@ -378,7 +490,7 @@ class SocketService {
         // Queue message for later
         this.pendingMessages.push({
           event: "sendMessage",
-          data: { recipientId, type, content, tempMessageId },
+          data: { recipientId, type, content, metadata, tempMessageId },
         })
 
         // Try to reconnect
@@ -392,7 +504,7 @@ class SocketService {
       }
 
       // Validate parameters
-      if (!recipientId || !type || !content) {
+      if (!recipientId || !type) {
         reject(new Error("Invalid message parameters"))
         return
       }
@@ -415,6 +527,7 @@ class SocketService {
           recipient: recipientId,
           type,
           content,
+          metadata,
           createdAt: new Date().toISOString(),
           read: false,
           pending: true,
@@ -422,12 +535,12 @@ class SocketService {
 
         this.pendingMessages.push({
           event: "sendMessage",
-          data: { recipientId, type, content, tempMessageId },
+          data: { recipientId, type, content, metadata, tempMessageId },
         })
 
         resolve(tempMessage)
         console.warn("Message send timeout, queued for retry")
-      }, 10000) // Increased from 5000
+      }, 10000)
 
       // Handle message sent
       const handleMessageSent = (message) => {
@@ -450,7 +563,7 @@ class SocketService {
       this.socket.once("messageError", handleMessageError)
 
       // Send message with temp ID for tracking
-      this.socket.emit("sendMessage", { recipientId, type, content, tempMessageId })
+      this.socket.emit("sendMessage", { recipientId, type, content, metadata, tempMessageId })
     })
   }
 
@@ -495,7 +608,7 @@ class SocketService {
         this.socket.off("callInitiated", handleCallInitiated)
         this.socket.off("callError", handleCallError)
         reject(new Error("Call initiation timeout"))
-      }, 15000) // Increased from 10000
+      }, 15000)
 
       // Handle call initiated
       const handleCallInitiated = (callData) => {
@@ -546,7 +659,7 @@ class SocketService {
         this.socket.off("callAnswered", handleCallAnswered)
         this.socket.off("callError", handleCallError)
         reject(new Error("Call answer timeout"))
-      }, 15000) // Increased from 10000
+      }, 15000)
 
       // Handle call answered
       const handleCallAnswered = (callData) => {
@@ -577,13 +690,37 @@ class SocketService {
    * Disconnect socket
    */
   disconnect() {
+    // Cancel any ongoing requests
+    if (this.abortController) {
+      this.abortController.abort()
+      this.abortController = null
+    }
+
+    // Remove event listeners
+    window.removeEventListener('online', this._handleOnline)
+    window.removeEventListener('offline', this._handleOffline)
+    document.removeEventListener('visibilitychange', this._handleVisibilityChange)
+
     // Clear force reconnect timeout
     if (this.forceReconnectTimeout) {
       clearTimeout(this.forceReconnectTimeout)
       this.forceReconnectTimeout = null
     }
 
+    // Clear connection lost timeout
+    if (this.connectionLostTimeout) {
+      clearTimeout(this.connectionLostTimeout)
+      this.connectionLostTimeout = null
+    }
+
     if (this.socket) {
+      // Remove all event handlers
+      Object.keys(this.eventHandlers).forEach(event => {
+        this.eventHandlers[event].forEach(handler => {
+          this.socket.off(event, handler)
+        })
+      })
+
       this.socket.disconnect()
       this.socket = null
     }
@@ -599,6 +736,14 @@ class SocketService {
 
     // Clear event handlers
     this.eventHandlers = {}
+
+    // Clear pending messages
+    this.pendingMessages = []
+
+    // Reset state
+    this.isConnecting = false
+    this.reconnectAttempts = 0
+    this.lastHeartbeat = null
   }
 
   /**
