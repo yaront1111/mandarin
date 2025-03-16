@@ -969,3 +969,47 @@
   color: white;
   border-color: #0095f6;
 }
+.stories-user-details {
+  display: flex;
+  flex-direction: column;
+  margin-left: 10px;
+}
+
+.stories-username {
+  font-weight: bold;
+  font-size: 14px;
+  color: white;
+}
+
+.error-message {
+  color: #ff3366;
+  margin-top: 10px;
+  padding: 8px;
+  background-color: rgba(255, 51, 102, 0.1);
+  border-radius: 4px;
+}
+
+/* Add to your styles.css file */
+.user-avatar-fallback {
+  border-radius: 50%;
+  font-size: 0.8em;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-weight: bold;
+}
+
+.stories-user-details {
+  display: flex;
+  flex-direction: column;
+  margin-left: 10px;
+}
+
+.stories-username {
+  font-weight: bold;
+  font-size: 14px;
+  color: white;
+}

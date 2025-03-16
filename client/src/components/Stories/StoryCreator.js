@@ -48,10 +48,11 @@ const StoryCreator = ({ onClose, onSubmit }) => {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [duration, setDuration] = useState(24) // Default 24 hours
   const [activeTab, setActiveTab] = useState("text") // 'text', 'background', or 'font'
+  const [error, setError] = useState("")
 
   const previewRef = useRef(null)
 
-  // Handle story creation
+  // Handle story creation with improved error handling
   const handleCreateStory = async () => {
     if (!text.trim()) {
       toast.error("Please add some text to your story")
@@ -63,20 +64,23 @@ const StoryCreator = ({ onClose, onSubmit }) => {
       return
     }
 
+    setError("")
     setIsUploading(true)
     setUploadProgress(0)
 
     try {
-      // Create story data
+      // Create story data with the correct field mappings
       const storyData = {
-        content: text.trim(), // Changed from 'text' to 'content' to match server expectations
+        content: text.trim(),
+        text: text.trim(), // Include both for compatibility
         background: selectedBackground.id,
         backgroundStyle: selectedBackground.style,
-        backgroundColor: selectedBackground.style, // Added to match server field name
+        backgroundColor: selectedBackground.style,
         font: selectedFont.id,
         fontStyle: selectedFont.style,
         duration: duration.toString(),
         mediaType: "text", // Set media type to text
+        type: "text", // Also set the type field
       }
 
       // Add any extra styles if present
@@ -84,28 +88,39 @@ const StoryCreator = ({ onClose, onSubmit }) => {
         storyData.extraStyles = selectedBackground.extraStyles
       }
 
+      // Progress tracking function
+      const updateProgress = (progressEvent) => {
+        if (progressEvent.total > 0) {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          setUploadProgress(percentCompleted)
+        }
+      }
+
       // Upload with progress tracking
-      const response = await storiesService.createTextStory(storyData, (progressEvent) => {
-        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-        setUploadProgress(percentCompleted)
-      })
+      const response = await storiesService.createTextStory(storyData, updateProgress)
 
       if (response.success) {
         toast.success("Story created successfully!")
 
-        // Call callback if provided
-        if (onSubmit) {
-          onSubmit(response.data)
+        // Call callback if provided - use the correct data field
+        const storyData = response.data || response.story
+        if (onSubmit && storyData) {
+          onSubmit(storyData)
+        } else if (onSubmit) {
+          onSubmit(response)
         }
 
-        // Close creator
+        // Close creator after successful creation
         onClose()
       } else {
+        setError(response.message || "Failed to create story")
         toast.error(response.message || "Failed to create story")
       }
     } catch (error) {
       console.error("Error creating story:", error)
-      toast.error(error.message || "An error occurred while creating your story")
+      const errorMessage = error.message || "An error occurred while creating your story"
+      setError(errorMessage)
+      toast.error(errorMessage)
     } finally {
       setIsUploading(false)
     }
@@ -234,6 +249,8 @@ const StoryCreator = ({ onClose, onSubmit }) => {
               </select>
             </div>
           </div>
+
+          {error && <div className="error-message">{error}</div>}
         </div>
 
         <div className="creator-footer">

@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useMemo } from "react"
 import { useUser } from "../../context"
 import "../../styles/stories.css"
+import UserAvatar from "../UserAvatar" // Import the UserAvatar component
 
 const StoryThumbnail = ({ story, onClick, hasUnviewedStories }) => {
   const { user } = useUser()
-  const [imageError, setImageError] = useState(false)
 
   // Use useMemo to create a stable reference for storyUser
   const storyUser = useMemo(() => {
@@ -27,38 +27,14 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories }) => {
     if (typeof hasUnviewedStories !== "undefined") {
       return !hasUnviewedStories
     }
-    return user && story && story.viewers && story.viewers.includes(user._id)
+
+    if (!user || !story) return false
+
+    // Check if viewers exists and is an array
+    if (!Array.isArray(story.viewers)) return false
+
+    return story.viewers.includes(user._id)
   }, [hasUnviewedStories, user, story])
-
-  // Get profile picture URL with fallbacks
-  const getProfilePicture = () => {
-    if (imageError) {
-      // If image failed to load, use a data URI for a simple avatar placeholder
-      return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="%23cccccc"/><text x="50%" y="50%" font-size="20" text-anchor="middle" dy=".3em" fill="%23ffffff">?</text></svg>'
-    }
-
-    // Try all possible profile picture fields
-    const possibleUrls = [
-      storyUser.profilePicture,
-      storyUser.profilePic,
-      storyUser.avatar,
-      storyUser.avatarUrl,
-      storyUser.photo,
-      storyUser.image,
-    ].filter(Boolean) // Remove null/undefined values
-
-    // Return the first valid URL or a data URI placeholder
-    return (
-      possibleUrls[0] ||
-      'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="%23cccccc"/><text x="50%" y="50%" font-size="20" text-anchor="middle" dy=".3em" fill="%23ffffff">?</text></svg>'
-    )
-  }
-
-  // Handle image error
-  const handleImageError = () => {
-    console.log("Image failed to load")
-    setImageError(true)
-  }
 
   // Get user display name for alt text
   const getUserDisplayName = () => {
@@ -78,16 +54,19 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories }) => {
     return null
   }
 
+  // Get user ID for avatar
+  const userId = storyUser._id || (typeof story.user === 'string' ? story.user : null)
+
   return (
     <div className="story-thumbnail" onClick={handleClick}>
       <div className={`story-avatar-border ${isViewed ? "viewed" : ""}`}>
-        <img
-          src={getProfilePicture() || "/placeholder.svg"}
-          alt={getUserDisplayName()}
+        <UserAvatar
+          userId={userId}
+          name={getUserDisplayName()}
           className="story-avatar"
-          onError={handleImageError}
         />
       </div>
+      <div className="story-username">{getUserDisplayName()}</div>
     </div>
   )
 }

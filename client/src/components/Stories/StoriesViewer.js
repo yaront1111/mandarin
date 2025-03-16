@@ -6,7 +6,7 @@ import "../../styles/stories.css"
 
 const StoriesViewer = ({ storyId, userId, onClose }) => {
   // Allow passing either storyId or userId to the component
-  const { stories = [], viewStory, loadUserStories } = useStories() || {}
+  const { stories = [], viewStory, loadUserStories, loadStories } = useStories() || {}
   const { user } = useUser() || {}
 
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0)
@@ -21,6 +21,15 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   const storyDuration = 5000 // 5 seconds per story
   const progressStep = 100 / (storyDuration / 100) // Increment per 100ms
 
+  // Initially fetch all stories if not already loaded
+  useEffect(() => {
+    if ((!stories || stories.length === 0) && loadStories) {
+      loadStories(true).catch(err => {
+        console.error("Error loading initial stories:", err);
+      });
+    }
+  }, [loadStories, stories]);
+
   // Load stories for specific user if userId is provided
   useEffect(() => {
     const fetchUserStories = async () => {
@@ -28,24 +37,26 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
 
       setLoading(true)
       try {
-        await loadUserStories(userId)
+        const userStoriesData = await loadUserStories(userId)
 
-        // Filter stories for this user and ensure uniqueness by ID
+        // Filter stories to ensure uniqueness and correct user
         const uniqueStories = []
         const storyIds = new Set()
 
-        stories
-          .filter((story) => {
-            // Check if story has a valid user reference that matches userId
-            const storyUserId = story.user && (typeof story.user === "string" ? story.user : story.user._id)
+        const filteredStories = Array.isArray(userStoriesData) ? userStoriesData :
+          stories.filter((story) => {
+            // Safely check user ID regardless of whether user is an object or string
+            const storyUserId = story.user && (typeof story.user === "string" ?
+              story.user : story.user._id)
             return storyUserId === userId
           })
-          .forEach((story) => {
-            if (!storyIds.has(story._id)) {
-              storyIds.add(story._id)
-              uniqueStories.push(story)
-            }
-          })
+
+        filteredStories.forEach((story) => {
+          if (story._id && !storyIds.has(story._id)) {
+            storyIds.add(story._id)
+            uniqueStories.push(story)
+          }
+        })
 
         if (uniqueStories.length === 0) {
           setError("No stories available for this user")
@@ -73,11 +84,11 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       setLoading(false)
     } else if (stories && stories.length > 0) {
       setLoading(false)
-    } else if (stories && stories.length === 0) {
+    } else if (stories && stories.length === 0 && !loading) {
       setLoading(false)
       setError("No stories available")
     }
-  }, [storyId, stories])
+  }, [storyId, stories, loading])
 
   // Determine which stories to use based on whether userId is provided
   const currentStories = userId ? userStories : stories
@@ -86,7 +97,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   useEffect(() => {
     if (viewStory && currentStories && currentStories.length > 0 && currentStoryIndex < currentStories.length) {
       const currentStory = currentStories[currentStoryIndex]
-      if (currentStory && user && !currentStory.viewers?.includes(user._id)) {
+      if (currentStory && user && currentStory._id) {
         try {
           viewStory(currentStory._id)
         } catch (err) {
@@ -289,11 +300,20 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       }
       return styles
     }
+
+    // Fallback if no backgroundStyle is available
+    if (currentStory.type === "text" && currentStory.backgroundColor) {
+      return { background: currentStory.backgroundColor }
+    }
+
     return {}
   }
 
   const getFontStyle = () => {
     if (currentStory.mediaType === "text" && currentStory.fontStyle) {
+      return { fontFamily: currentStory.fontStyle }
+    }
+    if (currentStory.type === "text" && currentStory.fontStyle) {
       return { fontFamily: currentStory.fontStyle }
     }
     return {}
@@ -334,6 +354,104 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     }
   }
 
+  // Determine the content to display based on story type/mediaType
+  const getStoryContent = () => {
+    // For text stories
+    if (currentStory.mediaType === "text" || currentStory.type === "text") {
+      return (
+        <div className="stories-text-content" style={{ ...getBackgroundStyle(), ...getFontStyle() }}>
+          <div className="story-user-overlay">
+            <span className="story-nickname">{getUserDisplayName()}</span>
+          </div>
+          {currentStory.text || currentStory.content}
+          {paused && (
+            <div className="pause-indicator">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="white">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // For image stories
+    if ((currentStory.mediaType?.startsWith("image") || currentStory.type === "image") &&
+        (currentStory.mediaUrl || currentStory.media)) {
+      return (
+        <div className="stories-image-container">
+          <div className="story-user-overlay">
+            <span className="story-nickname">{getUserDisplayName()}</span>
+          </div>
+          <img
+            src={currentStory.mediaUrl || currentStory.media || "/placeholder.svg"}
+            alt="Story"
+            className="stories-media"
+            onError={(e) => {
+              e.target.onerror = null
+              e.target.src = "/placeholder.svg"
+            }}
+          />
+          {paused && (
+            <div className="pause-indicator">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="white">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // For video stories
+    if ((currentStory.mediaType?.startsWith("video") || currentStory.type === "video") &&
+        (currentStory.mediaUrl || currentStory.media)) {
+      return (
+        <div className="stories-video-container">
+          <div className="story-user-overlay">
+            <span className="story-nickname">{getUserDisplayName()}</span>
+          </div>
+          <video
+            src={currentStory.mediaUrl || currentStory.media}
+            className="stories-media"
+            autoPlay
+            muted
+            loop
+            playsInline
+            onError={(e) => {
+              e.target.onerror = null
+              console.error("Video failed to load:", e)
+            }}
+          />
+          {paused && (
+            <div className="pause-indicator">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="white">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // Fallback content
+    return (
+      <div className="stories-text-content">
+        <div className="story-user-overlay">
+          <span className="story-nickname">{getUserDisplayName()}</span>
+        </div>
+        <p>{currentStory.text || currentStory.content || "No content available"}</p>
+        {paused && (
+          <div className="pause-indicator">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="white">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="stories-viewer-overlay">
       <div className="stories-viewer-container">
@@ -352,8 +470,15 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
               src={getProfilePicture() || "/placeholder.svg"}
               alt={getUserDisplayName()}
               className="stories-user-avatar"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = "/placeholder.svg";
+              }}
             />
-            <span className="stories-timestamp">{formatTimestamp()}</span>
+            <div className="stories-user-details">
+              <span className="stories-username">{getUserDisplayName()}</span>
+              <span className="stories-timestamp">{formatTimestamp()}</span>
+            </div>
           </div>
           <button className="stories-close-btn" onClick={handleClose} aria-label="Close stories">
             ×
@@ -361,82 +486,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
         </div>
 
         <div className="stories-viewer-content" onClick={togglePause}>
-          {currentStory.mediaType === "text" ? (
-            <div className="stories-text-content" style={{ ...getBackgroundStyle(), ...getFontStyle() }}>
-              <div className="story-user-overlay">
-                <span className="story-nickname">{getUserDisplayName()}</span>
-              </div>
-              {currentStory.text}
-              {paused && (
-                <div className="pause-indicator">
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="white">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </div>
-              )}
-            </div>
-          ) : currentStory.mediaType?.startsWith("image") ? (
-            <div className="stories-image-container">
-              <div className="story-user-overlay">
-                <span className="story-nickname">{getUserDisplayName()}</span>
-              </div>
-              <img
-                src={currentStory.mediaUrl || "/placeholder.svg"}
-                alt="Story"
-                className="stories-media"
-                onError={(e) => {
-                  e.target.onerror = null
-                  e.target.src = "/placeholder.svg"
-                }}
-              />
-              {paused && (
-                <div className="pause-indicator">
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="white">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </div>
-              )}
-            </div>
-          ) : currentStory.mediaType?.startsWith("video") ? (
-            <div className="stories-video-container">
-              <div className="story-user-overlay">
-                <span className="story-nickname">{getUserDisplayName()}</span>
-              </div>
-              <video
-                src={currentStory.mediaUrl}
-                className="stories-media"
-                autoPlay
-                muted
-                loop
-                playsInline
-                onError={(e) => {
-                  e.target.onerror = null
-                  console.error("Video failed to load:", e)
-                }}
-              />
-              {paused && (
-                <div className="pause-indicator">
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="white">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="stories-text-content">
-              <div className="story-user-overlay">
-                <span className="story-nickname">{getUserDisplayName()}</span>
-              </div>
-              <p>{currentStory.text || "No content available"}</p>
-              {paused && (
-                <div className="pause-indicator">
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="white">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </div>
-              )}
-            </div>
-          )}
+          {getStoryContent()}
         </div>
 
         <div className="stories-viewer-navigation">

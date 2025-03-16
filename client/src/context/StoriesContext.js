@@ -18,361 +18,412 @@ export const StoriesProvider = ({ children }) => {
   const [lastFetch, setLastFetch] = useState(0)
   const [isCreatingStory, setIsCreatingStory] = useState(false)
 
-  // Instead of state, use a ref for the refresh interval.
+  // Use refs for tracking operations in progress
   const refreshIntervalRef = useRef(null)
   const storyOperationsInProgress = useRef(new Set())
+  const pendingRefreshRef = useRef(false)
+  const loadingRef = useRef(false) // Add ref to track loading state
+
+  // Debounce function to limit multiple calls
+  const debounce = (func, wait) => {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  };
 
   // Clear error helper
   const clearError = useCallback(() => {
     setError(null)
   }, [])
 
-  // Load all stories for the feed with caching
+  // Load all stories for the feed with improved caching and deduplication
   const loadStories = useCallback(
     async (forceRefresh = false) => {
-      // If we've fetched recently and not forcing a refresh, use cached data
-      const now = Date.now()
-      if (!forceRefresh && stories.length > 0 && now - lastFetch < 60000) {
-        console.log("Using cached stories data")
-        return stories
+      console.log(`loadStories called with forceRefresh=${forceRefresh}`);
+
+      // If already loading, queue for later to prevent concurrent requests
+      if (loadingRef.current) {
+        console.log("Story loading already in progress, queuing refresh for later");
+        pendingRefreshRef.current = true;
+        return stories;
       }
 
-      // Prevent concurrent loadStories operations
-      if (storyOperationsInProgress.current.has('loadStories')) {
-        console.log("Story loading already in progress, skipping duplicate request")
-        return stories
+      // Check cache only if not forcing refresh
+      const now = Date.now();
+      const cacheAge = now - lastFetch;
+      if (!forceRefresh && stories.length > 0 && cacheAge < 60000) {
+        console.log(`Using cached stories (age: ${cacheAge}ms)`);
+        return stories;
       }
 
-      storyOperationsInProgress.current.add('loadStories')
-      setLoading(true)
-      setError(null)
+      // Set loading state both in state and ref
+      loadingRef.current = true;
+      setLoading(true);
+      setError(null);
 
       try {
-        const response = await storiesService.getAllStories()
+        console.log(`Fetching fresh stories data at ${now}`);
+        const response = await storiesService.getAllStories();
+
         if (response.success) {
-          // Add an ID to track API calls in debug logs
-          console.log(`[${now}] Stories loaded successfully:`, response.data?.length || 0)
-          setStories(response.data || [])
-          setLastFetch(now)
-          return response.data || []
+          // Add timestamp for tracking
+          console.log(`[${now}] Stories loaded successfully:`, response.data?.length || 0);
+
+          if (Array.isArray(response.data)) {
+            setStories(response.data);
+            setLastFetch(now);
+            return response.data;
+          } else {
+            console.error("Invalid stories data format:", response.data);
+            setError("Invalid data format received from server");
+            return [];
+          }
         } else {
-          setError(response.message || "Failed to load stories")
-          return []
+          console.error("Failed to load stories:", response.message);
+          setError(response.message || "Failed to load stories");
+          return [];
         }
       } catch (err) {
-        console.error("Error loading stories:", err)
-        setError(err.message || "An error occurred while loading stories")
-        return []
+        console.error("Error loading stories:", err);
+        setError(err.message || "An error occurred while loading stories");
+        return [];
       } finally {
-        setLoading(false)
-        storyOperationsInProgress.current.delete('loadStories')
+        loadingRef.current = false;
+        setLoading(false);
+
+        // If there was a pending refresh request, process it with delay
+        if (pendingRefreshRef.current) {
+          pendingRefreshRef.current = false;
+          setTimeout(() => loadStories(true), 500);
+        }
       }
     },
-    // Remove 'stories' from dependencies to prevent unnecessary re-renders
-    [lastFetch]
-  )
+    [lastFetch, stories]
+  );
 
-  // Load stories for a specific user
+  // Debounced version of loadStories to prevent too frequent refreshes
+  const debouncedLoadStories = useCallback(
+    debounce((forceRefresh) => {
+      loadStories(forceRefresh);
+    }, 200),
+    [loadStories]
+  );
+
+  // Load stories for a specific user with better error handling
   const loadUserStories = useCallback(async (userId) => {
     if (!userId) {
-      console.error("Cannot load user stories: Missing userId")
-      return []
+      console.error("Cannot load user stories: Missing userId");
+      return [];
     }
 
-    const operationKey = `loadUserStories-${userId}`
+    const operationKey = `loadUserStories-${userId}`;
     if (storyOperationsInProgress.current.has(operationKey)) {
-      console.log(`User story loading for ${userId} already in progress, skipping`)
-      return []
+      console.log(`User story loading for ${userId} already in progress, skipping`);
+      return [];
     }
 
-    storyOperationsInProgress.current.add(operationKey)
-    setLoading(true)
+    storyOperationsInProgress.current.add(operationKey);
+    setLoading(true);
 
     try {
-      const response = await storiesService.getUserStories(userId)
+      const response = await storiesService.getUserStories(userId);
 
       if (response.success) {
-        const userStories = response.data || []
-        console.log(`Loaded ${userStories.length} stories for user ${userId}`)
-
-        // Update the stories array with the new user stories WITHOUT triggering
-        // a reload of all stories
-        setStories((prevStories) => {
-          // Create a map of existing stories by userId for efficient lookup
-          const storiesByUser = new Map()
-
-          // Only include stories from other users
-          prevStories.forEach(story => {
-            if (story.user && story.user._id !== userId) {
-              storiesByUser.set(story.user._id, story)
-            }
-          })
-
-          // Add this user's stories if they exist
-          if (userStories.length > 0) {
-            storiesByUser.set(userId, {
-              user: userStories[0].user,
-              _id: userStories[0]._id,
-              createdAt: userStories[0].createdAt,
-            })
-          }
-
-          // Convert map back to array
-          return Array.from(storiesByUser.values())
-        })
-
-        return userStories
+        const userStories = response.data || [];
+        console.log(`Loaded ${userStories.length} stories for user ${userId}`);
+        return [...userStories]; // Return copy to avoid reference issues
       } else {
-        console.error(`Failed to load stories for user ${userId}:`, response.message)
-        return []
+        console.error(`Failed to load stories for user ${userId}:`, response.message);
+        return [];
       }
     } catch (err) {
-      console.error(`Error loading stories for user ${userId}:`, err)
-      return []
+      console.error(`Error loading stories for user ${userId}:`, err);
+      return [];
     } finally {
-      setLoading(false)
-      storyOperationsInProgress.current.delete(operationKey)
+      setLoading(false);
+      storyOperationsInProgress.current.delete(operationKey);
     }
-  }, [])
+  }, []);
 
-  // Create a new story
+  // Create a new story with robust error handling
   const createStory = useCallback(
     async (storyData, onProgress) => {
       if (!user) {
-        toast.error("You must be logged in to create a story")
-        return { success: false, message: "You must be logged in to create a story" }
+        toast.error("You must be logged in to create a story");
+        return { success: false, message: "You must be logged in to create a story" };
       }
 
       // Prevent duplicate submissions
       if (isCreatingStory) {
-        toast.info("A story is already being created, please wait")
-        return { success: false, message: "Story creation already in progress" }
+        toast.info("A story is already being created, please wait");
+        return { success: false, message: "Story creation already in progress" };
       }
 
-      setIsCreatingStory(true)
-      setLoading(true)
+      setIsCreatingStory(true);
+      setLoading(true);
 
       try {
         console.log("Creating story with data:", {
           type: storyData.mediaType,
-          textLength: storyData.text?.length,
+          textLength: storyData.content?.length || storyData.text?.length,
           hasMedia: !!storyData.media
-        })
+        });
 
-        let response
+        let response;
 
-        // Check if it's a text or media story
+        // Check if it's a text or media story and use appropriate endpoint
         if (storyData.mediaType === "text") {
-          response = await storiesService.createTextStory(storyData, onProgress)
+          // Ensure content field is set (server expects content, not text)
+          const textStoryData = {
+            ...storyData,
+            content: storyData.content || storyData.text
+          };
+          response = await storiesService.createTextStory(textStoryData, onProgress);
         } else {
-          response = await storiesService.createStory(storyData, onProgress)
+          response = await storiesService.createStory(storyData, onProgress);
         }
 
         if (response.success) {
-          toast.success("Story created successfully!")
+          toast.success("Story created successfully!");
 
           // Add a small delay before reloading stories to ensure the server has processed the new story
-          setTimeout(async () => {
-            await loadStories(true)
-          }, 500)
+          setTimeout(() => {
+            debouncedLoadStories(true);
+          }, 1000);
 
-          return response
+          return response;
         } else {
-          throw new Error(response.message || "Failed to create story")
+          throw new Error(response.message || "Failed to create story");
         }
       } catch (err) {
-        console.error("Error creating story:", err)
-        toast.error(err.message || "Failed to create story")
-        return { success: false, message: err.message || "Failed to create story" }
+        console.error("Error creating story:", err);
+        toast.error(err.message || "Failed to create story");
+        return { success: false, message: err.message || "Failed to create story" };
       } finally {
-        setLoading(false)
-        setIsCreatingStory(false)
+        setLoading(false);
+        setIsCreatingStory(false);
       }
     },
-    [user, loadStories, isCreatingStory]
-  )
+    [user, debouncedLoadStories, isCreatingStory]
+  );
 
-  // Delete a story
-  const deleteStory = useCallback(
-    async (storyId) => {
-      if (!user) {
-        toast.error("You must be logged in to delete a story")
-        return { success: false, message: "You must be logged in to delete a story" }
-      }
+  // Additional utilities remain the same...
+  // (Other methods from your existing context would continue here)
 
-      if (!storyId) {
-        toast.error("Invalid story ID")
-        return { success: false, message: "Invalid story ID" }
-      }
-
-      const operationKey = `deleteStory-${storyId}`
-      if (storyOperationsInProgress.current.has(operationKey)) {
-        console.log(`Story deletion for ${storyId} already in progress, skipping`)
-        return { success: false, message: "Delete operation in progress" }
-      }
-
-      storyOperationsInProgress.current.add(operationKey)
-      setLoading(true)
-
-      try {
-        const response = await storiesService.deleteStory(storyId)
-
-        if (response.success) {
-          // Remove the deleted story from state
-          setStories((prevStories) => prevStories.filter((story) => story._id !== storyId))
-          toast.success("Story deleted successfully")
-          return response
-        } else {
-          throw new Error(response.message || "Failed to delete story")
-        }
-      } catch (err) {
-        console.error(`Error deleting story ${storyId}:`, err)
-        toast.error(err.message || "Failed to delete story")
-        return { success: false, message: err.message || "Failed to delete story" }
-      } finally {
-        setLoading(false)
-        storyOperationsInProgress.current.delete(operationKey)
-      }
-    },
-    [user]
-  )
-
-  // Mark a story as viewed
-  const viewStory = useCallback(
-    async (storyId) => {
-      if (!user || !storyId) return false
-
-      // Prevent duplicate view operations
-      const operationKey = `viewStory-${storyId}`
-      if (storyOperationsInProgress.current.has(operationKey)) {
-        return false
-      }
-
-      storyOperationsInProgress.current.add(operationKey)
-
-      try {
-        // Check if already viewed to reduce unnecessary API calls
-        if (viewedStories[storyId]) {
-          return true
-        }
-
-        await storiesService.markStoryAsViewed(storyId)
-        setViewedStories((prev) => ({ ...prev, [storyId]: Date.now() }))
-        return true
-      } catch (err) {
-        console.error(`Error marking story ${storyId} as viewed:`, err)
-        return false
-      } finally {
-        storyOperationsInProgress.current.delete(operationKey)
-      }
-    },
-    [user, viewedStories]
-  )
-
-  // Check if a user has any unviewed stories
-  const hasUnviewedStories = useCallback(
-    (userId) => {
-      if (!stories || !userId || !user) return false
-
-      const userStories = stories.filter((story) => story.user && story.user._id === userId)
-      if (!userStories || userStories.length === 0) return false
-
-      return userStories.some((story) => !viewedStories[story._id])
-    },
-    [stories, viewedStories, user]
-  )
-
-  // React to a story (like, etc.)
-  const reactToStory = useCallback(
-    async (storyId, reactionType) => {
-      if (!user) {
-        toast.error("You must be logged in to react to a story")
-        return { success: false }
-      }
-
-      const operationKey = `reactToStory-${storyId}-${reactionType}`
-      if (storyOperationsInProgress.current.has(operationKey)) {
-        return { success: false, message: "Reaction already in progress" }
-      }
-
-      storyOperationsInProgress.current.add(operationKey)
-
-      try {
-        const response = await storiesService.reactToStory(storyId, reactionType)
-        if (response.success) {
-          toast.success("Reaction added!")
-        }
-        return response
-      } catch (err) {
-        console.error("Error reacting to story:", err)
-        toast.error("Failed to add reaction")
-        return { success: false }
-      } finally {
-        storyOperationsInProgress.current.delete(operationKey)
-      }
-    },
-    [user]
-  )
-
-  // Load viewed stories from localStorage on mount
+  // Load viewed stories from localStorage on mount with throttling
   useEffect(() => {
     if (user) {
-      const storedViewedStories = localStorage.getItem(`viewedStories_${user._id}`)
-      if (storedViewedStories) {
-        try {
-          setViewedStories(JSON.parse(storedViewedStories))
-        } catch (err) {
-          console.error("Error parsing viewed stories from localStorage:", err)
+      // Load viewed stories from localStorage, but only once
+      try {
+        const storedViewedStories = localStorage.getItem(`viewedStories_${user._id}`);
+        if (storedViewedStories) {
+          const parsedStories = JSON.parse(storedViewedStories);
+          setViewedStories(parsedStories);
         }
+      } catch (err) {
+        console.error("Error parsing viewed stories from localStorage:", err);
       }
     }
-  }, [user])
+  }, [user]);
 
-  // Save viewed stories to localStorage when they change
+  // Save viewed stories to localStorage when they change, with debouncing
   useEffect(() => {
-    if (user && Object.keys(viewedStories).length > 0) {
-      localStorage.setItem(`viewedStories_${user._id}`, JSON.stringify(viewedStories))
-    }
-  }, [viewedStories, user])
+    const saveToStorage = debounce(() => {
+      if (user && Object.keys(viewedStories).length > 0) {
+        try {
+          localStorage.setItem(`viewedStories_${user._id}`, JSON.stringify(viewedStories));
+        } catch (err) {
+          console.error("Error saving viewed stories to localStorage:", err);
+        }
+      }
+    }, 1000);
 
-  // Set up periodic refresh for stories when authenticated using a ref
+    saveToStorage();
+
+    return () => {
+      // Save immediately on unmount
+      if (user && Object.keys(viewedStories).length > 0) {
+        try {
+          localStorage.setItem(`viewedStories_${user._id}`, JSON.stringify(viewedStories));
+        } catch (err) {
+          console.error("Error saving viewed stories to localStorage:", err);
+        }
+      }
+    };
+  }, [viewedStories, user]);
+
+  // Set up periodic refresh for stories when authenticated
   useEffect(() => {
     // Clear any existing interval
     if (refreshIntervalRef.current) {
-      clearInterval(refreshIntervalRef.current)
-      refreshIntervalRef.current = null
+      clearInterval(refreshIntervalRef.current);
+      refreshIntervalRef.current = null;
     }
 
     // Only set up refresh if user is authenticated
     if (isAuthenticated) {
-      // Refresh stories every 5 minutes
-      refreshIntervalRef.current = setInterval(() => {
-        // Only refresh if tab is visible
-        if (document.visibilityState === "visible") {
-          loadStories(true).catch((err) => {
-            console.error("Error refreshing stories:", err)
-          })
+      // Initial load with delay to prevent UI freeze on page load
+      setTimeout(() => {
+        if (isAuthenticated) {
+          debouncedLoadStories(false);
         }
-      }, 5 * 60 * 1000) // 5 minutes
+      }, 500);
+
+      // Much longer refresh interval - 5 minutes
+      refreshIntervalRef.current = setInterval(() => {
+        // Only refresh if tab is visible and no operation is in progress
+        if (document.visibilityState === "visible" && !loadingRef.current) {
+          debouncedLoadStories(true);
+        }
+      }, 5 * 60 * 1000); // 5 minutes
     }
 
     // Cleanup on unmount
     return () => {
       if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current)
-        refreshIntervalRef.current = null
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
       }
-    }
-  }, [isAuthenticated, loadStories])
+    };
+  }, [isAuthenticated, debouncedLoadStories]);
 
-  // Initial stories load when authenticated
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadStories().catch((err) => {
-        console.error("Error in initial stories load:", err)
-      })
-    }
-  }, [isAuthenticated, loadStories])
+  // Add remaining methods from your context
+  const deleteStory = useCallback(
+    async (storyId) => {
+      if (!user) {
+        toast.error("You must be logged in to delete a story");
+        return { success: false, message: "You must be logged in to delete a story" };
+      }
+
+      if (!storyId) {
+        toast.error("Invalid story ID");
+        return { success: false, message: "Invalid story ID" };
+      }
+
+      const operationKey = `deleteStory-${storyId}`;
+      if (storyOperationsInProgress.current.has(operationKey)) {
+        console.log(`Story deletion for ${storyId} already in progress, skipping`);
+        return { success: false, message: "Delete operation in progress" };
+      }
+
+      storyOperationsInProgress.current.add(operationKey);
+      setLoading(true);
+
+      try {
+        const response = await storiesService.deleteStory(storyId);
+
+        if (response.success) {
+          // Remove the deleted story from state
+          setStories((prevStories) => prevStories.filter((story) => story._id !== storyId));
+          toast.success("Story deleted successfully");
+          return response;
+        } else {
+          throw new Error(response.message || "Failed to delete story");
+        }
+      } catch (err) {
+        console.error(`Error deleting story ${storyId}:`, err);
+        toast.error(err.message || "Failed to delete story");
+        return { success: false, message: err.message || "Failed to delete story" };
+      } finally {
+        setLoading(false);
+        storyOperationsInProgress.current.delete(operationKey);
+      }
+    },
+    [user]
+  );
+
+  // Mark a story as viewed with improved error handling
+  const viewStory = useCallback(
+    async (storyId) => {
+      if (!user || !storyId) return false;
+
+      // Prevent duplicate view operations
+      const operationKey = `viewStory-${storyId}`;
+      if (storyOperationsInProgress.current.has(operationKey)) {
+        return false;
+      }
+
+      storyOperationsInProgress.current.add(operationKey);
+
+      try {
+        // Check if already viewed to reduce unnecessary API calls
+        if (viewedStories[storyId]) {
+          return true;
+        }
+
+        const response = await storiesService.markStoryAsViewed(storyId);
+
+        if (response.success) {
+          setViewedStories((prev) => ({ ...prev, [storyId]: Date.now() }));
+          return true;
+        } else {
+          console.error(`Error marking story ${storyId} as viewed:`, response.message);
+          return false;
+        }
+      } catch (err) {
+        console.error(`Error marking story ${storyId} as viewed:`, err);
+        return false;
+      } finally {
+        storyOperationsInProgress.current.delete(operationKey);
+      }
+    },
+    [user, viewedStories]
+  );
+
+  // Check if a user has any unviewed stories
+  const hasUnviewedStories = useCallback(
+    (userId) => {
+      if (!stories || !userId || !user) return false;
+
+      const userStories = stories.filter((story) => {
+        const storyUserId = story.user && (typeof story.user === 'string' ? story.user : story.user._id);
+        return storyUserId === userId;
+      });
+
+      if (!userStories || userStories.length === 0) return false;
+
+      return userStories.some((story) => !viewedStories[story._id]);
+    },
+    [stories, viewedStories, user]
+  );
+
+  // React to a story (like, etc.)
+  const reactToStory = useCallback(
+    async (storyId, reactionType) => {
+      if (!user) {
+        toast.error("You must be logged in to react to a story");
+        return { success: false };
+      }
+
+      const operationKey = `reactToStory-${storyId}-${reactionType}`;
+      if (storyOperationsInProgress.current.has(operationKey)) {
+        return { success: false, message: "Reaction already in progress" };
+      }
+
+      storyOperationsInProgress.current.add(operationKey);
+
+      try {
+        const response = await storiesService.reactToStory(storyId, reactionType);
+        if (response.success) {
+          toast.success("Reaction added!");
+        }
+        return response;
+      } catch (err) {
+        console.error("Error reacting to story:", err);
+        toast.error("Failed to add reaction");
+        return { success: false };
+      } finally {
+        storyOperationsInProgress.current.delete(operationKey);
+      }
+    },
+    [user]
+  );
 
   // Context value
   const value = {
@@ -388,19 +439,19 @@ export const StoriesProvider = ({ children }) => {
     reactToStory,
     hasUnviewedStories,
     viewedStories,
-  }
+  };
 
-  return <StoriesContext.Provider value={value}>{children}</StoriesContext.Provider>
-}
+  return <StoriesContext.Provider value={value}>{children}</StoriesContext.Provider>;
+};
 
 // Custom hook to use the stories context
 export const useStories = () => {
-  const context = useContext(StoriesContext)
+  const context = useContext(StoriesContext);
   if (context === undefined) {
-    console.warn("useStories must be used within a StoriesProvider")
-    return null
+    console.warn("useStories must be used within a StoriesProvider");
+    return null;
   }
-  return context
-}
+  return context;
+};
 
-export default StoriesContext
+export default StoriesContext;
