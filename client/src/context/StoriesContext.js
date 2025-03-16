@@ -76,9 +76,20 @@ export const StoriesProvider = ({ children }) => {
           console.log(`[${now}] Stories loaded successfully:`, response.data?.length || 0);
 
           if (Array.isArray(response.data)) {
-            setStories(response.data);
+            // ADDED: Deduplicate stories by ID before setting state
+            const uniqueStories = [];
+            const storyIds = new Set();
+
+            for (const story of response.data) {
+              if (!storyIds.has(story._id)) {
+                storyIds.add(story._id);
+                uniqueStories.push(story);
+              }
+            }
+
+            setStories(uniqueStories);
             setLastFetch(now);
-            return response.data;
+            return uniqueStories;
           } else {
             console.error("Invalid stories data format:", response.data);
             setError("Invalid data format received from server");
@@ -151,7 +162,7 @@ export const StoriesProvider = ({ children }) => {
     }
   }, []);
 
-  // Create a new story with robust error handling
+  // Create a new story with robust error handling - FIXED FUNCTION
   const createStory = useCallback(
     async (storyData, onProgress) => {
       if (!user) {
@@ -192,10 +203,21 @@ export const StoriesProvider = ({ children }) => {
         if (response.success) {
           toast.success("Story created successfully!");
 
-          // Add a small delay before reloading stories to ensure the server has processed the new story
-          setTimeout(() => {
-            debouncedLoadStories(true);
-          }, 1000);
+          // CHANGED: Extract the story from the response
+          const newStory = response.data || response.story;
+
+          // CHANGED: Add it directly to state instead of reloading
+          if (newStory) {
+            setStories(prevStories => {
+              // Check if story already exists to prevent duplicates
+              if (!prevStories.some(s => s._id === newStory._id)) {
+                return [newStory, ...prevStories];
+              }
+              return prevStories;
+            });
+          }
+
+          // REMOVED: The setTimeout and debouncedLoadStories call
 
           return response;
         } else {
@@ -210,11 +232,10 @@ export const StoriesProvider = ({ children }) => {
         setIsCreatingStory(false);
       }
     },
-    [user, debouncedLoadStories, isCreatingStory]
+    [user, isCreatingStory]
   );
 
-  // Additional utilities remain the same...
-  // (Other methods from your existing context would continue here)
+  // Rest of the functions (deleteStory, viewStory, etc.) remain the same
 
   // Load viewed stories from localStorage on mount with throttling
   useEffect(() => {
@@ -293,7 +314,7 @@ export const StoriesProvider = ({ children }) => {
     };
   }, [isAuthenticated, debouncedLoadStories]);
 
-  // Add remaining methods from your context
+  // Include deleteStory, viewStory, etc. functions here (unchanged)
   const deleteStory = useCallback(
     async (storyId) => {
       if (!user) {
@@ -338,7 +359,6 @@ export const StoriesProvider = ({ children }) => {
     [user]
   );
 
-  // Mark a story as viewed with improved error handling
   const viewStory = useCallback(
     async (storyId) => {
       if (!user || !storyId) return false;
@@ -376,7 +396,6 @@ export const StoriesProvider = ({ children }) => {
     [user, viewedStories]
   );
 
-  // Check if a user has any unviewed stories
   const hasUnviewedStories = useCallback(
     (userId) => {
       if (!stories || !userId || !user) return false;
@@ -393,7 +412,6 @@ export const StoriesProvider = ({ children }) => {
     [stories, viewedStories, user]
   );
 
-  // React to a story (like, etc.)
   const reactToStory = useCallback(
     async (storyId, reactionType) => {
       if (!user) {
