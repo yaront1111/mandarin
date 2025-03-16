@@ -42,6 +42,15 @@ const userSchema = new mongoose.Schema(
       minlength: [8, "Password must be at least 8 characters"],
       select: false,
     },
+    username: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    name: {
+      type: String,
+      trim: true,
+    },
     nickname: {
       type: String,
       required: [true, "Nickname is required"],
@@ -49,6 +58,14 @@ const userSchema = new mongoose.Schema(
       minlength: [3, "Nickname must be at least 3 characters"],
       maxlength: [30, "Nickname cannot exceed 30 characters"],
       index: true,
+    },
+    avatar: {
+      type: String,
+      default: "",
+    },
+    profilePicture: {
+      type: String,
+      default: "",
     },
     details: {
       age: {
@@ -59,9 +76,10 @@ const userSchema = new mongoose.Schema(
       gender: {
         type: String,
         enum: {
-          values: ["male", "female", "non-binary", "other"],
-          message: "Gender must be male, female, non-binary, or other",
+          values: ["male", "female", "non-binary", "other", ""],
+          message: "Gender must be male, female, non-binary, other, or empty",
         },
+        default: "",
       },
       location: {
         type: String,
@@ -137,6 +155,42 @@ userSchema.virtual("age").get(function () {
 userSchema.index({ "details.location": "text", "details.interests": "text" })
 userSchema.index({ isOnline: 1, lastActive: -1 })
 userSchema.index({ email: 1, nickname: 1 })
+
+// Pre-save middleware to ensure username is set
+userSchema.pre("save", async function (next) {
+  // Generate username if not set
+  if (!this.username) {
+    if (this.email) {
+      this.username = this.email.split("@")[0]
+    } else if (this.nickname) {
+      this.username = this.nickname.toLowerCase().replace(/\s+/g, "_")
+    } else {
+      this.username = `user_${this._id.toString().slice(-6)}`
+    }
+  }
+
+  // If name is not set, use nickname or username
+  if (!this.name) {
+    this.name = this.nickname || this.username
+  }
+
+  // If profilePicture is not set but avatar is, use avatar
+  if (!this.profilePicture && this.avatar) {
+    this.profilePicture = this.avatar
+  }
+
+  // Ensure details object exists
+  if (!this.details) {
+    this.details = {}
+  }
+
+  // Handle gender validation
+  if (this.details.gender === undefined || this.details.gender === null) {
+    this.details.gender = ""
+  }
+
+  next()
+})
 
 // Pre-save middleware to hash password
 userSchema.pre("save", async function (next) {

@@ -1,4 +1,4 @@
-// Fixed apiService.js with removed duplicate refreshToken method and fixed _handleConnectionFailure
+// Fixed apiService.js with proper method exports
 import axios from "axios"
 import { toast } from "react-toastify"
 
@@ -286,8 +286,8 @@ class ApiService {
     this.refreshTokenPromise = null
     this.requestsToRetry = []
     this.pendingRequests = new Map()
-    this.reconnectAttempts = 0 // Added missing property
-    this.tokenRefreshTimer = null // Added missing property
+    this.reconnectAttempts = 0
+    this.tokenRefreshTimer = null
     this.metrics = {
       totalRequests: 0,
       successfulRequests: 0,
@@ -342,11 +342,15 @@ class ApiService {
    * Load auth token from storage
    */
   _loadAuthToken() {
-    const token = sessionStorage.getItem("token")
+    const token = this._getStoredToken()
     if (token) {
       // Set token in both axios instance and global axios
       this.api.defaults.headers.common["Authorization"] = `Bearer ${token}`
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`
+
+      // Also set x-auth-token for compatibility with older APIs
+      this.api.defaults.headers.common["x-auth-token"] = token
+      axios.defaults.headers.common["x-auth-token"] = token
 
       if (this.isTokenExpired(token)) {
         this.refreshToken().catch((err) => {
@@ -402,9 +406,11 @@ class ApiService {
   setAuthToken(token) {
     if (token) {
       this.api.defaults.headers.common["Authorization"] = `Bearer ${token}`
+      this.api.defaults.headers.common["x-auth-token"] = token
       this.logger.debug("Auth token set")
     } else {
       delete this.api.defaults.headers.common["Authorization"]
+      delete this.api.defaults.headers.common["x-auth-token"]
       this.logger.debug("Auth token removed")
     }
   }
@@ -652,7 +658,7 @@ class ApiService {
 
     // Format error data
     const errorData = error.response.data
-    const errorMsg = errorData?.error || errorData?.message || "An error occurred"
+    const errorMsg = errorData?.error || errorData?.message || errorData?.msg || "An error occurred"
     const errorCode = errorData?.code || null
 
     // Handle specific HTTP error codes with toast notifications
@@ -699,6 +705,7 @@ class ApiService {
 
         // Update authorization header
         originalRequest.headers.Authorization = `Bearer ${newToken}`
+        originalRequest.headers["x-auth-token"] = newToken
 
         // Retry the original request
         return this.api(originalRequest)
@@ -891,6 +898,7 @@ class ApiService {
     // Retry each request with the new token
     requestsToRetry.forEach((config) => {
       config.headers.Authorization = `Bearer ${token}`
+      config.headers["x-auth-token"] = token
       this.api(config).catch((err) => {
         this.logger.error(`Error retrying queued request: ${config.method} ${config.url}`, err)
       })

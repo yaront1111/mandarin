@@ -29,16 +29,17 @@ const verifySocketToken = (token) => {
 }
 
 // Middleware to protect routes
-const protect = (req, res, next) => {
+const protect = async (req, res, next) => {
   let token
 
-  // Get token from header or cookie
+  // Get token from header (check both x-auth-token and Authorization header)
   if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
     token = req.headers.authorization.split(" ")[1]
-  } else if (req.cookies && req.cookies.token) {
-    token = req.cookies.token
+  } else if (req.header("x-auth-token")) {
+    token = req.header("x-auth-token")
   }
 
+  // Check if no token
   if (!token) {
     return res.status(401).json({
       success: false,
@@ -50,30 +51,22 @@ const protect = (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, config.JWT_SECRET)
 
-    // Find user
-    User.findById(decoded.id)
-      .then((user) => {
-        if (!user) {
-          return res.status(401).json({
-            success: false,
-            error: "User not found",
-          })
-        }
+    // Set user in request
+    if (decoded.id) {
+      // If token contains user ID, set it directly
+      req.user = { _id: decoded.id, role: decoded.role || "user" }
+      return next()
+    } else if (decoded.user) {
+      // If token contains user object, set it
+      req.user = decoded.user
+      return next()
+    }
 
-        // Set user in request
-        req.user = user
-        next()
-      })
-      .catch((err) => {
-        logger.error(`Auth error: ${err.message}`)
-        res.status(500).json({
-          success: false,
-          error: "Server error",
-        })
-      })
+    // If we get here, token format is invalid
+    throw new Error("Invalid token format")
   } catch (err) {
     logger.error(`Token verification error: ${err.message}`)
-    res.status(401).json({
+    return res.status(401).json({
       success: false,
       error: "Not authorized to access this route",
     })

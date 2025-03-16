@@ -69,9 +69,10 @@ const StoryCreator = ({ onClose, onSubmit }) => {
     try {
       // Create story data
       const storyData = {
-        text: text.trim(),
+        content: text.trim(), // Changed from 'text' to 'content' to match server expectations
         background: selectedBackground.id,
         backgroundStyle: selectedBackground.style,
+        backgroundColor: selectedBackground.style, // Added to match server field name
         font: selectedFont.id,
         fontStyle: selectedFont.style,
         duration: duration.toString(),

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useStories } from "../../context"
 import StoryThumbnail from "./StoryThumbnail"
 import "../../styles/stories.css"
@@ -38,13 +38,16 @@ const StoriesCarousel = ({ onStoryClick }) => {
   }, [loadStories])
 
   // Safely handle story click
-  const handleStoryClick = useCallback((storyId) => {
-    if (typeof onStoryClick === 'function') {
-      onStoryClick(storyId)
-    } else {
-      console.warn("Story click handler not provided")
-    }
-  }, [onStoryClick])
+  const handleStoryClick = useCallback(
+    (storyId) => {
+      if (typeof onStoryClick === "function") {
+        onStoryClick(storyId)
+      } else {
+        console.warn("Story click handler not provided")
+      }
+    },
+    [onStoryClick],
+  )
 
   // Show loading state
   if (loading || contextLoading) {
@@ -85,13 +88,26 @@ const StoriesCarousel = ({ onStoryClick }) => {
   return (
     <div className="stories-carousel-container">
       <div className="stories-carousel">
-        {stories.map((story) => (
-          <StoryThumbnail
-            key={story._id || `story-${Math.random()}`}
-            story={story}
-            onClick={() => handleStoryClick(story._id)}
-          />
-        ))}
+        {(() => {
+          // Filter out duplicate stories by ID
+          const uniqueStories = []
+          const storyIds = new Set()
+
+          stories.forEach((story) => {
+            if (story._id && !storyIds.has(story._id)) {
+              storyIds.add(story._id)
+              uniqueStories.push(story)
+            }
+          })
+
+          return uniqueStories.map((story) => (
+            <StoryThumbnail
+              key={story._id || `story-${Math.random()}`}
+              story={story}
+              onClick={() => handleStoryClick(story._id)}
+            />
+          ))
+        })()}
       </div>
     </div>
   )

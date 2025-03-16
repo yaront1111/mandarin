@@ -30,15 +30,27 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       try {
         await loadUserStories(userId)
 
-        // Filter stories for this user
-        const userSpecificStories = stories.filter(
-          story => story.user && story.user._id === userId
-        )
+        // Filter stories for this user and ensure uniqueness by ID
+        const uniqueStories = []
+        const storyIds = new Set()
 
-        if (userSpecificStories.length === 0) {
+        stories
+          .filter((story) => {
+            // Check if story has a valid user reference that matches userId
+            const storyUserId = story.user && (typeof story.user === "string" ? story.user : story.user._id)
+            return storyUserId === userId
+          })
+          .forEach((story) => {
+            if (!storyIds.has(story._id)) {
+              storyIds.add(story._id)
+              uniqueStories.push(story)
+            }
+          })
+
+        if (uniqueStories.length === 0) {
           setError("No stories available for this user")
         } else {
-          setUserStories(userSpecificStories)
+          setUserStories(uniqueStories)
         }
       } catch (err) {
         console.error("Error loading user stories:", err)
@@ -72,12 +84,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
 
   // Mark story as viewed when it appears
   useEffect(() => {
-    if (
-      viewStory &&
-      currentStories &&
-      currentStories.length > 0 &&
-      currentStoryIndex < currentStories.length
-    ) {
+    if (viewStory && currentStories && currentStories.length > 0 && currentStoryIndex < currentStories.length) {
       const currentStory = currentStories[currentStoryIndex]
       if (currentStory && user && !currentStory.viewers?.includes(user._id)) {
         try {
@@ -147,7 +154,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
         setProgress(0)
       }
     },
-    [currentStoryIndex]
+    [currentStoryIndex],
   )
 
   const handleNextStory = useCallback(
@@ -160,7 +167,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
         if (typeof onClose === "function") onClose()
       }
     },
-    [currentStoryIndex, currentStories, onClose]
+    [currentStoryIndex, currentStories, onClose],
   )
 
   const togglePause = useCallback((e) => {
@@ -292,12 +299,28 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     return {}
   }
 
-  const getUsername = () => {
-    return currentStory.user?.username || "User"
+  const getUserDisplayName = () => {
+    // Try to get user data from story.user or story.userData
+    const storyUser = currentStory.user || currentStory.userData || {}
+
+    if (!storyUser || typeof storyUser === "string") {
+      return "Unknown User"
+    }
+
+    // Prioritize nickname over username and name
+    return storyUser.nickname || storyUser.username || storyUser.name || "User"
   }
 
   const getProfilePicture = () => {
-    return currentStory.user?.profilePicture || "/placeholder.svg?height=40&width=40"
+    // Try to get user data from story.user or story.userData
+    const storyUser = currentStory.user || currentStory.userData || {}
+
+    if (!storyUser || typeof storyUser === "string") {
+      return `/api/avatar/default`
+    }
+
+    // Try different possible profile picture fields
+    return storyUser.profilePicture || storyUser.avatar || `/api/avatar/${storyUser._id || "default"}`
   }
 
   const formatTimestamp = () => {
@@ -318,13 +341,18 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
           <div className="stories-progress-container">
             {currentStories.map((_, index) => (
               <div key={index} className={`stories-progress-bar ${index < currentStoryIndex ? "completed" : ""}`}>
-                {index === currentStoryIndex && <div className="stories-progress-fill" style={{ width: `${progress}%` }} />}
+                {index === currentStoryIndex && (
+                  <div className="stories-progress-fill" style={{ width: `${progress}%` }} />
+                )}
               </div>
             ))}
           </div>
           <div className="stories-user-info">
-            <img src={getProfilePicture()} alt={getUsername()} className="stories-user-avatar" />
-            <span className="stories-username">{getUsername()}</span>
+            <img
+              src={getProfilePicture() || "/placeholder.svg"}
+              alt={getUserDisplayName()}
+              className="stories-user-avatar"
+            />
             <span className="stories-timestamp">{formatTimestamp()}</span>
           </div>
           <button className="stories-close-btn" onClick={handleClose} aria-label="Close stories">
@@ -335,6 +363,9 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
         <div className="stories-viewer-content" onClick={togglePause}>
           {currentStory.mediaType === "text" ? (
             <div className="stories-text-content" style={{ ...getBackgroundStyle(), ...getFontStyle() }}>
+              <div className="story-user-overlay">
+                <span className="story-nickname">{getUserDisplayName()}</span>
+              </div>
               {currentStory.text}
               {paused && (
                 <div className="pause-indicator">
@@ -346,6 +377,9 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
             </div>
           ) : currentStory.mediaType?.startsWith("image") ? (
             <div className="stories-image-container">
+              <div className="story-user-overlay">
+                <span className="story-nickname">{getUserDisplayName()}</span>
+              </div>
               <img
                 src={currentStory.mediaUrl || "/placeholder.svg"}
                 alt="Story"
@@ -365,6 +399,9 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
             </div>
           ) : currentStory.mediaType?.startsWith("video") ? (
             <div className="stories-video-container">
+              <div className="story-user-overlay">
+                <span className="story-nickname">{getUserDisplayName()}</span>
+              </div>
               <video
                 src={currentStory.mediaUrl}
                 className="stories-media"
@@ -387,6 +424,9 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
             </div>
           ) : (
             <div className="stories-text-content">
+              <div className="story-user-overlay">
+                <span className="story-nickname">{getUserDisplayName()}</span>
+              </div>
               <p>{currentStory.text || "No content available"}</p>
               {paused && (
                 <div className="pause-indicator">

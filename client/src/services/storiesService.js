@@ -24,14 +24,24 @@ export const getUserStories = async (userId) => {
   }
 }
 
+// Update the createStory function to better handle errors and prevent duplicates
 export const createStory = async (formData, onProgress) => {
   try {
+    // Add a timestamp to prevent caching issues
+    formData.append("timestamp", Date.now().toString())
+
     const response = await apiService.post(BASE_URL, formData, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
       onUploadProgress: onProgress,
     })
+
+    // Validate the response
+    if (!response.success) {
+      throw new Error(response.message || "Failed to create story")
+    }
+
     return response
   } catch (error) {
     console.error("Error creating story:", error)
@@ -39,11 +49,24 @@ export const createStory = async (formData, onProgress) => {
   }
 }
 
+// Similarly update createTextStory
 export const createTextStory = async (storyData, onProgress) => {
   try {
-    const response = await apiService.post(`${BASE_URL}/text`, storyData, {
+    // Add a timestamp to prevent caching issues
+    const dataWithTimestamp = {
+      ...storyData,
+      timestamp: Date.now(),
+    }
+
+    const response = await apiService.post(`${BASE_URL}/text`, dataWithTimestamp, {
       onUploadProgress: onProgress,
     })
+
+    // Validate the response
+    if (!response.success) {
+      throw new Error(response.message || "Failed to create text story")
+    }
+
     return response
   } catch (error) {
     console.error("Error creating text story:", error)
@@ -122,7 +145,7 @@ const storiesService = {
   reactToStory,
   getStoryReactions,
   commentOnStory,
-  getStoryComments
+  getStoryComments,
 }
 
 export default storiesService
