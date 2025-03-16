@@ -12,22 +12,7 @@ const BACKGROUND_OPTIONS = [
   { id: "gradient-1", name: "Sunset", style: "linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%)" },
   { id: "gradient-2", name: "Ocean", style: "linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)" },
   { id: "gradient-3", name: "Passion", style: "linear-gradient(135deg, #f6d365 0%, #fda085 100%)" },
-  { id: "gradient-4", name: "Midnight", style: "linear-gradient(135deg, #30cfd0 0%, #330867 100%)" },
-  { id: "gradient-5", name: "Forest", style: "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)" },
-  { id: "gradient-6", name: "Berry", style: "linear-gradient(135deg, #ff758c 0%, #ff7eb3 100%)" },
-  { id: "gradient-7", name: "Dusk", style: "linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)" },
-  { id: "gradient-8", name: "Fire", style: "linear-gradient(135deg, #f83600 0%, #f9d423 100%)" },
-  {
-    id: "pattern-1",
-    name: "Dots",
-    style: "radial-gradient(#444 1px, transparent 1px), #f8f8f8",
-    extraStyles: { backgroundSize: "10px 10px" },
-  },
-  {
-    id: "pattern-2",
-    name: "Stripes",
-    style: "repeating-linear-gradient(45deg, #f8f8f8, #f8f8f8 10px, #eee 10px, #eee 20px)",
-  },
+  { id: "gradient-4", name: "Midnight", style: "linear-gradient(135deg, #30cfd0 0%, #330867 100%)" }
 ]
 
 // Font options
@@ -198,10 +183,10 @@ const StoryCreator = ({ onClose, onSubmit }) => {
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   placeholder="What's on your mind?"
-                  maxLength={200}
-                  rows={5}
+                  maxLength={50}
+                  rows={2}
                 />
-                <small className="character-count">{text.length}/200</small>
+                <small className="character-count">{text.length}/50</small>
               </div>
             )}
 
