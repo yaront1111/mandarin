@@ -1,68 +1,49 @@
 "use client"
-
 import { useMemo } from "react"
 import { useUser } from "../../context"
 import "../../styles/stories.css"
-import UserAvatar from "../UserAvatar" // Import the UserAvatar component
+import UserAvatar from "../UserAvatar" // Import your UserAvatar component if you have it
 
 const StoryThumbnail = ({ story, onClick, hasUnviewedStories }) => {
   const { user } = useUser()
 
-  // Use useMemo to create a stable reference for storyUser
+  // Derive user object from story
   const storyUser = useMemo(() => {
-    // Handle null or undefined story
-    if (!story) return {};
+    if (!story) return {}
+    if (typeof story.user === "object") return story.user
+    if (story.userData && typeof story.userData === "object") return story.userData
+    if (typeof story.user === "string") return { _id: story.user }
+    return {}
+  }, [story])
 
-    // Check for user data in different possible locations
-    if (story.user && typeof story.user === "object") {
-      return story.user;
-    } else if (story.userData && typeof story.userData === "object") {
-      return story.userData;
-    } else if (story.user && typeof story.user === "string") {
-      // If user is just an ID, return an object with just the ID
-      return { _id: story.user };
-    }
-    return {};
-  }, [story]);
-
-  // Check if the current user has viewed this story
+  // Check if this story is viewed by the current user
   const isViewed = useMemo(() => {
     if (typeof hasUnviewedStories !== "undefined") {
-      return !hasUnviewedStories;
+      // If parent told us there are unviewed stories for this user, we trust that
+      return !hasUnviewedStories
     }
+    if (!user || !user._id || !story?.viewers) return false
+    if (!Array.isArray(story.viewers)) return false
+    return story.viewers.includes(user._id)
+  }, [hasUnviewedStories, user, story])
 
-    if (!user || !user._id || !story) return false;
-
-    // Check if viewers exists and is an array
-    if (!Array.isArray(story.viewers)) return false;
-
-    return story.viewers.includes(user._id);
-  }, [hasUnviewedStories, user, story]);
-
-  // Get user display name for alt text
   const getUserDisplayName = () => {
-    if (!storyUser) return "User";
-    return storyUser.nickname || storyUser.username || storyUser.name || "User";
-  };
-
-  // Handle click with check for callback
-  const handleClick = (e) => {
-    e.preventDefault();
-    if (typeof onClick === "function") {
-      onClick();
-    }
-  };
-
-  // If no story, don't render anything
-  if (!story) {
-    return null;
+    if (!storyUser) return "Unknown User"
+    return storyUser.nickname || storyUser.username || storyUser.name || "User"
   }
 
-  // Get user ID for avatar
-  const userId = storyUser._id || (typeof story.user === 'string' ? story.user : null);
+  const handleClick = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (typeof onClick === "function") onClick()
+  }
 
-  // Get avatar source if available directly
-  const avatarSrc = storyUser.profilePicture || storyUser.avatar || null;
+  if (!story) return null
+
+  // Get user ID for avatar
+  const userId = storyUser._id
+  // Try to get a direct avatar property
+  const avatarSrc = storyUser.profilePicture || storyUser.avatar || null
 
   return (
     <div className="story-thumbnail" onClick={handleClick}>
@@ -76,7 +57,7 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories }) => {
       </div>
       <div className="story-username">{getUserDisplayName()}</div>
     </div>
-  );
-};
+  )
+}
 
-export default StoryThumbnail;
+export default StoryThumbnail

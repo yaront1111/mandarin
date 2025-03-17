@@ -2,21 +2,22 @@
 
 // client/src/pages/Profile.js
 import { useState, useEffect, useRef } from "react"
-import {
-  FaCamera,
-  FaEdit,
-  FaCheck,
-  FaTimes,
-  FaUserCircle,
-  FaLock,
-  FaLockOpen,
-  FaTrash,
-  FaStar,
-  FaExclamationTriangle,
-} from "react-icons/fa"
 import { useNavigate } from "react-router-dom"
 import { useAuth, useUser } from "../context"
 import { toast } from "react-toastify"
+import axios from "axios"
+import {
+  FaUserCircle,
+  FaCamera,
+  FaLock,
+  FaLockOpen,
+  FaStar,
+  FaTrash,
+  FaEdit,
+  FaTimes,
+  FaCheck,
+  FaExclamationTriangle,
+} from "react-icons/fa"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
 
 const Profile = () => {
@@ -63,8 +64,21 @@ const Profile = () => {
   const fileInputRef = useRef(null)
   const navigate = useNavigate()
 
+  // New states for loading
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [userId, setUserId] = useState(null) // Assuming you might want to view other profiles
+  const [likeLoading, setLikeLoading] = useState(false)
+  const [messageLoading, setMessageLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [photoLoading, setPhotoLoading] = useState({})
+
+  const isOwnProfile = !userId // Determine if it's the logged-in user's profile
+
   // Initialize profile state from user data.
   useEffect(() => {
+    setIsLoading(true)
     if (user) {
       setProfileData({
         nickname: user.nickname || "",
@@ -93,6 +107,7 @@ const Profile = () => {
         setProfilePhotoIndex(-1)
       }
     }
+    setIsLoading(false)
   }, [user])
 
   // Cleanup file input on unmount to prevent lingering file references.
@@ -243,6 +258,22 @@ const Profile = () => {
     }
     setIsUploading(true)
     setUploadProgress(0)
+
+    // Create a temporary ID for this upload
+    const tempId = `temp-${Date.now()}`
+
+    // Add a temporary photo with loading state
+    setLocalPhotos((prev) => [
+      ...prev,
+      {
+        _id: tempId,
+        url: URL.createObjectURL(file),
+        isPrivate: false,
+        isProfile: false,
+        isLoading: true,
+      },
+    ])
+
     try {
       const newPhoto = await uploadPhoto(file, false, (progress) => {
         setUploadProgress(progress)
@@ -260,6 +291,8 @@ const Profile = () => {
     } catch (error) {
       console.error("Failed to upload photo:", error)
       toast.error(error.message || "Failed to upload photo. Please try again.")
+      // Remove the temporary photo
+      setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
     } finally {
       setIsUploading(false)
     }
@@ -409,6 +442,67 @@ const Profile = () => {
     setIsEditing(false)
   }
 
+  // Find where profile data is being loaded
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        setLoading(true)
+        const response = await axios.get(`/api/users/${userId || "me"}`)
+        setProfile(response.data)
+      } catch (error) {
+        console.error("Failed to fetch profile:", error)
+        setError("Could not load profile data")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchProfile()
+  }, [userId])
+
+  const handleLike = async () => {
+    setLikeLoading(true)
+    try {
+      // Implement your like/unlike logic here
+      // Example: await axios.post(`/api/users/${userId}/like`);
+      // Update the profile state accordingly
+      setProfile((prevProfile) => ({
+        ...prevProfile,
+        isLiked: !prevProfile.isLiked,
+      }))
+    } catch (error) {
+      console.error("Failed to like/unlike profile:", error)
+      toast.error("Failed to like/unlike profile")
+    } finally {
+      setLikeLoading(false)
+    }
+  }
+
+  const handleMessage = async () => {
+    setMessageLoading(true)
+    try {
+      // Implement your message logic here
+      // Example: navigate(`/messages/${userId}`);
+      navigate("/messages") // Redirect to messages for now
+    } catch (error) {
+      console.error("Failed to navigate to messages:", error)
+      toast.error("Failed to navigate to messages")
+    } finally {
+      setMessageLoading(false)
+    }
+  }
+
+  const handleProfilePhotoUpload = () => {
+    // Implement your profile photo upload logic here
+    console.log("Profile photo upload clicked")
+  }
+
+  const handleCoverPhotoUpload = () => {
+    // Implement your cover photo upload logic here
+    console.log("Cover photo upload clicked")
+  }
+
+  // Replace the profile rendering with this
   return (
     <div className="modern-dashboard">
       {/* Header */}
@@ -429,7 +523,7 @@ const Profile = () => {
             <ThemeToggle />
             {user?.photos?.[0] ? (
               <img
-                src={user.photos[0].url || "/placeholder.svg"}
+                src={user.photos[0].url || "/placeholder.svg?height=32&width=32"}
                 alt={user.nickname}
                 className="user-avatar"
                 onClick={() => navigate("/profile")}
@@ -444,428 +538,521 @@ const Profile = () => {
       {/* Main Content */}
       <main className="dashboard-content">
         <div className="container" style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-          {/* Profile Photo Section */}
-          <div className="profile-photo-section text-center">
-            {localPhotos.length > 0 && profilePhotoIndex >= 0 ? (
-              <div style={{ position: "relative", display: "inline-block" }}>
-                <img
-                  src={localPhotos[profilePhotoIndex].url || "/placeholder.svg"}
-                  alt="Profile"
-                  style={{
-                    width: "200px",
-                    height: "200px",
-                    objectFit: "cover",
-                    borderRadius: "50%",
-                    boxShadow: "0 6px 16px rgba(0, 0, 0, 0.1)",
-                    transition: "transform 0.3s ease",
-                  }}
-                />
-                {localPhotos[profilePhotoIndex].isPrivate && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      height: "100%",
-                      borderRadius: "50%",
-                      background: "rgba(0,0,0,0.4)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <FaLock style={{ fontSize: "32px", color: "#fff" }} />
-                  </div>
-                )}
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: "0",
-                    left: "0",
-                    width: "100%",
-                    background: "rgba(0,0,0,0.6)",
-                    color: "white",
-                    padding: "4px",
-                    fontSize: "12px",
-                  }}
-                >
-                  Profile Photo
-                </div>
-              </div>
-            ) : (
-              <div
-                style={{
-                  width: "200px",
-                  height: "200px",
-                  borderRadius: "50%",
-                  background: "#f0f0f0",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  margin: "0 auto",
-                }}
-              >
-                <FaUserCircle style={{ fontSize: "80px", color: "#ccc" }} />
-              </div>
-            )}
-
-            {/* Photo Upload */}
-            <div style={{ marginTop: "16px" }}>
-              {isUploading ? (
-                <div className="upload-progress-container" style={{ width: "200px", margin: "0 auto" }}>
-                  <div className="progress mb-2" style={{ height: "8px" }}>
-                    <div
-                      className="progress-bar bg-primary"
-                      role="progressbar"
-                      style={{ width: `${uploadProgress}%` }}
-                      aria-valuenow={uploadProgress}
-                      aria-valuemin="0"
-                      aria-valuemax="100"
-                    ></div>
-                  </div>
-                  <div className="text-center">Uploading... {uploadProgress}%</div>
-                </div>
-              ) : (
-                <button className="btn btn-outline" onClick={triggerFileInput} disabled={isProcessingPhoto}>
-                  <FaCamera style={{ marginRight: "4px" }} /> Add Photo
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handlePhotoUpload}
-                    accept="image/*"
-                    style={{ display: "none" }}
-                  />
-                </button>
-              )}
+          {isLoading ? (
+            <div className="text-center py-5">
+              <div className="spinner spinner-large"></div>
+              <p className="mt-3">Loading your profile...</p>
             </div>
-          </div>
-
-          {/* Photo Gallery Section */}
-          {localPhotos.length > 0 && (
-            <div
-              className="photo-gallery"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
-                gap: "16px",
-              }}
-            >
-              {localPhotos.map((photo) => (
-                <div
-                  key={photo._id}
-                  className="gallery-item"
-                  style={{
-                    position: "relative",
-                    cursor: "pointer",
-                    border: photo.isProfile ? "2px solid var(--primary)" : "2px solid transparent",
-                    borderRadius: "8px",
-                    overflow: "hidden",
-                    transition: "transform 0.3s ease",
-                    height: "100px",
-                  }}
-                  onClick={() => handleSetProfilePhoto(photo._id)}
-                >
-                  <img
-                    src={photo.url || "/placeholder.svg"}
-                    alt={`Gallery`}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                  <div
-                    className="photo-controls"
-                    style={{
-                      position: "absolute",
-                      bottom: "0",
-                      left: "0",
-                      right: "0",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "4px",
-                      background: "rgba(0,0,0,0.5)",
-                    }}
-                  >
-                    <button
-                      onClick={(e) => handleTogglePhotoPrivacy(photo._id, e)}
+          ) : (
+            <>
+              {/* Profile Photo Section */}
+              <div className="profile-photo-section text-center">
+                {localPhotos.length > 0 && profilePhotoIndex >= 0 ? (
+                  <div style={{ position: "relative", display: "inline-block" }}>
+                    <img
+                      src={localPhotos[profilePhotoIndex].url || "/placeholder.svg?height=200&width=200"}
+                      alt="Profile"
                       style={{
-                        background: "transparent",
-                        border: "none",
-                        color: "white",
-                        cursor: "pointer",
-                        padding: "2px",
+                        width: "200px",
+                        height: "200px",
+                        objectFit: "cover",
+                        borderRadius: "50%",
+                        boxShadow: "0 6px 16px rgba(0, 0, 0, 0.1)",
+                        transition: "transform 0.3s ease",
                       }}
-                      title={photo.isPrivate ? "Make public" : "Make private"}
-                      disabled={isProcessingPhoto}
-                    >
-                      {photo.isPrivate ? (
-                        <FaLock style={{ fontSize: "14px" }} />
-                      ) : (
-                        <FaLockOpen style={{ fontSize: "14px" }} />
-                      )}
-                    </button>
-                    {!photo.isProfile && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleSetProfilePhoto(photo._id)
-                        }}
+                      onLoad={() => {
+                        // Clear loading state when image loads
+                        if (localPhotos[profilePhotoIndex]?.isLoading) {
+                          setLocalPhotos((prev) =>
+                            prev.map((photo, idx) =>
+                              idx === profilePhotoIndex ? { ...photo, isLoading: false } : photo,
+                            ),
+                          )
+                        }
+                      }}
+                    />
+                    {localPhotos[profilePhotoIndex]?.isLoading && (
+                      <div
                         style={{
-                          background: "transparent",
-                          border: "none",
-                          color: "white",
-                          cursor: "pointer",
-                          padding: "2px",
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          height: "100%",
+                          borderRadius: "50%",
+                          background: "rgba(255,255,255,0.7)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
                         }}
-                        title="Set as profile photo"
-                        disabled={isProcessingPhoto}
                       >
-                        <FaStar style={{ fontSize: "14px" }} />
-                      </button>
+                        <div className="spinner"></div>
+                      </div>
                     )}
-                    {!photo.isProfile && (
-                      <button
-                        onClick={(e) => handleDeletePhoto(photo._id, e)}
+                    {localPhotos[profilePhotoIndex].isPrivate && (
+                      <div
                         style={{
-                          background: "transparent",
-                          border: "none",
-                          color: "white",
-                          cursor: "pointer",
-                          padding: "2px",
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          height: "100%",
+                          borderRadius: "50%",
+                          background: "rgba(0,0,0,0.4)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
                         }}
-                        title="Delete photo"
-                        disabled={isProcessingPhoto}
                       >
-                        <FaTrash style={{ fontSize: "14px" }} />
-                      </button>
+                        <FaLock style={{ fontSize: "32px", color: "#fff" }} />
+                      </div>
                     )}
-                  </div>
-                  {photo.isProfile && (
                     <div
                       style={{
                         position: "absolute",
-                        top: "0",
+                        bottom: "0",
                         left: "0",
-                        background: "var(--primary)",
+                        width: "100%",
+                        background: "rgba(0,0,0,0.6)",
                         color: "white",
-                        fontSize: "10px",
-                        padding: "2px 4px",
-                        borderBottomRightRadius: "4px",
+                        padding: "4px",
+                        fontSize: "12px",
                       }}
                     >
-                      Profile
+                      Profile Photo
                     </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      width: "200px",
+                      height: "200px",
+                      borderRadius: "50%",
+                      background: "#f0f0f0",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      margin: "0 auto",
+                    }}
+                  >
+                    <FaUserCircle style={{ fontSize: "80px", color: "#ccc" }} />
+                  </div>
+                )}
+
+                {/* Photo Upload */}
+                <div style={{ marginTop: "16px" }}>
+                  {isUploading ? (
+                    <div className="upload-progress-container" style={{ width: "200px", margin: "0 auto" }}>
+                      <div className="progress mb-2" style={{ height: "8px" }}>
+                        <div
+                          className="progress-bar bg-primary"
+                          role="progressbar"
+                          style={{ width: `${uploadProgress}%` }}
+                          aria-valuenow={uploadProgress}
+                          aria-valuemin="0"
+                          aria-valuemax="100"
+                        ></div>
+                      </div>
+                      <div className="text-center">Uploading... {uploadProgress}%</div>
+                    </div>
+                  ) : (
+                    <button
+                      className="btn btn-outline"
+                      onClick={triggerFileInput}
+                      disabled={isProcessingPhoto}
+                      aria-label="Add photo"
+                    >
+                      <FaCamera style={{ marginRight: "4px" }} /> Add Photo
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handlePhotoUpload}
+                        accept="image/*"
+                        style={{ display: "none" }}
+                        aria-hidden="true"
+                      />
+                    </button>
                   )}
                 </div>
-              ))}
-              <button
-                type="button"
-                className="gallery-item add"
-                onClick={triggerFileInput}
-                disabled={isUploading || isProcessingPhoto}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: "#eaeaea",
-                  border: "2px dashed #ccc",
-                  borderRadius: "8px",
-                  cursor: "pointer",
-                  height: "100px",
-                }}
-              >
-                <FaCamera style={{ fontSize: "24px", color: "#555" }} />
-              </button>
-            </div>
-          )}
+              </div>
 
-          {/* Profile Information Section */}
-          <div className="profile-info">
-            <div className="profile-header d-flex justify-content-between align-items-center">
-              <h2>My Profile</h2>
-              {!isEditing ? (
-                <button className="btn btn-primary" onClick={() => setIsEditing(true)}>
-                  <FaEdit /> Edit
-                </button>
-              ) : (
-                <div className="d-flex" style={{ gap: "8px" }}>
-                  <button className="btn btn-outline" onClick={handleCancelEdit} disabled={isSubmitting}>
-                    <FaTimes /> Cancel
-                  </button>
-                  <button className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting}>
-                    {isSubmitting ? (
-                      <>
-                        <span className="spinner spinner-dark"></span>
-                        <span style={{ marginLeft: "8px" }}>Saving...</span>
-                      </>
-                    ) : (
-                      <>
-                        <FaCheck /> Save
-                      </>
-                    )}
+              {/* Photo Gallery Section - Now with responsive grid */}
+              {localPhotos.length > 0 && (
+                <div
+                  className="photo-gallery"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
+                    gap: "16px",
+                  }}
+                >
+                  {localPhotos.map((photo) => (
+                    <div
+                      key={photo._id}
+                      className="gallery-item"
+                      style={{
+                        position: "relative",
+                        cursor: "pointer",
+                        border: photo.isProfile ? "2px solid var(--primary)" : "2px solid transparent",
+                        borderRadius: "8px",
+                        overflow: "hidden",
+                        transition: "transform 0.3s ease",
+                        height: "100px",
+                      }}
+                      onClick={() => handleSetProfilePhoto(photo._id)}
+                    >
+                      <img
+                        src={photo.url || "/placeholder.svg?height=100&width=100"}
+                        alt={`Gallery`}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                      {photo.isLoading && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            height: "100%",
+                            background: "rgba(255,255,255,0.7)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <div className="spinner spinner-small"></div>
+                        </div>
+                      )}
+                      <div
+                        className="photo-controls"
+                        style={{
+                          position: "absolute",
+                          bottom: "0",
+                          left: "0",
+                          right: "0",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          padding: "4px",
+                          background: "rgba(0,0,0,0.5)",
+                        }}
+                      >
+                        <button
+                          onClick={(e) => handleTogglePhotoPrivacy(photo._id, e)}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "white",
+                            cursor: "pointer",
+                            padding: "2px",
+                          }}
+                          title={photo.isPrivate ? "Make public" : "Make private"}
+                          disabled={isProcessingPhoto || photo.isLoading}
+                          aria-label={photo.isPrivate ? "Make photo public" : "Make photo private"}
+                        >
+                          {photo.isPrivate ? (
+                            <FaLock style={{ fontSize: "14px" }} />
+                          ) : (
+                            <FaLockOpen style={{ fontSize: "14px" }} />
+                          )}
+                        </button>
+                        {!photo.isProfile && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleSetProfilePhoto(photo._id)
+                            }}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: "white",
+                              cursor: "pointer",
+                              padding: "2px",
+                            }}
+                            title="Set as profile photo"
+                            disabled={isProcessingPhoto || photo.isLoading}
+                            aria-label="Set as profile photo"
+                          >
+                            <FaStar style={{ fontSize: "14px" }} />
+                          </button>
+                        )}
+                        {!photo.isProfile && (
+                          <button
+                            onClick={(e) => handleDeletePhoto(photo._id, e)}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: "white",
+                              cursor: "pointer",
+                              padding: "2px",
+                            }}
+                            title="Delete photo"
+                            disabled={isProcessingPhoto || photo.isLoading}
+                            aria-label="Delete photo"
+                          >
+                            <FaTrash style={{ fontSize: "14px" }} />
+                          </button>
+                        )}
+                      </div>
+                      {photo.isProfile && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "0",
+                            left: "0",
+                            background: "var(--primary)",
+                            color: "white",
+                            fontSize: "10px",
+                            padding: "2px 4px",
+                            borderBottomRightRadius: "4px",
+                          }}
+                        >
+                          Profile
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="gallery-item add"
+                    onClick={triggerFileInput}
+                    disabled={isUploading || isProcessingPhoto}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "#eaeaea",
+                      border: "2px dashed #ccc",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      height: "100px",
+                    }}
+                    aria-label="Add new photo"
+                  >
+                    <FaCamera style={{ fontSize: "24px", color: "#555" }} />
                   </button>
                 </div>
               )}
-            </div>
 
-            <form className="mt-4" onSubmit={handleSubmit}>
-              <div className="info-section">
-                <h3>Basic Information</h3>
-                <div className="info-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="nickname">
-                      Nickname
-                    </label>
-                    <input
-                      type="text"
-                      id="nickname"
-                      name="nickname"
-                      className={`form-control ${errors.nickname ? "border-danger" : ""}`}
-                      value={profileData.nickname}
-                      onChange={handleChange}
-                      disabled={!isEditing}
-                      maxLength={50}
-                    />
-                    {errors.nickname && (
-                      <p className="error-message" style={{ color: "red", marginTop: "4px" }}>
-                        <FaExclamationTriangle style={{ marginRight: "4px" }} />
-                        {errors.nickname}
-                      </p>
-                    )}
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="details.age">
-                      Age
-                    </label>
-                    <input
-                      type="number"
-                      id="details.age"
-                      name="details.age"
-                      className={`form-control ${errors.age ? "border-danger" : ""}`}
-                      value={profileData.details.age}
-                      onChange={handleChange}
-                      disabled={!isEditing}
-                      min="18"
-                      max="120"
-                    />
-                    {errors.age && (
-                      <p className="error-message" style={{ color: "red", marginTop: "4px" }}>
-                        <FaExclamationTriangle style={{ marginRight: "4px" }} />
-                        {errors.age}
-                      </p>
-                    )}
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="details.gender">
-                      Gender
-                    </label>
-                    <select
-                      id="details.gender"
-                      name="details.gender"
-                      className={`form-control ${errors.gender ? "border-danger" : ""}`}
-                      value={profileData.details.gender}
-                      onChange={handleChange}
-                      disabled={!isEditing}
-                    >
-                      <option value="">Select</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                      <option value="Other">Other</option>
-                    </select>
-                    {errors.gender && (
-                      <p className="error-message" style={{ color: "red", marginTop: "4px" }}>
-                        <FaExclamationTriangle style={{ marginRight: "4px" }} />
-                        {errors.gender}
-                      </p>
-                    )}
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="details.location">
-                      Location
-                    </label>
-                    <input
-                      type="text"
-                      id="details.location"
-                      name="details.location"
-                      className={`form-control ${errors.location ? "border-danger" : ""}`}
-                      value={profileData.details.location}
-                      onChange={handleChange}
-                      disabled={!isEditing}
-                      maxLength={100}
-                    />
-                    {errors.location && (
-                      <p className="error-message" style={{ color: "red", marginTop: "4px" }}>
-                        <FaExclamationTriangle style={{ marginRight: "4px" }} />
-                        {errors.location}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="info-section">
-                <h3>About Me</h3>
-                <textarea
-                  name="details.bio"
-                  rows="4"
-                  className={`form-control ${errors.bio ? "border-danger" : ""}`}
-                  value={profileData.details.bio || ""}
-                  onChange={handleChange}
-                  disabled={!isEditing}
-                  style={{ resize: "vertical" }}
-                  maxLength={500}
-                  placeholder={isEditing ? "Tell others about yourself..." : "No bio provided"}
-                />
-                {errors.bio && (
-                  <p className="error-message" style={{ color: "red", marginTop: "4px" }}>
-                    <FaExclamationTriangle style={{ marginRight: "4px" }} />
-                    {errors.bio}
-                  </p>
-                )}
-                {isEditing && (
-                  <div className="text-muted mt-1" style={{ fontSize: "0.8rem", textAlign: "right" }}>
-                    {profileData.details.bio ? profileData.details.bio.length : 0}/500
-                  </div>
-                )}
-              </div>
-
-              <div className="info-section">
-                <h3>Interests</h3>
-                {isEditing && (
-                  <div className="text-muted mb-2" style={{ fontSize: "0.8rem" }}>
-                    Select up to 10 interests
-                  </div>
-                )}
-                <div className="interests-tags" style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                  {availableInterests.map((interest) => {
-                    const isSelected = profileData.details.interests.includes(interest)
-                    return (
+              {/* Profile Information Section - Now with better responsive layout */}
+              <div className="profile-info">
+                <div className="profile-header d-flex justify-content-between align-items-center flex-wrap">
+                  <h2>My Profile</h2>
+                  {!isEditing ? (
+                    <button className="btn btn-primary" onClick={() => setIsEditing(true)} aria-label="Edit profile">
+                      <FaEdit /> Edit
+                    </button>
+                  ) : (
+                    <div className="d-flex" style={{ gap: "8px" }}>
                       <button
-                        key={interest}
-                        type="button"
-                        className={`interest-tag ${isSelected ? "selected" : ""}`}
-                        onClick={() => isEditing && toggleInterest(interest)}
-                        disabled={!isEditing || (!isSelected && profileData.details.interests.length >= 10)}
-                        style={{
-                          padding: "4px 12px",
-                          borderRadius: "20px",
-                          backgroundColor: isSelected ? "var(--primary)" : "var(--light)",
-                          color: isSelected ? "#fff" : "var(--text-medium)",
-                          border: "none",
-                          cursor: isEditing ? "pointer" : "default",
-                          transition: "all 0.3s ease",
-                        }}
+                        className="btn btn-outline"
+                        onClick={handleCancelEdit}
+                        disabled={isSubmitting}
+                        aria-label="Cancel editing"
                       >
-                        {interest}
-                        {isSelected && <FaCheck style={{ marginLeft: "4px" }} />}
+                        <FaTimes /> Cancel
                       </button>
-                    )
-                  })}
+                      <button
+                        className="btn btn-primary"
+                        onClick={handleSubmit}
+                        disabled={isSubmitting}
+                        aria-label="Save profile changes"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <span className="spinner spinner-dark"></span>
+                            <span style={{ marginLeft: "8px" }}>Saving...</span>
+                          </>
+                        ) : (
+                          <>
+                            <FaCheck /> Save
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {profileData.details.interests.length === 0 && !isEditing && (
-                  <p className="text-muted fst-italic mt-2">No interests selected</p>
-                )}
+
+                <form className="mt-4" onSubmit={handleSubmit}>
+                  <div className="info-section">
+                    <h3>Basic Information</h3>
+                    <div
+                      className="info-grid"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+                        gap: "16px",
+                      }}
+                    >
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="nickname">
+                          Nickname
+                        </label>
+                        <input
+                          type="text"
+                          id="nickname"
+                          name="nickname"
+                          className={`form-control ${errors.nickname ? "border-danger" : ""}`}
+                          value={profileData.nickname}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          maxLength={50}
+                          aria-invalid={errors.nickname ? "true" : "false"}
+                          aria-describedby={errors.nickname ? "nickname-error" : undefined}
+                        />
+                        {errors.nickname && (
+                          <p id="nickname-error" className="error-message" style={{ color: "red", marginTop: "4px" }}>
+                            <FaExclamationTriangle style={{ marginRight: "4px" }} />
+                            {errors.nickname}
+                          </p>
+                        )}
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="details.age">
+                          Age
+                        </label>
+                        <input
+                          type="number"
+                          id="details.age"
+                          name="details.age"
+                          className={`form-control ${errors.age ? "border-danger" : ""}`}
+                          value={profileData.details.age}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          min="18"
+                          max="120"
+                          aria-invalid={errors.age ? "true" : "false"}
+                          aria-describedby={errors.age ? "age-error" : undefined}
+                        />
+                        {errors.age && (
+                          <p id="age-error" className="error-message" style={{ color: "red", marginTop: "4px" }}>
+                            <FaExclamationTriangle style={{ marginRight: "4px" }} />
+                            {errors.age}
+                          </p>
+                        )}
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="details.gender">
+                          Gender
+                        </label>
+                        <select
+                          id="details.gender"
+                          name="details.gender"
+                          className={`form-control ${errors.gender ? "border-danger" : ""}`}
+                          value={profileData.details.gender}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          aria-invalid={errors.gender ? "true" : "false"}
+                          aria-describedby={errors.gender ? "gender-error" : undefined}
+                        >
+                          <option value="">Select</option>
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Other">Other</option>
+                        </select>
+                        {errors.gender && (
+                          <p id="gender-error" className="error-message" style={{ color: "red", marginTop: "4px" }}>
+                            <FaExclamationTriangle style={{ marginRight: "4px" }} />
+                            {errors.gender}
+                          </p>
+                        )}
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="details.location">
+                          Location
+                        </label>
+                        <input
+                          type="text"
+                          id="details.location"
+                          name="details.location"
+                          className={`form-control ${errors.location ? "border-danger" : ""}`}
+                          value={profileData.details.location}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          maxLength={100}
+                          aria-invalid={errors.location ? "true" : "false"}
+                          aria-describedby={errors.location ? "location-error" : undefined}
+                        />
+                        {errors.location && (
+                          <p id="location-error" className="error-message" style={{ color: "red", marginTop: "4px" }}>
+                            <FaExclamationTriangle style={{ marginRight: "4px" }} />
+                            {errors.location}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="info-section">
+                    <h3>About Me</h3>
+                    <textarea
+                      name="details.bio"
+                      rows="4"
+                      className={`form-control ${errors.bio ? "border-danger" : ""}`}
+                      value={profileData.details.bio || ""}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      style={{ resize: "vertical" }}
+                      maxLength={500}
+                      placeholder={isEditing ? "Tell others about yourself..." : "No bio provided"}
+                      aria-invalid={errors.bio ? "true" : "false"}
+                      aria-describedby={errors.bio ? "bio-error" : undefined}
+                    />
+                    {errors.bio && (
+                      <p id="bio-error" className="error-message" style={{ color: "red", marginTop: "4px" }}>
+                        <FaExclamationTriangle style={{ marginRight: "4px" }} />
+                        {errors.bio}
+                      </p>
+                    )}
+                    {isEditing && (
+                      <div className="text-muted mt-1" style={{ fontSize: "0.8rem", textAlign: "right" }}>
+                        {profileData.details.bio ? profileData.details.bio.length : 0}/500
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="info-section">
+                    <h3>Interests</h3>
+                    {isEditing && (
+                      <div className="text-muted mb-2" style={{ fontSize: "0.8rem" }}>
+                        Select up to 10 interests
+                      </div>
+                    )}
+                    <div className="interests-tags" style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {availableInterests.map((interest) => {
+                        const isSelected = profileData.details.interests.includes(interest)
+                        return (
+                          <button
+                            key={interest}
+                            type="button"
+                            className={`interest-tag ${isSelected ? "selected" : ""}`}
+                            onClick={() => isEditing && toggleInterest(interest)}
+                            disabled={!isEditing || (!isSelected && profileData.details.interests.length >= 10)}
+                            style={{
+                              padding: "4px 12px",
+                              borderRadius: "20px",
+                              backgroundColor: isSelected ? "var(--primary)" : "var(--light)",
+                              color: isSelected ? "#fff" : "var(--text-medium)",
+                              border: "none",
+                              cursor: isEditing ? "pointer" : "default",
+                              transition: "all 0.3s ease",
+                            }}
+                            aria-pressed={isSelected}
+                            aria-label={`Interest: ${interest}`}
+                          >
+                            {interest}
+                            {isSelected && <FaCheck style={{ marginLeft: "4px" }} />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {profileData.details.interests.length === 0 && !isEditing && (
+                      <p className="text-muted fst-italic mt-2">No interests selected</p>
+                    )}
+                  </div>
+                </form>
               </div>
-            </form>
-          </div>
+            </>
+          )}
         </div>
       </main>
     </div>

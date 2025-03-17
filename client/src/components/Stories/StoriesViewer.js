@@ -5,64 +5,60 @@ import { useStories, useUser } from "../../context"
 import "../../styles/stories.css"
 
 const StoriesViewer = ({ storyId, userId, onClose }) => {
-  // Allow passing either storyId or userId to the component
+  // Context hooks
   const { stories = [], viewStory, loadUserStories, loadStories } = useStories() || {}
   const { user } = useUser() || {}
 
+  // Local state
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0)
   const [progress, setProgress] = useState(0)
   const [paused, setPaused] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [userStories, setUserStories] = useState([])
 
-  // Use ref to hold the progress interval ID
+  // Progress logic
   const progressInterval = useRef(null)
-  const storyDuration = 5000 // 5 seconds per story
-  const progressStep = 100 / (storyDuration / 100) // Increment per 100ms
+  const storyDuration = 5000 // 5 seconds
+  const progressStep = 100 / (storyDuration / 100)
 
-  // Initially fetch all stories if not already loaded
+  // Ensure all stories are loaded if needed
   useEffect(() => {
-    if ((!stories || stories.length === 0) && loadStories) {
-      loadStories(true).catch(err => {
-        console.error("Error loading initial stories:", err);
-      });
+    if ((!stories || !stories.length) && loadStories) {
+      // Optionally fetch all stories if you want
+      // loadStories(true).catch(err => console.error("Error loading stories:", err))
     }
-  }, [loadStories, stories]);
+  }, [stories, loadStories])
 
-  // Load stories for specific user if userId is provided
+  // Load user stories if userId is provided
   useEffect(() => {
     const fetchUserStories = async () => {
       if (!userId || !loadUserStories) return
-
       setLoading(true)
       try {
-        const userStoriesData = await loadUserStories(userId)
-
-        // Filter stories to ensure uniqueness and correct user
+        const result = await loadUserStories(userId)
         const uniqueStories = []
         const storyIds = new Set()
 
-        const filteredStories = Array.isArray(userStoriesData) ? userStoriesData :
-          stories.filter((story) => {
-            // Safely check user ID regardless of whether user is an object or string
-            const storyUserId = story.user && (typeof story.user === "string" ?
-              story.user : story.user._id)
-            return storyUserId === userId
-          })
+        // Filter or unify
+        const filtered = Array.isArray(result)
+          ? result
+          : stories.filter(st => {
+              const stUserId = typeof st.user === "string" ? st.user : st.user?._id
+              return stUserId === userId
+            })
 
-        filteredStories.forEach((story) => {
-          if (story._id && !storyIds.has(story._id)) {
-            storyIds.add(story._id)
-            uniqueStories.push(story)
+        filtered.forEach(st => {
+          if (st._id && !storyIds.has(st._id)) {
+            storyIds.add(st._id)
+            uniqueStories.push(st)
           }
         })
 
-        if (uniqueStories.length === 0) {
+        if (!uniqueStories.length) {
           setError("No stories available for this user")
-        } else {
-          setUserStories(uniqueStories)
         }
+        setUserStories(uniqueStories)
       } catch (err) {
         console.error("Error loading user stories:", err)
         setError("Failed to load stories")
@@ -70,47 +66,38 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
         setLoading(false)
       }
     }
-
     fetchUserStories()
   }, [userId, loadUserStories, stories])
 
-  // Set starting index based on storyId if provided
+  // If storyId is provided, find its index
   useEffect(() => {
-    if (storyId && stories && stories.length > 0) {
-      const index = stories.findIndex((story) => story._id === storyId)
-      if (index !== -1) {
-        setCurrentStoryIndex(index)
+    if (storyId && (userId ? userStories : stories).length) {
+      const currentArray = userId ? userStories : stories
+      const idx = currentArray.findIndex(st => st._id === storyId)
+      if (idx !== -1) {
+        setCurrentStoryIndex(idx)
       }
-      setLoading(false)
-    } else if (stories && stories.length > 0) {
-      setLoading(false)
-    } else if (stories && stories.length === 0 && !loading) {
-      setLoading(false)
-      setError("No stories available")
     }
-  }, [storyId, stories, loading])
+  }, [storyId, userId, userStories, stories])
 
-  // Determine which stories to use based on whether userId is provided
+  // Decide which stories to display
   const currentStories = userId ? userStories : stories
 
-  // Mark story as viewed when it appears
+  // Mark story as viewed
   useEffect(() => {
-    if (viewStory && currentStories && currentStories.length > 0 && currentStoryIndex < currentStories.length) {
-      const currentStory = currentStories[currentStoryIndex]
-      if (currentStory && user && currentStory._id) {
-        try {
-          viewStory(currentStory._id)
-        } catch (err) {
-          console.error("Error marking story as viewed:", err)
-        }
-      }
+    if (!viewStory || !currentStories.length) return
+    const currentStory = currentStories[currentStoryIndex]
+    if (currentStory && user && currentStory._id) {
+      viewStory(currentStory._id).catch(err => {
+        console.error("Error marking story as viewed:", err)
+      })
     }
   }, [currentStoryIndex, currentStories, user, viewStory])
 
-  // Handle progress bar with foolproof cleanup using useRef
+  // Progress bar auto-advance
   useEffect(() => {
-    // Return early and clear any existing interval if conditions are not met
-    if (paused || loading || error || !currentStories || currentStories.length === 0) {
+    if (paused || loading || error || !currentStories.length) {
+      // Clear progress interval if not active
       if (progressInterval.current) {
         clearInterval(progressInterval.current)
         progressInterval.current = null
@@ -118,29 +105,23 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       return
     }
 
-    // Reset progress before starting a new interval
+    // Start fresh
     setProgress(0)
-
-    // Clear any existing interval
     if (progressInterval.current) {
       clearInterval(progressInterval.current)
       progressInterval.current = null
     }
 
-    // Create a new interval to update progress
+    // Interval logic
     progressInterval.current = setInterval(() => {
-      setProgress((prev) => {
+      setProgress(prev => {
         if (prev >= 100) {
-          // Immediately clear the interval to stop further updates
-          if (progressInterval.current) {
-            clearInterval(progressInterval.current)
-            progressInterval.current = null
-          }
-          // Move to the next story if available, otherwise close
-          if (currentStories && currentStoryIndex < currentStories.length - 1) {
-            setCurrentStoryIndex((prev) => prev + 1)
+          clearInterval(progressInterval.current)
+          progressInterval.current = null
+          if (currentStoryIndex < currentStories.length - 1) {
+            setCurrentStoryIndex(prev => prev + 1)
           } else {
-            if (typeof onClose === "function") onClose()
+            onClose?.()
           }
           return 0
         }
@@ -148,70 +129,77 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       })
     }, 100)
 
-    // Cleanup: ensure interval is cleared when dependencies change or component unmounts
+    // Cleanup
     return () => {
       if (progressInterval.current) {
         clearInterval(progressInterval.current)
         progressInterval.current = null
       }
     }
-  }, [currentStoryIndex, currentStories, paused, onClose, progressStep, loading, error])
+  }, [
+    currentStoryIndex,
+    currentStories,
+    paused,
+    onClose,
+    loading,
+    error,
+    progressStep
+  ])
 
+  // Handlers
   const handlePrevStory = useCallback(
     (e) => {
-      if (e) e.stopPropagation()
+      e?.stopPropagation()
       if (currentStoryIndex > 0) {
-        setCurrentStoryIndex((prev) => prev - 1)
+        setCurrentStoryIndex(i => i - 1)
         setProgress(0)
       }
     },
-    [currentStoryIndex],
+    [currentStoryIndex]
   )
 
   const handleNextStory = useCallback(
     (e) => {
-      if (e) e.stopPropagation()
-      if (currentStories && currentStoryIndex < currentStories.length - 1) {
-        setCurrentStoryIndex((prev) => prev + 1)
+      e?.stopPropagation()
+      if (currentStoryIndex < currentStories.length - 1) {
+        setCurrentStoryIndex(i => i + 1)
         setProgress(0)
       } else {
-        if (typeof onClose === "function") onClose()
+        onClose?.()
       }
     },
-    [currentStoryIndex, currentStories, onClose],
+    [currentStoryIndex, currentStories, onClose]
   )
 
-  const togglePause = useCallback((e) => {
+  const togglePause = useCallback(e => {
     e.stopPropagation()
-    setPaused((prev) => !prev)
+    setPaused(p => !p)
   }, [])
 
-  // Handle keyboard navigation
+  // Keyboard navigation
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const keyHandler = (e) => {
       if (e.key === "ArrowLeft") {
         handlePrevStory()
       } else if (e.key === "ArrowRight" || e.key === " " || e.key === "Spacebar") {
         handleNextStory()
       } else if (e.key === "Escape") {
-        if (typeof onClose === "function") onClose()
+        onClose?.()
       }
     }
-
-    document.addEventListener("keydown", handleKeyDown)
-    return () => document.removeEventListener("keydown", handleKeyDown)
+    document.addEventListener("keydown", keyHandler)
+    return () => document.removeEventListener("keydown", keyHandler)
   }, [handlePrevStory, handleNextStory, onClose])
 
-  const handleClose = () => {
-    if (typeof onClose === "function") onClose()
-  }
+  const handleClose = () => onClose?.()
 
+  // Loading or Error states
   if (loading) {
     return (
       <div className="stories-viewer-overlay">
         <div className="stories-viewer-container" style={{ justifyContent: "center", alignItems: "center" }}>
           <div className="spinner"></div>
-          <p style={{ color: "white", marginTop: "10px" }}>Loading stories...</p>
+          <p style={{ color: "white" }}>Loading stories...</p>
         </div>
       </div>
     )
@@ -241,7 +229,8 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     )
   }
 
-  if (!currentStories || currentStories.length === 0 || currentStoryIndex >= currentStories.length) {
+  // No stories found or out of range
+  if (!currentStories.length || currentStoryIndex >= currentStories.length) {
     return (
       <div className="stories-viewer-overlay">
         <div className="stories-viewer-container" style={{ justifyContent: "center", alignItems: "center" }}>
@@ -266,7 +255,6 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   }
 
   const currentStory = currentStories[currentStoryIndex]
-
   if (!currentStory) {
     return (
       <div className="stories-viewer-overlay">
@@ -291,55 +279,18 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     )
   }
 
-  // Utility functions for styling text stories
-  const getBackgroundStyle = () => {
-    if (currentStory.mediaType === "text" && currentStory.backgroundStyle) {
-      const styles = { background: currentStory.backgroundStyle }
-      if (currentStory.extraStyles) {
-        return { ...styles, ...currentStory.extraStyles }
-      }
-      return styles
-    }
-
-    // Fallback if no backgroundStyle is available
-    if (currentStory.type === "text" && currentStory.backgroundColor) {
-      return { background: currentStory.backgroundColor }
-    }
-
-    return {}
-  }
-
-  const getFontStyle = () => {
-    if (currentStory.mediaType === "text" && currentStory.fontStyle) {
-      return { fontFamily: currentStory.fontStyle }
-    }
-    if (currentStory.type === "text" && currentStory.fontStyle) {
-      return { fontFamily: currentStory.fontStyle }
-    }
-    return {}
-  }
-
+  // Helpers
   const getUserDisplayName = () => {
-    // Try to get user data from story.user or story.userData
     const storyUser = currentStory.user || currentStory.userData || {}
-
-    if (!storyUser || typeof storyUser === "string") {
-      return "Unknown User"
-    }
-
-    // Prioritize nickname over username and name
+    if (!storyUser || typeof storyUser === "string") return "Unknown User"
     return storyUser.nickname || storyUser.username || storyUser.name || "User"
   }
 
   const getProfilePicture = () => {
-    // Try to get user data from story.user or story.userData
     const storyUser = currentStory.user || currentStory.userData || {}
-
     if (!storyUser || typeof storyUser === "string") {
       return `/api/avatar/default`
     }
-
-    // Try different possible profile picture fields
     return storyUser.profilePicture || storyUser.avatar || `/api/avatar/${storyUser._id || "default"}`
   }
 
@@ -349,17 +300,30 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
         hour: "2-digit",
         minute: "2-digit",
       })
-    } catch (e) {
+    } catch {
       return "Recently"
     }
   }
 
-  // Determine the content to display based on story type/mediaType
+  // Render content
   const getStoryContent = () => {
-    // For text stories
-    if (currentStory.mediaType === "text" || currentStory.type === "text") {
+    // TEXT
+    if (
+      currentStory.mediaType === "text" ||
+      currentStory.type === "text"
+    ) {
+      const styleProps = {}
+      if (currentStory.backgroundStyle) {
+        styleProps.background = currentStory.backgroundStyle
+      } else if (currentStory.backgroundColor) {
+        styleProps.background = currentStory.backgroundColor
+      }
+      if (currentStory.fontStyle) {
+        styleProps.fontFamily = currentStory.fontStyle
+      }
+
       return (
-        <div className="stories-text-content" style={{ ...getBackgroundStyle(), ...getFontStyle() }}>
+        <div className="stories-text-content" style={styleProps}>
           <div className="story-user-overlay">
             <span className="story-nickname">{getUserDisplayName()}</span>
           </div>
@@ -375,9 +339,11 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       )
     }
 
-    // For image stories
-    if ((currentStory.mediaType?.startsWith("image") || currentStory.type === "image") &&
-        (currentStory.mediaUrl || currentStory.media)) {
+    // IMAGE
+    if (
+      (currentStory.mediaType?.startsWith("image") || currentStory.type === "image") &&
+      (currentStory.mediaUrl || currentStory.media)
+    ) {
       return (
         <div className="stories-image-container">
           <div className="story-user-overlay">
@@ -403,9 +369,11 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       )
     }
 
-    // For video stories
-    if ((currentStory.mediaType?.startsWith("video") || currentStory.type === "video") &&
-        (currentStory.mediaUrl || currentStory.media)) {
+    // VIDEO
+    if (
+      (currentStory.mediaType?.startsWith("video") || currentStory.type === "video") &&
+      (currentStory.mediaUrl || currentStory.media)
+    ) {
       return (
         <div className="stories-video-container">
           <div className="story-user-overlay">
@@ -434,7 +402,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       )
     }
 
-    // Fallback content
+    // Fallback
     return (
       <div className="stories-text-content">
         <div className="story-user-overlay">
@@ -456,23 +424,29 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     <div className="stories-viewer-overlay">
       <div className="stories-viewer-container">
         <div className="stories-viewer-header">
+          {/* Progress bars */}
           <div className="stories-progress-container">
             {currentStories.map((_, index) => (
-              <div key={index} className={`stories-progress-bar ${index < currentStoryIndex ? "completed" : ""}`}>
+              <div
+                key={index}
+                className={`stories-progress-bar ${index < currentStoryIndex ? "completed" : ""}`}
+              >
                 {index === currentStoryIndex && (
                   <div className="stories-progress-fill" style={{ width: `${progress}%` }} />
                 )}
               </div>
             ))}
           </div>
+
+          {/* User info */}
           <div className="stories-user-info">
             <img
-              src={getProfilePicture() || "/placeholder.svg"}
+              src={getProfilePicture()}
               alt={getUserDisplayName()}
               className="stories-user-avatar"
               onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = "/placeholder.svg";
+                e.target.onerror = null
+                e.target.src = "/placeholder.svg"
               }}
             />
             <div className="stories-user-details">
@@ -480,7 +454,13 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
               <span className="stories-timestamp">{formatTimestamp()}</span>
             </div>
           </div>
-          <button className="stories-close-btn" onClick={handleClose} aria-label="Close stories">
+
+          {/* Close button */}
+          <button
+            className="stories-close-btn"
+            onClick={handleClose}
+            aria-label="Close stories"
+          >
             ×
           </button>
         </div>

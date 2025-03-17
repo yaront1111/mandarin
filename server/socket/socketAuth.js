@@ -97,7 +97,7 @@ const socketAuthMiddleware = async (socket, next) => {
 
     // Verify token with improved error handling
     try {
-      // Fix: Make sure we're using the JWT_SECRET from config
+      // Use the JWT_SECRET from config
       const jwtSecret = config.JWT_SECRET || process.env.JWT_SECRET;
 
       if (!jwtSecret) {
@@ -116,7 +116,7 @@ const socketAuthMiddleware = async (socket, next) => {
         return next(new Error("Invalid authentication token format"));
       }
 
-      // Find user - IMPORTANT: Do not filter by active field
+      // Find user - do NOT filter by active field so we can catch inactive users
       const user = await User.findById(decoded.id).select("-password");
 
       if (!user) {
@@ -132,8 +132,7 @@ const socketAuthMiddleware = async (socket, next) => {
 
       // Attach user to socket
       socket.user = user;
-
-      // Store socket ID with user for efficient lookups
+      // Store socket ID with user for potential presence checks
       user.socketId = socket.id;
 
       // Update user's online status
@@ -202,7 +201,7 @@ const setupSocketMonitoring = (io) => {
 
     sockets.forEach(socket => {
       if (socket.user && socket.lastActivity && (now - socket.lastActivity) > inactiveThreshold) {
-        logger.warn(`User ${socket.user._id} has inactive connection for >10 minutes, cleaning up`);
+        logger.warn(`User ${socket.user._id} has been inactive for >10 minutes, disconnecting socket`);
         socket.disconnect(true);
       }
     });

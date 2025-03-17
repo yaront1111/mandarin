@@ -4,10 +4,9 @@ import { useState, useRef, useCallback } from "react"
 import { FaTimes, FaCheck, FaSpinner, FaFont, FaPalette } from "react-icons/fa"
 import { toast } from "react-toastify"
 import { useAuth } from "../../context"
-import storiesService from "../../services/storiesService"
+import { useStories } from "../../context/StoriesContext"
 import "../../styles/stories.css"
 
-// Background options with gradients and patterns
 const BACKGROUND_OPTIONS = [
   { id: "gradient-1", name: "Sunset", style: "linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%)" },
   { id: "gradient-2", name: "Ocean", style: "linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)" },
@@ -15,7 +14,6 @@ const BACKGROUND_OPTIONS = [
   { id: "gradient-4", name: "Midnight", style: "linear-gradient(135deg, #30cfd0 0%, #330867 100%)" }
 ]
 
-// Font options
 const FONT_OPTIONS = [
   { id: "font-1", name: "Classic", style: "'Helvetica', sans-serif" },
   { id: "font-2", name: "Elegant", style: "'Georgia', serif" },
@@ -26,14 +24,14 @@ const FONT_OPTIONS = [
 
 const StoryCreator = ({ onClose, onSubmit }) => {
   const { user } = useAuth()
+  const { createStory } = useStories()
   const [text, setText] = useState("")
   const [selectedBackground, setSelectedBackground] = useState(BACKGROUND_OPTIONS[0])
   const [selectedFont, setSelectedFont] = useState(FONT_OPTIONS[0])
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [duration, setDuration] = useState(24) // Default 24 hours
-  const [activeTab, setActiveTab] = useState("text") // 'text', 'background', or 'font'
   const [error, setError] = useState("")
+  const [activeTab, setActiveTab] = useState("text")
 
   const previewRef = useRef(null)
 
@@ -54,26 +52,15 @@ const StoryCreator = ({ onClose, onSubmit }) => {
     setUploadProgress(0)
 
     try {
-      // Create story data with the correct field mappings
       const storyData = {
         content: text.trim(),
-        text: text.trim(), // Include both for compatibility
-        background: selectedBackground.id,
+        text: text.trim(),
         backgroundStyle: selectedBackground.style,
         backgroundColor: selectedBackground.style,
-        font: selectedFont.id,
         fontStyle: selectedFont.style,
-        duration: duration.toString(),
-        mediaType: "text", // Set media type to text
-        type: "text", // Also set the type field
+        mediaType: "text" // text story
       }
 
-      // Add any extra styles if present
-      if (selectedBackground.extraStyles) {
-        storyData.extraStyles = selectedBackground.extraStyles
-      }
-
-      // Progress tracking function
       const updateProgress = (progressEvent) => {
         if (progressEvent.total > 0) {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
@@ -81,46 +68,35 @@ const StoryCreator = ({ onClose, onSubmit }) => {
         }
       }
 
-      // Upload with progress tracking
-      const response = await storiesService.createTextStory(storyData, updateProgress)
+      const response = await createStory(storyData, updateProgress)
 
       if (response.success) {
         toast.success("Story created successfully!")
-
-        // Call callback if provided - use the correct data field
-        const storyData = response.data || response.story
-        if (onSubmit && storyData) {
-          onSubmit(storyData)
+        if (onSubmit && response.data) {
+          onSubmit(response.data)
         } else if (onSubmit) {
           onSubmit(response)
         }
-
-        // Close creator after successful creation
-        onClose()
+        onClose?.()
       } else {
         setError(response.message || "Failed to create story")
         toast.error(response.message || "Failed to create story")
       }
     } catch (error) {
       console.error("Error creating story:", error)
-      const errorMessage = error.message || "An error occurred while creating your story"
-      setError(errorMessage)
-      toast.error(errorMessage)
+      setError(error.message || "An error occurred")
+      toast.error(error.message || "An error occurred")
     } finally {
       setIsUploading(false)
     }
   }
 
-  // Get background style object
-  const getBackgroundStyle = useCallback((background) => {
-    const styles = { background: background.style }
-    if (background.extraStyles) {
-      return { ...styles, ...background.extraStyles }
-    }
-    return styles
+  // Utility for background styles
+  const getBackgroundStyle = useCallback((bg) => {
+    return { background: bg.style }
   }, [])
 
-  // Get font style object
+  // Utility for font styles
   const getFontStyle = useCallback((font) => {
     return { fontFamily: font.style }
   }, [])
@@ -143,7 +119,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
             ref={previewRef}
             style={{
               ...getBackgroundStyle(selectedBackground),
-              ...getFontStyle(selectedFont),
+              ...getFontStyle(selectedFont)
             }}
           >
             {text ? (
@@ -193,7 +169,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
             {activeTab === "background" && (
               <div className="background-tab">
                 <div className="background-options">
-                  {BACKGROUND_OPTIONS.map((bg) => (
+                  {BACKGROUND_OPTIONS.map(bg => (
                     <div
                       key={bg.id}
                       className={`background-option ${selectedBackground.id === bg.id ? "selected" : ""}`}
@@ -209,7 +185,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
             {activeTab === "font" && (
               <div className="font-tab">
                 <div className="font-options">
-                  {FONT_OPTIONS.map((font) => (
+                  {FONT_OPTIONS.map(font => (
                     <div
                       key={font.id}
                       className={`font-option ${selectedFont.id === font.id ? "selected" : ""}`}
@@ -222,17 +198,6 @@ const StoryCreator = ({ onClose, onSubmit }) => {
                 </div>
               </div>
             )}
-          </div>
-
-          <div className="story-details">
-            <div className="form-group">
-              <label htmlFor="duration">Duration</label>
-              <select id="duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
-                <option value={24}>24 hours</option>
-                <option value={48}>48 hours</option>
-                <option value={72}>72 hours</option>
-              </select>
-            </div>
           </div>
 
           {error && <div className="error-message">{error}</div>}

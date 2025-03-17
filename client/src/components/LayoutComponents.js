@@ -17,7 +17,7 @@ import {
 } from "react-icons/fa"
 import { ThemeToggle } from "./theme-toggle.tsx"
 
-// Add dropdown menu styles
+// Dropdown and notification CSS styles injected into document head
 const dropdownStyles = `
   .dropdown-menu {
     display: none;
@@ -214,107 +214,92 @@ const dropdownStyles = `
   }
 `
 
-// Sample notifications data (replace with real data from your API)
-const sampleNotifications = [
-  {
-    id: 1,
-    type: "message",
-    title: "New message from Sarah",
-    message: "Hey, how are you doing?",
-    time: "5 minutes ago",
-    read: false,
-    data: { senderId: "123" },
-  },
-  {
-    id: 2,
-    type: "like",
-    title: "Michael liked your photo",
-    message: "Your profile picture received a like",
-    time: "1 hour ago",
-    read: false,
-    data: { userId: "456", contentType: "photo" },
-  },
-  {
-    id: 3,
-    type: "comment",
-    title: "Jessica commented on your post",
-    message: "That's awesome! Congrats!",
-    time: "3 hours ago",
-    read: true,
-    data: { userId: "789", contentType: "post", contentId: "101" },
-  },
-  {
-    id: 4,
-    type: "story",
-    title: "David added a new story",
-    message: "Check out David's latest update",
-    time: "Yesterday",
-    read: true,
-    data: { userId: "234", storyId: "567" },
-  },
-]
-
 // Modern Navbar Component
 export const Navbar = () => {
-  const [notifications, setNotifications] = useState(sampleNotifications)
+  // Local state for notifications and dropdown toggling
+  const [notifications, setNotifications] = useState([])
+  const [loadingNotifications, setLoadingNotifications] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
+
+  // Refs for dropdown elements
   const notificationDropdownRef = useRef(null)
   const userDropdownRef = useRef(null)
 
-  // Add the styles to the document
+  // Inject dropdown styles on mount
   useEffect(() => {
     const styleElement = document.createElement("style")
     styleElement.innerHTML = dropdownStyles
     document.head.appendChild(styleElement)
-
     return () => {
       document.head.removeChild(styleElement)
     }
   }, [])
 
-  // Calculate unread notifications count
+  // Simulate fetching notifications
   useEffect(() => {
-    const count = notifications.filter((notification) => !notification.read).length
+    const fetchNotifications = async () => {
+      try {
+        setLoadingNotifications(true)
+        // Simulate API call with timeout
+        setTimeout(() => {
+          setNotifications([
+            {
+              _id: "1",
+              type: "message",
+              message: "Sarah sent you a message",
+              read: false,
+              createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+              data: { conversationId: "123" },
+            },
+            {
+              _id: "2",
+              type: "like",
+              message: "Michael liked your profile",
+              read: false,
+              createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+              data: { userId: "456" },
+            },
+            {
+              _id: "3",
+              type: "match",
+              message: "You matched with Jessica!",
+              read: true,
+              createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+              data: { userId: "789" },
+            },
+          ])
+          setLoadingNotifications(false)
+        }, 1000)
+      } catch (error) {
+        console.error("Failed to fetch notifications:", error)
+        toast.error("Could not load notifications")
+        setLoadingNotifications(false)
+      }
+    }
+    fetchNotifications()
+
+    // Simulate receiving a new notification after 10 seconds
+    const timer = setTimeout(() => {
+      const newNotification = {
+        _id: "4",
+        type: "like",
+        message: "David liked your photo",
+        read: false,
+        createdAt: new Date().toISOString(),
+        data: { userId: "101" },
+      }
+      setNotifications(prev => [newNotification, ...prev])
+      toast.info(newNotification.message)
+    }, 10000)
+
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Update unread count when notifications change
+  useEffect(() => {
+    const count = notifications.filter(n => !n.read).length
     setUnreadCount(count)
   }, [notifications])
-
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (notificationDropdownRef.current && !notificationDropdownRef.current.contains(event.target)) {
-        const dropdown = document.getElementById("notification-dropdown")
-        if (dropdown && dropdown.classList.contains("show")) {
-          dropdown.classList.remove("show")
-        }
-      }
-
-      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
-        const dropdown = document.getElementById("user-dropdown")
-        if (dropdown && dropdown.classList.contains("show")) {
-          dropdown.classList.remove("show")
-        }
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-    }
-  }, [])
-
-  // Listen for new notifications (replace with your actual socket or event listener)
-  useEffect(() => {
-    const handleNewNotification = (notification) => {
-      setNotifications((prev) => [notification, ...prev])
-    }
-
-    // Example: Listen for custom event (replace with your actual implementation)
-    window.addEventListener("newNotification", (e) => handleNewNotification(e.detail))
-
-    return () => {
-      window.removeEventListener("newNotification", (e) => handleNewNotification(e.detail))
-    }
-  }, [])
 
   const { isAuthenticated, logout, user } = useAuth()
   const navigate = useNavigate()
@@ -328,52 +313,78 @@ export const Navbar = () => {
     navigate("/profile")
   }
 
-  const toggleNotificationDropdown = () => {
-    document.getElementById("notification-dropdown").classList.toggle("show")
-  }
-
-  const toggleUserDropdown = () => {
-    document.getElementById("user-dropdown").classList.toggle("show")
-  }
-
-  const handleNotificationClick = (notification) => {
-    // Mark as read
-    setNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)))
-
-    // Navigate based on notification type
-    switch (notification.type) {
-      case "message":
-        navigate(`/user/${notification.data.senderId}`)
-        break
-      case "like":
-      case "comment":
-        if (notification.data.contentType === "photo") {
-          navigate(`/profile`)
-        } else if (notification.data.contentType === "post") {
-          navigate(`/post/${notification.data.contentId}`)
-        }
-        break
-      case "story":
-        // Dispatch event to open story viewer
-        window.dispatchEvent(
-          new CustomEvent("openStory", {
-            detail: { storyId: notification.data.storyId },
-          }),
-        )
-        break
-      default:
-        break
+  // Toggle notification dropdown using ref
+  const toggleNotificationDropdown = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (notificationDropdownRef.current) {
+      notificationDropdownRef.current.classList.toggle("show")
     }
+    // Close user dropdown if open
+    if (userDropdownRef.current && userDropdownRef.current.classList.contains("show")) {
+      userDropdownRef.current.classList.remove("show")
+    }
+  }
 
+  // Toggle user dropdown using ref
+  const toggleUserDropdown = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (userDropdownRef.current) {
+      userDropdownRef.current.classList.toggle("show")
+    }
+    // Close notification dropdown if open
+    if (notificationDropdownRef.current && notificationDropdownRef.current.classList.contains("show")) {
+      notificationDropdownRef.current.classList.remove("show")
+    }
+  }
+
+  // Close dropdowns if clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notificationDropdownRef.current && !notificationDropdownRef.current.contains(event.target)) {
+        notificationDropdownRef.current.classList.remove("show")
+      }
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
+        userDropdownRef.current.classList.remove("show")
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  // Handle notification click
+  const handleNotificationClick = async (notification) => {
+    if (!notification.read) {
+      try {
+        // Simulate marking notification as read
+        setNotifications(prev =>
+          prev.map(n => (n._id === notification._id ? { ...n, read: true } : n))
+        )
+        toast.success("Notification marked as read")
+      } catch (error) {
+        console.error("Failed to mark notification as read:", error)
+      }
+    }
+    // Navigate based on notification type
+    if (notification.type === "message") {
+      navigate(`/messages`)
+    } else if (notification.type === "like" || notification.type === "match") {
+      navigate(`/profile`)
+    }
     // Close dropdown
-    document.getElementById("notification-dropdown").classList.remove("show")
+    if (notificationDropdownRef.current) {
+      notificationDropdownRef.current.classList.remove("show")
+    }
   }
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((notification) => ({ ...notification, read: true })))
+  const markAllAsRead = (e) => {
+    e.stopPropagation()
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+    toast.success("All notifications marked as read")
   }
 
-  // Get notification icon based on type
+  // Return appropriate icon for notification type
   const getNotificationIcon = (type) => {
     switch (type) {
       case "message":
@@ -382,11 +393,58 @@ export const Navbar = () => {
         return <FaHeart />
       case "comment":
         return <FaComment />
-      case "story":
-        return <FaBell />
+      case "match":
+        return <FaHeart />
       default:
         return <FaBell />
     }
+  }
+
+  // Format time to relative string (e.g., "5 minutes ago")
+  const formatRelativeTime = (dateString) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now - date
+    const diffSec = Math.floor(diffMs / 1000)
+    const diffMin = Math.floor(diffSec / 60)
+    const diffHour = Math.floor(diffMin / 60)
+    const diffDay = Math.floor(diffHour / 24)
+
+    if (diffSec < 60) return "just now"
+    if (diffMin < 60) return `${diffMin} minute${diffMin > 1 ? "s" : ""} ago`
+    if (diffHour < 24) return `${diffHour} hour${diffHour > 1 ? "s" : ""} ago`
+    if (diffDay < 7) return `${diffDay} day${diffDay > 1 ? "s" : ""} ago`
+    return date.toLocaleDateString()
+  }
+
+  // Render notifications list
+  const renderNotifications = () => {
+    if (loadingNotifications) {
+      return (
+        <div className="flex justify-center p-4 text-center py-4">
+          <div className="spinner"></div>
+          <p className="mt-2">Loading notifications...</p>
+        </div>
+      )
+    }
+    if (notifications.length === 0) {
+      return <div className="notification-empty">No notifications yet</div>
+    }
+    return notifications.map(notification => (
+      <div
+        key={notification._id}
+        className={`notification-item ${!notification.read ? "unread" : ""}`}
+        onClick={() => handleNotificationClick(notification)}
+      >
+        <div className={`notification-icon ${notification.type}`}>
+          {getNotificationIcon(notification.type)}
+        </div>
+        <div className="notification-content">
+          <div className="notification-title">{notification.message}</div>
+          <div className="notification-time">{formatRelativeTime(notification.createdAt)}</div>
+        </div>
+      </div>
+    ))
   }
 
   return (
@@ -420,13 +478,21 @@ export const Navbar = () => {
           {isAuthenticated ? (
             <>
               <div className="dropdown" ref={notificationDropdownRef}>
-                <button className="header-action-button position-relative" onClick={toggleNotificationDropdown}>
+                <button
+                  className="header-action-button position-relative"
+                  onClick={toggleNotificationDropdown}
+                  aria-label="Notifications"
+                  aria-expanded={notificationDropdownRef.current?.classList.contains("show") || false}
+                  aria-haspopup="true"
+                >
                   <FaBell />
                   {unreadCount > 0 && (
-                    <span className="notification-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
+                    <span className="notification-badge" aria-label={`${unreadCount} unread notifications`}>
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
                   )}
                 </button>
-                <div id="notification-dropdown" className="dropdown-menu notification-dropdown">
+                <div id="notification-dropdown" className="dropdown-menu notification-dropdown" ref={notificationDropdownRef}>
                   <div className="notification-header">
                     <span>Notifications</span>
                     {unreadCount > 0 && (
@@ -435,53 +501,32 @@ export const Navbar = () => {
                       </span>
                     )}
                   </div>
-                  {notifications.length > 0 ? (
-                    <div className="notification-list">
-                      {notifications.map((notification) => (
-                        <div
-                          key={notification.id}
-                          className={`notification-item ${notification.read ? "" : "unread"}`}
-                          onClick={() => handleNotificationClick(notification)}
-                        >
-                          <div className={`notification-icon ${notification.type}`}>
-                            {getNotificationIcon(notification.type)}
-                          </div>
-                          <div className="notification-content">
-                            <div className="notification-title">{notification.title}</div>
-                            <div className="notification-message">{notification.message}</div>
-                            <div className="notification-time">{notification.time}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="notification-empty">
-                      <p>No notifications yet</p>
-                    </div>
-                  )}
+                  <div className="notification-list">{renderNotifications()}</div>
                 </div>
               </div>
               <div className="user-avatar-dropdown">
                 <div className="dropdown" ref={userDropdownRef}>
                   {user?.photos?.length > 0 ? (
                     <img
-                      src={user.photos[0].url || "/placeholder.svg"}
+                      src={user.photos[0].url || "/placeholder.svg?height=32&width=32"}
                       alt={user.nickname}
                       className="user-avatar dropdown-toggle"
                       onClick={toggleUserDropdown}
-                      data-bs-toggle="dropdown"
-                      aria-expanded="false"
+                      aria-label="User menu"
+                      aria-expanded={userDropdownRef.current?.classList.contains("show") || false}
+                      aria-haspopup="true"
                     />
                   ) : (
                     <FaUserCircle
                       className="user-avatar dropdown-toggle"
                       style={{ fontSize: "32px" }}
                       onClick={toggleUserDropdown}
-                      data-bs-toggle="dropdown"
-                      aria-expanded="false"
+                      aria-label="User menu"
+                      aria-expanded={userDropdownRef.current?.classList.contains("show") || false}
+                      aria-haspopup="true"
                     />
                   )}
-                  <div id="user-dropdown" className="dropdown-menu dropdown-menu-end">
+                  <div id="user-dropdown" className="dropdown-menu dropdown-menu-end" ref={userDropdownRef}>
                     <div className="dropdown-item" onClick={navigateToProfile}>
                       Profile
                     </div>
@@ -514,6 +559,7 @@ export const Navbar = () => {
 
 // Modern Alert Component
 export const Alert = ({ type, message, onClose, actions }) => {
+  // Auto-close alert after 5 seconds
   useEffect(() => {
     const timer = setTimeout(() => {
       if (onClose) onClose()
@@ -521,64 +567,44 @@ export const Alert = ({ type, message, onClose, actions }) => {
     return () => clearTimeout(timer)
   }, [onClose])
 
-  // Format the message to ensure it's a string
+  // Ensure message is a string
   const formatMessage = (msg) => {
-    if (msg === null || msg === undefined) {
-      return ""
-    }
-
-    if (typeof msg === "string") {
-      return msg
-    }
-
+    if (msg === null || msg === undefined) return ""
+    if (typeof msg === "string") return msg
     if (typeof msg === "object") {
-      // For error objects or objects with message property
-      if (msg.message) {
-        return msg.message
-      }
-      // For toast-style objects
-      if (msg.text) {
-        return msg.text
-      }
-      // Last resort - stringify the object
+      if (msg.message) return msg.message
+      if (msg.text) return msg.text
       try {
         return JSON.stringify(msg)
       } catch (e) {
         return "An error occurred"
       }
     }
-
-    // For any other type, convert to string
     return String(msg)
   }
 
-  // Show toast instead of alert component if specified
+  // If type is "toast", show a toast and return null
   useEffect(() => {
     if (type === "toast") {
       try {
-        // Handle different message formats for toast
         if (typeof message === "object" && message !== null) {
           const toastType = message.type || "info"
           const toastMessage = message.text || formatMessage(message)
           toast[toastType](toastMessage)
         } else {
-          // For string messages or other types
           toast.info(formatMessage(message))
         }
-
         if (onClose) onClose()
       } catch (e) {
         console.error("Error showing toast:", e)
-        // Fallback to a basic toast
         toast.info("Notification")
       }
     }
   }, [type, message, onClose])
 
-  // Return null for toast type alerts
   if (type === "toast") return null
 
-  // Alert types mapped to modern design classes
+  // Map alert types to classes and icons
   const alertClasses = {
     success: "alert-success",
     warning: "alert-warning",
@@ -587,7 +613,6 @@ export const Alert = ({ type, message, onClose, actions }) => {
     primary: "alert-primary",
   }
 
-  // Alert icons based on type
   const alertIcons = {
     success: <span className="alert-icon success"></span>,
     warning: <FaExclamationTriangle className="alert-icon warning" />,
@@ -622,7 +647,7 @@ export const Alert = ({ type, message, onClose, actions }) => {
   )
 }
 
-// Private Route Component (functionality remains the same, styling updated)
+// Private Route Component
 export const PrivateRoute = ({ children }) => {
   const { isAuthenticated, loading, error } = useAuth()
   const navigate = useNavigate()
@@ -646,12 +671,10 @@ export const PrivateRoute = ({ children }) => {
   }
 
   if (error) {
-    // Format error message to ensure it's a string
     const errorMessage =
       typeof error === "object" && error !== null
         ? error.message || JSON.stringify(error)
         : String(error || "Authentication error")
-
     return (
       <div className="auth-error">
         <div className="auth-error-content">
