@@ -118,12 +118,14 @@ export const UserProvider = ({ children }) => {
       const data = await apiService.get("/users")
       if (data.success) {
         dispatch({ type: "GET_USERS", payload: data.data })
+        return data.data
       } else {
         throw new Error(data.error || "Failed to fetch users")
       }
     } catch (err) {
       const errorMsg = err.error || err.message || "Failed to fetch users"
       dispatch({ type: "USER_ERROR", payload: errorMsg })
+      return []
     }
   }, [])
 
@@ -155,7 +157,16 @@ export const UserProvider = ({ children }) => {
    * @param {string} id - User ID.
    */
   const getUser = useCallback(async (id) => {
-    if (!id) return
+    if (!id) return null
+
+    // Validate if id is a valid MongoDB ObjectId
+    const isValidId = /^[0-9a-fA-F]{24}$/.test(id)
+    if (!isValidId) {
+      const errorMsg = "Invalid user ID format"
+      dispatch({ type: "USER_ERROR", payload: errorMsg })
+      return null
+    }
+
     dispatch({ type: "SET_LOADING", payload: true })
     try {
       const data = await apiService.get(`/users/${id}`)
@@ -299,34 +310,54 @@ export const UserProvider = ({ children }) => {
 
   // Load liked users on mount
   useEffect(() => {
-    if (isAuthenticated && user) {
+    if (isAuthenticated && user && user._id) {
       getLikedUsers()
     }
   }, [isAuthenticated, user])
 
   // Get all users liked by current user
   const getLikedUsers = useCallback(async () => {
-    if (!user) return
+    if (!user) return;
 
-    setLikesLoading(true)
+    setLikesLoading(true);
     try {
-      const response = await apiService.get("/users/likes")
+      // Make sure we have a valid user before making the request
+      if (!user._id || typeof user._id !== 'string') {
+        console.warn("Current user ID is missing or invalid", user);
+        setLikedUsers([]);
+        return;
+      }
+
+      // Validate if user._id is a valid MongoDB ObjectId
+      const isValidId = /^[0-9a-fA-F]{24}$/.test(user._id);
+      if (!isValidId) {
+        console.warn(`Invalid user ID format: ${user._id}`);
+        setLikedUsers([]);
+        return;
+      }
+
+      const response = await apiService.get("/users/likes");
       if (response.success) {
-        setLikedUsers(response.data || [])
+        setLikedUsers(response.data || []);
       } else {
-        console.error("Error in getLikedUsers:", response.error)
+        console.error("Error in getLikedUsers:", response.error);
+        // Set empty array on error to prevent undefined errors
+        setLikedUsers([]);
       }
     } catch (err) {
-      console.error("Error fetching liked users:", err)
+      console.error("Error fetching liked users:", err);
+      // Set empty array on error to prevent undefined errors
+      setLikedUsers([]);
     } finally {
-      setLikesLoading(false)
+      setLikesLoading(false);
     }
   }, [user])
 
   // Check if a user is liked
   const isUserLiked = useCallback(
     (userId) => {
-      return likedUsers.some((like) => like.recipient === userId)
+      if (!likedUsers || !Array.isArray(likedUsers)) return false;
+      return likedUsers.some((like) => like && like.recipient === userId)
     },
     [likedUsers],
   )
@@ -334,9 +365,15 @@ export const UserProvider = ({ children }) => {
   // Like a user
   const likeUser = useCallback(
     async (userId, userName) => {
-      if (!user) return false
+      if (!user || !user._id) return false
 
       try {
+        // Validate userId
+        if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
+          toast.error("Invalid user ID format");
+          return false;
+        }
+
         const response = await apiService.post(`/users/${userId}/like`)
         if (response.success) {
           // Add to liked users if not already there
@@ -379,9 +416,15 @@ export const UserProvider = ({ children }) => {
   // Unlike a user
   const unlikeUser = useCallback(
     async (userId, userName) => {
-      if (!user) return false
+      if (!user || !user._id) return false
 
       try {
+        // Validate userId
+        if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
+          toast.error("Invalid user ID format");
+          return false;
+        }
+
         const response = await apiService.delete(`/users/${userId}/like`)
         if (response.success) {
           // Remove from liked users

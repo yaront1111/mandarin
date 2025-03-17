@@ -10,52 +10,59 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories }) => {
 
   // Use useMemo to create a stable reference for storyUser
   const storyUser = useMemo(() => {
+    // Handle null or undefined story
+    if (!story) return {};
+
     // Check for user data in different possible locations
-    if (story && story.user && typeof story.user === "object") {
-      return story.user
-    } else if (story && story.userData && typeof story.userData === "object") {
-      return story.userData
-    } else if (story && story.user && typeof story.user === "string") {
+    if (story.user && typeof story.user === "object") {
+      return story.user;
+    } else if (story.userData && typeof story.userData === "object") {
+      return story.userData;
+    } else if (story.user && typeof story.user === "string") {
       // If user is just an ID, return an object with just the ID
-      return { _id: story.user }
+      return { _id: story.user };
     }
-    return {}
-  }, [story])
+    return {};
+  }, [story]);
 
   // Check if the current user has viewed this story
   const isViewed = useMemo(() => {
     if (typeof hasUnviewedStories !== "undefined") {
-      return !hasUnviewedStories
+      return !hasUnviewedStories;
     }
 
-    if (!user || !story) return false
+    if (!user || !user._id || !story) return false;
 
     // Check if viewers exists and is an array
-    if (!Array.isArray(story.viewers)) return false
+    if (!Array.isArray(story.viewers)) return false;
 
-    return story.viewers.includes(user._id)
-  }, [hasUnviewedStories, user, story])
+    return story.viewers.includes(user._id);
+  }, [hasUnviewedStories, user, story]);
 
   // Get user display name for alt text
   const getUserDisplayName = () => {
-    return storyUser.nickname || storyUser.username || storyUser.name || "User"
-  }
+    if (!storyUser) return "User";
+    return storyUser.nickname || storyUser.username || storyUser.name || "User";
+  };
 
   // Handle click with check for callback
   const handleClick = (e) => {
-    e.preventDefault()
+    e.preventDefault();
     if (typeof onClick === "function") {
-      onClick()
+      onClick();
     }
-  }
+  };
 
   // If no story, don't render anything
   if (!story) {
-    return null
+    return null;
   }
 
   // Get user ID for avatar
-  const userId = storyUser._id || (typeof story.user === 'string' ? story.user : null)
+  const userId = storyUser._id || (typeof story.user === 'string' ? story.user : null);
+
+  // Get avatar source if available directly
+  const avatarSrc = storyUser.profilePicture || storyUser.avatar || null;
 
   return (
     <div className="story-thumbnail" onClick={handleClick}>
@@ -64,11 +71,12 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories }) => {
           userId={userId}
           name={getUserDisplayName()}
           className="story-avatar"
+          src={avatarSrc}
         />
       </div>
       <div className="story-username">{getUserDisplayName()}</div>
     </div>
-  )
-}
+  );
+};
 
-export default StoryThumbnail
+export default StoryThumbnail;

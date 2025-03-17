@@ -20,7 +20,8 @@ const throttle = (func, limit) => {
 };
 
 const StoriesCarousel = ({ onStoryClick }) => {
-  const { stories = [], loadStories, loading: contextLoading } = useStories() || {}
+  const storiesContext = useStories() || {}
+  const { stories = [], loadStories, loading: contextLoading } = storiesContext
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [processedStories, setProcessedStories] = useState([])

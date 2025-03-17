@@ -1,4 +1,4 @@
-// Upgraded User.js model with improved security, validation, and tier system
+// Enhanced User.js model with improved security, validation, and performance
 const mongoose = require("mongoose")
 const bcrypt = require("bcryptjs")
 const crypto = require("crypto")
@@ -150,6 +150,13 @@ const userSchema = new mongoose.Schema(
       default: true,
       select: false,
     },
+    // Token version to handle token invalidation
+    version: {
+      type: Number,
+      default: 1,
+    },
+    // Last IP address used for login (for security monitoring)
+    lastLoginIp: String,
     // Account tier system fields
     accountTier: {
       type: String,
@@ -198,6 +205,21 @@ const userSchema = new mongoose.Schema(
         showLastSeen: { type: Boolean, default: true },
         allowStoryReplies: { type: String, default: "everyone", enum: ["everyone", "friends", "none"] },
       },
+      theme: {
+        mode: { type: String, default: "light", enum: ["light", "dark", "system"] },
+        color: { type: String, default: "default" },
+      },
+    },
+    // Blocked users list
+    blockedUsers: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    }],
+    // Date tracking for analytics
+    createdByIp: String,
+    lastModifiedDate: {
+      type: Date,
+      default: Date.now
     },
   },
   {
@@ -212,10 +234,17 @@ userSchema.virtual("age").get(function () {
   return this.details && this.details.age ? this.details.age : null
 })
 
+// Virtual field for subscription status
+userSchema.virtual("isSubscriptionActive").get(function () {
+  return this.isPaid && this.subscriptionExpiry && this.subscriptionExpiry > new Date()
+})
+
 // Index for efficient queries
 userSchema.index({ "details.location": "text", "details.interests": "text" })
 userSchema.index({ isOnline: 1, lastActive: -1 })
 userSchema.index({ email: 1, nickname: 1 })
+userSchema.index({ accountTier: 1 })
+userSchema.index({ "details.age": 1, "details.gender": 1 })
 
 // Pre-save middleware to ensure username is set
 userSchema.pre("save", async function (next) {
@@ -261,6 +290,9 @@ userSchema.pre("save", async function (next) {
     this.dailyLikesRemaining = this.getMaxDailyLikes()
     this.dailyLikesReset = new Date(new Date().setHours(0, 0, 0, 0) + 24 * 60 * 60 * 1000) // Next day at midnight
   }
+
+  // Update lastModifiedDate
+  this.lastModifiedDate = Date.now()
 
   next()
 })
@@ -312,6 +344,11 @@ userSchema.methods.canSendMessages = function () {
   return this.accountTier !== "FREE" // Only free male users are restricted
 }
 
+// Method to check if user has blocked another user
+userSchema.methods.hasBlocked = function (userId) {
+  return this.blockedUsers.some(id => id.toString() === userId.toString())
+}
+
 // Pre-save middleware to hash password
 userSchema.pre("save", async function (next) {
   // Only hash the password if it's modified
@@ -340,8 +377,9 @@ userSchema.pre(/^find/, function (next) {
 })
 
 // Method to check if password is correct
-userSchema.methods.correctPassword = async (candidatePassword, userPassword) =>
-  await bcrypt.compare(candidatePassword, userPassword)
+userSchema.methods.correctPassword = async function (candidatePassword, userPassword) {
+  return await bcrypt.compare(candidatePassword, userPassword)
+}
 
 // Method to check if password was changed after token was issued
 userSchema.methods.changedPasswordAfter = function (JWTTimestamp) {
@@ -404,6 +442,54 @@ userSchema.methods.incrementLoginAttempts = async function () {
   }
 
   await this.save()
+}
+
+// Static method to find users by location
+userSchema.statics.findByLocation = async function(location, limit = 20) {
+  return this.find({
+    "details.location": { $regex: location, $options: 'i' }
+  })
+  .select('nickname details.age details.gender details.location photos isOnline lastActive')
+  .limit(limit)
+}
+
+// Static method to find users by interests
+userSchema.statics.findByInterests = async function(interests, limit = 20) {
+  // Convert string to array if needed
+  const interestsArray = Array.isArray(interests)
+    ? interests
+    : interests.split(',').map(i => i.trim())
+
+  return this.find({
+    "details.interests": { $in: interestsArray }
+  })
+  .select('nickname details.age details.gender details.location details.interests photos isOnline lastActive')
+  .limit(limit)
+}
+
+// Static method to find online users
+userSchema.statics.findOnlineUsers = async function(limit = 20, skip = 0) {
+  return this.find({
+    isOnline: true
+  })
+  .select('nickname details.age details.gender details.location photos isOnline lastActive')
+  .sort({ lastActive: -1 })
+  .skip(skip)
+  .limit(limit)
+}
+
+// Add timestamps for the last time password was changed
+userSchema.methods.updatePassword = async function(newPassword) {
+  this.password = newPassword
+  this.passwordChangedAt = Date.now()
+  this.version = (this.version || 0) + 1
+  return this.save()
+}
+
+// Method to generate a secure password reset link
+userSchema.methods.generatePasswordResetLink = function(baseUrl) {
+  const resetToken = this.createPasswordResetToken()
+  return `${baseUrl}/reset-password?token=${resetToken}`
 }
 
 const User = mongoose.model("User", userSchema)

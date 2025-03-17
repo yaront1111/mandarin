@@ -786,26 +786,64 @@ router.get(
   "/likes",
   protect,
   asyncHandler(async (req, res) => {
-    logger.debug(`Fetching likes for user ${req.user._id}`)
+    // Add detailed logging for debugging
+    logger.debug(`Likes request from user: ${JSON.stringify(req.user)}`)
 
     try {
       const page = Number.parseInt(req.query.page, 10) || 1
       const limit = Number.parseInt(req.query.limit, 10) || 50
       const skip = (page - 1) * limit
 
-      // Make sure we have a valid user ID
-      if (!req.user || !req.user._id) {
+      // Get user ID - Try multiple possible locations
+      let userId;
+
+      // Print all possible user ID fields for debugging
+      if (req.user) {
+        logger.debug(`User object fields: ${Object.keys(req.user).join(', ')}`)
+        if (req.user._id) logger.debug(`_id type: ${typeof req.user._id}, value: ${req.user._id}`)
+        if (req.user.id) logger.debug(`id type: ${typeof req.user.id}, value: ${req.user.id}`)
+      }
+
+      // Try to extract user ID from any available field, with fallbacks
+      if (req.user) {
+        if (req.user._id) {
+          userId = typeof req.user._id === 'object' ? req.user._id.toString() : req.user._id;
+        } else if (req.user.id) {
+          userId = req.user.id;
+        } else {
+          // Last resort - try to find any property that looks like an ID
+          for (const [key, value] of Object.entries(req.user)) {
+            if ((key.toLowerCase().includes('id') || key === '_id') && value) {
+              userId = typeof value === 'object' ? value.toString() : value;
+              break;
+            }
+          }
+        }
+      }
+
+      // Check if we found any user ID
+      if (!userId) {
+        logger.error(`Couldn't find user ID in request: ${JSON.stringify(req.user)}`)
         return res.status(400).json({
           success: false,
-          error: "User not authenticated properly",
+          error: "User ID not found in request. Please log in again.",
         })
       }
 
-      const likes = await Like.find({ sender: req.user._id }).sort({ createdAt: -1 }).skip(skip).limit(limit)
+      logger.debug(`Using user ID for likes query: ${userId}`)
 
-      const total = await Like.countDocuments({ sender: req.user._id })
+      // IMPORTANT: Skip MongoDB ObjectId validation completely
 
-      logger.debug(`Found ${likes.length} likes`)
+      // Find likes using whatever ID format we have
+      const likes = await Like.find({ sender: userId })
+        .populate("recipient", "nickname username photos isOnline lastActive")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+
+      const total = await Like.countDocuments({ sender: userId })
+
+      logger.debug(`Found ${likes.length} likes for user ${userId}`)
       res.status(200).json({
         success: true,
         count: likes.length,
@@ -815,8 +853,8 @@ router.get(
         data: likes,
       })
     } catch (err) {
-      logger.error(`Error fetching likes: ${err.message}`)
-      res.status(400).json({ success: false, error: err.message })
+      logger.error(`Error fetching likes: ${err.message}, Stack: ${err.stack}`)
+      res.status(400).json({ success: false, error: `Server error: ${err.message}` })
     }
   }),
 )
