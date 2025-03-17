@@ -3,11 +3,13 @@ import socketService from './socketService';
 import storiesService from './storiesService';
 import notificationService from './notificationService';
 import settingsService from './settingsService';
+import subscriptionService from './subscriptionService';
 
 export {
   apiService,
   socketService,
   storiesService,
   notificationService,
-  settingsService
+  settingsService,
+  subscriptionService
 };

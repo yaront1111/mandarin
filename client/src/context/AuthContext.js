@@ -401,14 +401,27 @@ export const AuthProvider = ({ children }) => {
     }
   }, [])
 
-  // Get current user profile
+
+// Get current user profile
   const getCurrentUser = useCallback(async () => {
     setLoading(true)
     try {
       const response = await authApiService.getCurrentUser()
       if (response.success) {
+        // Update user state with fresh data
         setUser(response.data)
         setIsAuthenticated(true)
+
+        // Initialize notification service with updated user settings
+        import("../services/notificationService").then((module) => {
+          const notificationService = module.default
+          if (response.data.settings?.notifications) {
+            notificationService.initialize(response.data.settings)
+          } else {
+            notificationService.initialize()
+          }
+        })
+
         return response.data
       } else {
         throw new Error(response.error || "Failed to get user profile")

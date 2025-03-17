@@ -6,38 +6,65 @@ import { FaCheck, FaTimes, FaCrown, FaHeart, FaImage, FaComment, FaUserCircle } 
 import { useAuth } from "../context"
 import { toast } from "react-toastify"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
+import subscriptionService from "../services/subscriptionService"
 
 const Subscription = () => {
-  const { user } = useAuth()
+  const { user, getCurrentUser } = useAuth() // Add getCurrentUser from auth context
   const navigate = useNavigate()
   const [selectedPlan, setSelectedPlan] = useState("monthly")
   const [loading, setLoading] = useState(false)
+  const [subscriptionData, setSubscriptionData] = useState(null)
 
   // Redirect if user is not logged in
   useEffect(() => {
     if (!user) {
       navigate("/login")
+    } else {
+      // Fetch subscription data when component mounts
+      fetchSubscriptionStatus()
     }
   }, [user, navigate])
 
+  // Fetch subscription status
+  const fetchSubscriptionStatus = async () => {
+    try {
+      const response = await subscriptionService.getSubscriptionStatus()
+      if (response.success) {
+        setSubscriptionData(response.data)
+      }
+    } catch (error) {
+      console.error("Error fetching subscription status:", error)
+      toast.error("Could not load subscription information")
+    }
+  }
+
   // Check if user already has premium access
-  const hasPremium =
-    user?.isPaid || user?.accountTier === "PAID" || user?.accountTier === "FEMALE" || user?.accountTier === "COUPLE"
+  const hasPremium = user?.isPaid || user?.accountTier === "PAID" ||
+                    user?.accountTier === "FEMALE" || user?.accountTier === "COUPLE" ||
+                    (subscriptionData && (
+                      subscriptionData.isPaid ||
+                      subscriptionData.accountTier === "PAID" ||
+                      subscriptionData.accountTier === "FEMALE" ||
+                      subscriptionData.accountTier === "COUPLE"
+                    ))
 
   const handleSubscribe = async (plan) => {
     setLoading(true)
     try {
-      // Here you would integrate with your payment processor
-      // For now, we'll just simulate a successful subscription
+      // Call the subscription service to upgrade
+      const response = await subscriptionService.upgradeSubscription(plan)
 
-      // Mock API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      if (response.success) {
+        // Refresh user data to reflect the new subscription status
+        await getCurrentUser()
 
-      toast.success(`Successfully subscribed to ${plan} plan!`)
-      navigate("/dashboard")
+        // Redirect to dashboard after successful subscription
+        toast.success(`Successfully subscribed to ${plan} plan!`)
+        navigate("/dashboard")
+      }
     } catch (error) {
       console.error("Subscription error:", error)
-      toast.error("Failed to process subscription. Please try again.")
+      toast.error(error.message || "Failed to process subscription. Please try again.")
     } finally {
       setLoading(false)
     }
