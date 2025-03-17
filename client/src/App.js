@@ -1,10 +1,11 @@
 "use client"
 
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
 import { ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
 import "./styles/main.css"
 import "./styles/stories.css" // Import stories styles
+import "./styles/settings.css"
 
 import { AuthProvider, UserProvider, ChatProvider, StoriesProvider, ThemeProvider } from "./context"
 import ErrorBoundary from "./components/ErrorBoundary"

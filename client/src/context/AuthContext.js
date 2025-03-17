@@ -137,28 +137,29 @@ export const AuthProvider = ({ children }) => {
     }
     try {
       // Decode token to extract expiry
-      const base64Url = token.split('.')[1]
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+      const base64Url = token.split(".")[1]
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/")
       const payload = JSON.parse(atob(base64))
 
       if (payload.exp) {
         const expiresAt = payload.exp * 1000 // convert to milliseconds
         const now = Date.now()
-        const timeUntilRefresh = expiresAt - now - (5 * 60 * 1000) // refresh 5 minutes before expiry
+        const timeUntilRefresh = expiresAt - now - 5 * 60 * 1000 // refresh 5 minutes before expiry
 
-        if (timeUntilRefresh > 60000) { // schedule only if more than 1 minute remains
+        if (timeUntilRefresh > 60000) {
+          // schedule only if more than 1 minute remains
           console.log(`Scheduling token refresh in ${Math.round(timeUntilRefresh / 60000)} minutes`)
           const timer = setTimeout(() => {
             refreshToken()
           }, timeUntilRefresh)
           tokenRefreshTimerRef.current = timer
         } else {
-          console.log('Token expires soon, refreshing now')
+          console.log("Token expires soon, refreshing now")
           refreshToken()
         }
       }
     } catch (e) {
-      console.error('Error scheduling token refresh:', e)
+      console.error("Error scheduling token refresh:", e)
     }
   }, [])
 
@@ -263,51 +264,76 @@ export const AuthProvider = ({ children }) => {
   }, [])
 
   // Log in a user
-  const login = useCallback(async (credentials, rememberMe = false) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const response = await authApiService.login(credentials)
-      if (response.success && response.token) {
-        setToken(response.token, rememberMe)
-        scheduleTokenRefresh(response.token)
+  const login = useCallback(
+    async (credentials, rememberMe = false) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const response = await authApiService.login(credentials)
+        if (response.success && response.token) {
+          setToken(response.token, rememberMe)
+          scheduleTokenRefresh(response.token)
 
-        if (response.user) {
-          setUser(response.user)
-          const welcomeMessage = response.user.nickname ? `Welcome back, ${response.user.nickname}!` : "Welcome back!"
-          toast.success(welcomeMessage)
-        } else {
-          try {
-            const userResponse = await authApiService.getCurrentUser()
-            if (userResponse.success && userResponse.data) {
-              setUser(userResponse.data)
-              const welcomeMessage = userResponse.data.nickname
-                ? `Welcome back, ${userResponse.data.nickname}!`
-                : "Welcome back!"
-              toast.success(welcomeMessage)
-            } else {
+          if (response.user) {
+            setUser(response.user)
+
+            // Initialize notification service with user settings
+            import("../services/notificationService").then((module) => {
+              const notificationService = module.default
+              if (response.user.settings?.notifications) {
+                notificationService.initialize(response.user.settings)
+              } else {
+                notificationService.initialize()
+              }
+            })
+
+            const welcomeMessage = response.user.nickname ? `Welcome back, ${response.user.nickname}!` : "Welcome back!"
+            toast.success(welcomeMessage)
+          } else {
+            try {
+              const userResponse = await authApiService.getCurrentUser()
+              if (userResponse.success && userResponse.data) {
+                setUser(userResponse.data)
+
+                // Initialize notification service with user settings
+                import("../services/notificationService").then((module) => {
+                  const notificationService = module.default
+                  if (userResponse.data.settings?.notifications) {
+                    notificationService.initialize(userResponse.data.settings)
+                  } else {
+                    notificationService.initialize()
+                  }
+                })
+
+                const welcomeMessage = userResponse.data.nickname
+                  ? `Welcome back, ${userResponse.data.nickname}!`
+                  : "Welcome back!"
+                toast.success(welcomeMessage)
+              } else {
+                toast.success("Welcome back!")
+              }
+            } catch (userErr) {
+              console.error("Error fetching user data:", userErr)
               toast.success("Welcome back!")
             }
-          } catch (userErr) {
-            console.error("Error fetching user data:", userErr)
-            toast.success("Welcome back!")
           }
-        }
 
-        setIsAuthenticated(true)
-        return response
-      } else {
-        throw new Error(response.error || "Login failed")
+          setIsAuthenticated(true)
+          return response
+        } else {
+          throw new Error(response.error || "Login failed")
+        }
+      } catch (err) {
+        const errorMessage = err.error || err.message || "Login failed"
+        setError(errorMessage)
+        toast.error(errorMessage)
+        throw err
+      } finally {
+        setLoading(false)
       }
-    } catch (err) {
-      const errorMessage = err.error || err.message || "Login failed"
-      setError(errorMessage)
-      toast.error(errorMessage)
-      throw err
-    } finally {
-      setLoading(false)
-    }
-  }, [scheduleTokenRefresh])
+    },
+    [scheduleTokenRefresh],
+  )
 
   // Request password reset
   const requestPasswordReset = useCallback(async (email) => {

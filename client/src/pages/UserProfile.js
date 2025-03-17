@@ -32,7 +32,15 @@ const UserProfile = () => {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user: currentUser } = useAuth()
-  const { getUser, currentUser: profileUser, loading, requestPhotoPermission } = useUser()
+  const {
+    getUser,
+    currentUser: profileUser,
+    loading,
+    requestPhotoPermission,
+    likeUser,
+    unlikeUser,
+    isUserLiked,
+  } = useUser()
   const {} = useChat() // Will be used in future implementation
   const { loadUserStories, hasUnviewedStories } = useStories() // Add stories context
 
@@ -143,8 +151,11 @@ const UserProfile = () => {
   const handleLike = () => {
     if (!profileUser) return
 
-    console.log("Liked user:", profileUser._id)
-    toast.success(`You liked ${profileUser.nickname}`)
+    if (isUserLiked(profileUser._id)) {
+      unlikeUser(profileUser._id, profileUser.nickname)
+    } else {
+      likeUser(profileUser._id, profileUser.nickname)
+    }
   }
 
   const handleMessage = () => {
@@ -344,30 +355,31 @@ const UserProfile = () => {
                 <p>No photos available</p>
               </div>
             )}
-            <div className="quick-actions">
-              <button className="btn btn-outline" onClick={handleLike}>
-                <FaHeart />
-                <span>Like</span>
+            <button
+              className={`btn ${isUserLiked(profileUser._id) ? "btn-primary" : "btn-outline"}`}
+              onClick={handleLike}
+            >
+              <FaHeart />
+              <span>{isUserLiked(profileUser._id) ? "Liked" : "Like"}</span>
+            </button>
+            <button className="btn btn-primary" onClick={handleMessage}>
+              <FaComment />
+              <span>Message</span>
+            </button>
+            <div className="more-actions-dropdown">
+              <button className="btn btn-subtle" onClick={() => setShowActions(!showActions)}>
+                <FaEllipsisH />
               </button>
-              <button className="btn btn-primary" onClick={handleMessage}>
-                <FaComment />
-                <span>Message</span>
-              </button>
-              <div className="more-actions-dropdown">
-                <button className="btn btn-subtle" onClick={() => setShowActions(!showActions)}>
-                  <FaEllipsisH />
-                </button>
-                {showActions && (
-                  <div className="actions-dropdown">
-                    <button className="dropdown-item">
-                      <FaFlag /> Report User
-                    </button>
-                    <button className="dropdown-item">
-                      <FaBan /> Block User
-                    </button>
-                  </div>
-                )}
-              </div>
+              {showActions && (
+                <div className="actions-dropdown">
+                  <button className="dropdown-item">
+                    <FaFlag /> Report User
+                  </button>
+                  <button className="dropdown-item">
+                    <FaBan /> Block User
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

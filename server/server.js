@@ -11,6 +11,9 @@ const logger = require("./logger")
 const config = require("./config")
 const routes = require("./routes")
 
+// Add this near the top with other imports
+const { initSubscriptionTasks } = require("./cron/subscriptionTasks")
+
 // Initialize Express app
 const app = express()
 
@@ -82,6 +85,10 @@ app.use((req, res, next) => {
 // API routes
 app.use("/api", routes)
 
+// Add this to your existing routes
+const subscriptionRoutes = require("./routes/subscriptionRoutes")
+app.use("/api/subscription", subscriptionRoutes)
+
 // Connect to MongoDB
 mongoose
   .connect(config.MONGODB_URI, {
@@ -112,6 +119,9 @@ server.listen(PORT, async () => {
   } catch (err) {
     logger.error(`Failed to initialize Socket.IO: ${err.message}`)
   }
+
+  // Add this after server initialization
+  initSubscriptionTasks()
 })
 
 // Handle unhandled promise rejections

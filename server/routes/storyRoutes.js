@@ -1,6 +1,7 @@
 const express = require("express")
 const router = express.Router()
 const { protect } = require("../middleware/auth")
+const { canCreateStory } = require("../middleware/permissions")
 const upload = require("../middleware/upload")
 const { check, validationResult } = require("express-validator")
 const Story = require("../models/Story")
@@ -18,23 +19,23 @@ router.get("/", async (req, res) => {
       .lean()
 
     // Add userData for compatibility with frontend
-    const storiesWithUserData = stories.map(story => {
+    const storiesWithUserData = stories.map((story) => {
       // If user field is populated, create userData
-      if (story.user && typeof story.user === 'object') {
-        story.userData = { ...story.user };
+      if (story.user && typeof story.user === "object") {
+        story.userData = { ...story.user }
       }
-      return story;
-    });
+      return story
+    })
 
     res.json({
       success: true,
-      data: storiesWithUserData
-    });
+      data: storiesWithUserData,
+    })
   } catch (err) {
     logger.error(`Error fetching stories: ${err.message}`)
     res.status(500).json({
       success: false,
-      error: "Server error"
+      error: "Server error",
     })
   }
 })
@@ -42,7 +43,7 @@ router.get("/", async (req, res) => {
 // @route   POST /api/stories
 // @desc    Create a new story with media
 // @access  Private
-router.post("/", protect, upload.single("media"), async (req, res) => {
+router.post("/", protect, canCreateStory, upload.single("media"), async (req, res) => {
   try {
     const { type, content } = req.body
 
@@ -50,14 +51,14 @@ router.post("/", protect, upload.single("media"), async (req, res) => {
     if (!type || !["image", "video", "text"].includes(type)) {
       return res.status(400).json({
         success: false,
-        error: "Valid story type is required"
+        error: "Valid story type is required",
       })
     }
 
     if (type === "text" && !content) {
       return res.status(400).json({
         success: false,
-        error: "Content is required for text stories"
+        error: "Content is required for text stories",
       })
     }
 
@@ -73,6 +74,13 @@ router.post("/", protect, upload.single("media"), async (req, res) => {
 
     const story = await newStory.save()
 
+    // Update user's lastStoryCreated timestamp
+    if (req.updateLastStoryCreated) {
+      await User.findByIdAndUpdate(req.user._id || req.user.id, {
+        lastStoryCreated: new Date(),
+      })
+    }
+
     // Populate user information
     const populatedStory = await Story.findById(story._id)
       .populate("user", "nickname username name profilePicture avatar email")
@@ -80,13 +88,13 @@ router.post("/", protect, upload.single("media"), async (req, res) => {
 
     res.status(201).json({
       success: true,
-      data: populatedStory
+      data: populatedStory,
     })
   } catch (err) {
     logger.error(`Error creating story: ${err.message}`)
     res.status(500).json({
       success: false,
-      error: err.message || "Server error"
+      error: err.message || "Server error",
     })
   }
 })
@@ -94,26 +102,18 @@ router.post("/", protect, upload.single("media"), async (req, res) => {
 // @route   POST /api/stories/text
 // @desc    Create a new text-only story
 // @access  Private
-router.post("/text", protect, async (req, res) => {
+router.post("/text", protect, canCreateStory, async (req, res) => {
   try {
-    const {
-      content,
-      text,
-      backgroundColor,
-      backgroundStyle,
-      fontStyle,
-      duration,
-      extraStyles
-    } = req.body
+    const { content, text, backgroundColor, backgroundStyle, fontStyle, duration, extraStyles } = req.body
 
     // Use either content or text field
-    const storyContent = content || text;
+    const storyContent = content || text
 
     // Validate input
     if (!storyContent) {
       return res.status(400).json({
         success: false,
-        error: "Content is required for text stories"
+        error: "Content is required for text stories",
       })
     }
 
@@ -137,10 +137,17 @@ router.post("/text", protect, async (req, res) => {
       backgroundStyle: backgroundStyle || backgroundColor || "#000000",
       fontStyle: fontStyle || "default",
       duration: Number(duration) || 24, // Default 24 hours
-      extraStyles: extraStyles || {}
+      extraStyles: extraStyles || {},
     })
 
     const story = await newStory.save()
+
+    // Update user's lastStoryCreated timestamp
+    if (req.updateLastStoryCreated) {
+      await User.findByIdAndUpdate(userId, {
+        lastStoryCreated: new Date(),
+      })
+    }
 
     // Populate user data
     const populatedStory = await Story.findById(story._id)
@@ -149,13 +156,13 @@ router.post("/text", protect, async (req, res) => {
 
     // Add userData for frontend compatibility
     if (populatedStory.user) {
-      populatedStory.userData = { ...populatedStory.user };
+      populatedStory.userData = { ...populatedStory.user }
     }
 
     res.status(201).json({
       success: true,
       data: populatedStory,
-      story: populatedStory // Include both data and story for compatibility
+      story: populatedStory, // Include both data and story for compatibility
     })
   } catch (err) {
     logger.error(`Error creating text story: ${err.message}`)
@@ -178,24 +185,24 @@ router.get("/:id", async (req, res) => {
     if (!story) {
       return res.status(404).json({
         success: false,
-        error: "Story not found"
+        error: "Story not found",
       })
     }
 
     // Add userData for compatibility
     if (story.user) {
-      story.userData = { ...story.user };
+      story.userData = { ...story.user }
     }
 
     res.json({
       success: true,
-      data: story
+      data: story,
     })
   } catch (err) {
     logger.error(`Error fetching story: ${err.message}`)
     res.status(500).json({
       success: false,
-      error: "Server error"
+      error: "Server error",
     })
   }
 })
@@ -209,35 +216,35 @@ router.get("/user/:userId", async (req, res) => {
     if (!req.params.userId.match(/^[0-9a-fA-F]{24}$/)) {
       return res.status(400).json({
         success: false,
-        error: "Invalid user ID format"
-      });
+        error: "Invalid user ID format",
+      })
     }
 
     const stories = await Story.find({ user: req.params.userId })
       .sort({ createdAt: -1 })
       .populate("user", "nickname username name profilePicture avatar email")
-      .lean();
+      .lean()
 
     // Add userData for compatibility
-    const storiesWithUserData = stories.map(story => {
+    const storiesWithUserData = stories.map((story) => {
       if (story.user) {
-        story.userData = { ...story.user };
+        story.userData = { ...story.user }
       }
-      return story;
-    });
+      return story
+    })
 
     res.json({
       success: true,
-      data: storiesWithUserData
-    });
+      data: storiesWithUserData,
+    })
   } catch (err) {
-    logger.error(`Error fetching user stories: ${err.message}`);
+    logger.error(`Error fetching user stories: ${err.message}`)
     res.status(500).json({
       success: false,
-      error: "Server error"
-    });
+      error: "Server error",
+    })
   }
-});
+})
 
 // @route   DELETE /api/stories/:id
 // @desc    Delete a story
@@ -249,7 +256,7 @@ router.delete("/:id", protect, async (req, res) => {
     if (!story) {
       return res.status(404).json({
         success: false,
-        error: "Story not found"
+        error: "Story not found",
       })
     }
 
@@ -257,20 +264,20 @@ router.delete("/:id", protect, async (req, res) => {
     if (story.user.toString() !== (req.user._id || req.user.id).toString()) {
       return res.status(401).json({
         success: false,
-        error: "User not authorized"
+        error: "User not authorized",
       })
     }
 
-    await Story.deleteOne({ _id: req.params.id });
+    await Story.deleteOne({ _id: req.params.id })
     res.json({
       success: true,
-      message: "Story removed"
+      message: "Story removed",
     })
   } catch (err) {
     logger.error(`Error deleting story: ${err.message}`)
     res.status(500).json({
       success: false,
-      error: "Server error"
+      error: "Server error",
     })
   }
 })
@@ -285,7 +292,7 @@ router.post("/:id/view", protect, async (req, res) => {
     if (!story) {
       return res.status(404).json({
         success: false,
-        error: "Story not found"
+        error: "Story not found",
       })
     }
 
@@ -293,7 +300,7 @@ router.post("/:id/view", protect, async (req, res) => {
     if (story.viewers && story.viewers.includes(req.user._id || req.user.id)) {
       return res.json({
         success: true,
-        message: "Story already viewed"
+        message: "Story already viewed",
       })
     }
 
@@ -306,13 +313,13 @@ router.post("/:id/view", protect, async (req, res) => {
 
     res.json({
       success: true,
-      message: "Story marked as viewed"
+      message: "Story marked as viewed",
     })
   } catch (err) {
     logger.error(`Error marking story as viewed: ${err.message}`)
     res.status(500).json({
       success: false,
-      error: "Server error"
+      error: "Server error",
     })
   }
 })
@@ -322,61 +329,61 @@ router.post("/:id/view", protect, async (req, res) => {
 // @access  Private
 router.post("/:id/react", protect, async (req, res) => {
   try {
-    const { reactionType } = req.body;
+    const { reactionType } = req.body
 
     if (!reactionType) {
       return res.status(400).json({
         success: false,
-        error: "Reaction type is required"
-      });
+        error: "Reaction type is required",
+      })
     }
 
-    const story = await Story.findById(req.params.id);
+    const story = await Story.findById(req.params.id)
 
     if (!story) {
       return res.status(404).json({
         success: false,
-        error: "Story not found"
-      });
+        error: "Story not found",
+      })
     }
 
     // Initialize reactions array if it doesn't exist
     if (!story.reactions) {
-      story.reactions = [];
+      story.reactions = []
     }
 
     // Check if user already reacted
     const existingReaction = story.reactions.find(
-      r => r.user && r.user.toString() === (req.user._id || req.user.id).toString()
-    );
+      (r) => r.user && r.user.toString() === (req.user._id || req.user.id).toString(),
+    )
 
     if (existingReaction) {
       // Update existing reaction
-      existingReaction.type = reactionType;
-      existingReaction.updatedAt = Date.now();
+      existingReaction.type = reactionType
+      existingReaction.updatedAt = Date.now()
     } else {
       // Add new reaction
       story.reactions.push({
         user: req.user._id || req.user.id,
         type: reactionType,
-        createdAt: Date.now()
-      });
+        createdAt: Date.now(),
+      })
     }
 
-    await story.save();
+    await story.save()
 
     res.json({
       success: true,
       message: "Reaction added",
-      data: story.reactions
-    });
+      data: story.reactions,
+    })
   } catch (err) {
-    logger.error(`Error adding reaction to story: ${err.message}`);
+    logger.error(`Error adding reaction to story: ${err.message}`)
     res.status(500).json({
       success: false,
-      error: "Server error"
-    });
+      error: "Server error",
+    })
   }
-});
+})
 
 module.exports = router

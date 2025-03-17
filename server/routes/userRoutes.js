@@ -5,10 +5,11 @@ const fs = require("fs")
 const sharp = require("sharp")
 const { fileTypeFromBuffer } = require("file-type")
 const mongoose = require("mongoose")
-const { User, PhotoPermission, Message } = require("../models")
+const { User, PhotoPermission, Message, Like } = require("../models")
 const config = require("../config")
 const { protect, asyncHandler } = require("../middleware/auth")
 const logger = require("../logger")
+const { canLikeUser } = require("../middleware/permissions")
 
 const router = express.Router()
 
@@ -166,6 +167,18 @@ router.get(
         ],
       })
 
+      // Check if user is liked by current user
+      const isLiked = await Like.exists({
+        sender: req.user._id,
+        recipient: req.params.id,
+      })
+
+      // Check if it's a mutual like (match)
+      const isMutualLike = await Like.exists({
+        sender: req.params.id,
+        recipient: req.user._id,
+      })
+
       logger.debug(`Returning user profile with ${messages.length} messages`)
 
       res.status(200).json({
@@ -178,6 +191,8 @@ router.get(
             page,
             pages: Math.ceil(totalMessages / limit),
           },
+          isLiked: !!isLiked,
+          isMutualLike: !!isMutualLike,
         },
       })
     } catch (err) {
@@ -339,8 +354,8 @@ router.post(
     logger.debug(`Processing photo upload for user ${req.user._id}`)
     let filePath = null
     let processingSuccessful = false
-    let createdThumbnail = false
-    let thumbnailPath = null
+    const createdThumbnail = false
+    const thumbnailPath = null
 
     try {
       if (!req.file) {
@@ -424,7 +439,7 @@ router.post(
       res.status(400).json({ success: false, error: err.message })
     } finally {
       // Guaranteed cleanup: if processing was not successful, remove the uploaded file
-      if ((!processingSuccessful) && filePath && fs.existsSync(filePath)) {
+      if (!processingSuccessful && filePath && fs.existsSync(filePath)) {
         try {
           fs.unlinkSync(filePath)
           logger.debug(`Cleaned up failed upload file: ${filePath}`)
@@ -589,7 +604,7 @@ router.post(
     const permission = await PhotoPermission.findOneAndUpdate(
       { photo: photoId, requestedBy: req.user._id },
       { $setOnInsert: { status: "pending", createdAt: new Date() } },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, new: true, setDefaultsOnInsert: true },
     )
 
     if (permission.createdAt && new Date(permission.createdAt).getTime() < Date.now() - 1000) {
@@ -761,5 +776,308 @@ router.get(
     }
   }),
 )
+
+/**
+ * @route   GET /api/users/likes
+ * @desc    Get all users liked by the current user
+ * @access  Private
+ */
+router.get(
+  "/likes",
+  protect,
+  asyncHandler(async (req, res) => {
+    logger.debug(`Fetching likes for user ${req.user._id}`)
+
+    try {
+      const page = Number.parseInt(req.query.page, 10) || 1
+      const limit = Number.parseInt(req.query.limit, 10) || 50
+      const skip = (page - 1) * limit
+
+      // Make sure we have a valid user ID
+      if (!req.user || !req.user._id) {
+        return res.status(400).json({
+          success: false,
+          error: "User not authenticated properly",
+        })
+      }
+
+      const likes = await Like.find({ sender: req.user._id }).sort({ createdAt: -1 }).skip(skip).limit(limit)
+
+      const total = await Like.countDocuments({ sender: req.user._id })
+
+      logger.debug(`Found ${likes.length} likes`)
+      res.status(200).json({
+        success: true,
+        count: likes.length,
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        data: likes,
+      })
+    } catch (err) {
+      logger.error(`Error fetching likes: ${err.message}`)
+      res.status(400).json({ success: false, error: err.message })
+    }
+  }),
+)
+
+/**
+ * @route   GET /api/users/matches
+ * @desc    Get all mutual likes (matches) for the current user
+ * @access  Private
+ */
+router.get(
+  "/matches",
+  protect,
+  asyncHandler(async (req, res) => {
+    logger.debug(`Fetching matches for user ${req.user._id}`)
+
+    try {
+      const page = Number.parseInt(req.query.page, 10) || 1
+      const limit = Number.parseInt(req.query.limit, 10) || 20
+      const skip = (page - 1) * limit
+
+      // Find users who the current user has liked
+      const likedUsers = await Like.find({ sender: req.user._id }).select("recipient")
+      const likedUserIds = likedUsers.map((like) => like.recipient)
+
+      // Find users who have liked the current user and are also liked by the current user
+      const matches = await Like.find({
+        sender: { $in: likedUserIds },
+        recipient: req.user._id,
+      })
+        .populate("sender", "nickname photos isOnline lastActive details")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+
+      const total = await Like.countDocuments({
+        sender: { $in: likedUserIds },
+        recipient: req.user._id,
+      })
+
+      logger.debug(`Found ${matches.length} matches`)
+      res.status(200).json({
+        success: true,
+        count: matches.length,
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        data: matches,
+      })
+    } catch (err) {
+      logger.error(`Error fetching matches: ${err.message}`)
+      res.status(400).json({ success: false, error: err.message })
+    }
+  }),
+)
+
+/**
+ * @route   POST /api/users/:id/like
+ * @desc    Like a user
+ * @access  Private
+ */
+router.post(
+  "/:id/like",
+  protect,
+  canLikeUser,
+  asyncHandler(async (req, res) => {
+    logger.debug(`User ${req.user._id} liking user ${req.params.id}`)
+
+    try {
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({ success: false, error: "Invalid user ID format" })
+      }
+
+      const targetUser = await User.findById(req.params.id)
+      if (!targetUser) {
+        return res.status(404).json({ success: false, error: "User not found" })
+      }
+
+      // Get the user object from the middleware
+      const user = req.userObj
+
+      // Check if already liked
+      const existingLike = await Like.findOne({
+        sender: req.user._id,
+        recipient: req.params.id,
+      })
+
+      if (existingLike) {
+        return res.status(400).json({
+          success: false,
+          error: `You already liked ${targetUser.nickname}`,
+        })
+      }
+
+      // Create the like
+      const like = new Like({
+        sender: req.user._id,
+        recipient: req.params.id,
+      })
+
+      await like.save()
+
+      // Decrement likes remaining for free users
+      if (user.accountTier === "FREE") {
+        user.dailyLikesRemaining -= 1
+        await user.save()
+      }
+
+      // Check if it's a mutual like (match)
+      const mutualLike = await Like.findOne({
+        sender: req.params.id,
+        recipient: req.user._id,
+      })
+
+      res.status(200).json({
+        success: true,
+        message: `You liked ${targetUser.nickname}`,
+        likesRemaining: user.dailyLikesRemaining,
+        isMatch: !!mutualLike,
+      })
+    } catch (err) {
+      logger.error(`Error liking user: ${err.message}`)
+      res.status(500).json({ success: false, error: "Server error" })
+    }
+  }),
+)
+
+/**
+ * @route   DELETE /api/users/:id/like
+ * @desc    Unlike a user
+ * @access  Private
+ */
+router.delete(
+  "/:id/like",
+  protect,
+  asyncHandler(async (req, res) => {
+    logger.debug(`User ${req.user._id} unliking user ${req.params.id}`)
+
+    try {
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({ success: false, error: "Invalid user ID format" })
+      }
+
+      const targetUser = await User.findById(req.params.id)
+      if (!targetUser) {
+        return res.status(404).json({ success: false, error: "User not found" })
+      }
+
+      // Find and delete the like
+      const result = await Like.findOneAndDelete({
+        sender: req.user._id,
+        recipient: req.params.id,
+      })
+
+      if (!result) {
+        return res.status(404).json({
+          success: false,
+          error: `You haven't liked ${targetUser.nickname}`,
+        })
+      }
+
+      res.status(200).json({
+        success: true,
+        message: `You unliked ${targetUser.nickname}`,
+      })
+    } catch (err) {
+      logger.error(`Error unliking user: ${err.message}`)
+      res.status(500).json({ success: false, error: "Server error" })
+    }
+  }),
+)
+
+// Add these routes to your userRoutes.js file
+// Find a suitable location in the file, perhaps near other user settings routes
+
+// Get user settings
+router.get("/settings", protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("settings")
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" })
+    }
+
+    res.json({ success: true, data: user.settings || {} })
+  } catch (err) {
+    console.error("Error fetching user settings:", err)
+    res.status(500).json({ success: false, error: "Server error" })
+  }
+})
+
+// Update user settings
+router.put("/settings", protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id)
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" })
+    }
+
+    // Update settings
+    user.settings = req.body
+
+    await user.save()
+
+    res.json({ success: true, data: user.settings })
+  } catch (err) {
+    console.error("Error updating user settings:", err)
+    res.status(500).json({ success: false, error: "Server error" })
+  }
+})
+
+// Update notification settings
+router.put("/settings/notifications", protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id)
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" })
+    }
+
+    // Initialize settings object if it doesn't exist
+    if (!user.settings) {
+      user.settings = {}
+    }
+
+    // Update notification settings
+    user.settings.notifications = req.body.notifications
+
+    await user.save()
+
+    res.json({ success: true, data: user.settings })
+  } catch (err) {
+    console.error("Error updating notification settings:", err)
+    res.status(500).json({ success: false, error: "Server error" })
+  }
+})
+
+// Update privacy settings
+router.put("/settings/privacy", protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id)
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" })
+    }
+
+    // Initialize settings object if it doesn't exist
+    if (!user.settings) {
+      user.settings = {}
+    }
+
+    // Update privacy settings
+    user.settings.privacy = req.body.privacy
+
+    await user.save()
+
+    res.json({ success: true, data: user.settings })
+  } catch (err) {
+    console.error("Error updating privacy settings:", err)
+    res.status(500).json({ success: false, error: "Server error" })
+  }
+})
 
 module.exports = router

@@ -1,11 +1,13 @@
 const User = require("./User")
 const Message = require("./Message")
-const PhotoPermission = require("./PhotoPermission")
 const Story = require("./Story")
+const PhotoPermission = require("./PhotoPermission")
+const Like = require("./Like")
 
 module.exports = {
-  User,
-  Message,
-  PhotoPermission,
+  User: require("./User"),
+  Message: require("./Message"),
+  PhotoPermission: require("./PhotoPermission"),
+  Like: require("./Like"),
   Story,
 }

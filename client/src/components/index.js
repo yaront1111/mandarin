@@ -12,13 +12,6 @@ import {
   UserFilter
 } from "./UserComponents"
 
-// Chat Components
-import {
-  ChatBox,
-  VideoCall,
-  Spinner
-} from "./ChatComponents"
-
 // Import EmbeddedChat as a named import
 import EmbeddedChat from "./EmbeddedChat"
 

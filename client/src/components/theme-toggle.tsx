@@ -2,39 +2,28 @@
 
 import { useEffect, useState } from "react"
 import { FaMoon, FaSun } from "react-icons/fa"
+import { useTheme } from "../context/ThemeContext"
 
 export function ThemeToggle() {
-  const [isDark, setIsDark] = useState(false)
+  const { theme, toggleTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
 
-  // Initialize theme based on user preference or localStorage
+  // Only show the toggle after component has mounted to avoid hydration mismatch
   useEffect(() => {
-    const savedTheme = localStorage.getItem("theme")
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
-
-    if (savedTheme === "dark" || (!savedTheme && prefersDark)) {
-      setIsDark(true)
-      document.documentElement.classList.add("dark")
-    }
+    setMounted(true)
   }, [])
 
-  const toggleTheme = () => {
-    if (isDark) {
-      document.documentElement.classList.remove("dark")
-      localStorage.setItem("theme", "light")
-    } else {
-      document.documentElement.classList.add("dark")
-      localStorage.setItem("theme", "dark")
-    }
-    setIsDark(!isDark)
+  if (!mounted) {
+    return null
   }
 
   return (
     <button
       onClick={toggleTheme}
       className="theme-toggle-btn"
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
     >
-      {isDark ? <FaSun /> : <FaMoon />}
+      {theme === "dark" ? <FaSun /> : <FaMoon />}
     </button>
   )
 }

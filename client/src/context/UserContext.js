@@ -1,8 +1,9 @@
 "use client"
 
 // client/src/context/UserContext.js
-import { createContext, useReducer, useContext, useEffect, useCallback, useRef } from "react"
+import { createContext, useReducer, useContext, useEffect, useCallback, useRef, useState } from "react"
 import { toast } from "react-toastify"
+import { FaHeart } from "react-icons/fa"
 import apiService from "../services/apiService"
 import { useAuth } from "./AuthContext"
 
@@ -292,6 +293,114 @@ export const UserProvider = ({ children }) => {
     dispatch({ type: "CLEAR_ERROR" })
   }, [])
 
+  // This will track liked users and handle like functionality
+  const [likedUsers, setLikedUsers] = useState([])
+  const [likesLoading, setLikesLoading] = useState(false)
+
+  // Load liked users on mount
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      getLikedUsers()
+    }
+  }, [isAuthenticated, user])
+
+  // Get all users liked by current user
+  const getLikedUsers = useCallback(async () => {
+    if (!user) return
+
+    setLikesLoading(true)
+    try {
+      const response = await apiService.get("/users/likes")
+      if (response.success) {
+        setLikedUsers(response.data || [])
+      } else {
+        console.error("Error in getLikedUsers:", response.error)
+      }
+    } catch (err) {
+      console.error("Error fetching liked users:", err)
+    } finally {
+      setLikesLoading(false)
+    }
+  }, [user])
+
+  // Check if a user is liked
+  const isUserLiked = useCallback(
+    (userId) => {
+      return likedUsers.some((like) => like.recipient === userId)
+    },
+    [likedUsers],
+  )
+
+  // Like a user
+  const likeUser = useCallback(
+    async (userId, userName) => {
+      if (!user) return false
+
+      try {
+        const response = await apiService.post(`/users/${userId}/like`)
+        if (response.success) {
+          // Add to liked users if not already there
+          if (!isUserLiked(userId)) {
+            setLikedUsers((prev) => [
+              ...prev,
+              {
+                recipient: userId,
+                createdAt: new Date().toISOString(),
+              },
+            ])
+          }
+
+          // Show success notification with heart icon
+          toast.success(
+            <div className="like-toast">
+              <FaHeart className="like-icon pulse" />
+              <span>You liked {userName || "this user"}</span>
+            </div>,
+          )
+
+          // If free user, update remaining likes count
+          if (response.likesRemaining !== undefined) {
+            toast.info(`You have ${response.likesRemaining} likes remaining today`)
+          }
+
+          return true
+        } else {
+          throw new Error(response.error || "Failed to like user")
+        }
+      } catch (err) {
+        const errorMsg = err.error || err.message || "Failed to like user"
+        toast.error(errorMsg)
+        return false
+      }
+    },
+    [user, isUserLiked],
+  )
+
+  // Unlike a user
+  const unlikeUser = useCallback(
+    async (userId, userName) => {
+      if (!user) return false
+
+      try {
+        const response = await apiService.delete(`/users/${userId}/like`)
+        if (response.success) {
+          // Remove from liked users
+          setLikedUsers((prev) => prev.filter((like) => like.recipient !== userId))
+
+          toast.info(`You unliked ${userName || "this user"}`)
+          return true
+        } else {
+          throw new Error(response.error || "Failed to unlike user")
+        }
+      } catch (err) {
+        const errorMsg = err.error || err.message || "Failed to unlike user"
+        toast.error(errorMsg)
+        return false
+      }
+    },
+    [user],
+  )
+
   return (
     <UserContext.Provider
       value={{
@@ -311,6 +420,11 @@ export const UserProvider = ({ children }) => {
         updatePhotoPermission,
         refreshUserData,
         clearError,
+        likedUsers,
+        likesLoading,
+        isUserLiked,
+        likeUser,
+        unlikeUser,
       }}
     >
       {children}

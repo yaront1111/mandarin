@@ -19,15 +19,13 @@ import {
   FaChevronDown,
 } from "react-icons/fa"
 import { toast } from "react-toastify"
-import { useAuth } from "../context"
-import { useUser } from "../context"
-import { useChat } from "../context"
-import { useStories } from "../context" // Import Stories context
+import { useAuth, useUser, useChat, useStories } from "../context"
 import EmbeddedChat from "../components/EmbeddedChat"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
 import StoriesCarousel from "../components/Stories/StoriesCarousel"
 import StoriesViewer from "../components/Stories/StoriesViewer" // Import StoriesViewer
 import StoryCreator from "../components/Stories/StoryCreator" // Import StoryCreator
+import SubscriptionStatus from "../components/SubscriptionStatus"
 
 const Dashboard = () => {
   const navigate = useNavigate()
@@ -35,6 +33,7 @@ const Dashboard = () => {
   const { users, getUsers, loading } = useUser()
   const { unreadMessages } = useChat()
   const { createStory } = useStories() // Add Stories context
+  const { likeUser, unlikeUser, isUserLiked } = useUser()
 
   const [activeTab, setActiveTab] = useState("discover")
   const [showFilters, setShowFilters] = useState(false)
@@ -227,17 +226,15 @@ const Dashboard = () => {
     (userId) => {
       return Array.isArray(unreadMessages) && unreadMessages.some((msg) => msg.sender === userId)
     },
-    [unreadMessages]
+    [unreadMessages],
   )
 
   // Count unread messages for a user - with proper null/undefined checks
   const unreadCount = useCallback(
     (userId) => {
-      return Array.isArray(unreadMessages)
-        ? unreadMessages.filter((msg) => msg.sender === userId).length
-        : 0
+      return Array.isArray(unreadMessages) ? unreadMessages.filter((msg) => msg.sender === userId).length : 0
     },
-    [unreadMessages]
+    [unreadMessages],
   )
 
   // Reset filters function
@@ -252,6 +249,16 @@ const Dashboard = () => {
       interests: [],
     })
   }, [])
+
+  const handleLikeUser = (e, matchedUser) => {
+    e.stopPropagation()
+
+    if (isUserLiked(matchedUser._id)) {
+      unlikeUser(matchedUser._id, matchedUser.nickname)
+    } else {
+      likeUser(matchedUser._id, matchedUser.nickname)
+    }
+  }
 
   return (
     <div className="modern-dashboard">
@@ -336,6 +343,7 @@ const Dashboard = () => {
       {/* Content */}
       <main className="dashboard-content">
         <div className="container">
+          <SubscriptionStatus />
           {/* Stories Section with Create Story Button */}
           <div className="stories-section">
             <div className="stories-header d-flex justify-content-between align-items-center mb-3">
@@ -347,9 +355,7 @@ const Dashboard = () => {
                 disabled={creatingStory}
               >
                 <FaPlus className="me-2 d-none d-sm-inline" />
-                <span className="d-none d-md-inline">
-                  {creatingStory ? "Creating..." : "Create Story"}
-                </span>
+                <span className="d-none d-md-inline">{creatingStory ? "Creating..." : "Create Story"}</span>
               </button>
             </div>
             <StoriesCarousel onStoryClick={(storyId) => setViewingStoryId(storyId)} />
@@ -564,12 +570,9 @@ const Dashboard = () => {
 
                     <div className="user-actions">
                       <button
-                        className="card-action-button like"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toast.success(`You liked ${matchedUser.nickname}`)
-                        }}
-                        aria-label={`Like ${matchedUser.nickname}`}
+                        className={`card-action-button like ${isUserLiked(matchedUser._id) ? "active" : ""}`}
+                        onClick={(e) => handleLikeUser(e, matchedUser)}
+                        aria-label={`${isUserLiked(matchedUser._id) ? "Unlike" : "Like"} ${matchedUser.nickname}`}
                       >
                         <FaHeart />
                       </button>
@@ -609,20 +612,10 @@ const Dashboard = () => {
       )}
 
       {/* Story Creator Modal */}
-      {showStoryCreator && (
-        <StoryCreator
-          onClose={() => setShowStoryCreator(false)}
-          onSubmit={handleCreateStory}
-        />
-      )}
+      {showStoryCreator && <StoryCreator onClose={() => setShowStoryCreator(false)} onSubmit={handleCreateStory} />}
 
       {/* Stories Viewer - Now using component-based approach instead of navigation */}
-      {viewingStoryId && (
-        <StoriesViewer
-          storyId={viewingStoryId}
-          onClose={() => setViewingStoryId(null)}
-        />
-      )}
+      {viewingStoryId && <StoriesViewer storyId={viewingStoryId} onClose={() => setViewingStoryId(null)} />}
 
       <style>{`
         /* User Dropdown Menu Styles */
@@ -714,6 +707,19 @@ const Dashboard = () => {
         .create-story-btn:disabled {
           opacity: 0.7;
           cursor: not-allowed;
+        }
+
+        .card-action-button.like.active {
+          color: #ff4b4b;
+          background-color: rgba(255, 75, 75, 0.1);
+        }
+
+        .card-action-button.like:hover {
+          background-color: rgba(255, 75, 75, 0.15);
+        }
+
+        .card-action-button.like.active:hover {
+          background-color: rgba(255, 75, 75, 0.2);
         }
       `}</style>
     </div>

@@ -17,10 +17,11 @@ import {
   FaFilePdf,
   FaFileAudio,
   FaFileVideo,
+  FaCrown,
 } from "react-icons/fa"
 import { useAuth, useChat } from "../context"
 import { toast } from "react-toastify"
-import apiService from "../services/apiService"
+import { useNavigate } from "react-router-dom"
 
 /**
  * EmbeddedChat - A compact chat component that can be embedded in user profiles.
@@ -33,6 +34,7 @@ import apiService from "../services/apiService"
  */
 const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const {
     messages,
     getMessages,
@@ -61,7 +63,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Load messages when chat is opened with the recipient
   useEffect(() => {
-    let isMounted = true;
+    let isMounted = true
 
     if (recipient && isOpen) {
       setIsLoading(true)
@@ -86,7 +88,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
     // Cleanup function to prevent state updates on unmounted component
     return () => {
-      isMounted = false;
+      isMounted = false
     }
   }, [recipient, isOpen, getMessages])
 
@@ -129,7 +131,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const getFileIcon = useCallback((file) => {
     if (!file) return <FaFile />
 
-    const fileType = file.type || "";
+    const fileType = file.type || ""
     if (fileType.startsWith("image/")) return <FaImage />
     if (fileType.startsWith("video/")) return <FaFileVideo />
     if (fileType.startsWith("audio/")) return <FaFileAudio />
@@ -148,6 +150,12 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     }
 
     if (newMessage.trim() && !sendingMessage && recipient) {
+      // Check if user can send messages (not just winks)
+      if (user?.accountTier === "FREE" && newMessage.trim() !== "😉") {
+        toast.error("Free accounts can only send winks. Upgrade to send messages.")
+        return
+      }
+
       try {
         await sendMessage(recipient._id, "text", newMessage.trim())
         setNewMessage("")
@@ -160,30 +168,30 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Handle sending file attachment
   const handleSendAttachment = async () => {
-    if (!attachment || !recipient || isUploading) return;
+    if (!attachment || !recipient || isUploading) return
 
-    setIsUploading(true);
+    setIsUploading(true)
     try {
       // Use the sendFileMessage from ChatContext
       await sendFileMessage(recipient._id, attachment, (progress) => {
-        setUploadProgress(progress);
-      });
+        setUploadProgress(progress)
+      })
 
-      toast.success("File sent successfully");
+      toast.success("File sent successfully")
 
       // Reset attachment state after successful upload
-      setAttachment(null);
-      setUploadProgress(0);
+      setAttachment(null)
+      setUploadProgress(0)
       if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+        fileInputRef.current.value = ""
       }
     } catch (error) {
-      console.error("Failed to send attachment:", error);
-      toast.error(error.message || "Failed to send file. Please try again.");
+      console.error("Failed to send attachment:", error)
+      toast.error(error.message || "Failed to send file. Please try again.")
     } finally {
-      setIsUploading(false);
+      setIsUploading(false)
     }
-  };
+  }
 
   // Handle typing indicator
   const handleTyping = (e) => {
@@ -206,6 +214,15 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         toast.error(error.message || "Failed to send wink")
       }
     }
+  }
+
+  // Trigger file input when attachment button is clicked
+  const handleFileAttachment = () => {
+    if (user?.accountTier === "FREE") {
+      toast.error("Free accounts cannot send files. Upgrade to send files.")
+      return
+    }
+    fileInputRef.current?.click()
   }
 
   // Handle file selection for attachment
@@ -251,11 +268,6 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     e.target.value = null
   }
 
-  // Trigger file input when attachment button is clicked
-  const handleFileAttachment = () => {
-    fileInputRef.current?.click()
-  }
-
   // Remove the current attachment
   const handleRemoveAttachment = () => {
     setAttachment(null)
@@ -267,6 +279,11 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Handle video call
   const handleVideoCall = () => {
+    if (user?.accountTier === "FREE") {
+      toast.error("Free accounts cannot make video calls. Upgrade for video calls.")
+      return
+    }
+
     if (recipient && recipient._id) {
       initiateVideoCall(recipient._id)
       toast.info(`Starting video call with ${recipient.nickname}...`)
@@ -340,7 +357,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Safely handle close event
   const handleClose = () => {
-    if (typeof onClose === 'function') {
+    if (typeof onClose === "function") {
       onClose()
     }
   }
@@ -423,20 +440,31 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           </div>
         </div>
         <div className="chat-header-actions">
-          <button
-            className="video-call-btn"
-            onClick={handleVideoCall}
-            title="Start Video Call"
-            aria-label="Start video call"
-            disabled={isUploading || sendingMessage}
-          >
-            <FaVideo />
-          </button>
+          {user?.accountTier !== "FREE" && (
+            <button
+              className="video-call-btn"
+              onClick={handleVideoCall}
+              title="Start Video Call"
+              aria-label="Start video call"
+              disabled={isUploading || sendingMessage}
+            >
+              <FaVideo />
+            </button>
+          )}
           <button className="close-chat-btn" onClick={handleClose} aria-label="Close chat" title="Close chat">
             <FaTimes />
           </button>
         </div>
       </div>
+      {user?.accountTier === "FREE" && (
+        <div className="premium-banner">
+          <FaCrown className="premium-icon" />
+          <span>Upgrade to send messages and make video calls(you can still send heart)</span>
+          <button className="upgrade-btn" onClick={() => navigate("/subscription")} aria-label="Upgrade to premium">
+            Upgrade
+          </button>
+        </div>
+      )}
 
       {/* Messages Container */}
       <div className="messages-container">
@@ -520,11 +548,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
               <span className="upload-progress-text">{uploadProgress}%</span>
             </div>
           ) : (
-            <button
-              className="remove-attachment"
-              onClick={handleRemoveAttachment}
-              disabled={isUploading}
-            >
+            <button className="remove-attachment" onClick={handleRemoveAttachment} disabled={isUploading}>
               <FaTimes />
             </button>
           )}
@@ -562,19 +586,20 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         )}
         <input
           type="text"
-          placeholder="Type a message..."
+          placeholder={user?.accountTier === "FREE" ? "Free users can only send winks" : "Type a message..."}
           value={newMessage}
           onChange={handleTyping}
           ref={chatInputRef}
-          disabled={sendingMessage || isUploading}
+          disabled={sendingMessage || isUploading || user?.accountTier === "FREE"}
           aria-label="Message input"
+          title={user?.accountTier === "FREE" ? "Upgrade to send text messages" : "Type a message"}
         />
         <button
           type="button"
           className="input-attachment"
           onClick={handleFileAttachment}
-          disabled={sendingMessage || isUploading}
-          title="Attach File"
+          disabled={sendingMessage || isUploading || user?.accountTier === "FREE"}
+          title={user?.accountTier === "FREE" ? "Upgrade to send files" : "Attach File"}
           aria-label="Attach file"
         >
           <FaPaperclip />

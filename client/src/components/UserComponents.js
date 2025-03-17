@@ -11,171 +11,181 @@ import { toast } from "react-toastify"
 /**
  * UserCard component for displaying user information in a grid or list
  */
-export const UserCard = memo(({ user, onMessageClick, onVideoClick, onLikeClick, layout = "grid" }) => {
-  const [isHovered, setIsHovered] = useState(false)
-  const { user: currentUser } = useAuth()
-  const isCurrentUser = currentUser && user && currentUser._id === user._id
+export const UserCard = memo(
+  ({ user, onMessageClick, onVideoClick, onLikeClick, layout = "grid", isLiked = false }) => {
+    const [isHovered, setIsHovered] = useState(false)
+    const { user: currentUser } = useAuth()
+    const isCurrentUser = currentUser && user && currentUser._id === user._id
 
-  // Format the last active time
-  const formatLastActive = (lastActive) => {
-    if (!lastActive) return "Unknown"
+    // Format the last active time
+    const formatLastActive = (lastActive) => {
+      if (!lastActive) return "Unknown"
 
-    const lastActiveDate = new Date(lastActive)
-    const now = new Date()
-    const diffMs = now - lastActiveDate
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
+      const lastActiveDate = new Date(lastActive)
+      const now = new Date()
+      const diffMs = now - lastActiveDate
+      const diffMins = Math.floor(diffMs / 60000)
+      const diffHours = Math.floor(diffMs / 3600000)
+      const diffDays = Math.floor(diffMs / 86400000)
 
-    if (diffMins < 1) return "Just now"
-    if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`
-    if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`
-    if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`
+      if (diffMins < 1) return "Just now"
+      if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`
+      if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`
+      if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`
 
-    return lastActiveDate.toLocaleDateString()
-  }
-
-  // Get the profile photo URL
-  const getProfilePhoto = () => {
-    if (!user || !user.photos || user.photos.length === 0) {
-      return "/placeholder.svg"
+      return lastActiveDate.toLocaleDateString()
     }
-    return user.photos[0].url
-  }
 
-  // Handle card actions
-  const handleMessageClick = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (onMessageClick) onMessageClick(user)
-  }
+    // Get the profile photo URL
+    const getProfilePhoto = () => {
+      if (!user || !user.photos || user.photos.length === 0) {
+        return "/placeholder.svg"
+      }
+      return user.photos[0].url
+    }
 
-  const handleVideoClick = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (onVideoClick) onVideoClick(user)
-  }
+    // Handle card actions
+    const handleMessageClick = (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (onMessageClick) onMessageClick(user)
+    }
 
-  const handleLikeClick = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (onLikeClick) onLikeClick(user)
-  }
+    const handleVideoClick = (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (onVideoClick) onVideoClick(user)
+    }
 
-  // Render grid layout
-  if (layout === "grid") {
+    const handleLikeClick = (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (onLikeClick) onLikeClick(user)
+    }
+
+    // Render grid layout
+    if (layout === "grid") {
+      return (
+        <div
+          className="user-card"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          aria-label={`${user.nickname}'s profile card`}
+        >
+          <Link to={`/profile/${user._id}`} className="user-card-link">
+            <div className="user-card-photo-container">
+              <img
+                src={getProfilePhoto() || "/placeholder.svg"}
+                alt={`${user.nickname}'s profile`}
+                className="user-card-photo"
+                loading="lazy"
+              />
+              {user.isOnline && <span className="online-indicator" aria-label="Online"></span>}
+            </div>
+
+            <div className="user-card-info">
+              <h3 className="user-card-name">{user.nickname}</h3>
+              <p className="user-card-details">
+                {user.details?.age && `${user.details.age} • `}
+                {user.details?.gender && `${user.details.gender} • `}
+                {user.details?.location}
+              </p>
+              <p className="user-card-last-active">
+                {user.isOnline ? "Online now" : `Last active: ${formatLastActive(user.lastActive)}`}
+              </p>
+            </div>
+
+            {isHovered && !isCurrentUser && (
+              <div className="user-card-actions">
+                <button
+                  onClick={handleMessageClick}
+                  className="action-btn message-btn"
+                  aria-label={`Message ${user.nickname}`}
+                >
+                  <FaComment />
+                </button>
+                <button
+                  onClick={handleVideoClick}
+                  className="action-btn video-btn"
+                  aria-label={`Video call ${user.nickname}`}
+                >
+                  <FaVideo />
+                </button>
+                <button
+                  onClick={handleLikeClick}
+                  className={`action-btn like-btn ${isLiked ? "liked" : ""}`}
+                  aria-label={`${isLiked ? "Unlike" : "Like"} ${user.nickname}`}
+                >
+                  <FaHeart />
+                </button>
+              </div>
+            )}
+          </Link>
+        </div>
+      )
+    }
+
+    // Render list layout
     return (
       <div
-        className="user-card"
+        className="user-list-item"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        aria-label={`${user.nickname}'s profile card`}
+        aria-label={`${user.nickname}'s profile item`}
       >
-        <Link to={`/profile/${user._id}`} className="user-card-link">
-          <div className="user-card-photo-container">
+        <Link to={`/profile/${user._id}`} className="user-list-link">
+          <div className="user-list-photo-container">
             <img
               src={getProfilePhoto() || "/placeholder.svg"}
               alt={`${user.nickname}'s profile`}
-              className="user-card-photo"
+              className="user-list-photo"
               loading="lazy"
             />
             {user.isOnline && <span className="online-indicator" aria-label="Online"></span>}
           </div>
 
-          <div className="user-card-info">
-            <h3 className="user-card-name">{user.nickname}</h3>
-            <p className="user-card-details">
+          <div className="user-list-info">
+            <h3 className="user-list-name">{user.nickname}</h3>
+            <p className="user-list-details">
               {user.details?.age && `${user.details.age} • `}
               {user.details?.gender && `${user.details.gender} • `}
               {user.details?.location}
             </p>
-            <p className="user-card-last-active">
+            <p className="user-list-last-active">
               {user.isOnline ? "Online now" : `Last active: ${formatLastActive(user.lastActive)}`}
             </p>
           </div>
-
-          {isHovered && !isCurrentUser && (
-            <div className="user-card-actions">
-              <button
-                onClick={handleMessageClick}
-                className="action-btn message-btn"
-                aria-label={`Message ${user.nickname}`}
-              >
-                <FaComment />
-              </button>
-              <button
-                onClick={handleVideoClick}
-                className="action-btn video-btn"
-                aria-label={`Video call ${user.nickname}`}
-              >
-                <FaVideo />
-              </button>
-              <button onClick={handleLikeClick} className="action-btn like-btn" aria-label={`Like ${user.nickname}`}>
-                <FaHeart />
-              </button>
-            </div>
-          )}
         </Link>
+
+        {!isCurrentUser && (
+          <div className="user-list-actions">
+            <button
+              onClick={handleMessageClick}
+              className="action-btn message-btn"
+              aria-label={`Message ${user.nickname}`}
+            >
+              <FaComment />
+            </button>
+            <button
+              onClick={handleVideoClick}
+              className="action-btn video-btn"
+              aria-label={`Video call ${user.nickname}`}
+            >
+              <FaVideo />
+            </button>
+            <button
+              onClick={handleLikeClick}
+              className={`action-btn like-btn ${isLiked ? "liked" : ""}`}
+              aria-label={`${isLiked ? "Unlike" : "Like"} ${user.nickname}`}
+            >
+              <FaHeart />
+            </button>
+          </div>
+        )}
       </div>
     )
-  }
-
-  // Render list layout
-  return (
-    <div
-      className="user-list-item"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      aria-label={`${user.nickname}'s profile item`}
-    >
-      <Link to={`/profile/${user._id}`} className="user-list-link">
-        <div className="user-list-photo-container">
-          <img
-            src={getProfilePhoto() || "/placeholder.svg"}
-            alt={`${user.nickname}'s profile`}
-            className="user-list-photo"
-            loading="lazy"
-          />
-          {user.isOnline && <span className="online-indicator" aria-label="Online"></span>}
-        </div>
-
-        <div className="user-list-info">
-          <h3 className="user-list-name">{user.nickname}</h3>
-          <p className="user-list-details">
-            {user.details?.age && `${user.details.age} • `}
-            {user.details?.gender && `${user.details.gender} • `}
-            {user.details?.location}
-          </p>
-          <p className="user-list-last-active">
-            {user.isOnline ? "Online now" : `Last active: ${formatLastActive(user.lastActive)}`}
-          </p>
-        </div>
-      </Link>
-
-      {!isCurrentUser && (
-        <div className="user-list-actions">
-          <button
-            onClick={handleMessageClick}
-            className="action-btn message-btn"
-            aria-label={`Message ${user.nickname}`}
-          >
-            <FaComment />
-          </button>
-          <button
-            onClick={handleVideoClick}
-            className="action-btn video-btn"
-            aria-label={`Video call ${user.nickname}`}
-          >
-            <FaVideo />
-          </button>
-          <button onClick={handleLikeClick} className="action-btn like-btn" aria-label={`Like ${user.nickname}`}>
-            <FaHeart />
-          </button>
-        </div>
-      )}
-    </div>
-  )
-})
+  },
+)
 
 /**
  * UserPhotoGallery component for displaying and managing user photos
@@ -652,3 +662,33 @@ export default {
   UserList,
   UserFilter,
 }
+
+// Add this style at the end of the file
+const style = document.createElement("style")
+style.textContent = `
+  .action-btn.like-btn.liked {
+    color: #ff4b4b;
+    background-color: rgba(255, 75, 75, 0.1);
+  }
+  
+  .like-toast {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .like-icon {
+    color: #ff4b4b;
+  }
+  
+  .like-icon.pulse {
+    animation: pulse 0.5s ease-in-out;
+  }
+  
+  @keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.3); }
+    100% { transform: scale(1); }
+  }
+`
+document.head.appendChild(style)

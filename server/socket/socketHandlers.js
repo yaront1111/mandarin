@@ -91,6 +91,18 @@ const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
         return
       }
 
+      // Get full user object to check permissions
+      const user = await User.findById(socket.user._id)
+
+      // Check if user can send this type of message
+      if (type !== "wink" && !user.canSendMessages()) {
+        socket.emit("messageError", {
+          error: "Free accounts can only send winks. Upgrade to send messages.",
+          tempMessageId,
+        })
+        return
+      }
+
       // Create and save message
       const message = new Message({
         sender: socket.user._id,
@@ -127,12 +139,15 @@ const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
         })
       }
 
+      // Send message notification
+      sendMessageNotification(socket.user, recipient, messageResponse)
+
       logger.info(`Message sent from ${socket.user._id} to ${recipientId}`)
     } catch (error) {
       logger.error(`Error sending message: ${error.message}`)
       socket.emit("messageError", {
         error: "Failed to send message",
-        tempMessageId,
+        tempMessageId: data?.tempMessageId,
       })
     }
   })
@@ -288,5 +303,42 @@ const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
 
   logger.info(`Socket handlers registered for user ${socket.user._id}`)
 }
+
+// Add this to your existing socketHandlers.js file
+// Find the appropriate socket event handlers and add this filtering logic
+
+// Example: When sending a message notification
+const sendMessageNotification = async (sender, recipient, message) => {
+  try {
+    const recipientUser = await User.findById(recipient._id).select("settings socketId")
+
+    // Check if recipient has message notifications enabled
+    if (recipientUser.settings?.notifications?.messages !== false) {
+      // Send socket notification if user is online
+      if (recipientUser.socketId) {
+        io.to(recipientUser.socketId).emit("new_message", {
+          sender,
+          message,
+          timestamp: new Date(),
+        })
+      }
+
+      // Store notification in database
+      // Assuming you have a Notification model
+      const Notification = require("../models/Notification") // Adjust the path as needed
+      await Notification.create({
+        recipient: recipient._id,
+        type: "message",
+        sender: sender._id,
+        content: message.content,
+        reference: message._id,
+      })
+    }
+  } catch (error) {
+    logger.error(`Error sending message notification: ${error.message}`)
+  }
+}
+
+// Similar logic for other notification types...
 
 module.exports = { registerSocketHandlers }

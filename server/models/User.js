@@ -1,4 +1,4 @@
-// Upgraded User.js model with improved security and validation
+// Upgraded User.js model with improved security, validation, and tier system
 const mongoose = require("mongoose")
 const bcrypt = require("bcryptjs")
 const crypto = require("crypto")
@@ -25,6 +25,18 @@ const photoSchema = new mongoose.Schema(
   },
   { timestamps: true },
 )
+
+const partnerInfoSchema = new mongoose.Schema({
+  nickname: String,
+  gender: {
+    type: String,
+    enum: ["male", "female", "non-binary", "other"],
+  },
+  age: {
+    type: Number,
+    min: [18, "Partner must be at least 18 years old"],
+  },
+})
 
 const userSchema = new mongoose.Schema(
   {
@@ -138,6 +150,55 @@ const userSchema = new mongoose.Schema(
       default: true,
       select: false,
     },
+    // Account tier system fields
+    accountTier: {
+      type: String,
+      enum: ["FREE", "PAID", "FEMALE", "COUPLE"],
+      default: "FREE",
+    },
+    isPaid: {
+      type: Boolean,
+      default: false,
+    },
+    subscriptionExpiry: {
+      type: Date,
+      default: null,
+    },
+    dailyLikesRemaining: {
+      type: Number,
+      default: 3, // Free male users get 3 likes per day
+    },
+    dailyLikesReset: {
+      type: Date,
+      default: () => new Date(new Date().setHours(0, 0, 0, 0) + 24 * 60 * 60 * 1000), // Next day at midnight
+    },
+    lastStoryCreated: {
+      type: Date,
+      default: null,
+    },
+    isCouple: {
+      type: Boolean,
+      default: false,
+    },
+    partnerInfo: {
+      type: partnerInfoSchema,
+      default: null,
+    },
+    settings: {
+      notifications: {
+        messages: { type: Boolean, default: true },
+        calls: { type: Boolean, default: true },
+        stories: { type: Boolean, default: true },
+        likes: { type: Boolean, default: true },
+        comments: { type: Boolean, default: true },
+      },
+      privacy: {
+        showOnlineStatus: { type: Boolean, default: true },
+        showReadReceipts: { type: Boolean, default: true },
+        showLastSeen: { type: Boolean, default: true },
+        allowStoryReplies: { type: String, default: "everyone", enum: ["everyone", "friends", "none"] },
+      },
+    },
   },
   {
     timestamps: true,
@@ -189,8 +250,67 @@ userSchema.pre("save", async function (next) {
     this.details.gender = ""
   }
 
+  // Set account tier based on gender and payment status
+  if (this.isModified("details.gender") || this.isModified("isPaid") || this.isModified("isCouple")) {
+    this.setAccountTier()
+  }
+
+  // Reset daily likes if needed
+  const now = new Date()
+  if (this.dailyLikesReset && now >= this.dailyLikesReset) {
+    this.dailyLikesRemaining = this.getMaxDailyLikes()
+    this.dailyLikesReset = new Date(new Date().setHours(0, 0, 0, 0) + 24 * 60 * 60 * 1000) // Next day at midnight
+  }
+
   next()
 })
+
+// Method to set account tier based on gender and payment status
+userSchema.methods.setAccountTier = function () {
+  if (this.isCouple) {
+    this.accountTier = "COUPLE"
+  } else if (this.details.gender === "female") {
+    this.accountTier = "FEMALE"
+  } else if (this.isPaid) {
+    this.accountTier = "PAID"
+  } else {
+    this.accountTier = "FREE"
+  }
+}
+
+// Method to get max daily likes based on account tier
+userSchema.methods.getMaxDailyLikes = function () {
+  switch (this.accountTier) {
+    case "FREE":
+      return 3
+    case "PAID":
+    case "FEMALE":
+    case "COUPLE":
+      return Number.POSITIVE_INFINITY // Unlimited likes
+    default:
+      return 3
+  }
+}
+
+// Method to check if user can create a story
+userSchema.methods.canCreateStory = function () {
+  if (this.accountTier === "FREE") {
+    // Free male users can only create 1 story per 72 hours
+    if (!this.lastStoryCreated) return true
+
+    const cooldownPeriod = 72 * 60 * 60 * 1000 // 72 hours in milliseconds
+    const timeSinceLastStory = Date.now() - this.lastStoryCreated.getTime()
+    return timeSinceLastStory >= cooldownPeriod
+  }
+
+  // All other account types can create stories without restrictions
+  return true
+}
+
+// Method to check if user can send messages (not just winks)
+userSchema.methods.canSendMessages = function () {
+  return this.accountTier !== "FREE" // Only free male users are restricted
+}
 
 // Pre-save middleware to hash password
 userSchema.pre("save", async function (next) {
