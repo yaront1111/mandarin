@@ -53,10 +53,8 @@ const upload = multer({
 })
 
 // ==========================
-// Routes
+// Helper functions
 // ==========================
-// Add this helper function at the top of your userRoutes.js file
-
 /**
  * Helper function to safely convert any value to a string
  * that can be used for MongoDB queries without validation errors
@@ -87,6 +85,10 @@ const flexibleIdMiddleware = (req, res, next) => {
   next();
 };
 
+// ==========================
+// Routes
+// ==========================
+
 /**
  * @route   GET /api/users/likes
  * @desc    Get all users liked by the current user
@@ -95,142 +97,106 @@ const flexibleIdMiddleware = (req, res, next) => {
 router.get(
   "/likes",
   protect,
-  flexibleIdMiddleware, // Add our custom middleware
   asyncHandler(async (req, res) => {
     try {
       const page = Number.parseInt(req.query.page, 10) || 1;
       const limit = Number.parseInt(req.query.limit, 10) || 50;
       const skip = (page - 1) * limit;
 
-      // Get user ID with extensive error checking
-      let userId = null;
+      // Extract user ID with fallbacks
+      let userId;
 
       if (req.user) {
-        // Try each possible ID field
-        for (const field of ['_id', 'id']) {
-          if (req.user[field]) {
-            userId = safeId(req.user[field]);
-            if (userId) break;
+        // Try _id first (most common case)
+        if (req.user._id) {
+          userId = req.user._id;
+          // Convert ObjectId to string if needed
+          if (typeof userId === 'object') {
+            userId = userId.toString();
           }
         }
-
-        // If that didn't work, try the original user object
-        if (!userId && req._originalUser) {
-          for (const field of ['_id', 'id']) {
-            if (req._originalUser[field]) {
-              userId = safeId(req._originalUser[field]);
-              if (userId) break;
-            }
-          }
+        // Then try id
+        else if (req.user.id) {
+          userId = req.user.id;
         }
       }
 
       if (!userId) {
-        logger.error(`No valid user ID found: ${JSON.stringify(req.user)}`);
         return res.status(400).json({
           success: false,
           error: "User ID not found in request"
         });
       }
 
-      logger.info(`Using user ID: ${userId} for likes query`);
+      // Use a native MongoDB query approach to avoid any Mongoose validation issues
+      // Get database connection from mongoose
+      const db = mongoose.connection;
 
-      try {
-        // Try using mongoose's native connection to avoid validation
-        const db = mongoose.connection;
-        const likesCollection = db.collection('likes');
+      // Run aggregation pipeline to find likes
+      const likesCollection = db.collection('likes');
 
-        // Execute raw MongoDB queries
-        const [likes, countResult] = await Promise.all([
-          likesCollection.find({ sender: userId })
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .toArray(),
-          likesCollection.countDocuments({ sender: userId })
-        ]);
+      // Query likes with pagination
+      const likesQuery = [
+        { $match: { sender: userId } },
+        { $sort: { createdAt: -1 } },
+        { $skip: skip },
+        { $limit: limit }
+      ];
 
-        // If we have likes, we need to manually populate the recipient data
-        if (likes.length > 0) {
-          const recipientIds = likes.map(like => like.recipient);
-          const usersCollection = db.collection('users');
+      // Count total
+      const totalQuery = [
+        { $match: { sender: userId } },
+        { $count: 'total' }
+      ];
 
-          const users = await usersCollection.find(
-            { _id: { $in: recipientIds } }
-          ).toArray();
+      // Run both queries in parallel
+      const [likesResult, totalResult] = await Promise.all([
+        likesCollection.aggregate(likesQuery).toArray(),
+        likesCollection.aggregate(totalQuery).toArray()
+      ]);
 
-          // Create a map for quick lookups
-          const userMap = {};
-          users.forEach(user => {
-            const id = user._id.toString();
-            userMap[id] = {
-              _id: id,
-              nickname: user.nickname,
-              username: user.username,
-              photos: user.photos,
-              isOnline: user.isOnline,
-              lastActive: user.lastActive
-            };
-          });
+      // Get total count
+      const total = totalResult.length > 0 ? totalResult[0].total : 0;
 
-          // Replace recipient IDs with user objects
-          likes.forEach(like => {
-            const recipientId = like.recipient.toString();
-            like.recipient = userMap[recipientId] || { _id: recipientId };
-          });
+      // If we need to populate user data (similar to .populate() in Mongoose)
+      if (likesResult.length > 0) {
+        const recipientIds = likesResult.map(like => like.recipient);
+        const usersCollection = db.collection('users');
+
+        // Get recipient user data
+        const users = await usersCollection.find(
+          { _id: { $in: recipientIds } },
+          { projection: { nickname: 1, username: 1, photos: 1, isOnline: 1, lastActive: 1 } }
+        ).toArray();
+
+        // Map users to likes
+        const userMap = {};
+        users.forEach(user => {
+          userMap[user._id.toString()] = user;
+        });
+
+        // Add recipient data to each like
+        for (const like of likesResult) {
+          const recipientId = like.recipient.toString();
+          if (userMap[recipientId]) {
+            like.recipient = userMap[recipientId];
+          }
         }
-
-        return res.status(200).json({
-          success: true,
-          count: likes.length,
-          total: countResult,
-          page,
-          pages: Math.ceil(countResult / limit),
-          data: likes
-        });
-
-      } catch (nativeError) {
-        // If native approach fails, try a more direct approach with the Mongoose model
-        logger.warn(`Native query failed, trying alternative approach: ${nativeError.message}`);
-
-        // Use a raw query that bypasses schema validation
-        const likes = await Like.find({
-          $or: [
-            { sender: userId },
-            { sender: mongoose.Types.ObjectId.createFromHexString(userId) }
-          ]
-        })
-        .populate("recipient", "nickname username photos isOnline lastActive")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean();
-
-        const total = await Like.countDocuments({
-          $or: [
-            { sender: userId },
-            { sender: mongoose.Types.ObjectId.createFromHexString(userId) }
-          ]
-        });
-
-        return res.status(200).json({
-          success: true,
-          count: likes.length,
-          total,
-          page,
-          pages: Math.ceil(total / limit),
-          data: likes
-        });
       }
 
+      res.status(200).json({
+        success: true,
+        count: likesResult.length,
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        data: likesResult
+      });
     } catch (err) {
-      logger.error(`Error fetching likes: ${err.message}, Stack: ${err.stack}`);
-
-      // Send a more helpful error message
+      logger.error(`Error fetching likes: ${err.message}`);
       res.status(500).json({
         success: false,
-        error: "Server error while fetching likes",
-        details: process.env.NODE_ENV !== 'production' ? err.message : undefined
+        error: "Server error while fetching likes"
       });
     }
   })
@@ -302,7 +268,6 @@ router.get(
     }
   }),
 )
-
 /**
  * @route   GET /api/users/:id
  * @desc    Get a single user profile and message history with that user

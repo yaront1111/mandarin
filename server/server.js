@@ -17,6 +17,10 @@ const { initSubscriptionTasks } = require("./cron/subscriptionTasks")
 // Initialize Express app
 const app = express()
 
+// Trust proxy - add this line to fix the rate limiter issue
+// This tells Express that it's behind a proxy and to trust the X-Forwarded-For header
+app.set('trust proxy', 1)
+
 // Create HTTP server
 const server = http.createServer(app)
 

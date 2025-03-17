@@ -285,7 +285,8 @@ router.post(
         return res.status(400).json({ success: false, error: "Invalid recipient ID format" });
       }
 
-      const validTypes = ["text", "wink", "video", "file", "location"];
+      // Updated valid message types (removed "location")
+      const validTypes = ["text", "wink", "video", "file"];
       if (!type || !validTypes.includes(type)) {
         return res.status(400).json({ success: false, error: `Invalid message type. Must be one of: ${validTypes.join(", ")}` });
       }
@@ -307,25 +308,7 @@ router.post(
         }
       }
 
-      if (type === "location") {
-        if (
-          !metadata ||
-          !metadata.location ||
-          !Array.isArray(metadata.location.coordinates) ||
-          metadata.location.coordinates.length !== 2
-        ) {
-          return res.status(400).json({ success: false, error: "Location messages require valid coordinates in metadata" });
-        }
-        const coords = metadata.location.coordinates.map((coord) => Number(coord));
-        if (coords.some((coord) => isNaN(coord))) {
-          return res.status(400).json({ success: false, error: "Invalid coordinate values. Must be numeric." });
-        }
-        const [longitude, latitude] = coords;
-        if (longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
-          return res.status(400).json({ success: false, error: "Invalid coordinates. Longitude must be between -180 and 180, latitude between -90 and 90" });
-        }
-        metadata.location.coordinates = coords;
-      }
+      // Removed location message validation that was here previously
 
       if (recipient === req.user._id.toString()) {
         return res.status(400).json({ success: false, error: "Cannot send message to yourself" });
@@ -345,9 +328,8 @@ router.post(
         processedContent = "Video Call";
       } else if (type === "file") {
         processedContent = metadata.fileName || "File";
-      } else if (type === "location") {
-        processedContent = content || "Location";
       }
+      // Removed the "location" case since it's no longer supported
 
       const message = await Message.create({
         sender: req.user._id,
@@ -367,7 +349,6 @@ router.post(
     }
   })
 );
-
 /**
  * @route   PUT /api/messages/:id/read
  * @desc    Mark a message as read

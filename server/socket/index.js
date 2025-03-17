@@ -1,7 +1,7 @@
 // server/socket/index.js
 const socketio = require("socket.io")
 const { socketAuthMiddleware } = require("./socketAuth")
-const { registerSocketHandlers } = require("./socketHandlers")
+const { registerSocketHandlers, handleUserDisconnect } = require("./socketHandlers")
 const { RateLimiterMemory } = require("rate-limiter-flexible")
 const logger = require("../logger")
 const { User } = require("../models")
@@ -25,12 +25,14 @@ if (process.env.REDIS_URL) {
 }
 
 const initSocketServer = async (server) => {
-  const allowedOrigins =
-    process.env.NODE_ENV === "production"
-      ? process.env.ALLOWED_ORIGINS
-        ? process.env.ALLOWED_ORIGINS.split(",")
-        : [process.env.FRONTEND_URL || "https://yourdomain.com"]
-      : ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5000", "http://127.0.0.1:5000"]
+  // Determine environment and allowed origins
+  const isDev = process.env.NODE_ENV !== "production"
+
+  const allowedOrigins = isDev
+    ? ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5000", "http://127.0.0.1:5000"]
+    : process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(",")
+      : [process.env.FRONTEND_URL || "https://yourdomain.com"]
 
   logger.info(`Socket.IO configured with allowed origins: ${JSON.stringify(allowedOrigins)}`)
 
@@ -73,18 +75,22 @@ const initSocketServer = async (server) => {
     }
   }
 
-  // Configure Socket.IO
+  // Configure Socket.IO with improved settings for reliability
   const ioOptions = {
     cors: {
       origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) {
           logger.debug("Socket connection with no origin allowed")
           return callback(null, true)
         }
-        if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== "production") {
+
+        // Check if origin is allowed
+        if (allowedOrigins.includes(origin) || isDev) {
           logger.debug(`Socket.IO CORS allowed for origin: ${origin}`)
           return callback(null, true)
         }
+
         logger.warn(`Socket.IO CORS rejected for origin: ${origin}`)
         return callback(new Error("Not allowed by CORS"), false)
       },
@@ -93,11 +99,12 @@ const initSocketServer = async (server) => {
       allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     },
     transports: ["websocket", "polling"],
-    pingTimeout: 60000,
-    pingInterval: 25000,
-    connectTimeout: 30000,
-    maxHttpBufferSize: 1e6,
-    path: "/socket.io", // Explicitly set the path to match client
+    pingTimeout: 60000,        // Increased ping timeout
+    pingInterval: 25000,       // Ping every 25 seconds
+    connectTimeout: 45000,     // Increased connect timeout
+    maxHttpBufferSize: 1e6,    // 1MB max buffer size
+    path: "/socket.io",        // Default Socket.IO path
+    allowEIO3: true,           // Allow Engine.IO v3 clients for better compatibility
   }
 
   // Add Redis adapter if Redis clients are initialized
@@ -108,11 +115,22 @@ const initSocketServer = async (server) => {
     logger.info("Using default in-memory adapter for Socket.IO")
   }
 
+  // Log detailed server connection info
+  logger.info(`Creating Socket.IO server with path: ${ioOptions.path}, transports: ${ioOptions.transports.join(', ')}`)
+
   const io = socketio(server, ioOptions)
 
-  // Add more detailed logging for connection events
-  io.engine.on("connection", (socket) => {
-    logger.info(`Socket.IO engine connection: ${socket.id}`)
+  // Add connection logging
+  io.engine.on("initial_headers", (headers, req) => {
+    logger.debug(`Socket.IO initial headers: ${JSON.stringify(headers)}`)
+  })
+
+  io.engine.on("headers", (headers, req) => {
+    logger.debug(`Socket.IO headers: ${JSON.stringify(headers)}`)
+  })
+
+  io.engine.on("connection_error", (err) => {
+    logger.error(`Socket.IO connection error: ${err.code} - ${err.message} - ${err.context || "No context"}`)
   })
 
   // Set up rate limiters
@@ -123,8 +141,14 @@ const initSocketServer = async (server) => {
   const rateLimiters = { typingLimiter, messageLimiter, callLimiter }
   const userConnections = new Map()
 
-  io.use(socketAuthMiddleware)
+  // Add explicit middleware timing log
+  logger.info("Registering Socket.IO authentication middleware")
+  io.use((socket, next) => {
+    logger.debug(`Socket auth middleware processing for socket: ${socket.id}`)
+    socketAuthMiddleware(socket, next)
+  })
 
+  // Connection handler
   io.on("connection", (socket) => {
     logger.info(`Socket connected: ${socket.id} (User: ${socket.user?._id || "unknown"})`)
 
@@ -135,7 +159,15 @@ const initSocketServer = async (server) => {
       userConnections.get(socket.user._id.toString()).add(socket.id)
       socket.join(socket.user._id.toString())
 
+      // Register handlers for this socket
       registerSocketHandlers(io, socket, userConnections, rateLimiters)
+
+      // Emit a welcome event to confirm successful connection
+      socket.emit("welcome", {
+        userId: socket.user._id.toString(),
+        timestamp: Date.now(),
+        message: "Socket connection established successfully"
+      })
     } else {
       logger.warn(`Socket ${socket.id} connected without valid user, disconnecting`)
       socket.disconnect(true)
@@ -170,10 +202,6 @@ const initSocketServer = async (server) => {
     },
     5 * 60 * 1000,
   )
-
-  io.engine.on("connection_error", (err) => {
-    logger.error(`Socket.IO connection error: ${err.code} - ${err.message} - ${err.context || "No context"}`)
-  })
 
   return io
 }

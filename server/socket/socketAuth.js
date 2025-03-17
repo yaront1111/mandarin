@@ -2,8 +2,9 @@
 const jwt = require("jsonwebtoken")
 const { User } = require("../models")
 const logger = require("../logger")
+const config = require("../config")
 
-// Simple in-memory rate limiter for sockets
+// Improved in-memory rate limiter for sockets
 const ipLimiter = {
   // Map to store connection attempts by IP
   attempts: new Map(),
@@ -11,14 +12,21 @@ const ipLimiter = {
   maxAttempts: 100,
   // Window size in milliseconds (15 minutes)
   windowMs: 15 * 60 * 1000,
+  // Last time the cleanup ran
+  lastCleanup: Date.now(),
+  // Cleanup interval (5 minutes)
+  cleanupInterval: 5 * 60 * 1000,
 
   // Check if an IP is rate limited
   isLimited(ip) {
-    // Clean up expired entries
-    this.cleanup();
+    // Run cleanup periodically instead of on every call
+    this._conditionalCleanup();
 
     // Get attempts for this IP
-    const ipData = this.attempts.get(ip) || { count: 0, resetTime: Date.now() + this.windowMs };
+    const ipData = this.attempts.get(ip) || {
+      count: 0,
+      resetTime: Date.now() + this.windowMs
+    };
 
     // Update attempt count
     ipData.count++;
@@ -28,16 +36,37 @@ const ipLimiter = {
     return ipData.count > this.maxAttempts;
   },
 
+  // Perform cleanup if enough time has passed since last cleanup
+  _conditionalCleanup() {
+    const now = Date.now();
+    if (now - this.lastCleanup > this.cleanupInterval) {
+      this.cleanup();
+      this.lastCleanup = now;
+    }
+  },
+
   // Clean up expired entries
   cleanup() {
     const now = Date.now();
+    let cleanedEntries = 0;
+
     for (const [ip, data] of this.attempts.entries()) {
       if (data.resetTime <= now) {
         this.attempts.delete(ip);
+        cleanedEntries++;
       }
+    }
+
+    if (cleanedEntries > 0) {
+      logger.debug(`Rate limiter cleanup: removed ${cleanedEntries} expired entries. Current size: ${this.attempts.size}`);
     }
   }
 };
+
+// Add a scheduled cleanup independent of incoming requests
+setInterval(() => {
+  ipLimiter.cleanup();
+}, ipLimiter.cleanupInterval);
 
 /**
  * Socket.IO authentication middleware
@@ -66,13 +95,25 @@ const socketAuthMiddleware = async (socket, next) => {
       return next(new Error("Authentication token is required"));
     }
 
-    // Verify token
+    // Verify token with improved error handling
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      // Fix: Make sure we're using the JWT_SECRET from config
+      const jwtSecret = config.JWT_SECRET || process.env.JWT_SECRET;
+
+      if (!jwtSecret) {
+        logger.error("Missing JWT_SECRET in configuration");
+        return next(new Error("Server authentication configuration error"));
+      }
+
+      // Log token format without exposing full contents
+      logger.debug(`Verifying socket token: ${token.substring(0, 10)}...`);
+
+      const decoded = jwt.verify(token, jwtSecret);
+      logger.debug(`Token verified successfully for socket ${socket.id}`);
 
       if (!decoded || !decoded.id) {
-        logger.warn(`Socket ${socket.id} provided invalid token`);
-        return next(new Error("Invalid authentication token"));
+        logger.warn(`Socket ${socket.id} provided invalid token format`);
+        return next(new Error("Invalid authentication token format"));
       }
 
       // Find user - IMPORTANT: Do not filter by active field
@@ -108,53 +149,21 @@ const socketAuthMiddleware = async (socket, next) => {
       // Proceed with connection
       next();
     } catch (jwtError) {
-      logger.error(`Socket ${socket.id} JWT verification error: ${jwtError.message}`);
-      return next(new Error("Invalid authentication token"));
+      // Provide more descriptive error based on type
+      if (jwtError.name === 'TokenExpiredError') {
+        logger.error(`Socket ${socket.id} JWT expired: ${jwtError.message}`);
+        return next(new Error("Authentication token has expired"));
+      } else if (jwtError.name === 'JsonWebTokenError') {
+        logger.error(`Socket ${socket.id} JWT invalid: ${jwtError.message}`);
+        return next(new Error("Invalid authentication token"));
+      } else {
+        logger.error(`Socket ${socket.id} JWT verification error: ${jwtError.message}`);
+        return next(new Error("Authentication token verification failed"));
+      }
     }
   } catch (error) {
     logger.error(`Socket auth error: ${error.message}`);
     return next(new Error("Authentication error"));
-  }
-};
-
-/**
- * Socket disconnect handler
- * Updates user's online status when socket disconnects
- */
-const handleSocketDisconnect = async (socket) => {
-  try {
-    if (socket.user && socket.user._id) {
-      logger.info(`Socket ${socket.id} disconnected: User ${socket.user._id}`);
-
-      // Add a small delay to handle reconnects
-      setTimeout(async () => {
-        try {
-          // Check if user has reconnected with a different socket
-          const user = await User.findById(socket.user._id);
-
-          if (!user) {
-            logger.warn(`User ${socket.user._id} not found during disconnect cleanup`);
-            return;
-          }
-
-          if (user.socketId === socket.id) {
-            // Only update if this was the last active socket for this user
-            await User.findByIdAndUpdate(socket.user._id, {
-              isOnline: false,
-              lastActive: Date.now(),
-              socketId: null
-            });
-            logger.info(`User ${socket.user._id} is now offline (no active connections)`);
-          } else {
-            logger.info(`User ${socket.user._id} has another active connection: ${user.socketId}`);
-          }
-        } catch (err) {
-          logger.error(`Error during disconnect cleanup for user ${socket.user._id}: ${err.message}`);
-        }
-      }, 5000); // 5 second delay
-    }
-  } catch (error) {
-    logger.error(`Socket disconnect error: ${error.message}`);
   }
 };
 
@@ -210,7 +219,6 @@ const trackSocketActivity = (socket) => {
 
 module.exports = {
   socketAuthMiddleware,
-  handleSocketDisconnect,
   checkSocketPermission,
   setupSocketMonitoring,
   trackSocketActivity
