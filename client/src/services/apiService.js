@@ -267,7 +267,7 @@ class ApiService {
 
     // Determine base URL with fallbacks
     this.baseURL =
-      process.env.REACT_APP_API_URL ||
+      import.meta.env.VITE_API_URL ||
       (window.location.hostname.includes("localhost") ? "http://localhost:5000/api" : "/api")
 
     this.logger.info(`Initializing with baseURL: ${this.baseURL}`)
@@ -298,8 +298,8 @@ class ApiService {
 
     // Initialize cache
     this.cache = new ResponseCache(
-      Number.parseInt(process.env.REACT_APP_CACHE_SIZE || "100"),
-      Number.parseInt(process.env.REACT_APP_CACHE_TTL || "60000"),
+      Number.parseInt(import.meta.env.VITE_CACHE_SIZE || "100"),
+      Number.parseInt(import.meta.env.VITE_CACHE_TTL || "60000"),
     )
 
     // Setup request queue for offline operations

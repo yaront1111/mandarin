@@ -1,5 +1,3 @@
-"use client"
-
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
 import { ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
@@ -8,7 +6,7 @@ import "./styles/stories.css" // Import stories styles
 import "./styles/settings.css"
 
 import { AuthProvider, UserProvider, ChatProvider, StoriesProvider, ThemeProvider } from "./context"
-import ErrorBoundary from "./components/ErrorBoundary"
+import ErrorBoundary from "./components/ErrorBoundary.jsx"
 import PrivateRoute from "./components/PrivateRoute.jsx"
 import Login from "./pages/Login"
 import Register from "./pages/Register"

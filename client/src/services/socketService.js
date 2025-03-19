@@ -18,7 +18,7 @@ class SocketService {
     this.lastHeartbeat = null
     this.connectionLostTimeout = null
     this.serverUrl =
-      process.env.REACT_APP_SOCKET_URL ||
+      import.meta.env.VITE_SOCKET_URL ||
       (window.location.hostname.includes("localhost")
         ? `http://${window.location.hostname}:5000`
         : window.location.origin)

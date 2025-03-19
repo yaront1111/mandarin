@@ -1,4 +1,4 @@
-// client/src/context/index.js
+// client/src/context/main.jsx
 export { AuthProvider, useAuth } from "./AuthContext"
 export { ChatProvider, useChat } from "./ChatContext"
 export { StoriesProvider, useStories } from "./StoriesContext"

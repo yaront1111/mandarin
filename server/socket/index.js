@@ -1,4 +1,4 @@
-// server/socket/index.js
+// server/socket/main.jsx
 const socketio = require("socket.io")
 const { socketAuthMiddleware } = require("./socketAuth")
 const { registerSocketHandlers, handleUserDisconnect } = require("./socketHandlers")

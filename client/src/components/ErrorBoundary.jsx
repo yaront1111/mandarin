@@ -1,4 +1,3 @@
-// client/src/components/ErrorBoundary.js
 import React, { Component } from 'react';
 
 class ErrorBoundary extends Component {
@@ -42,7 +41,7 @@ class ErrorBoundary extends Component {
           >
             Refresh Page
           </button>
-          {process.env.NODE_ENV !== 'production' && (
+          {import.meta.env.MODE !== 'production' && (
             <details style={{ marginTop: '20px', whiteSpace: 'pre-wrap' }}>
               <summary>Developer Details</summary>
               <p>{this.state.errorMessage}</p>
