@@ -4,7 +4,7 @@
 import { createContext, useReducer, useContext, useEffect, useCallback, useRef, useState } from "react"
 import { toast } from "react-toastify"
 import { FaHeart } from "react-icons/fa"
-import apiService from "../services/apiService"
+import apiService from "@services/apiService.jsx"
 import { useAuth } from "./AuthContext"
 
 // Create UserContext

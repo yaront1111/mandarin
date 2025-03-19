@@ -1,9 +1,9 @@
-import apiService from './apiService';
-import socketService from './socketService';
-import storiesService from './storiesService';
-import notificationService from './notificationService';
-import settingsService from './settingsService';
-import subscriptionService from './subscriptionService';
+import apiService from './apiService.jsx';
+import socketService from './socketService.jsx';
+import storiesService from './storiesService.jsx';
+import notificationService from './notificationService.jsx';
+import settingsService from './settingsService.jsx';
+import subscriptionService from './subscriptionService.jsx';
 
 export {
   apiService,

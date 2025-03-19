@@ -2,7 +2,7 @@
 
 import { createContext, useState, useContext, useEffect, useCallback, useRef } from "react"
 import { toast } from "react-toastify"
-import apiService from "../services/apiService"
+import apiService from "@services/apiService.jsx"
 import { getToken, setToken, removeToken, isTokenExpired } from "../utils/tokenStorage"
 
 const AuthContext = createContext()
@@ -278,7 +278,7 @@ export const AuthProvider = ({ children }) => {
             setUser(response.user)
 
             // Initialize notification service with user settings
-            import("../services/notificationService").then((module) => {
+            import("@services/notificationService.jsx").then((module) => {
               const notificationService = module.default
               if (response.user.settings?.notifications) {
                 notificationService.initialize(response.user.settings)
@@ -296,7 +296,7 @@ export const AuthProvider = ({ children }) => {
                 setUser(userResponse.data)
 
                 // Initialize notification service with user settings
-                import("../services/notificationService").then((module) => {
+                import("@services/notificationService.jsx").then((module) => {
                   const notificationService = module.default
                   if (userResponse.data.settings?.notifications) {
                     notificationService.initialize(userResponse.data.settings)
@@ -413,7 +413,7 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(true)
 
         // Initialize notification service with updated user settings
-        import("../services/notificationService").then((module) => {
+        import("@services/notificationService.jsx").then((module) => {
           const notificationService = module.default
           if (response.data.settings?.notifications) {
             notificationService.initialize(response.data.settings)

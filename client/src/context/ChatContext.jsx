@@ -3,8 +3,8 @@
 // ChatContext.js
 import { createContext, useState, useContext, useEffect, useCallback, useRef } from "react"
 import { toast } from "react-toastify"
-import apiService from "../services/apiService"
-import socketService from "../services/socketService"
+import apiService from "@services/apiService.jsx"
+import socketService from "@services/socketService.jsx"
 import { useAuth } from "./AuthContext"
 
 const ChatContext = createContext()

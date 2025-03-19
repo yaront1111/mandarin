@@ -1,5 +1,5 @@
-// client/src/services/subscriptionService.js
-import apiService from './apiService';
+// client/src/services/subscriptionService.jsx
+import apiService from './apiService.jsx';
 import { toast } from 'react-toastify';
 
 /**

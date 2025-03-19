@@ -9,7 +9,7 @@ import {
   useRef,
   useMemo
 } from "react"
-import storiesService from "../services/storiesService"
+import storiesService from "@services/storiesService.jsx"
 import { useAuth } from "./AuthContext"
 import { toast } from "react-toastify"
 

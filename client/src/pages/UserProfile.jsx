@@ -25,7 +25,7 @@ import EmbeddedChat from "../components/EmbeddedChat"
 import StoriesViewer from "../components/Stories/StoriesViewer" // Import StoriesViewer
 import StoryThumbnail from "../components/Stories/StoryThumbnail" // Import StoryThumbnail
 import { toast } from "react-toastify"
-import apiService from "../services/apiService"
+import apiService from "@services/apiService.jsx"
 
 // Update the UserProfile component with a more modern design
 const UserProfile = () => {

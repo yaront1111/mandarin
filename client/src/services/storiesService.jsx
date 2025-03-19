@@ -1,5 +1,5 @@
-// client/src/services/storiesService.js
-import apiService from "./apiService"
+// client/src/services/storiesService.jsx
+import apiService from "./apiService.jsx"
 
 const BASE_URL = "/stories"
 

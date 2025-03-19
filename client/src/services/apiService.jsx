@@ -1,4 +1,4 @@
-// Fixed apiService.js with proper method exports
+// Fixed apiService.jsx with proper method exports
 import axios from "axios"
 import { toast } from "react-toastify"
 

@@ -1,4 +1,4 @@
-// Enhanced socketService.js with improved connection handling and error recovery
+// Enhanced socketService.jsx with improved connection handling and error recovery
 import io from "socket.io-client"
 import { toast } from "react-toastify"
 

@@ -1,7 +1,7 @@
-// client/src/services/notificationService.js
-import apiService from "./apiService"
+// client/src/services/notificationService.jsx
+import apiService from "./apiService.jsx"
 import { toast } from "react-toastify"
-import socketService from "./socketService"
+import socketService from "./socketService.jsx"
 
 class NotificationService {
   constructor() {

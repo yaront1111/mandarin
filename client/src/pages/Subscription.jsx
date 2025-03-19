@@ -6,7 +6,7 @@ import { FaCheck, FaTimes, FaCrown, FaHeart, FaImage, FaComment, FaUserCircle } 
 import { useAuth } from "../context"
 import { toast } from "react-toastify"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
-import subscriptionService from "../services/subscriptionService"
+import subscriptionService from "@services/subscriptionService.jsx"
 
 const Subscription = () => {
   const { user, getCurrentUser } = useAuth() // Add getCurrentUser from auth context
