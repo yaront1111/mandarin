@@ -18,7 +18,7 @@ const router = express.Router()
 // ==========================
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = config.FILE_UPLOAD_PATH
+    const uploadPath = path.join(config.FILE_UPLOAD_PATH, "images")
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true })
     }
@@ -497,7 +497,7 @@ router.post(
         // Extract directory name for URL path
         const dirName = path.basename(path.dirname(filePath))
         const fileName = path.basename(filePath)
-        const photoUrl = `/uploads/${dirName}/${fileName}`
+        const photoUrl = `/uploads/images/${fileName}`
 
         const photoMetadata = {
           contentType: metadata.format,

@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react"
 import axios from "axios"
 import { toast } from "react-toastify"
-import { ChatIcon, SendIcon } from "@heroicons/react/24/outline"
+import { ChatBubbleLeftEllipsisIcon, PaperAirplaneIcon } from "@heroicons/react/24/outline"
+
 import { LoadingState, LoadingButton } from "../components/common/LoadingState"
 
 const MessageBubble = ({ message, isOwn, onRetry }) => {
@@ -126,7 +127,7 @@ const Messages = ({ activeConversation, currentUser }) => {
               <LoadingState text="Loading messages..." />
             ) : messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-gray-500">
-                <ChatIcon className="h-12 w-12 mb-4 text-gray-300" />
+                <ChatBubbleLeftEllipsisIcon className="h-12 w-12 mb-4 text-gray-300" />
                 <p>No messages yet</p>
                 <p className="text-sm">Start the conversation!</p>
               </div>
@@ -158,14 +159,14 @@ const Messages = ({ activeConversation, currentUser }) => {
                 className="bg-primary text-white rounded-full p-2 hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary"
                 aria-label="Send message"
               >
-                <SendIcon className="h-5 w-5" />
+                <PaperAirplaneIcon className="h-5 w-5" />
               </LoadingButton>
             </form>
           </div>
         </>
       ) : (
         <div className="h-full flex flex-col items-center justify-center text-gray-500">
-          <ChatIcon className="h-16 w-16 mb-4 text-gray-300" />
+          <ChatBubbleLeftEllipsisIcon className="h-16 w-16 mb-4 text-gray-300" />
           <p className="text-lg">Select a conversation</p>
           <p className="text-sm">Choose a conversation from the list to start chatting</p>
         </div>

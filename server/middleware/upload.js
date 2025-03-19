@@ -60,6 +60,11 @@ const generateSecureFilename = (originalname) => {
 const getUploadDirectory = (req, file) => {
   const url = req.originalUrl.toLowerCase()
 
+  // If route includes "/photos" but file is an image, use images directory
+  if (url.includes("/photos") && file.mimetype.startsWith("image/")) {
+    return directories.images
+  }
+
   // For image routes, use images directory
   if (url.includes("/images") || url.includes("/upload/image")) {
     return directories.images
@@ -299,14 +304,23 @@ const validateUpload = async (req, res, next) => {
   // Update file URL to match the correct directory structure
   // This ensures front-end references point to the proper location
   if (req.file) {
-    // Extract the base directory where file was saved
-    const baseDir = path.basename(path.dirname(req.file.path))
+    // Get the full path and determine which subdirectory it's in
+    const fullDirPath = path.dirname(req.file.path)
+
+    // Find which of our predefined directories this file is in
+    let subDir = "temp" // Default fallback
+    for (const [key, dirPath] of Object.entries(directories)) {
+      if (fullDirPath === dirPath) {
+        subDir = key
+        break
+      }
+    }
 
     // Ensure URLs consistently use forward slashes
     req.file.filename = req.file.filename.replace(/\\/g, '/')
 
     // Update the path that will be sent to the client
-    req.file.url = `/uploads/${baseDir}/${req.file.filename}`
+    req.file.url = `/uploads/${subDir}/${req.file.filename}`
 
     logger.debug(`File URL set to: ${req.file.url}`)
   }

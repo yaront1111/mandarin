@@ -80,15 +80,17 @@ app.use(corsErrorHandler)
 // Request logging
 app.use(requestLogger)
 
-// Set static folder
+// Set static folder for public assets
 app.use(express.static(path.join(__dirname, "public")))
 
-// Ensure uploads directory exists
-const uploadsPath = path.join(__dirname, "uploads")
+
+// Ensure uploads directory exists using process.cwd() to match your upload middleware
+const uploadsPath = path.join(process.cwd(), "uploads")
 if (!fs.existsSync(uploadsPath)) {
   fs.mkdirSync(uploadsPath, { recursive: true })
   logger.info(`Created uploads directory: ${uploadsPath}`)
 }
+
 
 // Ensure required subdirectories exist
 const requiredDirs = ['images', 'photos', 'videos', 'messages', 'profiles', 'stories', 'temp', 'deleted']

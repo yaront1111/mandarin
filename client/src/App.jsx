@@ -19,6 +19,7 @@ import Profile from "./pages/Profile"
 import Settings from "./pages/Settings.jsx"
 import NotFound from "./pages/NotFound"
 import Home from "./pages/Home"
+import Messages from "./pages/Messages.jsx"
 import Subscription from "./pages/Subscription" // Import the Subscription component
 
 function App() {
@@ -56,6 +57,14 @@ function App() {
                         element={
                           <PrivateRoute>
                             <Profile />
+                          </PrivateRoute>
+                        }
+                      />
+                      <Route
+                        path="/Messages"
+                        element={
+                          <PrivateRoute>
+                            <Messages />
                           </PrivateRoute>
                         }
                       />
