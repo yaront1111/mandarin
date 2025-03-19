@@ -114,6 +114,8 @@
   align-items: center;
   cursor: pointer;
   transition: transform var(--transition-normal);
+  margin: 0 5px;
+  width: 80px; /* Fixed width to ensure consistent spacing */
 }
 
 .story-thumbnail:hover {
@@ -132,6 +134,7 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  position: relative; /* Ensure proper positioning context */
 }
 
 .story-avatar-border.viewed {
