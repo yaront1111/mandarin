@@ -1,10 +1,19 @@
-// Enhanced User.js model with improved security, validation, and performance
-const mongoose = require("mongoose")
-const bcrypt = require("bcryptjs")
-const crypto = require("crypto")
-const validator = require("validator")
+/**
+ * Enhanced User Model
+ * -------------------
+ * This file defines the User model with advanced security, validation,
+ * and performance optimizations. It uses ES Modules and modern JavaScript.
+ */
 
-const photoSchema = new mongoose.Schema(
+import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
+import validator from "validator";
+
+const { Schema, model } = mongoose;
+
+// Photo subdocument schema
+const photoSchema = new Schema(
   {
     url: {
       type: String,
@@ -23,10 +32,11 @@ const photoSchema = new mongoose.Schema(
       },
     },
   },
-  { timestamps: true },
-)
+  { timestamps: true }
+);
 
-const partnerInfoSchema = new mongoose.Schema({
+// Partner information subdocument schema
+const partnerInfoSchema = new Schema({
   nickname: String,
   gender: {
     type: String,
@@ -36,9 +46,10 @@ const partnerInfoSchema = new mongoose.Schema({
     type: Number,
     min: [18, "Partner must be at least 18 years old"],
   },
-})
+});
 
-const userSchema = new mongoose.Schema(
+// Main User schema
+const userSchema = new Schema(
   {
     email: {
       type: String,
@@ -89,7 +100,8 @@ const userSchema = new mongoose.Schema(
         type: String,
         enum: {
           values: ["male", "female", "non-binary", "other", ""],
-          message: "Gender must be male, female, non-binary, other, or empty",
+          message:
+            "Gender must be male, female, non-binary, other, or empty",
         },
         default: "",
       },
@@ -177,7 +189,8 @@ const userSchema = new mongoose.Schema(
     },
     dailyLikesReset: {
       type: Date,
-      default: () => new Date(new Date().setHours(0, 0, 0, 0) + 24 * 60 * 60 * 1000), // Next day at midnight
+      default: () =>
+        new Date(new Date().setHours(0, 0, 0, 0) + 24 * 60 * 60 * 1000), // Next day at midnight
     },
     lastStoryCreated: {
       type: Date,
@@ -203,295 +216,315 @@ const userSchema = new mongoose.Schema(
         showOnlineStatus: { type: Boolean, default: true },
         showReadReceipts: { type: Boolean, default: true },
         showLastSeen: { type: Boolean, default: true },
-        allowStoryReplies: { type: String, default: "everyone", enum: ["everyone", "friends", "none"] },
+        allowStoryReplies: {
+          type: String,
+          default: "everyone",
+          enum: ["everyone", "friends", "none"],
+        },
       },
       theme: {
-        mode: { type: String, default: "light", enum: ["light", "dark", "system"] },
+        mode: {
+          type: String,
+          default: "light",
+          enum: ["light", "dark", "system"],
+        },
         color: { type: String, default: "default" },
       },
     },
     // Blocked users list
-    blockedUsers: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    }],
+    blockedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
     // Date tracking for analytics
     createdByIp: String,
     lastModifiedDate: {
       type: Date,
-      default: Date.now
+      default: Date.now,
     },
   },
   {
     timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
-  },
-)
+  }
+);
 
 // Virtual field for age calculation
 userSchema.virtual("age").get(function () {
-  return this.details && this.details.age ? this.details.age : null
-})
+  return this.details && this.details.age ? this.details.age : null;
+});
 
 // Virtual field for subscription status
 userSchema.virtual("isSubscriptionActive").get(function () {
-  return this.isPaid && this.subscriptionExpiry && this.subscriptionExpiry > new Date()
-})
+  return (
+    this.isPaid &&
+    this.subscriptionExpiry &&
+    this.subscriptionExpiry > new Date()
+  );
+});
 
-// Index for efficient queries
-userSchema.index({ "details.location": "text", "details.interests": "text" })
-userSchema.index({ isOnline: 1, lastActive: -1 })
-userSchema.index({ email: 1, nickname: 1 })
-userSchema.index({ accountTier: 1 })
-userSchema.index({ "details.age": 1, "details.gender": 1 })
+// Indexes for efficient queries
+userSchema.index({ "details.location": "text", "details.interests": "text" });
+userSchema.index({ isOnline: 1, lastActive: -1 });
+userSchema.index({ email: 1, nickname: 1 });
+userSchema.index({ accountTier: 1 });
+userSchema.index({ "details.age": 1, "details.gender": 1 });
 
-// Pre-save middleware to ensure username is set
+// Pre-save middleware to ensure username and other defaults are set
 userSchema.pre("save", async function (next) {
   // Generate username if not set
   if (!this.username) {
     if (this.email) {
-      this.username = this.email.split("@")[0]
+      this.username = this.email.split("@")[0];
     } else if (this.nickname) {
-      this.username = this.nickname.toLowerCase().replace(/\s+/g, "_")
+      this.username = this.nickname.toLowerCase().replace(/\s+/g, "_");
     } else {
-      this.username = `user_${this._id.toString().slice(-6)}`
+      this.username = `user_${this._id.toString().slice(-6)}`;
     }
   }
 
-  // If name is not set, use nickname or username
+  // Set name if not provided
   if (!this.name) {
-    this.name = this.nickname || this.username
+    this.name = this.nickname || this.username;
   }
 
-  // If profilePicture is not set but avatar is, use avatar
+  // Use avatar as profilePicture if not set
   if (!this.profilePicture && this.avatar) {
-    this.profilePicture = this.avatar
+    this.profilePicture = this.avatar;
   }
 
-  // Ensure details object exists
+  // Ensure details exists
   if (!this.details) {
-    this.details = {}
+    this.details = {};
   }
 
-  // Handle gender validation
+  // Default gender handling
   if (this.details.gender === undefined || this.details.gender === null) {
-    this.details.gender = ""
+    this.details.gender = "";
   }
 
-  // Set account tier based on gender and payment status
-  if (this.isModified("details.gender") || this.isModified("isPaid") || this.isModified("isCouple")) {
-    this.setAccountTier()
+  // Set account tier if relevant fields have changed
+  if (
+    this.isModified("details.gender") ||
+    this.isModified("isPaid") ||
+    this.isModified("isCouple")
+  ) {
+    this.setAccountTier();
   }
 
-  // Reset daily likes if needed
-  const now = new Date()
+  // Reset daily likes if reset time has passed
+  const now = new Date();
   if (this.dailyLikesReset && now >= this.dailyLikesReset) {
-    this.dailyLikesRemaining = this.getMaxDailyLikes()
-    this.dailyLikesReset = new Date(new Date().setHours(0, 0, 0, 0) + 24 * 60 * 60 * 1000) // Next day at midnight
+    this.dailyLikesRemaining = this.getMaxDailyLikes();
+    this.dailyLikesReset = new Date(
+      new Date().setHours(0, 0, 0, 0) + 24 * 60 * 60 * 1000
+    );
   }
 
   // Update lastModifiedDate
-  this.lastModifiedDate = Date.now()
+  this.lastModifiedDate = Date.now();
 
-  next()
-})
+  next();
+});
 
-// Method to set account tier based on gender and payment status
+// Instance methods
+
+// Sets the account tier based on user properties
 userSchema.methods.setAccountTier = function () {
   if (this.isCouple) {
-    this.accountTier = "COUPLE"
+    this.accountTier = "COUPLE";
   } else if (this.details.gender === "female") {
-    this.accountTier = "FEMALE"
+    this.accountTier = "FEMALE";
   } else if (this.isPaid) {
-    this.accountTier = "PAID"
+    this.accountTier = "PAID";
   } else {
-    this.accountTier = "FREE"
+    this.accountTier = "FREE";
   }
-}
+};
 
-// Method to get max daily likes based on account tier
+// Returns maximum daily likes for the user
 userSchema.methods.getMaxDailyLikes = function () {
   switch (this.accountTier) {
     case "FREE":
-      return 3
+      return 3;
     case "PAID":
     case "FEMALE":
     case "COUPLE":
-      return Number.POSITIVE_INFINITY // Unlimited likes
+      return Number.POSITIVE_INFINITY; // Unlimited likes
     default:
-      return 3
+      return 3;
   }
-}
+};
 
-// Method to check if user can create a story
+// Check if user can create a story
 userSchema.methods.canCreateStory = function () {
   if (this.accountTier === "FREE") {
-    // Free male users can only create 1 story per 72 hours
-    if (!this.lastStoryCreated) return true
-
-    const cooldownPeriod = 72 * 60 * 60 * 1000 // 72 hours in milliseconds
-    const timeSinceLastStory = Date.now() - this.lastStoryCreated.getTime()
-    return timeSinceLastStory >= cooldownPeriod
+    if (!this.lastStoryCreated) return true;
+    const cooldownPeriod = 72 * 60 * 60 * 1000; // 72 hours
+    const timeSinceLastStory = Date.now() - this.lastStoryCreated.getTime();
+    return timeSinceLastStory >= cooldownPeriod;
   }
+  return true;
+};
 
-  // All other account types can create stories without restrictions
-  return true
-}
-
-// Method to check if user can send messages (not just winks)
+// Check if user can send messages
 userSchema.methods.canSendMessages = function () {
-  return this.accountTier !== "FREE" // Only free male users are restricted
-}
+  return this.accountTier !== "FREE";
+};
 
-// Method to check if user has blocked another user
+// Check if user has blocked another user
 userSchema.methods.hasBlocked = function (userId) {
-  return this.blockedUsers.some(id => id.toString() === userId.toString())
-}
+  return this.blockedUsers.some(
+    (id) => id.toString() === userId.toString()
+  );
+};
 
-// Pre-save middleware to hash password
+// Pre-save middleware to hash password if modified
 userSchema.pre("save", async function (next) {
-  // Only hash the password if it's modified
-  if (!this.isModified("password")) return next()
+  if (!this.isModified("password")) return next();
 
   try {
-    // Hash password with cost factor of 12
-    this.password = await bcrypt.hash(this.password, 12)
-
-    // Update passwordChangedAt field
+    this.password = await bcrypt.hash(this.password, 12);
     if (this.isModified("password") && !this.isNew) {
-      this.passwordChangedAt = Date.now() - 1000 // Subtract 1 second to ensure token is created after password change
+      this.passwordChangedAt = Date.now() - 1000; // Ensures token is created after password change
     }
-
-    next()
+    next();
   } catch (error) {
-    next(error)
+    next(error);
   }
-})
+});
 
 // Pre-find middleware to exclude inactive users
 userSchema.pre(/^find/, function (next) {
-  // 'this' refers to the current query
-  this.find({ active: { $ne: false } })
-  next()
-})
+  this.find({ active: { $ne: false } });
+  next();
+});
 
-// Method to check if password is correct
-userSchema.methods.correctPassword = async function (candidatePassword, userPassword) {
-  return await bcrypt.compare(candidatePassword, userPassword)
-}
+// Compare candidate password with stored hash
+userSchema.methods.correctPassword = async function (
+  candidatePassword,
+  userPassword
+) {
+  return await bcrypt.compare(candidatePassword, userPassword);
+};
 
-// Method to check if password was changed after token was issued
+// Check if password was changed after a JWT was issued
 userSchema.methods.changedPasswordAfter = function (JWTTimestamp) {
   if (this.passwordChangedAt) {
-    const changedTimestamp = Number.parseInt(this.passwordChangedAt.getTime() / 1000, 10)
-    return JWTTimestamp < changedTimestamp
+    const changedTimestamp = parseInt(
+      this.passwordChangedAt.getTime() / 1000,
+      10
+    );
+    return JWTTimestamp < changedTimestamp;
   }
-  return false
-}
+  return false;
+};
 
-// Method to create password reset token
+// Create a password reset token and set its expiration
 userSchema.methods.createPasswordResetToken = function () {
-  const resetToken = crypto.randomBytes(32).toString("hex")
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  this.passwordResetToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
+  this.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+  return resetToken;
+};
 
-  this.passwordResetToken = crypto.createHash("sha256").update(resetToken).digest("hex")
-  this.passwordResetExpires = Date.now() + 10 * 60 * 1000 // 10 minutes
-
-  return resetToken
-}
-
-// Method to create email verification token
+// Create an email verification token and set its expiration
 userSchema.methods.createVerificationToken = function () {
-  const verificationToken = crypto.randomBytes(32).toString("hex")
+  const verificationToken = crypto.randomBytes(32).toString("hex");
+  this.verificationToken = crypto
+    .createHash("sha256")
+    .update(verificationToken)
+    .digest("hex");
+  this.verificationTokenExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+  return verificationToken;
+};
 
-  this.verificationToken = crypto.createHash("sha256").update(verificationToken).digest("hex")
-  this.verificationTokenExpires = Date.now() + 24 * 60 * 60 * 1000 // 24 hours
-
-  return verificationToken
-}
-
-// Method to create refresh token
+// Create a refresh token and set its expiration
 userSchema.methods.createRefreshToken = function () {
-  const refreshToken = crypto.randomBytes(40).toString("hex")
+  const refreshToken = crypto.randomBytes(40).toString("hex");
+  this.refreshToken = crypto
+    .createHash("sha256")
+    .update(refreshToken)
+    .digest("hex");
+  this.refreshTokenExpires = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+  return refreshToken;
+};
 
-  this.refreshToken = crypto.createHash("sha256").update(refreshToken).digest("hex")
-  this.refreshTokenExpires = Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
-
-  return refreshToken
-}
-
-// Method to check if account is locked
+// Check if the account is currently locked
 userSchema.methods.isLocked = function () {
-  return this.lockUntil && this.lockUntil > Date.now()
-}
+  return this.lockUntil && this.lockUntil > Date.now();
+};
 
-// Method to increment login attempts
+// Increment login attempts and lock the account if necessary
 userSchema.methods.incrementLoginAttempts = async function () {
-  // Reset login attempts if lock has expired
   if (this.lockUntil && this.lockUntil < Date.now()) {
-    this.loginAttempts = 1
-    this.lockUntil = undefined
+    this.loginAttempts = 1;
+    this.lockUntil = undefined;
   } else {
-    // Increment login attempts
-    this.loginAttempts += 1
-
-    // Lock account if max attempts reached
+    this.loginAttempts += 1;
     if (this.loginAttempts >= 5) {
-      this.lockUntil = Date.now() + 60 * 60 * 1000 // 1 hour
+      this.lockUntil = Date.now() + 60 * 60 * 1000; // 1 hour
     }
   }
+  await this.save();
+};
 
-  await this.save()
-}
-
-// Static method to find users by location
-userSchema.statics.findByLocation = async function(location, limit = 20) {
+// Static method: find users by location with a regex search
+userSchema.statics.findByLocation = async function (location, limit = 20) {
   return this.find({
-    "details.location": { $regex: location, $options: 'i' }
+    "details.location": { $regex: location, $options: "i" },
   })
-  .select('nickname details.age details.gender details.location photos isOnline lastActive')
-  .limit(limit)
-}
+    .select(
+      "nickname details.age details.gender details.location photos isOnline lastActive"
+    )
+    .limit(limit);
+};
 
-// Static method to find users by interests
-userSchema.statics.findByInterests = async function(interests, limit = 20) {
-  // Convert string to array if needed
+// Static method: find users by interests
+userSchema.statics.findByInterests = async function (interests, limit = 20) {
   const interestsArray = Array.isArray(interests)
     ? interests
-    : interests.split(',').map(i => i.trim())
-
+    : interests.split(",").map((i) => i.trim());
   return this.find({
-    "details.interests": { $in: interestsArray }
+    "details.interests": { $in: interestsArray },
   })
-  .select('nickname details.age details.gender details.location details.interests photos isOnline lastActive')
-  .limit(limit)
-}
+    .select(
+      "nickname details.age details.gender details.location details.interests photos isOnline lastActive"
+    )
+    .limit(limit);
+};
 
-// Static method to find online users
-userSchema.statics.findOnlineUsers = async function(limit = 20, skip = 0) {
+// Static method: find online users with pagination
+userSchema.statics.findOnlineUsers = async function (limit = 20, skip = 0) {
   return this.find({
-    isOnline: true
+    isOnline: true,
   })
-  .select('nickname details.age details.gender details.location photos isOnline lastActive')
-  .sort({ lastActive: -1 })
-  .skip(skip)
-  .limit(limit)
-}
+    .select("nickname details.age details.gender details.location photos isOnline lastActive")
+    .sort({ lastActive: -1 })
+    .skip(skip)
+    .limit(limit);
+};
 
-// Add timestamps for the last time password was changed
-userSchema.methods.updatePassword = async function(newPassword) {
-  this.password = newPassword
-  this.passwordChangedAt = Date.now()
-  this.version = (this.version || 0) + 1
-  return this.save()
-}
+// Update password and increment version for token invalidation
+userSchema.methods.updatePassword = async function (newPassword) {
+  this.password = newPassword;
+  this.passwordChangedAt = Date.now();
+  this.version = (this.version || 0) + 1;
+  return this.save();
+};
 
-// Method to generate a secure password reset link
-userSchema.methods.generatePasswordResetLink = function(baseUrl) {
-  const resetToken = this.createPasswordResetToken()
-  return `${baseUrl}/reset-password?token=${resetToken}`
-}
+// Generate a secure password reset link based on a base URL
+userSchema.methods.generatePasswordResetLink = function (baseUrl) {
+  const resetToken = this.createPasswordResetToken();
+  return `${baseUrl}/reset-password?token=${resetToken}`;
+};
 
-const User = mongoose.model("User", userSchema)
+const User = model("User", userSchema);
 
-module.exports = User
+export default User;

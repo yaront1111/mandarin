@@ -1,7 +1,6 @@
-// server/socket/socketHandlers.js
-const { Message, User } = require("../models")
-const logger = require("../logger")
-const mongoose = require("mongoose")
+import { Message, User } from "../models/index.js";
+import logger from "../logger.js";
+import mongoose from "mongoose";
 
 /**
  * Handle user disconnect
@@ -65,11 +64,12 @@ const sendMessageNotification = async (io, sender, recipient, message) => {
         });
       }
 
-      // Store notification in database if the model exists
+      // Attempt to store a notification in the database if the model exists
       try {
-        // Check if Notification model is available
-        const Notification = mongoose.models.Notification ||
-                            require("../models/Notification");
+        // Use the Notification model if it exists; otherwise, dynamically import it.
+        const Notification =
+          mongoose.models.Notification ||
+          (await import("../models/Notification.js")).default;
 
         if (Notification) {
           await Notification.create({
@@ -81,7 +81,6 @@ const sendMessageNotification = async (io, sender, recipient, message) => {
           });
         }
       } catch (notificationError) {
-        // If Notification model doesn't exist or there's another error, just log it
         logger.debug(`Notification saving skipped: ${notificationError.message}`);
       }
     }
@@ -203,7 +202,7 @@ const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
         });
       }
 
-      // Send message notification - pass io to the function
+      // Send message notification
       sendMessageNotification(io, socket.user, recipient, messageResponse);
 
       logger.info(`Message sent from ${socket.user._id} to ${recipientId}`);
@@ -220,21 +219,12 @@ const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
   socket.on("typing", async (data) => {
     try {
       const { recipientId } = data;
-
-      // Apply rate limiting for typing events
       try {
         await typingLimiter.consume(socket.user._id.toString());
       } catch (rateLimitError) {
-        // Silently fail rate limiting for typing indicators
         return;
       }
-
-      // Validate recipient ID
-      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
-        return;
-      }
-
-      // Forward typing indicator to recipient if online
+      if (!mongoose.Types.ObjectId.isValid(recipientId)) return;
       if (userConnections.has(recipientId)) {
         userConnections.get(recipientId).forEach((recipientSocketId) => {
           io.to(recipientSocketId).emit("userTyping", {
@@ -252,35 +242,25 @@ const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
   socket.on("initiateCall", async (data) => {
     try {
       const { recipientId } = data;
-
-      // Apply rate limiting
       try {
         await callLimiter.consume(socket.user._id.toString());
       } catch (rateLimitError) {
         socket.emit("callError", { error: "Rate limit exceeded. Please try again later." });
         return;
       }
-
-      // Validate recipient ID
       if (!mongoose.Types.ObjectId.isValid(recipientId)) {
         socket.emit("callError", { error: "Invalid recipient ID" });
         return;
       }
-
-      // Check if recipient exists
       const recipient = await User.findById(recipientId);
       if (!recipient) {
         socket.emit("callError", { error: "Recipient not found" });
         return;
       }
-
-      // Check if recipient is online
       if (!userConnections.has(recipientId)) {
         socket.emit("callError", { error: "Recipient is offline" });
         return;
       }
-
-      // Generate call data
       const callData = {
         callId: new mongoose.Types.ObjectId().toString(),
         caller: {
@@ -293,15 +273,10 @@ const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
         },
         timestamp: Date.now(),
       };
-
-      // Send call request to recipient
       userConnections.get(recipientId).forEach((recipientSocketId) => {
         io.to(recipientSocketId).emit("incomingCall", callData);
       });
-
-      // Send confirmation to caller
       socket.emit("callInitiated", callData);
-
       logger.info(`Call initiated from ${socket.user._id} to ${recipientId}`);
     } catch (error) {
       logger.error(`Error initiating call: ${error.message}`);
@@ -313,27 +288,19 @@ const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
   socket.on("answerCall", async (data) => {
     try {
       const { callerId, accept } = data;
-
-      // Validate caller ID
       if (!mongoose.Types.ObjectId.isValid(callerId)) {
         socket.emit("callError", { error: "Invalid caller ID" });
         return;
       }
-
-      // Check if caller exists
       const caller = await User.findById(callerId);
       if (!caller) {
         socket.emit("callError", { error: "Caller not found" });
         return;
       }
-
-      // Check if caller is online
       if (!userConnections.has(callerId)) {
         socket.emit("callError", { error: "Caller is no longer online" });
         return;
       }
-
-      // Generate call response data
       const callData = {
         respondent: {
           userId: socket.user._id,
@@ -343,15 +310,10 @@ const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
         accepted: accept,
         timestamp: Date.now(),
       };
-
-      // Send response to caller
       userConnections.get(callerId).forEach((callerSocketId) => {
         io.to(callerSocketId).emit("callAnswered", callData);
       });
-
-      // Send confirmation to respondent
       socket.emit("callAnswered", callData);
-
       logger.info(`Call from ${callerId} ${accept ? "accepted" : "rejected"} by ${socket.user._id}`);
     } catch (error) {
       logger.error(`Error answering call: ${error.message}`);
@@ -368,8 +330,4 @@ const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
   logger.info(`Socket handlers registered for user ${socket.user._id}`);
 };
 
-module.exports = {
-  registerSocketHandlers,
-  sendMessageNotification,
-  handleUserDisconnect
-};
+export { registerSocketHandlers, sendMessageNotification, handleUserDisconnect };

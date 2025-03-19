@@ -1,18 +1,18 @@
-"use strict";
+import express from "express";
+import mongoose from "mongoose";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { fileTypeFromBuffer } from "file-type";
+import sharp from "sharp";
+import rateLimit from "express-rate-limit";
 
-const express = require("express");
-const { User, Message } = require("../models");
-const { protect, asyncHandler } = require("../middleware/auth");
-const logger = require("../logger");
-const mongoose = require("mongoose");
+import { User, Message } from "../models/index.js"; // Adjust if needed
+import { protect, asyncHandler } from "../middleware/auth.js";
+import logger from "../logger.js";
+import config from "../config.js";
+
 const router = express.Router();
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
-const config = require("../config");
-const { fileTypeFromBuffer } = require("file-type");
-const sharp = require("sharp");
-const rateLimit = require("express-rate-limit");
 
 // Rate limiting middleware for message endpoints
 const messageRateLimit = rateLimit({
@@ -142,7 +142,9 @@ router.post(
           fileMetadata.dimensions = { width: metadata.width, height: metadata.height };
 
           const thumbnailPath = filePath + "_thumb";
-          await image.resize(300, 300, { fit: "inside", withoutEnlargement: true }).toFile(thumbnailPath);
+          await image
+            .resize(300, 300, { fit: "inside", withoutEnlargement: true })
+            .toFile(thumbnailPath);
           fileMetadata.thumbnail = `/uploads/messages/${req.file.filename}_thumb`;
         } catch (processError) {
           logger.error(`Error processing image: ${processError.message}`);
@@ -349,6 +351,7 @@ router.post(
     }
   })
 );
+
 /**
  * @route   PUT /api/messages/:id/read
  * @desc    Mark a message as read
@@ -472,13 +475,14 @@ router.get(
       let detailedUnread = [];
       if (unreadBySender.length > 0) {
         const senderIds = unreadBySender.map((item) => item._id);
-        const senders = await User.find({ _id: { $in: senderIds } }, { nickname: 1, photos: 1 }).lean();
+        const senders = await User.find({ _id: { $in: senderIds } }, { nickname: 1 }).lean();
         detailedUnread = unreadBySender.map((item) => {
           const sender = senders.find((s) => s._id.toString() === item._id.toString());
           return {
             senderId: item._id,
             senderName: sender ? sender.nickname : "Unknown",
-            senderPhoto: sender && sender.photos && sender.photos.length > 0 ? sender.photos[0].url : null,
+            senderPhoto:
+              sender && sender.photos && sender.photos.length > 0 ? sender.photos[0].url : null,
             count: item.count,
             lastMessage: item.lastMessage,
           };
@@ -521,11 +525,18 @@ router.delete(
       const deleteMode = req.query.mode || "self";
 
       // If message is a file type and conditions apply, attempt file deletion
-      if (message.type === "file" && isSender && (deleteMode === "both" || (message.deletedByRecipient && deleteMode === "self"))) {
+      if (
+        message.type === "file" &&
+        isSender &&
+        (deleteMode === "both" || (message.deletedByRecipient && deleteMode === "self"))
+      ) {
         try {
           if (message.metadata && message.metadata.fileUrl) {
             const fileUrl = message.metadata.fileUrl;
-            const filePath = path.join(process.cwd(), fileUrl.replace(/^\/uploads/, config.FILE_UPLOAD_PATH));
+            const filePath = path.join(
+              process.cwd(),
+              fileUrl.replace(/^\/uploads/, config.FILE_UPLOAD_PATH)
+            );
             if (fs.existsSync(filePath)) {
               fs.unlinkSync(filePath);
               logger.info(`Deleted file: ${filePath}`);
@@ -552,13 +563,17 @@ router.delete(
           logger.info(`Message ${req.params.id} permanently deleted`);
         } else {
           await message.save();
-          logger.info(`Message ${req.params.id} marked as deleted for ${isSender ? "sender" : "recipient"}`);
+          logger.info(
+            `Message ${req.params.id} marked as deleted for ${isSender ? "sender" : "recipient"}`
+          );
         }
       } else if (deleteMode === "both" && isSender) {
         await Message.deleteOne({ _id: message._id });
         logger.info(`Message ${req.params.id} permanently deleted by sender for both users`);
       } else {
-        return res.status(400).json({ success: false, error: "Invalid delete mode or you are not authorized for this action" });
+        return res
+          .status(400)
+          .json({ success: false, error: "Invalid delete mode or you are not authorized for this action" });
       }
 
       res.status(200).json({ success: true, message: "Message deleted" });
@@ -602,7 +617,11 @@ router.get(
       const page = Number.parseInt(req.query.page) || 1;
       const limit = Number.parseInt(req.query.limit) || 20;
       const skip = (page - 1) * limit;
-      const messages = await Message.find(searchQuery).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+      const messages = await Message.find(searchQuery)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
       const total = await Message.countDocuments(searchQuery);
       const uniqueUserIds = new Set();
       messages.forEach((msg) => {
@@ -615,7 +634,8 @@ router.get(
       });
       const users = await User.find({ _id: { $in: Array.from(uniqueUserIds) } }, { nickname: 1 });
       const enhancedMessages = messages.map((msg) => {
-        const otherUserId = msg.sender.toString() === req.user._id.toString() ? msg.recipient.toString() : msg.sender.toString();
+        const otherUserId =
+          msg.sender.toString() === req.user._id.toString() ? msg.recipient.toString() : msg.sender.toString();
         const otherUser = users.find((u) => u._id.toString() === otherUserId);
         return { ...msg, conversationWith: { _id: otherUserId, nickname: otherUser ? otherUser.nickname : "Unknown" } };
       });
@@ -786,4 +806,4 @@ router.delete(
   })
 );
 
-module.exports = router;
+export default router;

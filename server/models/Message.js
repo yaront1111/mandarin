@@ -1,10 +1,12 @@
-// models/Message.js
-const mongoose = require('mongoose');
-const sanitizeHtml = require('sanitize-html');
-const logger = require('../logger');
+// models/Message.js - Enhanced with ES modules and improved structure
+import mongoose from 'mongoose';
+import sanitizeHtml from 'sanitize-html';
+import logger from '../logger.js';
+
+const { Schema, model, Types } = mongoose;
 
 // Define attachment schema for media messages
-const AttachmentSchema = new mongoose.Schema({
+const AttachmentSchema = new Schema({
   type: {
     type: String,
     enum: ['image', 'video', 'audio', 'file'],
@@ -42,9 +44,9 @@ const AttachmentSchema = new mongoose.Schema({
 });
 
 // Define reaction schema for message reactions
-const ReactionSchema = new mongoose.Schema({
+const ReactionSchema = new Schema({
   user: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
@@ -66,15 +68,15 @@ const ReactionSchema = new mongoose.Schema({
 });
 
 // Main Message Schema
-const MessageSchema = new mongoose.Schema({
+const MessageSchema = new Schema({
   sender: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: 'User',
     required: true,
     index: true
   },
   recipient: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: 'User',
     required: true,
     index: true
@@ -154,7 +156,7 @@ const MessageSchema = new mongoose.Schema({
   },
   // For system messages, which user initiated the event
   initiatedBy: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: 'User'
   },
   // For forwarded messages
@@ -163,18 +165,17 @@ const MessageSchema = new mongoose.Schema({
     default: false
   },
   originalMessage: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: 'Message'
   },
   // Message reactions (likes, etc)
   reactions: [ReactionSchema],
-  // Additional metadata (location removed)
+  // Additional metadata
   metadata: {
     clientMessageId: {
       type: String, // For client-side message handling
       index: true
     },
-    // Removed the location property since location messages are no longer used.
     // Contact info for sharing contacts
     contact: {
       name: String,
@@ -231,28 +232,37 @@ MessageSchema.pre('save', function(next) {
 // Static method to get conversation between two users
 MessageSchema.statics.getConversation = async function(user1Id, user2Id, options = {}) {
   const { page = 1, limit = 50, includeDeleted = false } = options;
+
+  // Ensure we have valid ObjectIds
+  const u1 = typeof user1Id === 'string' ? Types.ObjectId(user1Id) : user1Id;
+  const u2 = typeof user2Id === 'string' ? Types.ObjectId(user2Id) : user2Id;
+
   const query = {
     $or: [
-      { sender: user1Id, recipient: user2Id },
-      { sender: user2Id, recipient: user1Id }
+      { sender: u1, recipient: u2 },
+      { sender: u2, recipient: u1 }
     ]
   };
+
   if (!includeDeleted) {
     query.$or = query.$or.map(condition => {
-      if (condition.sender.toString() === user1Id.toString()) {
+      if (condition.sender.toString() === u1.toString()) {
         return { ...condition, deletedBySender: false };
       } else {
         return { ...condition, deletedByRecipient: false };
       }
     });
   }
+
   try {
     const messages = await this.find(query)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .lean();
+
     const total = await this.countDocuments(query);
+
     return {
       messages,
       pagination: {
@@ -295,7 +305,7 @@ MessageSchema.statics.getUnreadCountBySender = async function(recipientId) {
     return this.aggregate([
       {
         $match: {
-          recipient: mongoose.Types.ObjectId(recipientId),
+          recipient: Types.ObjectId(recipientId),
           read: false,
           deletedByRecipient: false
         }
@@ -366,9 +376,11 @@ MessageSchema.methods.removeReaction = async function(userId) {
 MessageSchema.methods.markAsDeletedFor = async function(userId, mode = 'self') {
   const isSender = this.sender.toString() === userId.toString();
   const isRecipient = this.recipient.toString() === userId.toString();
+
   if (!isSender && !isRecipient) {
     throw new Error('User is not authorized to delete this message');
   }
+
   if (mode === 'self') {
     if (isSender) {
       this.deletedBySender = true;
@@ -382,9 +394,11 @@ MessageSchema.methods.markAsDeletedFor = async function(userId, mode = 'self') {
   } else {
     throw new Error('Invalid delete mode or unauthorized action');
   }
+
   if (this.deletedBySender && this.deletedByRecipient) {
-    return mongoose.model('Message').deleteOne({ _id: this._id });
+    return model('Message').deleteOne({ _id: this._id });
   }
+
   return this.save();
 };
 
@@ -392,9 +406,14 @@ MessageSchema.methods.markAsDeletedFor = async function(userId, mode = 'self') {
 MessageSchema.methods.isHiddenFrom = function(userId) {
   const isSender = this.sender.toString() === userId.toString();
   const isRecipient = this.recipient.toString() === userId.toString();
+
   if (isSender && this.deletedBySender) return true;
   if (isRecipient && this.deletedByRecipient) return true;
+
   return false;
 };
 
-module.exports = mongoose.model('Message', MessageSchema);
+// Create the Message model
+const Message = model('Message', MessageSchema);
+
+export default Message;

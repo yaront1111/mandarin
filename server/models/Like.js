@@ -5,9 +5,11 @@
  * It uses a compound index to ensure a user can only like another user once.
  */
 
-const mongoose = require("mongoose")
-const ObjectId = mongoose.Types.ObjectId
-const logger = require("../logger")
+import mongoose from 'mongoose';
+import logger from '../logger.js';
+
+const { Schema, model, Types } = mongoose;
+const { ObjectId } = Types;
 
 /**
  * Safely converts any ID to a MongoDB ObjectId if possible
@@ -34,11 +36,14 @@ const safeObjectId = (id) => {
   }
 };
 
-const likeSchema = new mongoose.Schema(
+/**
+ * Schema for the Like model
+ */
+const likeSchema = new Schema(
   {
     // User who initiated the like
     sender: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "User",
       required: [true, "Sender is required"],
       index: true,
@@ -46,7 +51,7 @@ const likeSchema = new mongoose.Schema(
 
     // User who was liked
     recipient: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "User",
       required: [true, "Recipient is required"],
       index: true,
@@ -66,9 +71,15 @@ const likeSchema = new mongoose.Schema(
       index: true, // Index for efficient querying of unseen likes
     },
 
+    // Timestamp for when the like was seen
+    seenAt: {
+      type: Date,
+      default: null
+    },
+
     // Metadata object for extensibility
     metadata: {
-      type: mongoose.Schema.Types.Mixed,
+      type: Schema.Types.Mixed,
       default: {},
     },
   },
@@ -120,7 +131,7 @@ likeSchema.pre("validate", function(next) {
 /**
  * Normalize IDs before saving
  */
-likeSchema.pre("save", function(next) {
+likeSchema.pre("save", function (next) {
   // Convert sender to ObjectId
   const senderId = safeObjectId(this.sender);
   if (!senderId) {
@@ -141,7 +152,7 @@ likeSchema.pre("save", function(next) {
 /**
  * Add timestamp to seen field when it changes to true
  */
-likeSchema.pre("save", function(next) {
+likeSchema.pre("save", function (next) {
   if (this.isModified("seen") && this.seen === true) {
     this.set("seenAt", new Date());
   }
@@ -400,6 +411,6 @@ likeSchema.virtual('isMatch').get(async function() {
   }
 });
 
-const Like = mongoose.model("Like", likeSchema);
+const Like = model("Like", likeSchema);
 
-module.exports = Like;
+export default Like;

@@ -1,13 +1,26 @@
-const User = require("./User")
-const Message = require("./Message")
-const Story = require("./Story")
-const PhotoPermission = require("./PhotoPermission")
-const Like = require("./Like")
+// models/index.js - Enhanced with ES modules and improved imports/exports
+import User from './User.js';
+import Message from './Message.js';
+import Story from './Story.js';
+import PhotoPermission from './PhotoPermission.js';
+import Like from './Like.js';
 
-module.exports = {
-  User: require("./User"),
-  Message: require("./Message"),
-  PhotoPermission: require("./PhotoPermission"),
-  Like: require("./Like"),
+// Export individual models
+export {
+  User,
+  Message,
   Story,
-}
+  PhotoPermission,
+  Like
+};
+
+// Create models object for backward compatibility
+const models = {
+  User,
+  Message,
+  Story,
+  PhotoPermission,
+  Like
+};
+
+export default models;

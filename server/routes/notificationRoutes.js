@@ -1,49 +1,49 @@
-// server/routes/notificationRoutes.js
-const express = require("express")
-const router = express.Router()
-const mongoose = require("mongoose")
-const { protect, asyncHandler } = require("../middleware/auth")
-const logger = require("../logger")
+import express from "express";
+import mongoose from "mongoose";
+import { protect, asyncHandler } from "../middleware/auth.js";
+import logger from "../logger.js";
+
+const router = express.Router();
 
 // We'll try to use the Notification model if it exists, otherwise we'll create a basic schema
 let Notification;
 try {
-  Notification = mongoose.model('Notification');
+  Notification = mongoose.model("Notification");
 } catch (err) {
   // Define a basic notification schema if not already defined
   const notificationSchema = new mongoose.Schema({
     recipient: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
-      index: true
+      index: true,
     },
     type: {
       type: String,
-      enum: ['message', 'like', 'match', 'story', 'system'],
-      required: true
+      enum: ["message", "like", "match", "story", "system"],
+      required: true,
     },
     sender: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      ref: "User",
     },
     content: String,
     reference: {
       type: mongoose.Schema.Types.ObjectId,
-      refPath: 'type'
+      refPath: "type",
     },
     read: {
       type: Boolean,
-      default: false
+      default: false,
     },
     createdAt: {
       type: Date,
       default: Date.now,
-      index: true
-    }
+      index: true,
+    },
   });
 
-  Notification = mongoose.model('Notification', notificationSchema);
+  Notification = mongoose.model("Notification", notificationSchema);
   logger.info("Created Notification model schema");
 }
 
@@ -65,7 +65,7 @@ router.get(
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('sender', 'nickname username photos avatar')
+        .populate("sender", "nickname username photos avatar")
         .lean();
 
       const total = await Notification.countDocuments({ recipient: req.user._id });
@@ -76,13 +76,13 @@ router.get(
         total,
         page,
         pages: Math.ceil(total / limit),
-        data: notifications
+        data: notifications,
       });
     } catch (err) {
       logger.error(`Error fetching notifications: ${err.message}`);
       res.status(500).json({
         success: false,
-        error: "Server error while fetching notifications"
+        error: "Server error while fetching notifications",
       });
     }
   })
@@ -103,7 +103,7 @@ router.put(
       if (!ids || !Array.isArray(ids) || ids.length === 0) {
         return res.status(400).json({
           success: false,
-          error: "Notification IDs array is required"
+          error: "Notification IDs array is required",
         });
       }
 
@@ -114,13 +114,13 @@ router.put(
 
       res.status(200).json({
         success: true,
-        count: result.modifiedCount
+        count: result.modifiedCount,
       });
     } catch (err) {
       logger.error(`Error marking notifications as read: ${err.message}`);
       res.status(500).json({
         success: false,
-        error: "Server error while marking notifications as read"
+        error: "Server error while marking notifications as read",
       });
     }
   })
@@ -143,16 +143,16 @@ router.put(
 
       res.status(200).json({
         success: true,
-        count: result.modifiedCount
+        count: result.modifiedCount,
       });
     } catch (err) {
       logger.error(`Error marking all notifications as read: ${err.message}`);
       res.status(500).json({
         success: false,
-        error: "Server error while marking all notifications as read"
+        error: "Server error while marking all notifications as read",
       });
     }
   })
 );
 
-module.exports = router;
+export default router;

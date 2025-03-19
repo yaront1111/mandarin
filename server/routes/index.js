@@ -1,23 +1,29 @@
-const express = require("express")
-const router = express.Router()
+/**
+ * routes/index.js
+ *
+ * Main router file for the API.
+ * Mounts all sub-route modules using ES Modules.
+ */
 
-// Import route files
-const authRoutes = require("./authRoutes")
-const userRoutes = require("./userRoutes")
-const messageRoutes = require("./messageRoutes")
-const storyRoutes = require("./storyRoutes")
-const notificationRoutes = require("./notificationRoutes") // Add this line
+import express from "express";
+import authRoutes from "./authRoutes.js";
+import userRoutes from "./userRoutes.js";
+import messageRoutes from "./messageRoutes.js";
+import storyRoutes from "./storyRoutes.js";
+import notificationRoutes from "./notificationRoutes.js";
 
-// Mount routes
-router.use("/auth", authRoutes)
-router.use("/users", userRoutes)
-router.use("/messages", messageRoutes)
-router.use("/stories", storyRoutes)
-router.use("/notifications", notificationRoutes) // Add this line
+const router = express.Router();
 
-// Health check route
+// Mount sub-routes under the API prefix
+router.use("/auth", authRoutes);
+router.use("/users", userRoutes);
+router.use("/messages", messageRoutes);
+router.use("/stories", storyRoutes);
+router.use("/notifications", notificationRoutes);
+
+// Health check endpoint
 router.get("/health", (req, res) => {
-  res.status(200).json({ status: "ok" })
-})
+  res.status(200).json({ status: "ok" });
+});
 
-module.exports = router
+export default router;

@@ -1,8 +1,9 @@
-const express = require("express")
-const router = express.Router()
-const { protect, asyncHandler } = require("../middleware/auth")
-const User = require("../models/User")
-const logger = require("../logger")
+import express from "express";
+import { protect, asyncHandler } from "../middleware/auth.js";
+import User from "../models/User.js";
+import logger from "../logger.js";
+
+const router = express.Router();
 
 /**
  * @route   GET /api/subscription/status
@@ -14,24 +15,22 @@ router.get(
   protect,
   asyncHandler(async (req, res) => {
     try {
-      const user = await User.findById(req.user._id)
-
+      const user = await User.findById(req.user._id);
       if (!user) {
         return res.status(404).json({
           success: false,
           error: "User not found",
-        })
+        });
       }
 
       // Calculate story cooldown if applicable
-      let storyCooldown = null
+      let storyCooldown = null;
       if (user.accountTier === "FREE" && user.lastStoryCreated) {
-        const cooldownPeriod = 72 * 60 * 60 * 1000 // 72 hours in milliseconds
-        const timeSinceLastStory = Date.now() - new Date(user.lastStoryCreated).getTime()
-        const timeRemaining = cooldownPeriod - timeSinceLastStory
-
+        const cooldownPeriod = 72 * 60 * 60 * 1000; // 72 hours in milliseconds
+        const timeSinceLastStory = Date.now() - new Date(user.lastStoryCreated).getTime();
+        const timeRemaining = cooldownPeriod - timeSinceLastStory;
         if (timeRemaining > 0) {
-          storyCooldown = Math.ceil(timeRemaining / (60 * 60 * 1000)) // hours remaining
+          storyCooldown = Math.ceil(timeRemaining / (60 * 60 * 1000)); // hours remaining
         }
       }
 
@@ -49,16 +48,16 @@ router.get(
           canCreateStory: user.canCreateStory(),
           maxDailyLikes: user.getMaxDailyLikes(),
         },
-      })
+      });
     } catch (err) {
-      logger.error(`Error fetching subscription status: ${err.message}`)
+      logger.error(`Error fetching subscription status: ${err.message}`);
       res.status(500).json({
         success: false,
         error: "Server error",
-      })
+      });
     }
-  }),
-)
+  })
+);
 
 /**
  * @route   POST /api/subscription/upgrade
@@ -70,39 +69,37 @@ router.post(
   protect,
   asyncHandler(async (req, res) => {
     try {
-      const { plan } = req.body
-
+      const { plan } = req.body;
       if (!plan || !["monthly", "yearly"].includes(plan)) {
         return res.status(400).json({
           success: false,
           error: "Valid plan (monthly or yearly) is required",
-        })
+        });
       }
 
-      const user = await User.findById(req.user._id)
-
+      const user = await User.findById(req.user._id);
       if (!user) {
         return res.status(404).json({
           success: false,
           error: "User not found",
-        })
+        });
       }
 
       // Set subscription expiry date
-      const now = new Date()
-      const expiryDate = new Date()
+      const now = new Date();
+      const expiryDate = new Date();
       if (plan === "monthly") {
-        expiryDate.setMonth(expiryDate.getMonth() + 1)
+        expiryDate.setMonth(expiryDate.getMonth() + 1);
       } else {
-        expiryDate.setFullYear(expiryDate.getFullYear() + 1)
+        expiryDate.setFullYear(expiryDate.getFullYear() + 1);
       }
 
       // Update user account
-      user.isPaid = true
-      user.accountTier = "PAID"
-      user.subscriptionExpiry = expiryDate
+      user.isPaid = true;
+      user.accountTier = "PAID";
+      user.subscriptionExpiry = expiryDate;
 
-      await user.save()
+      await user.save();
 
       res.status(200).json({
         success: true,
@@ -112,16 +109,16 @@ router.post(
           isPaid: user.isPaid,
           subscriptionExpiry: user.subscriptionExpiry,
         },
-      })
+      });
     } catch (err) {
-      logger.error(`Error upgrading subscription: ${err.message}`)
+      logger.error(`Error upgrading subscription: ${err.message}`);
       res.status(500).json({
         success: false,
         error: "Server error",
-      })
+      });
     }
-  }),
-)
+  })
+);
 
 /**
  * @route   POST /api/subscription/cancel
@@ -133,25 +130,19 @@ router.post(
   protect,
   asyncHandler(async (req, res) => {
     try {
-      const user = await User.findById(req.user._id)
-
+      const user = await User.findById(req.user._id);
       if (!user) {
         return res.status(404).json({
           success: false,
           error: "User not found",
-        })
+        });
       }
 
       // User will remain premium until subscription expiry
-      user.isPaid = false
-
-      // Only change account tier if it's not FEMALE or COUPLE
-      if (user.accountTier === "PAID") {
-        // Account tier will change to FREE after expiry
-        // For now, we'll keep it as PAID until expiry
-      }
-
-      await user.save()
+      user.isPaid = false;
+      // Only change account tier if it's not FEMALE or COUPLE.
+      // For now, if the account is PAID, we keep it until expiry.
+      await user.save();
 
       res.status(200).json({
         success: true,
@@ -161,15 +152,15 @@ router.post(
           isPaid: user.isPaid,
           subscriptionExpiry: user.subscriptionExpiry,
         },
-      })
+      });
     } catch (err) {
-      logger.error(`Error canceling subscription: ${err.message}`)
+      logger.error(`Error canceling subscription: ${err.message}`);
       res.status(500).json({
         success: false,
         error: "Server error",
-      })
+      });
     }
-  }),
-)
+  })
+);
 
-module.exports = router
+export default router;
