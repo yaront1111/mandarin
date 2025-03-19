@@ -8,7 +8,7 @@ import { toast } from "react-toastify"
 class Logger {
   constructor(name) {
     this.name = name
-    this.logLevel = process.env.NODE_ENV === "production" ? "error" : "debug"
+    this.logLevel = import.meta.env.NODE_ENV === "production" ? "error" : "debug"
     this.levels = { debug: 1, info: 2, warn: 3, error: 4 }
   }
 
@@ -495,7 +495,12 @@ class ApiService {
 
     // Check token before request
     const token = this._getStoredToken()
-    if (token && this.isTokenExpired(token) && !config.url.includes("/auth/refresh-token")) {
+    if (
+      token &&
+      this.isTokenExpired(token) &&
+      !config.url.includes("/auth/refresh-token") &&
+      !config._isRefreshRequest
+    ) {
       // Queue request to be retried after token refresh
       if (!config._tokenRefreshRetry) {
         // Mark request for retry and prevent infinite retry loop
@@ -504,7 +509,9 @@ class ApiService {
         this.requestsToRetry.push(config)
 
         // Trigger token refresh
-        this.refreshToken()
+        this.refreshToken().catch((err) => {
+          this.logger.warn("Token refresh failed in request handler:", err.message)
+        })
 
         // Cancel current request
         const source = axios.CancelToken.source()
@@ -710,11 +717,20 @@ class ApiService {
         // Retry the original request
         return this.api(originalRequest)
       } else {
+        this.logger.warn("Token refresh returned null")
+        // If we're already logged in but token refresh failed, log out
+        if (this._getStoredToken()) {
+          this._handleLogout("Session expired. Please log in again.")
+        }
         throw new Error("Failed to refresh token")
       }
     } catch (refreshError) {
       this.logger.error("Token refresh failed:", refreshError)
-      this._handleLogout("Session expired. Please log in again.")
+
+      // Only log out if we're already logged in
+      if (this._getStoredToken()) {
+        this._handleLogout("Session expired. Please log in again.")
+      }
 
       return Promise.reject({
         success: false,
@@ -803,7 +819,8 @@ class ApiService {
         // Get current token
         const currentToken = this._getStoredToken()
         if (!currentToken) {
-          throw new Error("No token available for refresh")
+          this.logger.warn("No token available for refresh")
+          return null
         }
 
         // Clear any existing token refresh timer
@@ -812,23 +829,22 @@ class ApiService {
           this.tokenRefreshTimer = null
         }
 
-        // Make refresh request
-        const response = await this.api.post(
-          "/auth/refresh-token",
-          {
-            token: currentToken,
+        // Create a new axios instance for this specific request to avoid interceptors
+        const refreshAxios = axios.create({
+          baseURL: this.baseURL,
+          timeout: 10000,
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "x-no-cache": "true",
           },
-          {
-            // Special options for refresh request
-            headers: { "x-no-cache": "true" },
-            _isRefreshRequest: true,
-            // Add timeout to prevent hanging
-            timeout: 10000,
-          },
-        )
+        })
 
-        if (response.success && response.token) {
-          const token = response.token
+        // Make refresh request with the direct axios instance
+        const response = await refreshAxios.post("/auth/refresh-token", { token: currentToken })
+
+        if (response.data && response.data.success && response.data.token) {
+          const token = response.data.token
 
           // Store new token
           this._storeToken(token, localStorage.getItem("token") !== null)
@@ -855,22 +871,28 @@ class ApiService {
 
           return token
         } else {
+          this.logger.warn("Invalid refresh token response:", response.data)
           throw new Error("Invalid refresh token response")
         }
       } catch (error) {
         this.logger.error("Token refresh failed:", error)
 
-        // Clear tokens on refresh failure
-        this._removeToken()
-        this.setAuthToken(null)
+        // Don't clear tokens on every refresh failure - only if it's a 401/403
+        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+          this._removeToken()
+          this.setAuthToken(null)
 
-        // Notify user about authentication failure
-        toast.error("Your session has expired. Please log in again.")
+          // Notify user about authentication failure
+          toast.error("Your session has expired. Please log in again.")
 
-        // Redirect to login after a short delay
-        setTimeout(() => {
-          window.location.href = "/login"
-        }, 1500)
+          // Redirect to login after a short delay
+          setTimeout(() => {
+            if (typeof window !== "undefined" && window.dispatchEvent) {
+              window.dispatchEvent(new CustomEvent("authLogout"))
+            }
+            window.location.href = "/login"
+          }, 1500)
+        }
 
         return null
       } finally {

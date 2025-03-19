@@ -1,432 +1,430 @@
-import React, {
-  createContext,
-  useState,
-  useContext,
-  useEffect,
-  useCallback,
-  useRef,
-} from "react";
-import { toast } from "react-toastify";
-import apiService from "@services/apiService.jsx";
-import {
-  getToken,
-  setToken,
-  removeToken,
-  isTokenExpired,
-} from "../utils/tokenStorage";
+"use client"
 
-const AuthContext = createContext();
+import { createContext, useState, useContext, useEffect, useCallback, useRef } from "react"
+import { toast } from "react-toastify"
+import apiService from "@services/apiService.jsx"
+import { getToken, setToken, removeToken, isTokenExpired } from "../utils/tokenStorage"
 
-export const useAuth = () => useContext(AuthContext);
+const AuthContext = createContext()
+
+export const useAuth = () => useContext(AuthContext)
 
 // Authentication-specific API calls
 export const authApiService = {
   register: async (userData) => {
-    return await apiService.post("/auth/register", userData);
+    return await apiService.post("/auth/register", userData)
   },
   login: async (credentials) => {
-    return await apiService.post("/auth/login", credentials);
+    return await apiService.post("/auth/login", credentials)
   },
   logout: async () => {
-    return await apiService.post("/auth/logout");
+    return await apiService.post("/auth/logout")
   },
   verifyEmail: async (token) => {
-    return await apiService.post("/auth/verify-email", { token });
+    return await apiService.post("/auth/verify-email", { token })
   },
   requestPasswordReset: async (email) => {
-    return await apiService.post("/auth/forgot-password", { email });
+    return await apiService.post("/auth/forgot-password", { email })
   },
   resetPassword: async (token, password) => {
-    return await apiService.post("/auth/reset-password", { token, password });
+    return await apiService.post("/auth/reset-password", { token, password })
   },
   changePassword: async (currentPassword, newPassword) => {
     return await apiService.post("/auth/change-password", {
       currentPassword,
       newPassword,
-    });
+    })
   },
   getCurrentUser: async () => {
-    return await apiService.get("/auth/me");
+    return await apiService.get("/auth/me")
   },
   refreshToken: async (token) => {
-    return await apiService.post("/auth/refresh-token", { token });
+    return await apiService.post("/auth/refresh-token", { token })
   },
-};
+}
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
 
   // Refs for refresh token promise and timer
-  const refreshTokenPromiseRef = useRef(null);
-  const tokenRefreshTimerRef = useRef(null);
+  const refreshTokenPromiseRef = useRef(null)
+  const tokenRefreshTimerRef = useRef(null)
 
   const clearError = useCallback(() => {
-    setError(null);
-  }, []);
+    setError(null)
+  }, [])
 
   const logout = useCallback(async () => {
-    setLoading(true);
+    setLoading(true)
     try {
       if (tokenRefreshTimerRef.current) {
-        clearTimeout(tokenRefreshTimerRef.current);
-        tokenRefreshTimerRef.current = null;
+        clearTimeout(tokenRefreshTimerRef.current)
+        tokenRefreshTimerRef.current = null
       }
       try {
-        await authApiService.logout();
+        await authApiService.logout()
       } catch (err) {
-        console.warn("Logout API call failed:", err);
+        console.warn("Logout API call failed:", err)
       }
-      removeToken();
-      setUser(null);
-      setIsAuthenticated(false);
-      toast.info("You have been logged out");
+      removeToken()
+      setUser(null)
+      setIsAuthenticated(false)
+      toast.info("You have been logged out")
     } catch (err) {
-      console.error("Logout error:", err);
-      removeToken();
-      setUser(null);
-      setIsAuthenticated(false);
+      console.error("Logout error:", err)
+      removeToken()
+      setUser(null)
+      setIsAuthenticated(false)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, []);
+  }, [])
 
   const scheduleTokenRefresh = useCallback((token) => {
     if (tokenRefreshTimerRef.current) {
-      clearTimeout(tokenRefreshTimerRef.current);
-      tokenRefreshTimerRef.current = null;
+      clearTimeout(tokenRefreshTimerRef.current)
+      tokenRefreshTimerRef.current = null
     }
     try {
-      const base64Url = token.split(".")[1];
-      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-      const payload = JSON.parse(atob(base64));
+      const base64Url = token.split(".")[1]
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/")
+      const payload = JSON.parse(atob(base64))
       if (payload.exp) {
-        const expiresAt = payload.exp * 1000;
-        const now = Date.now();
-        const timeUntilRefresh = expiresAt - now - 5 * 60 * 1000; // refresh 5 minutes before expiry
+        const expiresAt = payload.exp * 1000
+        const now = Date.now()
+        const timeUntilRefresh = expiresAt - now - 5 * 60 * 1000 // refresh 5 minutes before expiry
         if (timeUntilRefresh > 60000) {
-          console.log(
-            `Scheduling token refresh in ${Math.round(timeUntilRefresh / 60000)} minutes`
-          );
+          console.log(`Scheduling token refresh in ${Math.round(timeUntilRefresh / 60000)} minutes`)
           const timer = setTimeout(() => {
-            refreshToken();
-          }, timeUntilRefresh);
-          tokenRefreshTimerRef.current = timer;
+            refreshToken()
+          }, timeUntilRefresh)
+          tokenRefreshTimerRef.current = timer
         } else {
-          console.log("Token expires soon, refreshing now");
-          refreshToken();
+          console.log("Token expires soon, refreshing now")
+          refreshToken()
         }
       }
     } catch (e) {
-      console.error("Error scheduling token refresh:", e);
+      console.error("Error scheduling token refresh:", e)
     }
-  }, []);
+  }, [])
 
   const refreshToken = useCallback(() => {
-    if (!isAuthenticated) return Promise.resolve(null);
-    if (refreshTokenPromiseRef.current) return refreshTokenPromiseRef.current;
+    if (!isAuthenticated && !getToken()) return Promise.resolve(null)
+    if (refreshTokenPromiseRef.current) return refreshTokenPromiseRef.current
 
     refreshTokenPromiseRef.current = (async () => {
-      const token = getToken();
-      if (!token) return null;
+      const token = getToken()
+      if (!token) return null
       try {
-        console.log("Refreshing auth token...");
-        const response = await authApiService.refreshToken(token);
+        console.log("Refreshing auth token...")
+
+        // Use apiService directly instead of authApiService to bypass interceptors
+        const response = await apiService.post(
+          "/auth/refresh-token",
+          { token },
+          {
+            headers: { "x-no-cache": "true" },
+            _isRefreshRequest: true,
+          },
+        )
+
         if (response.success && response.token) {
-          const newToken = response.token;
-          const rememberMe = localStorage.getItem("token") !== null;
-          setToken(newToken, rememberMe);
-          scheduleTokenRefresh(newToken);
-          console.log("Token refreshed successfully");
-          return newToken;
+          const newToken = response.token
+          const rememberMe = localStorage.getItem("token") !== null
+          setToken(newToken, rememberMe)
+          scheduleTokenRefresh(newToken)
+          console.log("Token refreshed successfully")
+          return newToken
         } else {
-          throw new Error("Invalid refresh response");
+          throw new Error("Invalid refresh response")
         }
       } catch (err) {
-        console.error("Token refresh failed:", err);
-        refreshTokenPromiseRef.current = null;
-        if (err?.response?.status === 401) {
-          logout();
+        console.error("Token refresh failed:", err)
+        refreshTokenPromiseRef.current = null
+
+        if (err?.response?.status === 401 || err?.status === 401) {
+          logout()
         } else {
-          const currentToken = getToken();
+          const currentToken = getToken()
           if (currentToken && isTokenExpired(currentToken)) {
-            console.log("Token expired, logging out");
-            toast.error("Your session has expired. Please log in again.");
-            logout();
+            console.log("Token expired, logging out")
+            toast.error("Your session has expired. Please log in again.")
+            logout()
           }
         }
-        return null;
+        return null
       } finally {
         setTimeout(() => {
-          refreshTokenPromiseRef.current = null;
-        }, 1000);
+          refreshTokenPromiseRef.current = null
+        }, 1000)
       }
-    })();
-    return refreshTokenPromiseRef.current;
-  }, [isAuthenticated, logout, scheduleTokenRefresh]);
+    })()
+
+    return refreshTokenPromiseRef.current
+  }, [isAuthenticated, logout, scheduleTokenRefresh])
 
   const register = useCallback(async (userData) => {
-    setLoading(true);
-    setError(null);
+    setLoading(true)
+    setError(null)
     try {
-      const response = await authApiService.register(userData);
+      const response = await authApiService.register(userData)
       if (response.success) {
-        toast.success("Registration successful! Please check your email to verify your account.");
-        return response;
+        toast.success("Registration successful! Please check your email to verify your account.")
+        return response
       } else {
-        throw new Error(response.error || "Registration failed");
+        throw new Error(response.error || "Registration failed")
       }
     } catch (err) {
-      const errorMessage = err.error || err.message || "Registration failed";
-      setError(errorMessage);
-      toast.error(errorMessage);
-      throw err;
+      const errorMessage = err.error || err.message || "Registration failed"
+      setError(errorMessage)
+      toast.error(errorMessage)
+      throw err
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, []);
+  }, [])
 
   const verifyEmail = useCallback(async (token) => {
-    setLoading(true);
-    setError(null);
+    setLoading(true)
+    setError(null)
     try {
-      const response = await authApiService.verifyEmail(token);
+      const response = await authApiService.verifyEmail(token)
       if (response.success) {
-        toast.success("Email verified successfully! You can now log in.");
-        return response;
+        toast.success("Email verified successfully! You can now log in.")
+        return response
       } else {
-        throw new Error(response.error || "Email verification failed");
+        throw new Error(response.error || "Email verification failed")
       }
     } catch (err) {
-      const errorMessage = err.error || err.message || "Email verification failed";
-      setError(errorMessage);
-      toast.error(errorMessage);
-      throw err;
+      const errorMessage = err.error || err.message || "Email verification failed"
+      setError(errorMessage)
+      toast.error(errorMessage)
+      throw err
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, []);
+  }, [])
 
   const login = useCallback(
     async (credentials, rememberMe = false) => {
-      setLoading(true);
-      setError(null);
+      setLoading(true)
+      setError(null)
       try {
-        const response = await authApiService.login(credentials);
+        const response = await authApiService.login(credentials)
         if (response.success && response.token) {
-          setToken(response.token, rememberMe);
-          scheduleTokenRefresh(response.token);
+          setToken(response.token, rememberMe)
+          scheduleTokenRefresh(response.token)
           if (response.user) {
-            setUser(response.user);
+            setUser(response.user)
             import("@services/notificationService.jsx").then((module) => {
-              const notificationService = module.default;
+              const notificationService = module.default
               if (response.user.settings?.notifications) {
-                notificationService.initialize(response.user.settings);
+                notificationService.initialize(response.user.settings)
               } else {
-                notificationService.initialize();
+                notificationService.initialize()
               }
-            });
-            const welcomeMessage = response.user.nickname
-              ? `Welcome back, ${response.user.nickname}!`
-              : "Welcome back!";
-            toast.success(welcomeMessage);
+            })
+            const welcomeMessage = response.user.nickname ? `Welcome back, ${response.user.nickname}!` : "Welcome back!"
+            toast.success(welcomeMessage)
           } else {
             try {
-              const userResponse = await authApiService.getCurrentUser();
+              const userResponse = await authApiService.getCurrentUser()
               if (userResponse.success && userResponse.data) {
-                setUser(userResponse.data);
+                setUser(userResponse.data)
                 import("@services/notificationService.jsx").then((module) => {
-                  const notificationService = module.default;
+                  const notificationService = module.default
                   if (userResponse.data.settings?.notifications) {
-                    notificationService.initialize(userResponse.data.settings);
+                    notificationService.initialize(userResponse.data.settings)
                   } else {
-                    notificationService.initialize();
+                    notificationService.initialize()
                   }
-                });
+                })
                 const welcomeMessage = userResponse.data.nickname
                   ? `Welcome back, ${userResponse.data.nickname}!`
-                  : "Welcome back!";
-                toast.success(welcomeMessage);
+                  : "Welcome back!"
+                toast.success(welcomeMessage)
               } else {
-                toast.success("Welcome back!");
+                toast.success("Welcome back!")
               }
             } catch (userErr) {
-              console.error("Error fetching user data:", userErr);
-              toast.success("Welcome back!");
+              console.error("Error fetching user data:", userErr)
+              toast.success("Welcome back!")
             }
           }
-          setIsAuthenticated(true);
-          return response;
+          setIsAuthenticated(true)
+          return response
         } else {
-          throw new Error(response.error || "Login failed");
+          throw new Error(response.error || "Login failed")
         }
       } catch (err) {
-        const errorMessage = err.error || err.message || "Login failed";
-        setError(errorMessage);
-        toast.error(errorMessage);
-        throw err;
+        const errorMessage = err.error || err.message || "Login failed"
+        setError(errorMessage)
+        toast.error(errorMessage)
+        throw err
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     },
-    [scheduleTokenRefresh]
-  );
+    [scheduleTokenRefresh],
+  )
 
   const requestPasswordReset = useCallback(async (email) => {
-    setLoading(true);
-    setError(null);
+    setLoading(true)
+    setError(null)
     try {
-      const response = await authApiService.requestPasswordReset(email);
+      const response = await authApiService.requestPasswordReset(email)
       if (response.success) {
-        toast.success("Password reset instructions sent to your email");
-        return response;
+        toast.success("Password reset instructions sent to your email")
+        return response
       } else {
-        throw new Error(response.error || "Password reset request failed");
+        throw new Error(response.error || "Password reset request failed")
       }
     } catch (err) {
-      const errorMessage = err.error || err.message || "Password reset request failed";
-      setError(errorMessage);
-      toast.error(errorMessage);
-      throw err;
+      const errorMessage = err.error || err.message || "Password reset request failed"
+      setError(errorMessage)
+      toast.error(errorMessage)
+      throw err
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, []);
+  }, [])
 
   const resetPassword = useCallback(async (token, newPassword) => {
-    setLoading(true);
-    setError(null);
+    setLoading(true)
+    setError(null)
     try {
-      const response = await authApiService.resetPassword(token, newPassword);
+      const response = await authApiService.resetPassword(token, newPassword)
       if (response.success) {
-        toast.success("Password reset successful! You can now log in with your new password.");
-        return response;
+        toast.success("Password reset successful! You can now log in with your new password.")
+        return response
       } else {
-        throw new Error(response.error || "Password reset failed");
+        throw new Error(response.error || "Password reset failed")
       }
     } catch (err) {
-      const errorMessage = err.error || err.message || "Password reset failed";
-      setError(errorMessage);
-      toast.error(errorMessage);
-      throw err;
+      const errorMessage = err.error || err.message || "Password reset failed"
+      setError(errorMessage)
+      toast.error(errorMessage)
+      throw err
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, []);
+  }, [])
 
   const changePassword = useCallback(async (currentPassword, newPassword) => {
-    setLoading(true);
-    setError(null);
+    setLoading(true)
+    setError(null)
     try {
-      const response = await authApiService.changePassword(currentPassword, newPassword);
+      const response = await authApiService.changePassword(currentPassword, newPassword)
       if (response.success) {
-        toast.success("Password changed successfully!");
-        return response;
+        toast.success("Password changed successfully!")
+        return response
       } else {
-        throw new Error(response.error || "Password change failed");
+        throw new Error(response.error || "Password change failed")
       }
     } catch (err) {
-      const errorMessage = err.error || err.message || "Password change failed";
-      setError(errorMessage);
-      toast.error(errorMessage);
-      throw err;
+      const errorMessage = err.error || err.message || "Password change failed"
+      setError(errorMessage)
+      toast.error(errorMessage)
+      throw err
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, []);
+  }, [])
 
   const getCurrentUser = useCallback(async () => {
-    setLoading(true);
+    setLoading(true)
     try {
-      const response = await authApiService.getCurrentUser();
+      const response = await authApiService.getCurrentUser()
       if (response.success) {
-        setUser(response.data);
-        setIsAuthenticated(true);
+        setUser(response.data)
+        setIsAuthenticated(true)
         import("@services/notificationService.jsx").then((module) => {
-          const notificationService = module.default;
+          const notificationService = module.default
           if (response.data.settings?.notifications) {
-            notificationService.initialize(response.data.settings);
+            notificationService.initialize(response.data.settings)
           } else {
-            notificationService.initialize();
+            notificationService.initialize()
           }
-        });
-        return response.data;
+        })
+        return response.data
       } else {
-        throw new Error(response.error || "Failed to get user profile");
+        throw new Error(response.error || "Failed to get user profile")
       }
     } catch (err) {
-      console.error("Get current user error:", err);
-      setUser(null);
-      setIsAuthenticated(false);
-      return null;
+      console.error("Get current user error:", err)
+      setUser(null)
+      setIsAuthenticated(false)
+      return null
     } finally {
-      setLoading(false);
-      setAuthChecked(true);
+      setLoading(false)
+      setAuthChecked(true)
     }
-  }, []);
+  }, [])
 
   // Check authentication status on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const token = getToken();
+      const token = getToken()
       if (token) {
         try {
           if (isTokenExpired(token)) {
-            console.log("Token expired, attempting to refresh");
-            const newToken = await refreshToken();
+            console.log("Token expired, attempting to refresh")
+            const newToken = await refreshToken()
             if (!newToken) {
-              setUser(null);
-              setIsAuthenticated(false);
-              removeToken();
-              setAuthChecked(true);
-              return;
+              setUser(null)
+              setIsAuthenticated(false)
+              removeToken()
+              setAuthChecked(true)
+              return
             }
           }
-          await getCurrentUser();
+          await getCurrentUser()
         } catch (err) {
-          console.error("Auth check error:", err);
-          setUser(null);
-          setIsAuthenticated(false);
-          removeToken();
-          setAuthChecked(true);
+          console.error("Auth check error:", err)
+          setUser(null)
+          setIsAuthenticated(false)
+          removeToken()
+          setAuthChecked(true)
         }
       } else {
-        setUser(null);
-        setIsAuthenticated(false);
-        setAuthChecked(true);
+        setUser(null)
+        setIsAuthenticated(false)
+        setAuthChecked(true)
       }
-    };
-    checkAuth();
-  }, [getCurrentUser, refreshToken]);
+    }
+    checkAuth()
+  }, [getCurrentUser, refreshToken])
 
   // Clean up token refresh timer on unmount
   useEffect(() => {
     return () => {
       if (tokenRefreshTimerRef.current) {
-        clearTimeout(tokenRefreshTimerRef.current);
+        clearTimeout(tokenRefreshTimerRef.current)
       }
-    };
-  }, []);
+    }
+  }, [])
 
   // Listen for auth logout events (e.g., from other parts of the app)
   useEffect(() => {
     const handleLogout = () => {
       if (tokenRefreshTimerRef.current) {
-        clearTimeout(tokenRefreshTimerRef.current);
-        tokenRefreshTimerRef.current = null;
+        clearTimeout(tokenRefreshTimerRef.current)
+        tokenRefreshTimerRef.current = null
       }
-      setUser(null);
-      setIsAuthenticated(false);
-      removeToken();
-    };
-    window.addEventListener("authLogout", handleLogout);
+      setUser(null)
+      setIsAuthenticated(false)
+      removeToken()
+    }
+    window.addEventListener("authLogout", handleLogout)
     return () => {
-      window.removeEventListener("authLogout", handleLogout);
-    };
-  }, []);
+      window.removeEventListener("authLogout", handleLogout)
+    }
+  }, [])
 
   const value = {
     user,
@@ -444,9 +442,9 @@ export const AuthProvider = ({ children }) => {
     changePassword,
     getCurrentUser,
     clearError,
-  };
+  }
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
 
-export default AuthContext;
+export default AuthContext

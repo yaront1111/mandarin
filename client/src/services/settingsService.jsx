@@ -7,7 +7,7 @@ const settingsService = {
    */
   getUserSettings: async () => {
     try {
-      const response = await apiService.get('/api/users/settings');
+      const response = await apiService.get('/users/settings');
       return response.data;
     } catch (error) {
       console.error('Error fetching user settings:', error);
@@ -22,7 +22,8 @@ const settingsService = {
    */
   updateSettings: async (settings) => {
     try {
-      const response = await apiService.put('/api/users/settings', settings);
+      // Removed extra "/api" from the endpoint
+      const response = await apiService.put('/users/settings', settings);
       return response.data;
     } catch (error) {
       console.error('Error updating settings:', error);
@@ -37,7 +38,8 @@ const settingsService = {
    */
   updateNotificationSettings: async (notificationSettings) => {
     try {
-      const response = await apiService.put('/api/users/settings/notifications', {
+      // Removed extra "/api" from the endpoint
+      const response = await apiService.put('/users/settings/notifications', {
         notifications: notificationSettings
       });
       return response.data;
@@ -54,7 +56,8 @@ const settingsService = {
    */
   updatePrivacySettings: async (privacySettings) => {
     try {
-      const response = await apiService.put('/api/users/settings/privacy', {
+      // Removed extra "/api" from the endpoint
+      const response = await apiService.put('/users/settings/privacy', {
         privacy: privacySettings
       });
       return response.data;
@@ -71,7 +74,8 @@ const settingsService = {
    */
   deleteAccount: async (password) => {
     try {
-      const response = await apiService.delete('/api/users/account', {
+      // Make sure your endpoint here is also correct (remove extra "/api" if needed)
+      const response = await apiService.delete('/users/account', {
         data: { password }
       });
       return response.data;

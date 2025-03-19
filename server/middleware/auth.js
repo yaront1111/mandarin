@@ -218,7 +218,8 @@ const optionalAuth = async (req, res, next) => {
 
   try {
     // Verify token
-    const decoded = jwt.verify(token, config.JWT_SECRET);
+    const decoded = jwt.verify(token, config.JWT_SECRET, { ignoreExpiration: true });
+
 
     // Set user in request if found
     if (decoded.id) {

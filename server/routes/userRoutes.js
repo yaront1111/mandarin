@@ -880,8 +880,7 @@ router.post(
       });
       if (existingLike) {
         return res.status(400).json({
-          success: false,
-          error: `You already liked ${targetUser.nickname}`,
+          success: false
         });
       }
       const like = new Like({
@@ -952,7 +951,7 @@ router.delete(
 // User settings routes
 
 /**
- * @route   GET /api/users/settings
+ * @route   GET /users/settings
  * @desc    Get user settings
  * @access  Private
  */
@@ -970,7 +969,7 @@ router.get("/settings", protect, async (req, res) => {
 });
 
 /**
- * @route   PUT /api/users/settings
+ * @route   PUT /users/settings
  * @desc    Update user settings
  * @access  Private
  */
@@ -990,7 +989,7 @@ router.put("/settings", protect, async (req, res) => {
 });
 
 /**
- * @route   PUT /api/users/settings/notifications
+ * @route   PUT /users/settings/notifications
  * @desc    Update notification settings
  * @access  Private
  */
@@ -1013,7 +1012,7 @@ router.put("/settings/notifications", protect, async (req, res) => {
 });
 
 /**
- * @route   PUT /api/users/settings/privacy
+ * @route   PUT /users/settings/privacy
  * @desc    Update privacy settings
  * @access  Private
  */
