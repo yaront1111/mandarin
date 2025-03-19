@@ -17,6 +17,8 @@ import routes from "./routes/index.js"
 import { initSubscriptionTasks } from "./cron/subscriptionTasks.js"
 import { configureCors, corsErrorHandler } from "./middleware/cors.js"
 
+// REMOVED: import photoRoutes from "./routes/photoRoutes.js"
+
 // Get directory name in ES modules context
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -83,6 +85,9 @@ app.use(requestLogger)
 // Set static folder
 app.use(express.static(path.join(__dirname, "public")))
 
+// Add this near your other middleware setup to serve the uploads directory
+// Make sure this is added BEFORE your route handlers
+
 // Ensure uploads directory exists
 const uploadsPath = path.join(__dirname, "uploads")
 if (!fs.existsSync(uploadsPath)) {
@@ -111,6 +116,8 @@ const API_PREFIX = "/api"
 
 // API routes
 app.use(API_PREFIX, routes)
+
+// REMOVED: app.use("/api/photos", photoRoutes)
 
 // Global error handler
 app.use((err, req, res, next) => {

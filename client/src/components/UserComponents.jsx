@@ -1,9 +1,9 @@
-
+"use client"
 
 // Optimized UserComponents.js with improved performance, security and UX
 import { useState, useEffect, useCallback, memo, useMemo, useRef } from "react"
 import { Link } from "react-router-dom"
-import { FaHeart, FaComment, FaVideo, FaLock, FaUnlock, FaTrash, FaStar, FaUser, FaSearch } from "react-icons/fa"
+import { FaHeart, FaComment, FaVideo, FaLock, FaUnlock, FaTrash, FaStar, FaSearch } from "react-icons/fa"
 import { useAuth } from "../context/AuthContext"
 import { useUser } from "../context/UserContext"
 import apiService from "@services/apiService.jsx"
@@ -39,13 +39,33 @@ function useDebounce(value, delay) {
   return debouncedValue
 }
 
-/**
- * Lazy Image component to improve loading performance
- */
+// Update the LazyImage component to handle different URL formats
 const LazyImage = memo(({ src, alt, className, placeholder = "/placeholder.svg" }) => {
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(false)
   const imgRef = useRef(null)
+
+  // Format the source URL properly
+  const formatSrc = useCallback(
+    (url) => {
+      if (!url) return placeholder
+
+      // If it's already a full URL, return it
+      if (url.startsWith("http")) return url
+
+      // If it's a path that starts with /uploads, convert it to the API endpoint
+      if (url.startsWith("/uploads/")) {
+        const filename = url.split("/").pop()
+        return `/api/photos/${filename}`
+      }
+
+      // Otherwise, return as is
+      return url
+    },
+    [placeholder],
+  )
+
+  const formattedSrc = formatSrc(src)
 
   useEffect(() => {
     // Initialize Intersection Observer for better performance
@@ -53,12 +73,12 @@ const LazyImage = memo(({ src, alt, className, placeholder = "/placeholder.svg" 
       (entries) => {
         if (entries[0].isIntersecting) {
           if (imgRef.current) {
-            imgRef.current.src = src
+            imgRef.current.src = formattedSrc
           }
           observer.disconnect()
         }
       },
-      { rootMargin: "200px" } // Load images 200px before they come into view
+      { rootMargin: "200px" }, // Load images 200px before they come into view
     )
 
     if (imgRef.current) {
@@ -68,22 +88,22 @@ const LazyImage = memo(({ src, alt, className, placeholder = "/placeholder.svg" 
     return () => {
       observer.disconnect()
     }
-  }, [src])
+  }, [formattedSrc])
 
   return (
     <div className={`lazy-image-container ${className}`}>
       {(!loaded || error) && (
         <img
-          src={placeholder}
+          src={placeholder || "/placeholder.svg"}
           alt={`${alt} placeholder`}
           className={`placeholder-image ${className}`}
         />
       )}
       <img
         ref={imgRef}
-        src={placeholder} // Initially load placeholder, Observer will swap to actual src
+        src={placeholder || "/placeholder.svg"} // Initially load placeholder, Observer will swap to actual src
         alt={alt}
-        className={`${className} ${loaded ? 'visible' : 'hidden'}`}
+        className={`${className} ${loaded ? "visible" : "hidden"}`}
         onLoad={() => setLoaded(true)}
         onError={() => setError(true)}
       />
@@ -130,23 +150,32 @@ export const UserCard = memo(
     }, [user])
 
     // Handle card actions
-    const handleMessageClick = useCallback((e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      if (onMessageClick) onMessageClick(user)
-    }, [onMessageClick, user])
+    const handleMessageClick = useCallback(
+      (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (onMessageClick) onMessageClick(user)
+      },
+      [onMessageClick, user],
+    )
 
-    const handleVideoClick = useCallback((e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      if (onVideoClick) onVideoClick(user)
-    }, [onVideoClick, user])
+    const handleVideoClick = useCallback(
+      (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (onVideoClick) onVideoClick(user)
+      },
+      [onVideoClick, user],
+    )
 
-    const handleLikeClick = useCallback((e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      if (onLikeClick) onLikeClick(user)
-    }, [onLikeClick, user])
+    const handleLikeClick = useCallback(
+      (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (onLikeClick) onLikeClick(user)
+      },
+      [onLikeClick, user],
+    )
 
     // Memoize user details to prevent unnecessary re-renders
     const userDetails = useMemo(() => {
@@ -154,7 +183,7 @@ export const UserCard = memo(
       if (user.details?.age) detailParts.push(`${user.details.age}`)
       if (user.details?.gender) detailParts.push(`${user.details.gender}`)
       if (user.details?.location) detailParts.push(`${user.details.location}`)
-      return detailParts.join(' • ')
+      return detailParts.join(" • ")
     }, [user.details?.age, user.details?.gender, user.details?.location])
 
     // Render grid layout
@@ -333,7 +362,7 @@ export const UserPhotoGallery = ({ userId, editable = false, onPhotoClick }) => 
     reader.onload = (e) => {
       setPreviewFile({
         file,
-        preview: e.target.result
+        preview: e.target.result,
       })
     }
     reader.readAsDataURL(file)
@@ -364,7 +393,7 @@ export const UserPhotoGallery = ({ userId, editable = false, onPhotoClick }) => 
       })
 
       if (response.success) {
-        toast.success(`Photo uploaded successfully${isPrivate ? ' (Private)' : ''}!`)
+        toast.success(`Photo uploaded successfully${isPrivate ? " (Private)" : ""}!`)
         fetchPhotos()
         setPreviewFile(null)
       } else {
@@ -450,7 +479,7 @@ export const UserPhotoGallery = ({ userId, editable = false, onPhotoClick }) => 
         <div className="photo-preview-container">
           <h4>Photo Preview</h4>
           <div className="photo-preview">
-            <img src={previewFile.preview} alt="Preview" />
+            <img src={previewFile.preview || "/placeholder.svg"} alt="Preview" />
           </div>
           {isUploading ? (
             <div className="upload-progress">
@@ -459,22 +488,13 @@ export const UserPhotoGallery = ({ userId, editable = false, onPhotoClick }) => 
             </div>
           ) : (
             <div className="preview-actions">
-              <button
-                className="btn btn-primary"
-                onClick={() => handlePhotoUpload(false)}
-              >
+              <button className="btn btn-primary" onClick={() => handlePhotoUpload(false)}>
                 Upload as Public
               </button>
-              <button
-                className="btn btn-secondary"
-                onClick={() => handlePhotoUpload(true)}
-              >
+              <button className="btn btn-secondary" onClick={() => handlePhotoUpload(true)}>
                 Upload as Private
               </button>
-              <button
-                className="btn btn-outline"
-                onClick={handleCancelUpload}
-              >
+              <button className="btn btn-outline" onClick={handleCancelUpload}>
                 Cancel
               </button>
             </div>
@@ -611,18 +631,18 @@ export const UserPhotoViewer = ({ photo, userId, onClose, onNext, onPrevious, is
   // Handle keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose()
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === "ArrowRight") {
         onNext()
-      } else if (e.key === 'ArrowLeft') {
+      } else if (e.key === "ArrowLeft") {
         onPrevious()
       }
     }
 
-    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener("keydown", handleKeyDown)
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener("keydown", handleKeyDown)
     }
   }, [onClose, onNext, onPrevious])
 
@@ -639,11 +659,7 @@ export const UserPhotoViewer = ({ photo, userId, onClose, onNext, onPrevious, is
               <FaLock size={48} />
               <h3>This photo is private</h3>
               <p>You need permission from the user to view this photo.</p>
-              <button
-                onClick={handleRequestAccess}
-                disabled={requestingAccess}
-                className="request-access-btn"
-              >
+              <button onClick={handleRequestAccess} disabled={requestingAccess} className="request-access-btn">
                 {requestingAccess ? "Requesting..." : "Request Access"}
               </button>
             </div>
@@ -653,18 +669,10 @@ export const UserPhotoViewer = ({ photo, userId, onClose, onNext, onPrevious, is
             <img src={photo.url || "/placeholder.svg"} alt="Full size" />
 
             <div className="photo-viewer-controls">
-              <button
-                onClick={onPrevious}
-                className="nav-btn prev-btn"
-                aria-label="Previous photo"
-              >
+              <button onClick={onPrevious} className="nav-btn prev-btn" aria-label="Previous photo">
                 &lt;
               </button>
-              <button
-                onClick={onNext}
-                className="nav-btn next-btn"
-                aria-label="Next photo"
-              >
+              <button onClick={onNext} className="nav-btn next-btn" aria-label="Next photo">
                 &gt;
               </button>
             </div>
@@ -678,158 +686,152 @@ export const UserPhotoViewer = ({ photo, userId, onClose, onNext, onPrevious, is
 /**
  * Optimized UserList component with virtualization for better performance
  */
-export const UserList = memo(({
-  users,
-  onUserClick,
-  onVideoClick,
-  onLikeClick,
-  loading,
-  error,
-  layout = "grid",
-  hasMore = false,
-  loadMore = null,
-  totalCount = 0
-}) => {
-  const isItemLoaded = useCallback(index => !hasMore || index < users.length, [hasMore, users.length])
+export const UserList = memo(
+  ({
+    users,
+    onUserClick,
+    onVideoClick,
+    onLikeClick,
+    loading,
+    error,
+    layout = "grid",
+    hasMore = false,
+    loadMore = null,
+    totalCount = 0,
+  }) => {
+    const isItemLoaded = useCallback((index) => !hasMore || index < users.length, [hasMore, users.length])
 
-  if (loading && users.length === 0) {
-    return <div className="loading-spinner">Loading users...</div>
-  }
+    if (loading && users.length === 0) {
+      return <div className="loading-spinner">Loading users...</div>
+    }
 
-  if (error) {
-    return <div className="error-message">Error: {error}</div>
-  }
+    if (error) {
+      return <div className="error-message">Error: {error}</div>
+    }
 
-  if (!users || users.length === 0) {
-    return <div className="no-users">No users found</div>
-  }
+    if (!users || users.length === 0) {
+      return <div className="no-users">No users found</div>
+    }
 
-  // For grid layout, use grid virtualization
-  if (layout === "grid") {
-    const rowCount = Math.ceil(totalCount / GRID_COLUMN_COUNT)
+    // For grid layout, use grid virtualization
+    if (layout === "grid") {
+      const rowCount = Math.ceil(totalCount / GRID_COLUMN_COUNT)
 
+      return (
+        <div className="user-grid-container">
+          <AutoSizer>
+            {({ height, width }) => (
+              <InfiniteLoader isItemLoaded={isItemLoaded} itemCount={totalCount} loadMoreItems={loadMore || (() => {})}>
+                {({ onItemsRendered, ref }) => {
+                  const newItemsRendered = ({
+                    visibleRowStartIndex,
+                    visibleRowStopIndex,
+                    visibleColumnStartIndex,
+                    visibleColumnStopIndex,
+                  }) => {
+                    const startIndex = visibleRowStartIndex * GRID_COLUMN_COUNT + visibleColumnStartIndex
+                    const stopIndex = visibleRowStopIndex * GRID_COLUMN_COUNT + visibleColumnStopIndex
+
+                    onItemsRendered({
+                      overscanStartIndex: Math.max(0, startIndex - GRID_COLUMN_COUNT),
+                      overscanStopIndex: Math.min(totalCount - 1, stopIndex + GRID_COLUMN_COUNT),
+                      visibleStartIndex: startIndex,
+                      visibleStopIndex: stopIndex,
+                    })
+                  }
+
+                  return (
+                    <FixedSizeGrid
+                      ref={ref}
+                      columnCount={GRID_COLUMN_COUNT}
+                      columnWidth={width / GRID_COLUMN_COUNT}
+                      height={height}
+                      rowCount={rowCount}
+                      rowHeight={CARD_HEIGHT}
+                      width={width}
+                      onItemsRendered={newItemsRendered}
+                    >
+                      {({ columnIndex, rowIndex, style }) => {
+                        const index = rowIndex * GRID_COLUMN_COUNT + columnIndex
+                        if (index >= users.length) {
+                          // Return empty cell for placeholder
+                          return loading ? (
+                            <div style={style} className="user-card-placeholder">
+                              <div className="loading-pulse"></div>
+                            </div>
+                          ) : null
+                        }
+
+                        const user = users[index]
+                        return (
+                          <div style={style}>
+                            <UserCard
+                              user={user}
+                              onMessageClick={onUserClick}
+                              onVideoClick={onVideoClick}
+                              onLikeClick={onLikeClick}
+                              layout="grid"
+                            />
+                          </div>
+                        )
+                      }}
+                    </FixedSizeGrid>
+                  )
+                }}
+              </InfiniteLoader>
+            )}
+          </AutoSizer>
+        </div>
+      )
+    }
+
+    // For list layout
     return (
-      <div className="user-grid-container">
+      <div className="user-list-container">
         <AutoSizer>
           {({ height, width }) => (
-            <InfiniteLoader
-              isItemLoaded={isItemLoaded}
-              itemCount={totalCount}
-              loadMoreItems={loadMore || (() => {})}
-            >
-              {({ onItemsRendered, ref }) => {
-                const newItemsRendered = ({
-                  visibleRowStartIndex,
-                  visibleRowStopIndex,
-                  visibleColumnStartIndex,
-                  visibleColumnStopIndex,
-                }) => {
-                  const startIndex = visibleRowStartIndex * GRID_COLUMN_COUNT + visibleColumnStartIndex
-                  const stopIndex = visibleRowStopIndex * GRID_COLUMN_COUNT + visibleColumnStopIndex
-
-                  onItemsRendered({
-                    overscanStartIndex: Math.max(0, startIndex - GRID_COLUMN_COUNT),
-                    overscanStopIndex: Math.min(totalCount - 1, stopIndex + GRID_COLUMN_COUNT),
-                    visibleStartIndex: startIndex,
-                    visibleStopIndex: stopIndex,
-                  })
-                }
-
-                return (
-                  <FixedSizeGrid
-                    ref={ref}
-                    columnCount={GRID_COLUMN_COUNT}
-                    columnWidth={width / GRID_COLUMN_COUNT}
-                    height={height}
-                    rowCount={rowCount}
-                    rowHeight={CARD_HEIGHT}
-                    width={width}
-                    onItemsRendered={newItemsRendered}
-                  >
-                    {({ columnIndex, rowIndex, style }) => {
-                      const index = rowIndex * GRID_COLUMN_COUNT + columnIndex
-                      if (index >= users.length) {
-                        // Return empty cell for placeholder
-                        return loading ? (
-                          <div style={style} className="user-card-placeholder">
-                            <div className="loading-pulse"></div>
-                          </div>
-                        ) : null
-                      }
-
-                      const user = users[index]
-                      return (
-                        <div style={style}>
-                          <UserCard
-                            user={user}
-                            onMessageClick={onUserClick}
-                            onVideoClick={onVideoClick}
-                            onLikeClick={onLikeClick}
-                            layout="grid"
-                          />
+            <InfiniteLoader isItemLoaded={isItemLoaded} itemCount={totalCount} loadMoreItems={loadMore || (() => {})}>
+              {({ onItemsRendered, ref }) => (
+                <FixedSizeList
+                  ref={ref}
+                  height={height}
+                  width={width}
+                  itemCount={totalCount}
+                  itemSize={LIST_ITEM_HEIGHT}
+                  onItemsRendered={onItemsRendered}
+                >
+                  {({ index, style }) => {
+                    if (index >= users.length) {
+                      // Return empty cell for placeholder
+                      return loading ? (
+                        <div style={style} className="user-list-placeholder">
+                          <div className="loading-pulse"></div>
                         </div>
-                      )
-                    }}
-                  </FixedSizeGrid>
-                )
-              }}
+                      ) : null
+                    }
+
+                    const user = users[index]
+                    return (
+                      <div style={style}>
+                        <UserCard
+                          user={user}
+                          onMessageClick={onUserClick}
+                          onVideoClick={onVideoClick}
+                          onLikeClick={onLikeClick}
+                          layout="list"
+                        />
+                      </div>
+                    )
+                  }}
+                </FixedSizeList>
+              )}
             </InfiniteLoader>
           )}
         </AutoSizer>
       </div>
     )
-  }
-
-  // For list layout
-  return (
-    <div className="user-list-container">
-      <AutoSizer>
-        {({ height, width }) => (
-          <InfiniteLoader
-            isItemLoaded={isItemLoaded}
-            itemCount={totalCount}
-            loadMoreItems={loadMore || (() => {})}
-          >
-            {({ onItemsRendered, ref }) => (
-              <FixedSizeList
-                ref={ref}
-                height={height}
-                width={width}
-                itemCount={totalCount}
-                itemSize={LIST_ITEM_HEIGHT}
-                onItemsRendered={onItemsRendered}
-              >
-                {({ index, style }) => {
-                  if (index >= users.length) {
-                    // Return empty cell for placeholder
-                    return loading ? (
-                      <div style={style} className="user-list-placeholder">
-                        <div className="loading-pulse"></div>
-                      </div>
-                    ) : null
-                  }
-
-                  const user = users[index]
-                  return (
-                    <div style={style}>
-                      <UserCard
-                        user={user}
-                        onMessageClick={onUserClick}
-                        onVideoClick={onVideoClick}
-                        onLikeClick={onLikeClick}
-                        layout="list"
-                      />
-                    </div>
-                  )
-                }}
-              </FixedSizeList>
-            )}
-          </InfiniteLoader>
-        )}
-      </AutoSizer>
-    </div>
-  )
-})
+  },
+)
 
 /**
  * Enhanced UserFilter component with debounced filtering
@@ -982,7 +984,7 @@ export const UserSearch = ({ onSearch }) => {
     debounce((value) => {
       if (onSearch) onSearch(value)
     }, 300),
-    [onSearch]
+    [onSearch],
   )
 
   const handleChange = (e) => {
@@ -1036,19 +1038,13 @@ export const UserAvatar = ({ user, size = "md", showStatus = true, className = "
     sm: "avatar-sm",
     md: "avatar-md",
     lg: "avatar-lg",
-    xl: "avatar-xl"
+    xl: "avatar-xl",
   }
 
   return (
     <div className={`user-avatar ${sizeClasses[size]} ${className}`}>
-      <img
-        src={getProfilePhoto()}
-        alt={user?.nickname || "User"}
-        className="avatar-img"
-      />
-      {showStatus && user?.isOnline && (
-        <span className="status-indicator online" aria-label="Online"></span>
-      )}
+      <img src={getProfilePhoto() || "/placeholder.svg"} alt={user?.nickname || "User"} className="avatar-img" />
+      {showStatus && user?.isOnline && <span className="status-indicator online" aria-label="Online"></span>}
     </div>
   )
 }
@@ -1061,5 +1057,5 @@ export default {
   UserFilter,
   UserSearch,
   UserAvatar,
-  LazyImage
+  LazyImage,
 }

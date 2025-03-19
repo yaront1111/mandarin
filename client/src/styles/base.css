@@ -106,6 +106,22 @@
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;
   --transition-slow: 350ms ease;
+
+  /* Settings page specific variables */
+  --text-primary: var(--text-dark);
+  --text-secondary: var(--text-medium);
+  --bg-card: var(--white);
+  --bg-secondary: var(--light);
+  --bg-hover: rgba(0, 0, 0, 0.05);
+  --bg-active: rgba(var(--primary-rgb, 255, 51, 102), 0.1);
+  --bg-inactive: #e0e0e0;
+  --bg-warning: var(--warning-light);
+  --bg-danger: var(--danger-light);
+  --danger-color: var(--danger);
+  --danger-color-dark: #d63c5e;
+  --text-disabled: #a0a0a0;
+  --bg-input: var(--white);
+  --primary-rgb: 255, 51, 102;
 }
 
 /* Dark mode variables */
@@ -154,6 +170,19 @@
   --glass-bg-dark: rgba(15, 15, 15, 0.4);
   --glass-blur: blur(10px);
   --glass-border: rgba(50, 50, 50, 0.2);
+
+  /* Settings page specific variables for dark mode */
+  --text-primary: var(--text-dark);
+  --text-secondary: var(--text-medium);
+  --bg-card: var(--medium);
+  --bg-secondary: var(--dark);
+  --bg-hover: rgba(255, 255, 255, 0.1);
+  --bg-active: rgba(var(--primary-rgb, 255, 51, 102), 0.2);
+  --bg-inactive: #444444;
+  --bg-warning: rgba(255, 209, 102, 0.2);
+  --bg-danger: rgba(239, 71, 111, 0.2);
+  --text-disabled: #666666;
+  --bg-input: var(--dark);
 }
 
 /* Reset and base styles */

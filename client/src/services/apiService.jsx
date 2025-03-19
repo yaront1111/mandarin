@@ -665,7 +665,13 @@ class ApiService {
 
     // Format error data
     const errorData = error.response.data
-    const errorMsg = errorData?.error || errorData?.message || errorData?.msg || "An error occurred"
+    const errorMsg =
+      errorData?.error ||
+      errorData?.message ||
+      errorData?.msg ||
+      (error.response.status === 400 && error.config.url.includes("/like")
+        ? "You've already liked this user or reached your daily limit"
+        : "An error occurred")
     const errorCode = errorData?.code || null
 
     // Handle specific HTTP error codes with toast notifications

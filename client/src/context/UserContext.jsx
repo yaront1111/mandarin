@@ -1,4 +1,4 @@
-
+"use client"
 
 // client/src/context/UserContext.js
 import { createContext, useReducer, useContext, useEffect, useCallback, useRef, useState } from "react"
@@ -317,46 +317,46 @@ export const UserProvider = ({ children }) => {
 
   // Get all users liked by current user
   const getLikedUsers = useCallback(async () => {
-    if (!user) return;
+    if (!user) return
 
-    setLikesLoading(true);
+    setLikesLoading(true)
     try {
       // Make sure we have a valid user before making the request
-      if (!user._id || typeof user._id !== 'string') {
-        console.warn("Current user ID is missing or invalid", user);
-        setLikedUsers([]);
-        return;
+      if (!user._id || typeof user._id !== "string") {
+        console.warn("Current user ID is missing or invalid", user)
+        setLikedUsers([])
+        return
       }
 
       // Validate if user._id is a valid MongoDB ObjectId
-      const isValidId = /^[0-9a-fA-F]{24}$/.test(user._id);
+      const isValidId = /^[0-9a-fA-F]{24}$/.test(user._id)
       if (!isValidId) {
-        console.warn(`Invalid user ID format: ${user._id}`);
-        setLikedUsers([]);
-        return;
+        console.warn(`Invalid user ID format: ${user._id}`)
+        setLikedUsers([])
+        return
       }
 
-      const response = await apiService.get("/users/likes");
+      const response = await apiService.get("/users/likes")
       if (response.success) {
-        setLikedUsers(response.data || []);
+        setLikedUsers(response.data || [])
       } else {
-        console.error("Error in getLikedUsers:", response.error);
+        console.error("Error in getLikedUsers:", response.error)
         // Set empty array on error to prevent undefined errors
-        setLikedUsers([]);
+        setLikedUsers([])
       }
     } catch (err) {
-      console.error("Error fetching liked users:", err);
+      console.error("Error fetching liked users:", err)
       // Set empty array on error to prevent undefined errors
-      setLikedUsers([]);
+      setLikedUsers([])
     } finally {
-      setLikesLoading(false);
+      setLikesLoading(false)
     }
   }, [user])
 
   // Check if a user is liked
   const isUserLiked = useCallback(
     (userId) => {
-      if (!likedUsers || !Array.isArray(likedUsers)) return false;
+      if (!likedUsers || !Array.isArray(likedUsers)) return false
       return likedUsers.some((like) => like && like.recipient === userId)
     },
     [likedUsers],
@@ -370,8 +370,8 @@ export const UserProvider = ({ children }) => {
       try {
         // Validate userId
         if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
-          toast.error("Invalid user ID format");
-          return false;
+          toast.error("Invalid user ID format")
+          return false
         }
 
         const response = await apiService.post(`/users/${userId}/like`)
@@ -402,7 +402,11 @@ export const UserProvider = ({ children }) => {
 
           return true
         } else {
-          throw new Error(response.error || "Failed to like user")
+          // Handle case where response is {success: false} with no error message
+          // This happens when user tries to like someone they've already liked
+          const errorMsg = response.error || "You've already liked this user"
+          toast.error(errorMsg)
+          return false
         }
       } catch (err) {
         const errorMsg = err.error || err.message || "Failed to like user"
@@ -421,8 +425,8 @@ export const UserProvider = ({ children }) => {
       try {
         // Validate userId
         if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
-          toast.error("Invalid user ID format");
-          return false;
+          toast.error("Invalid user ID format")
+          return false
         }
 
         const response = await apiService.delete(`/users/${userId}/like`)

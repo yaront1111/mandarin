@@ -713,10 +713,6 @@ const handleCreateStory = (storyData) => {
           margin-bottom: 30px;
         }
         
-        .stories-header {
-          margin-top: 20px;
-        }
-        
         .create-story-btn {
           display: flex;
           align-items: center;

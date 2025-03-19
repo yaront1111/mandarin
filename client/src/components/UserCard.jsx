@@ -1,3 +1,4 @@
+"use client"
 
 import { useState } from "react"
 import { UserIcon, HeartIcon } from "@heroicons/react/24/outline"

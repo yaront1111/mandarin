@@ -1,4 +1,4 @@
-
+"use client"
 
 // client/src/pages/Profile.js
 import { useState, useEffect, useRef } from "react"
@@ -305,6 +305,13 @@ const Profile = () => {
   const handleTogglePhotoPrivacy = async (photoId, e) => {
     e?.stopPropagation()
     if (isProcessingPhoto) return
+
+    // Check if this is a temporary photo
+    if (photoId.toString().startsWith("temp-")) {
+      toast.warning("Please wait for the upload to complete before changing privacy settings")
+      return
+    }
+
     const photoIndex = localPhotos.findIndex((p) => p._id === photoId)
     if (photoIndex === -1) return
     const newPrivacyValue = !localPhotos[photoIndex].isPrivate
@@ -340,9 +347,17 @@ const Profile = () => {
 
   const handleSetProfilePhoto = async (photoId) => {
     if (isProcessingPhoto) return
+
+    // Check if this is a temporary photo
+    if (photoId.toString().startsWith("temp-")) {
+      toast.warning("Please wait for the upload to complete before setting as profile photo")
+      return
+    }
+
     const photoIndex = localPhotos.findIndex((p) => p._id === photoId)
     if (photoIndex === -1) return
     if (profilePhotoIndex === photoIndex) return
+
     setProfilePhotoIndex(photoIndex)
     setLocalPhotos((prev) =>
       prev.map((photo, index) => ({
@@ -386,6 +401,14 @@ const Profile = () => {
   const handleDeletePhoto = async (photoId, e) => {
     e?.stopPropagation()
     if (isProcessingPhoto) return
+
+    // Check if this is a temporary photo
+    if (photoId.toString().startsWith("temp-")) {
+      // For temporary photos, just remove them from the local state
+      setLocalPhotos((prev) => prev.filter((photo) => photo._id !== photoId))
+      return
+    }
+
     if (!window.confirm("Are you sure you want to delete this photo?")) return
     const photoIndex = localPhotos.findIndex((p) => p._id === photoId)
     if (photoIndex === -1) return
@@ -447,7 +470,22 @@ const Profile = () => {
     const fetchProfile = async () => {
       try {
         setLoading(true)
-        const response = await axios.get(`/api/users/${userId || "me"}`)
+        const token = sessionStorage.getItem("token")
+        if (!token) {
+          setError("Authentication required")
+          setLoading(false)
+          return
+        }
+
+        // Use the correct endpoint based on your API routes
+        // If viewing own profile, use the current user endpoint
+        const endpoint = userId ? `/api/users/${userId}` : `/api/users`
+
+        const response = await axios.get(endpoint, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
         setProfile(response.data)
       } catch (error) {
         console.error("Failed to fetch profile:", error)
@@ -692,7 +730,7 @@ const Profile = () => {
                       className="gallery-item"
                       style={{
                         position: "relative",
-                        cursor: "pointer",
+                        cursor: photo._id.toString().startsWith("temp-") ? "not-allowed" : "pointer",
                         border: photo.isProfile ? "2px solid var(--primary)" : "2px solid transparent",
                         borderRadius: "8px",
                         overflow: "hidden",
@@ -723,6 +761,27 @@ const Profile = () => {
                           <div className="spinner spinner-small"></div>
                         </div>
                       )}
+                      {photo._id.toString().startsWith("temp-") && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            height: "100%",
+                            background: "rgba(0,0,0,0.3)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "white",
+                            fontSize: "10px",
+                            textAlign: "center",
+                            padding: "4px",
+                          }}
+                        >
+                          Uploading...
+                        </div>
+                      )}
                       <div
                         className="photo-controls"
                         style={{
@@ -742,11 +801,11 @@ const Profile = () => {
                             background: "transparent",
                             border: "none",
                             color: "white",
-                            cursor: "pointer",
+                            cursor: photo._id.toString().startsWith("temp-") ? "not-allowed" : "pointer",
                             padding: "2px",
                           }}
                           title={photo.isPrivate ? "Make public" : "Make private"}
-                          disabled={isProcessingPhoto || photo.isLoading}
+                          disabled={isProcessingPhoto || photo.isLoading || photo._id.toString().startsWith("temp-")}
                           aria-label={photo.isPrivate ? "Make photo public" : "Make photo private"}
                         >
                           {photo.isPrivate ? (
@@ -765,11 +824,11 @@ const Profile = () => {
                               background: "transparent",
                               border: "none",
                               color: "white",
-                              cursor: "pointer",
+                              cursor: photo._id.toString().startsWith("temp-") ? "not-allowed" : "pointer",
                               padding: "2px",
                             }}
                             title="Set as profile photo"
-                            disabled={isProcessingPhoto || photo.isLoading}
+                            disabled={isProcessingPhoto || photo.isLoading || photo._id.toString().startsWith("temp-")}
                             aria-label="Set as profile photo"
                           >
                             <FaStar style={{ fontSize: "14px" }} />

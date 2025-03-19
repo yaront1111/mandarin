@@ -786,7 +786,6 @@
   max-width: 70%;
   padding: var(--space-md);
   border-radius: 18px;
-  margin-bottom: var(--space-xl);
   position: relative;
   animation: fadeIn 0.3s ease;
 }
