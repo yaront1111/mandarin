@@ -1,7 +1,10 @@
-// client/src/services/storiesService.jsx
+// client/src/services/storiesService.jsx - Production-ready implementation
 import apiService from "./apiService.jsx"
 
 const BASE_URL = "/stories"
+
+// Track in-progress requests to prevent duplicates
+const pendingRequests = new Map()
 
 /**
  * Get all stories
@@ -15,7 +18,7 @@ export const getAllStories = async () => {
     if (Array.isArray(response)) {
       return {
         success: true,
-        data: response
+        data: response,
       }
     }
 
@@ -24,7 +27,7 @@ export const getAllStories = async () => {
     console.error("Error fetching stories:", error)
     return {
       success: false,
-      message: error.message || "Failed to fetch stories"
+      message: error.message || "Failed to fetch stories",
     }
   }
 }
@@ -42,7 +45,7 @@ export const getUserStories = async (userId) => {
     if (Array.isArray(response)) {
       return {
         success: true,
-        data: response
+        data: response,
       }
     }
 
@@ -51,7 +54,7 @@ export const getUserStories = async (userId) => {
     console.error(`Error fetching stories for user ${userId}:`, error)
     return {
       success: false,
-      message: error.message || "Failed to fetch user stories"
+      message: error.message || "Failed to fetch user stories",
     }
   }
 }
@@ -63,14 +66,35 @@ export const getUserStories = async (userId) => {
  * @returns {Promise<Object>} Response with created story
  */
 export const createStory = async (formData, onProgress) => {
+  // Generate a unique request ID based on timestamp
+  const requestId = `create-story-${Date.now()}`
+
+  // Check if a similar request is already in progress
+  if (pendingRequests.has(requestId.substring(0, requestId.length - 3))) {
+    console.warn("Duplicate story creation request detected")
+    return {
+      success: false,
+      message: "A similar request is already in progress",
+    }
+  }
+
+  // Mark this request as pending
+  pendingRequests.set(requestId, true)
+
   try {
     // Add a timestamp to prevent caching issues
     if (formData instanceof FormData) {
       formData.append("timestamp", Date.now().toString())
-    } else {
+    } else if (typeof formData === "object") {
+      // For text stories, check if this is a text or media request
+      if (formData.mediaType === "text" || formData.type === "text") {
+        // This is a text story, use the specific text story endpoint
+        return createTextStory(formData, onProgress)
+      }
       formData.timestamp = Date.now()
     }
 
+    // This is a media upload
     const response = await apiService.upload(BASE_URL, formData, onProgress)
 
     // Validate the response
@@ -82,14 +106,19 @@ export const createStory = async (formData, onProgress) => {
     return {
       success: true,
       data: response.data || response,
-      message: "Story created successfully"
+      message: "Story created successfully",
     }
   } catch (error) {
     console.error("Error creating story:", error)
     return {
       success: false,
-      message: error.message || "Failed to create story"
+      message: error.message || "Failed to create story",
     }
+  } finally {
+    // Remove from pending requests after a short delay
+    setTimeout(() => {
+      pendingRequests.delete(requestId)
+    }, 5000)
   }
 }
 
@@ -100,11 +129,29 @@ export const createStory = async (formData, onProgress) => {
  * @returns {Promise<Object>} Response with created story
  */
 export const createTextStory = async (storyData, onProgress) => {
+  // Generate a unique request ID based on timestamp and content
+  const contentHash = storyData.content ? storyData.content.substring(0, 10) : ""
+  const requestId = `create-text-story-${contentHash}-${Date.now()}`
+
+  // Check if a similar request is already in progress
+  if (pendingRequests.has(requestId.substring(0, requestId.length - 3))) {
+    console.warn("Duplicate text story creation request detected")
+    return {
+      success: false,
+      message: "A similar request is already in progress",
+    }
+  }
+
+  // Mark this request as pending
+  pendingRequests.set(requestId, true)
+
   try {
-    // Add a timestamp to prevent caching issues
+    // Ensure type and mediaType are properly set for text stories
     const dataWithTimestamp = {
       ...storyData,
       timestamp: Date.now(),
+      type: "text",
+      mediaType: "text",
     }
 
     const response = await apiService.post(`${BASE_URL}/text`, dataWithTimestamp, {
@@ -112,13 +159,13 @@ export const createTextStory = async (storyData, onProgress) => {
     })
 
     // Check for error responses in various formats
-    if (response && typeof response === 'object') {
+    if (response && typeof response === "object") {
       if (response.error) {
-        throw new Error(response.error);
+        throw new Error(response.error)
       }
 
       if (response.success === false) {
-        throw new Error(response.message || "Failed to create text story");
+        throw new Error(response.message || "Failed to create text story")
       }
     }
 
@@ -127,8 +174,8 @@ export const createTextStory = async (storyData, onProgress) => {
       return {
         success: true,
         data: response.data || response.story,
-        message: "Story created successfully"
-      };
+        message: "Story created successfully",
+      }
     }
 
     // Handle old API that might return the story directly
@@ -136,17 +183,22 @@ export const createTextStory = async (storyData, onProgress) => {
       return {
         success: true,
         data: response,
-        message: "Story created successfully"
-      };
+        message: "Story created successfully",
+      }
     }
 
-    return response;
+    return response
   } catch (error) {
     console.error("Error creating text story:", error)
     return {
       success: false,
-      message: error.message || "Failed to create text story"
+      message: error.message || "Failed to create text story",
     }
+  } finally {
+    // Remove from pending requests after a short delay
+    setTimeout(() => {
+      pendingRequests.delete(requestId)
+    }, 5000)
   }
 }
 
@@ -163,7 +215,7 @@ export const deleteStory = async (storyId) => {
     if (response && !response.success && response.msg) {
       return {
         success: true,
-        message: response.msg
+        message: response.msg,
       }
     }
 
@@ -172,7 +224,7 @@ export const deleteStory = async (storyId) => {
     console.error(`Error deleting story ${storyId}:`, error)
     return {
       success: false,
-      message: error.message || "Failed to delete story"
+      message: error.message || "Failed to delete story",
     }
   }
 }
@@ -190,7 +242,7 @@ export const markStoryAsViewed = async (storyId) => {
     if (response && !response.success && response.msg) {
       return {
         success: true,
-        message: response.msg
+        message: response.msg,
       }
     }
 
@@ -199,7 +251,7 @@ export const markStoryAsViewed = async (storyId) => {
     console.error(`Error marking story ${storyId} as viewed:`, error)
     return {
       success: false,
-      message: error.message || "Failed to mark story as viewed"
+      message: error.message || "Failed to mark story as viewed",
     }
   }
 }
@@ -218,7 +270,25 @@ export const reactToStory = async (storyId, reactionType) => {
     console.error(`Error reacting to story ${storyId}:`, error)
     return {
       success: false,
-      message: error.message || "Failed to react to story"
+      message: error.message || "Failed to react to story",
+    }
+  }
+}
+
+/**
+ * Remove a reaction from a story
+ * @param {string} storyId - Story ID
+ * @returns {Promise<Object>} Response with result
+ */
+export const removeReaction = async (storyId) => {
+  try {
+    const response = await apiService.delete(`${BASE_URL}/${storyId}/react`)
+    return response
+  } catch (error) {
+    console.error(`Error removing reaction from story ${storyId}:`, error)
+    return {
+      success: false,
+      message: error.message || "Failed to remove reaction",
     }
   }
 }
@@ -236,44 +306,25 @@ export const getStoryReactions = async (storyId) => {
     console.error(`Error fetching reactions for story ${storyId}:`, error)
     return {
       success: false,
-      message: error.message || "Failed to fetch story reactions"
+      message: error.message || "Failed to fetch story reactions",
     }
   }
 }
 
 /**
- * Comment on a story
+ * Get viewers of a story
  * @param {string} storyId - Story ID
- * @param {string} comment - Comment text
- * @returns {Promise<Object>} Response with result
+ * @returns {Promise<Object>} Response with viewers data
  */
-export const commentOnStory = async (storyId, comment) => {
+export const getStoryViewers = async (storyId) => {
   try {
-    const response = await apiService.post(`${BASE_URL}/${storyId}/comment`, { comment })
+    const response = await apiService.get(`${BASE_URL}/${storyId}/viewers`)
     return response
   } catch (error) {
-    console.error(`Error commenting on story ${storyId}:`, error)
+    console.error(`Error fetching viewers for story ${storyId}:`, error)
     return {
       success: false,
-      message: error.message || "Failed to comment on story"
-    }
-  }
-}
-
-/**
- * Get comments for a story
- * @param {string} storyId - Story ID
- * @returns {Promise<Object>} Response with comments data
- */
-export const getStoryComments = async (storyId) => {
-  try {
-    const response = await apiService.get(`${BASE_URL}/${storyId}/comments`)
-    return response
-  } catch (error) {
-    console.error(`Error fetching comments for story ${storyId}:`, error)
-    return {
-      success: false,
-      message: error.message || "Failed to fetch story comments"
+      message: error.message || "Failed to fetch story viewers",
     }
   }
 }
@@ -287,9 +338,9 @@ const storiesService = {
   deleteStory,
   markStoryAsViewed,
   reactToStory,
+  removeReaction,
   getStoryReactions,
-  commentOnStory,
-  getStoryComments,
+  getStoryViewers,
 }
 
 export default storiesService

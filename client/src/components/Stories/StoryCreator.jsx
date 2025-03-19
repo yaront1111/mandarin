@@ -1,7 +1,7 @@
+"use client"
 
-
-import { useState, useRef, useCallback } from "react"
-import { FaTimes, FaCheck, FaSpinner, FaFont, FaPalette } from "react-icons/fa"
+import { useState, useRef, useCallback, useEffect } from "react"
+import { FaTimes, FaCheck, FaSpinner, FaFont, FaPalette, FaImage, FaVideo } from "react-icons/fa"
 import { toast } from "react-toastify"
 import { useAuth } from "../../context"
 import { useStories } from "../../context/StoriesContext"
@@ -11,7 +11,11 @@ const BACKGROUND_OPTIONS = [
   { id: "gradient-1", name: "Sunset", style: "linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%)" },
   { id: "gradient-2", name: "Ocean", style: "linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)" },
   { id: "gradient-3", name: "Passion", style: "linear-gradient(135deg, #f6d365 0%, #fda085 100%)" },
-  { id: "gradient-4", name: "Midnight", style: "linear-gradient(135deg, #30cfd0 0%, #330867 100%)" }
+  { id: "gradient-4", name: "Midnight", style: "linear-gradient(135deg, #30cfd0 0%, #330867 100%)" },
+  { id: "gradient-5", name: "Forest", style: "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)" },
+  { id: "gradient-6", name: "Berry", style: "linear-gradient(135deg, #c471f5 0%, #fa71cd 100%)" },
+  { id: "gradient-7", name: "Dusk", style: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)" },
+  { id: "gradient-8", name: "Fire", style: "linear-gradient(135deg, #f83600 0%, #f9d423 100%)" },
 ]
 
 const FONT_OPTIONS = [
@@ -32,13 +36,79 @@ const StoryCreator = ({ onClose, onSubmit }) => {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState("")
   const [activeTab, setActiveTab] = useState("text")
+  const [mediaFile, setMediaFile] = useState(null)
+  const [mediaPreview, setMediaPreview] = useState(null)
+  const [mediaType, setMediaType] = useState("text")
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const previewRef = useRef(null)
+  const fileInputRef = useRef(null)
+
+  // Handle file selection
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    // Validate file type
+    if (file.type.startsWith("image/")) {
+      setMediaType("image")
+    } else if (file.type.startsWith("video/")) {
+      setMediaType("video")
+    } else {
+      toast.error("Unsupported file type. Please upload an image or video.")
+      return
+    }
+
+    // Validate file size (10MB max)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File is too large. Maximum size is 10MB.")
+      return
+    }
+
+    setMediaFile(file)
+
+    // Create preview URL
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setMediaPreview(reader.result)
+    }
+    reader.readAsDataURL(file)
+
+    // Switch to appropriate tab
+    setActiveTab(file.type.startsWith("image/") ? "image" : "video")
+  }
+
+  // Trigger file input click
+  const handleUploadClick = (type) => {
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = type === "image" ? "image/*" : "video/*"
+      fileInputRef.current.click()
+    }
+  }
+
+  // Clear selected media
+  const clearMedia = () => {
+    setMediaFile(null)
+    setMediaPreview(null)
+    setMediaType("text")
+    setActiveTab("text")
+  }
 
   // Handle story creation with improved error handling
   const handleCreateStory = async () => {
-    if (!text.trim()) {
+    // Prevent duplicate submissions
+    if (isSubmitting || isUploading) {
+      return
+    }
+
+    // Validate based on media type
+    if (mediaType === "text" && !text.trim()) {
       toast.error("Please add some text to your story")
+      return
+    }
+
+    if ((mediaType === "image" || mediaType === "video") && !mediaFile) {
+      toast.error(`Please select a ${mediaType} file`)
       return
     }
 
@@ -49,26 +119,41 @@ const StoryCreator = ({ onClose, onSubmit }) => {
 
     setError("")
     setIsUploading(true)
+    setIsSubmitting(true)
     setUploadProgress(0)
 
     try {
-      const storyData = {
-        content: text.trim(),
-        text: text.trim(),
-        backgroundStyle: selectedBackground.style,
-        backgroundColor: selectedBackground.style,
-        fontStyle: selectedFont.style,
-        mediaType: "text" // text story
-      }
+      let storyData
+      let response
 
-      const updateProgress = (progressEvent) => {
-        if (progressEvent.total > 0) {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-          setUploadProgress(percentCompleted)
+      if (mediaType === "text") {
+        // For text stories
+        storyData = {
+          content: text.trim(),
+          text: text.trim(),
+          backgroundStyle: selectedBackground.style,
+          backgroundColor: selectedBackground.style,
+          fontStyle: selectedFont.style,
+          mediaType: "text",
+          type: "text",
         }
-      }
 
-      const response = await createStory(storyData, updateProgress)
+        response = await createStory(storyData, updateProgress)
+      } else {
+        // For image/video uploads, create FormData
+        const formData = new FormData()
+        formData.append("media", mediaFile)
+        formData.append("type", mediaType)
+        formData.append("mediaType", mediaType)
+
+        // Add optional caption if provided
+        if (text.trim()) {
+          formData.append("content", text.trim())
+          formData.append("text", text.trim())
+        }
+
+        response = await createStory(formData, updateProgress)
+      }
 
       if (response.success) {
         toast.success("Story created successfully!")
@@ -88,6 +173,20 @@ const StoryCreator = ({ onClose, onSubmit }) => {
       toast.error(error.message || "An error occurred")
     } finally {
       setIsUploading(false)
+      // Add a small delay before allowing another submission
+      setTimeout(() => {
+        setIsSubmitting(false)
+      }, 1000)
+    }
+  }
+
+  // Helper function for progress updates
+  const updateProgress = (progressEvent) => {
+    if (progressEvent && typeof progressEvent === "number") {
+      setUploadProgress(progressEvent)
+    } else if (progressEvent && progressEvent.total > 0) {
+      const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+      setUploadProgress(percentCompleted)
     }
   }
 
@@ -101,13 +200,25 @@ const StoryCreator = ({ onClose, onSubmit }) => {
     return { fontFamily: font.style }
   }, [])
 
+  // Handle escape key to close modal
+  useEffect(() => {
+    const handleEscKey = (e) => {
+      if (e.key === "Escape" && !isUploading) {
+        onClose?.()
+      }
+    }
+
+    document.addEventListener("keydown", handleEscKey)
+    return () => document.removeEventListener("keydown", handleEscKey)
+  }, [onClose, isUploading])
+
   return (
     <div className="story-creator-container">
-      <div className="story-creator-overlay" onClick={onClose}></div>
+      <div className="story-creator-overlay" onClick={isUploading ? null : onClose}></div>
       <div className="story-creator">
         <div className="creator-header">
           <h2>Create Story</h2>
-          <button className="close-button" onClick={onClose}>
+          <button className="close-button" onClick={isUploading ? null : onClose} disabled={isUploading}>
             <FaTimes />
           </button>
         </div>
@@ -117,39 +228,81 @@ const StoryCreator = ({ onClose, onSubmit }) => {
           <div
             className="story-preview"
             ref={previewRef}
-            style={{
-              ...getBackgroundStyle(selectedBackground),
-              ...getFontStyle(selectedFont)
-            }}
+            style={
+              mediaType === "text" ? { ...getBackgroundStyle(selectedBackground), ...getFontStyle(selectedFont) } : {}
+            }
           >
-            {text ? (
-              <div className="story-text-content">{text}</div>
+            {mediaType === "text" ? (
+              text ? (
+                <div className="story-text-content">{text}</div>
+              ) : (
+                <div className="story-placeholder">Type something amazing...</div>
+              )
+            ) : mediaPreview ? (
+              mediaType === "image" ? (
+                <img src={mediaPreview || "/placeholder.svg"} alt="Story preview" className="media-preview" />
+              ) : (
+                <video src={mediaPreview} className="media-preview" autoPlay muted loop />
+              )
             ) : (
-              <div className="story-placeholder">Type something amazing...</div>
+              <div className="story-placeholder">Select a {mediaType} file...</div>
             )}
+
+            {/* Caption overlay for media stories */}
+            {(mediaType === "image" || mediaType === "video") && text && <div className="story-caption">{text}</div>}
           </div>
 
           {/* Tabs */}
           <div className="story-creator-tabs">
             <button
               className={`tab-button ${activeTab === "text" ? "active" : ""}`}
-              onClick={() => setActiveTab("text")}
+              onClick={() => {
+                setActiveTab("text")
+                setMediaType("text")
+                setMediaFile(null)
+                setMediaPreview(null)
+              }}
             >
               <FaFont /> Text
             </button>
             <button
-              className={`tab-button ${activeTab === "background" ? "active" : ""}`}
-              onClick={() => setActiveTab("background")}
+              className={`tab-button ${activeTab === "image" ? "active" : ""}`}
+              onClick={() => handleUploadClick("image")}
             >
-              <FaPalette /> Background
+              <FaImage /> Image
             </button>
             <button
-              className={`tab-button ${activeTab === "font" ? "active" : ""}`}
-              onClick={() => setActiveTab("font")}
+              className={`tab-button ${activeTab === "video" ? "active" : ""}`}
+              onClick={() => handleUploadClick("video")}
             >
-              <FaFont /> Font
+              <FaVideo /> Video
             </button>
+            {mediaType === "text" && (
+              <button
+                className={`tab-button ${activeTab === "background" ? "active" : ""}`}
+                onClick={() => setActiveTab("background")}
+              >
+                <FaPalette /> Background
+              </button>
+            )}
+            {mediaType === "text" && (
+              <button
+                className={`tab-button ${activeTab === "font" ? "active" : ""}`}
+                onClick={() => setActiveTab("font")}
+              >
+                <FaFont /> Font
+              </button>
+            )}
           </div>
+
+          {/* Hidden file input */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+            accept="image/*,video/*"
+          />
 
           {/* Tab Content */}
           <div className="tab-content">
@@ -158,18 +311,20 @@ const StoryCreator = ({ onClose, onSubmit }) => {
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder="What's on your mind?"
-                  maxLength={50}
-                  rows={2}
+                  placeholder={mediaType === "text" ? "What's on your mind?" : "Add a caption (optional)"}
+                  maxLength={mediaType === "text" ? 150 : 100}
+                  rows={mediaType === "text" ? 3 : 2}
                 />
-                <small className="character-count">{text.length}/50</small>
+                <small className="character-count">
+                  {text.length}/{mediaType === "text" ? 150 : 100}
+                </small>
               </div>
             )}
 
-            {activeTab === "background" && (
+            {activeTab === "background" && mediaType === "text" && (
               <div className="background-tab">
                 <div className="background-options">
-                  {BACKGROUND_OPTIONS.map(bg => (
+                  {BACKGROUND_OPTIONS.map((bg) => (
                     <div
                       key={bg.id}
                       className={`background-option ${selectedBackground.id === bg.id ? "selected" : ""}`}
@@ -182,10 +337,10 @@ const StoryCreator = ({ onClose, onSubmit }) => {
               </div>
             )}
 
-            {activeTab === "font" && (
+            {activeTab === "font" && mediaType === "text" && (
               <div className="font-tab">
                 <div className="font-options">
-                  {FONT_OPTIONS.map(font => (
+                  {FONT_OPTIONS.map((font) => (
                     <div
                       key={font.id}
                       className={`font-option ${selectedFont.id === font.id ? "selected" : ""}`}
@@ -196,6 +351,14 @@ const StoryCreator = ({ onClose, onSubmit }) => {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {(activeTab === "image" || activeTab === "video") && mediaPreview && (
+              <div className="media-tab">
+                <button className="clear-media-btn" onClick={clearMedia}>
+                  Clear {mediaType}
+                </button>
               </div>
             )}
           </div>
@@ -215,7 +378,11 @@ const StoryCreator = ({ onClose, onSubmit }) => {
             <button
               className="btn btn-primary create-button"
               onClick={handleCreateStory}
-              disabled={isUploading || !text.trim()}
+              disabled={
+                isUploading ||
+                (mediaType === "text" && !text.trim()) ||
+                ((mediaType === "image" || mediaType === "video") && !mediaFile)
+              }
             >
               {isUploading ? (
                 <>
