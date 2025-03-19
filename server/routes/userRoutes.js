@@ -495,10 +495,10 @@ router.post(
           dimensions: { width: metadata.width, height: metadata.height },
         }
         const photo = {
-          url: `/uploads/${req.file.filename}`,
+          url: `/uploads/photos/${req.file.filename}`, // Make sure this includes the /photos path
           isPrivate,
           metadata: photoMetadata,
-        }
+        };
         const isFirstPhoto = !req.user.photos || req.user.photos.length === 0
         req.user.photos.push(photo)
         await req.user.save()
@@ -585,7 +585,7 @@ router.put(
 
 /**
  * @route   DELETE /api/users/photos/:id
- * @desc    Delete a photo
+ * @desc    Delete a photo (soft delete by moving to deleted folder)
  * @access  Private
  */
 router.delete(
@@ -593,33 +593,63 @@ router.delete(
   protect,
   asyncHandler(async (req, res) => {
     const photoId = req.params.id
-    logger.debug(`Deleting photo ${photoId} for user ${req.user._id}`)
+    logger.debug(`Soft-deleting photo ${photoId} for user ${req.user._id}`)
+
     if (!mongoose.Types.ObjectId.isValid(photoId)) {
       return res.status(400).json({ success: false, error: "Invalid photo ID format" })
     }
+
     const user = await User.findOne({ _id: req.user._id, "photos._id": photoId })
     if (!user) {
       logger.warn(`Photo ${photoId} not found or not owned by user ${req.user._id}`)
       return res.status(404).json({ success: false, error: "Photo not found or not owned by you" })
     }
+
     if (user.photos.length === 1) {
       return res.status(400).json({ success: false, error: "Cannot delete your only photo" })
     }
+
     if (user.photos[0]._id.toString() === photoId) {
       return res
         .status(400)
         .json({ success: false, error: "Cannot delete your profile photo. Set another photo as profile first." })
     }
+
     const photoIndex = user.photos.findIndex((p) => p._id.toString() === photoId)
     const photo = user.photos[photoIndex]
     const filename = photo.url.split("/").pop()
+
+    // Remove photo from user's photos array
     user.photos.splice(photoIndex, 1)
     await user.save()
-    const filePath = path.join(config.FILE_UPLOAD_PATH, filename)
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
-    logger.info(`Photo ${photoId} deleted for user ${req.user._id}`)
-    res.status(200).json({ success: true, message: "Photo deleted successfully" })
-  }),
+
+    // Import the soft delete function from upload middleware
+    const { softDeleteFile } = await import("../middleware/upload.js")
+
+    // Get the full file path
+    const filePath = path.join(config.FILE_UPLOAD_PATH, "photos", filename)
+
+    // Soft delete the file (move to deleted folder)
+    if (fs.existsSync(filePath)) {
+      const result = await softDeleteFile(filePath)
+      if (result) {
+        logger.info(`Photo ${photoId} soft-deleted for user ${req.user._id}`)
+      } else {
+        logger.warn(`Could not soft-delete photo file at ${filePath}`)
+      }
+    } else {
+      logger.warn(`Photo file not found at ${filePath}`)
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Photo deleted successfully",
+      data: {
+        photoId,
+        wasDeleted: true
+      }
+    })
+  })
 )
 
 /**

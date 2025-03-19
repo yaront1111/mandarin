@@ -46,24 +46,27 @@ const LazyImage = memo(({ src, alt, className, placeholder = "/placeholder.svg" 
   const imgRef = useRef(null)
 
   // Format the source URL properly
+  // From UserComponents.jsx - Updated formatSrc function in LazyImage component
+// In UserComponents.jsx - LazyImage component
   const formatSrc = useCallback(
     (url) => {
-      if (!url) return placeholder
+      if (!url) return placeholder;
 
       // If it's already a full URL, return it
-      if (url.startsWith("http")) return url
+      if (url.startsWith("http")) return url;
 
-      // If it's a path that starts with /uploads, convert it to the API endpoint
-      if (url.startsWith("/uploads/")) {
-        const filename = url.split("/").pop()
-        return `/api/photos/${filename}`
+      // If it's a path that starts with /uploads but doesn't include /photos
+      if (url.startsWith("/uploads/") && !url.includes("/photos/")) {
+        // Check if this is an old path format (pre-update)
+        // For backward compatibility, try to access it directly first
+        return url;
       }
 
-      // Otherwise, return as is
-      return url
+      // For all other cases, return the URL as is
+      return url;
     },
-    [placeholder],
-  )
+    [placeholder]
+  );
 
   const formattedSrc = formatSrc(src)
 
@@ -377,39 +380,41 @@ export const UserPhotoGallery = ({ userId, editable = false, onPhotoClick }) => 
   }
 
   // Handle photo upload
+// In UserComponents.jsx - In the uploadPhoto function
   const handlePhotoUpload = async (isPrivate = false) => {
-    if (!previewFile) return
+    if (!previewFile) return;
 
-    setIsUploading(true)
-    setUploadProgress(0)
+    setIsUploading(true);
+    setUploadProgress(0);
 
     try {
-      const formData = new FormData()
-      formData.append("photo", previewFile.file)
-      formData.append("isPrivate", isPrivate)
+      const formData = new FormData();
+      formData.append("photo", previewFile.file);
+      formData.append("isPrivate", isPrivate);
 
       const response = await apiService.upload("/users/photos", formData, (progress) => {
-        setUploadProgress(progress)
-      })
+        setUploadProgress(progress);
+      });
 
       if (response.success) {
-        toast.success(`Photo uploaded successfully${isPrivate ? " (Private)" : ""}!`)
-        fetchPhotos()
-        setPreviewFile(null)
+        toast.success(`Photo uploaded successfully${isPrivate ? " (Private)" : ""}!`);
+        await fetchPhotos(); // Ensure this is awaited
+        setPreviewFile(null);
+        setIsUploading(false); // Make sure to reset uploading state here
       } else {
-        throw new Error(response.error || "Failed to upload photo")
+        throw new Error(response.error || "Failed to upload photo");
       }
     } catch (err) {
-      setError(err.message || "Failed to upload photo")
-      toast.error(err.message || "Failed to upload photo")
+      setError(err.message || "Failed to upload photo");
+      toast.error(err.message || "Failed to upload photo");
+      setIsUploading(false); // Important: reset uploading state on error
     } finally {
-      setIsUploading(false)
-      setUploadProgress(0)
+      setUploadProgress(0);
       if (fileInputRef.current) {
-        fileInputRef.current.value = null
+        fileInputRef.current.value = null;
       }
     }
-  }
+  };
 
   // Handle setting photo as profile photo
   const handleSetAsProfile = async (photoId) => {

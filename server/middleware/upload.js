@@ -1,4 +1,4 @@
-// middleware/upload.js - Enhanced with ES modules and improved file validation
+// middleware/upload.js - Enhanced with ES modules, improved file validation, and deletion tracking
 import multer from "multer"
 import path from "path"
 import fs from "fs"
@@ -7,27 +7,29 @@ import { fileTypeFromBuffer } from "file-type"
 import config from "../config.js"
 import logger from "../logger.js"
 
-// Create uploads directory if it doesn't exist
+// Create base uploads directory if it doesn't exist
 const uploadDir = path.join(process.cwd(), "uploads")
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true })
   logger.info(`Created uploads directory: ${uploadDir}`)
 }
 
-// Sub-directories for different file types
+// Sub-directories for different file types with enhanced organization
 const directories = {
-  images: path.join(uploadDir, "images"),
+  photos: path.join(uploadDir, "photos"),
   videos: path.join(uploadDir, "videos"),
   messages: path.join(uploadDir, "messages"),
   profiles: path.join(uploadDir, "profiles"),
   stories: path.join(uploadDir, "stories"),
   temp: path.join(uploadDir, "temp"),
+  deleted: path.join(uploadDir, "deleted"), // New directory for soft-deleted files
 }
 
 // Ensure all sub-directories exist
 Object.values(directories).forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
+    logger.info(`Created directory: ${dir}`)
   }
 })
 
@@ -49,49 +51,39 @@ const generateSecureFilename = (originalname) => {
 }
 
 /**
- * Get appropriate upload directory based on file type
+ * Get appropriate upload directory based on file type and route
+ * @param {Object} req - Express request object
  * @param {Object} file - Multer file object
  * @returns {string} Directory path
  */
-const getUploadDirectory = (file) => {
-  if (file.mimetype.startsWith("image/")) {
-    return directories.images
-  } else if (file.mimetype.startsWith("video/")) {
-    return directories.videos
-  } else {
-    return directories.temp
-  }
-}
-
-/**
- * Get appropriate directory based on route
- * @param {Object} req - Express request object
- * @returns {string} Directory path
- */
-const getDirectoryFromRoute = (req) => {
+const getUploadDirectory = (req, file) => {
   const url = req.originalUrl.toLowerCase()
+
+  // Default to photos directory for all photo uploads
+  if (file.mimetype.startsWith("image/")) {
+    return directories.photos
+  }
+
+  // For specific routes, use dedicated directories
   if (url.includes("/messages")) {
     return directories.messages
   } else if (url.includes("/stories")) {
     return directories.stories
   } else if (url.includes("/profiles") || url.includes("/users")) {
     return directories.profiles
-  } else {
-    return directories.temp
+  } else if (file.mimetype.startsWith("video/")) {
+    return directories.videos
   }
+
+  return directories.temp
 }
 
 // Configure storage with enhanced security
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     try {
-      // Determine the appropriate directory
-      const routeDir = getDirectoryFromRoute(req)
-      const typeDir = getUploadDirectory(file)
-
-      // Prefer route-specific directory, fall back to type-based directory
-      const destDir = routeDir !== directories.temp ? routeDir : typeDir
-
+      // Determine the appropriate directory based on file type and route
+      const destDir = getUploadDirectory(req, file)
       logger.debug(`Uploading file to directory: ${destDir}`)
       cb(null, destDir)
     } catch (error) {
@@ -213,16 +205,53 @@ const validateFileContents = async (file) => {
 }
 
 /**
- * Clean up invalid file
+ * Move a file to the deleted directory instead of deleting it
+ * @param {string} filePath - Path to the file to soft-delete
+ * @returns {Promise<boolean>} - Whether the operation was successful
+ */
+const softDeleteFile = async (filePath) => {
+  try {
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      logger.warn(`Cannot soft-delete non-existent file: ${filePath}`)
+      return false
+    }
+
+    // Generate a unique filename for the deleted file
+    const filename = path.basename(filePath)
+    const timestamp = Date.now()
+    const deletedFilename = `${timestamp}-${filename}`
+    const deletedFilePath = path.join(directories.deleted, deletedFilename)
+
+    // Move file to deleted directory
+    fs.renameSync(filePath, deletedFilePath)
+    logger.info(`File soft-deleted: ${filePath} -> ${deletedFilePath}`)
+
+    return true
+  } catch (error) {
+    logger.error(`Error soft-deleting file: ${error.message}`)
+    return false
+  }
+}
+
+/**
+ * Clean up invalid file by moving it to deleted directory
  * @param {Object} file - Multer file object
  */
 const cleanupInvalidFile = (file) => {
   if (file && file.path && fs.existsSync(file.path)) {
     try {
-      fs.unlinkSync(file.path)
-      logger.debug(`Deleted invalid file: ${file.path}`)
+      softDeleteFile(file.path)
+      logger.debug(`Moved invalid file to deleted directory: ${file.path}`)
     } catch (error) {
-      logger.error(`Error deleting invalid file: ${error.message}`)
+      logger.error(`Error cleaning up invalid file: ${error.message}`)
+      // Fallback to direct deletion if soft delete fails
+      try {
+        fs.unlinkSync(file.path)
+        logger.debug(`Deleted invalid file: ${file.path}`)
+      } catch (unlinkError) {
+        logger.error(`Error deleting invalid file: ${unlinkError.message}`)
+      }
     }
   }
 }
@@ -273,6 +302,9 @@ export const uploadFile = createUploadMiddleware("file")
 export const uploadProfilePicture = createUploadMiddleware("profilePicture")
 export const uploadPhoto = createUploadMiddleware("photo")
 export const uploadStory = createUploadMiddleware("media")
+
+// Export utility functions
+export { softDeleteFile, cleanupInvalidFile, directories }
 
 // Export the base upload for custom configurations
 export default upload
