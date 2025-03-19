@@ -232,7 +232,6 @@ export const StoriesProvider = ({ children }) => {
 
       // Prevent duplicate submissions using both state and ref
       if (isCreatingStory || storyBeingCreated.current) {
-        toast.info("A story is already being created, please wait")
         return { success: false, message: "Story creation already in progress" }
       }
 
@@ -286,8 +285,6 @@ export const StoriesProvider = ({ children }) => {
         if (!newStory) {
           throw new Error("Story created but data not returned")
         }
-
-        toast.success("Story created successfully!")
 
         // Atomically update state to prevent race conditions
         setStories((prevStories) => {

@@ -1,9 +1,11 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
 import { ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
-import "./styles/main.css"
-import "./styles/stories.css" // Import stories styles
-import "./styles/settings.css"
+import "./styles/base.css"
+import "./styles/layout.css"
+import "./styles/components.css"
+import "./styles/pages.css"
+import "./styles/utilities.css"
 
 import { AuthProvider, UserProvider, ChatProvider, StoriesProvider, ThemeProvider } from "./context"
 import ErrorBoundary from "./components/ErrorBoundary.jsx"

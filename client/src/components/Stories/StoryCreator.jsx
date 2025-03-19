@@ -46,6 +46,8 @@ const StoryCreator = ({ onClose, onSubmit }) => {
 
   // Handle file selection
   const handleFileChange = (e) => {
+    if (isSubmitting || isUploading) return
+
     const file = e.target.files[0]
     if (!file) return
 
@@ -80,7 +82,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
 
   // Trigger file input click
   const handleUploadClick = (type) => {
-    if (fileInputRef.current) {
+    if (fileInputRef.current && !isSubmitting && !isUploading) {
       fileInputRef.current.accept = type === "image" ? "image/*" : "video/*"
       fileInputRef.current.click()
     }
@@ -88,6 +90,8 @@ const StoryCreator = ({ onClose, onSubmit }) => {
 
   // Clear selected media
   const clearMedia = () => {
+    if (isSubmitting || isUploading) return
+
     setMediaFile(null)
     setMediaPreview(null)
     setMediaType("text")
@@ -98,6 +102,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
   const handleCreateStory = async () => {
     // Prevent duplicate submissions
     if (isSubmitting || isUploading) {
+      toast.info("Please wait, your story is being created...")
       return
     }
 
@@ -155,7 +160,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
         response = await createStory(formData, updateProgress)
       }
 
-      if (response.success) {
+      if (response && response.success) {
         toast.success("Story created successfully!")
         if (onSubmit && response.data) {
           onSubmit(response.data)
@@ -164,19 +169,18 @@ const StoryCreator = ({ onClose, onSubmit }) => {
         }
         onClose?.()
       } else {
-        setError(response.message || "Failed to create story")
-        toast.error(response.message || "Failed to create story")
+        setError(response?.message || "Failed to create story")
+        toast.error(response?.message || "Failed to create story")
+        // Don't close on error
       }
     } catch (error) {
       console.error("Error creating story:", error)
       setError(error.message || "An error occurred")
       toast.error(error.message || "An error occurred")
+      // Don't close on error
     } finally {
       setIsUploading(false)
-      // Add a small delay before allowing another submission
-      setTimeout(() => {
-        setIsSubmitting(false)
-      }, 1000)
+      setIsSubmitting(false)
     }
   }
 
@@ -203,22 +207,26 @@ const StoryCreator = ({ onClose, onSubmit }) => {
   // Handle escape key to close modal
   useEffect(() => {
     const handleEscKey = (e) => {
-      if (e.key === "Escape" && !isUploading) {
+      if (e.key === "Escape" && !isUploading && !isSubmitting) {
         onClose?.()
       }
     }
 
     document.addEventListener("keydown", handleEscKey)
     return () => document.removeEventListener("keydown", handleEscKey)
-  }, [onClose, isUploading])
+  }, [onClose, isUploading, isSubmitting])
 
   return (
     <div className="story-creator-container">
-      <div className="story-creator-overlay" onClick={isUploading ? null : onClose}></div>
+      <div className="story-creator-overlay" onClick={isUploading || isSubmitting ? null : onClose}></div>
       <div className="story-creator">
         <div className="creator-header">
           <h2>Create Story</h2>
-          <button className="close-button" onClick={isUploading ? null : onClose} disabled={isUploading}>
+          <button
+            className="close-button"
+            onClick={isUploading || isSubmitting ? null : onClose}
+            disabled={isUploading || isSubmitting}
+          >
             <FaTimes />
           </button>
         </div>
@@ -256,31 +264,53 @@ const StoryCreator = ({ onClose, onSubmit }) => {
           <div className="story-creator-tabs">
             <button
               className={`tab-button ${activeTab === "text" ? "active" : ""}`}
-              onClick={() => {
-                setActiveTab("text")
-                setMediaType("text")
-                setMediaFile(null)
-                setMediaPreview(null)
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!isSubmitting && !isUploading) {
+                  setActiveTab("text");
+                  setMediaType("text");
+                  setMediaFile(null);
+                  setMediaPreview(null);
+                }
               }}
+              disabled={isSubmitting || isUploading}
             >
               <FaFont /> Text
             </button>
             <button
               className={`tab-button ${activeTab === "image" ? "active" : ""}`}
-              onClick={() => handleUploadClick("image")}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!isSubmitting && !isUploading) {
+                  handleUploadClick("image");
+                }
+              }}
+              disabled={isSubmitting || isUploading}
             >
               <FaImage /> Image
             </button>
             <button
               className={`tab-button ${activeTab === "video" ? "active" : ""}`}
-              onClick={() => handleUploadClick("video")}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!isSubmitting && !isUploading) {
+                  handleUploadClick("video");
+                }
+              }}
+              disabled={isSubmitting || isUploading}
             >
               <FaVideo /> Video
             </button>
             {mediaType === "text" && (
               <button
                 className={`tab-button ${activeTab === "background" ? "active" : ""}`}
-                onClick={() => setActiveTab("background")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isSubmitting && !isUploading) {
+                    setActiveTab("background");
+                  }
+                }}
+                disabled={isSubmitting || isUploading}
               >
                 <FaPalette /> Background
               </button>
@@ -288,7 +318,13 @@ const StoryCreator = ({ onClose, onSubmit }) => {
             {mediaType === "text" && (
               <button
                 className={`tab-button ${activeTab === "font" ? "active" : ""}`}
-                onClick={() => setActiveTab("font")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isSubmitting && !isUploading) {
+                    setActiveTab("font");
+                  }
+                }}
+                disabled={isSubmitting || isUploading}
               >
                 <FaFont /> Font
               </button>
@@ -302,6 +338,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
             style={{ display: "none" }}
             onChange={handleFileChange}
             accept="image/*,video/*"
+            disabled={isSubmitting || isUploading}
           />
 
           {/* Tab Content */}
@@ -314,6 +351,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
                   placeholder={mediaType === "text" ? "What's on your mind?" : "Add a caption (optional)"}
                   maxLength={mediaType === "text" ? 150 : 100}
                   rows={mediaType === "text" ? 3 : 2}
+                  disabled={isSubmitting || isUploading}
                 />
                 <small className="character-count">
                   {text.length}/{mediaType === "text" ? 150 : 100}
@@ -329,7 +367,11 @@ const StoryCreator = ({ onClose, onSubmit }) => {
                       key={bg.id}
                       className={`background-option ${selectedBackground.id === bg.id ? "selected" : ""}`}
                       style={getBackgroundStyle(bg)}
-                      onClick={() => setSelectedBackground(bg)}
+                      onClick={() => {
+                        if (!isSubmitting && !isUploading) {
+                          setSelectedBackground(bg);
+                        }
+                      }}
                       title={bg.name}
                     />
                   ))}
@@ -345,7 +387,11 @@ const StoryCreator = ({ onClose, onSubmit }) => {
                       key={font.id}
                       className={`font-option ${selectedFont.id === font.id ? "selected" : ""}`}
                       style={getFontStyle(font)}
-                      onClick={() => setSelectedFont(font)}
+                      onClick={() => {
+                        if (!isSubmitting && !isUploading) {
+                          setSelectedFont(font);
+                        }
+                      }}
                     >
                       {font.name}
                     </div>
@@ -356,7 +402,11 @@ const StoryCreator = ({ onClose, onSubmit }) => {
 
             {(activeTab === "image" || activeTab === "video") && mediaPreview && (
               <div className="media-tab">
-                <button className="clear-media-btn" onClick={clearMedia}>
+                <button
+                  className="clear-media-btn"
+                  onClick={clearMedia}
+                  disabled={isSubmitting || isUploading}
+                >
                   Clear {mediaType}
                 </button>
               </div>
@@ -380,11 +430,12 @@ const StoryCreator = ({ onClose, onSubmit }) => {
               onClick={handleCreateStory}
               disabled={
                 isUploading ||
+                isSubmitting ||
                 (mediaType === "text" && !text.trim()) ||
                 ((mediaType === "image" || mediaType === "video") && !mediaFile)
               }
             >
-              {isUploading ? (
+              {isSubmitting ? (
                 <>
                   <FaSpinner className="spinner-icon" />
                   <span>Creating...</span>
@@ -398,7 +449,11 @@ const StoryCreator = ({ onClose, onSubmit }) => {
             </button>
           )}
 
-          <button className="btn btn-outline cancel-button" onClick={onClose} disabled={isUploading}>
+          <button
+            className="btn btn-outline cancel-button"
+            onClick={onClose}
+            disabled={isUploading || isSubmitting}
+          >
             Cancel
           </button>
         </div>

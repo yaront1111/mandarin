@@ -265,6 +265,16 @@ export const markStoryAsViewed = async (storyId) => {
 export const reactToStory = async (storyId, reactionType) => {
   try {
     const response = await apiService.post(`${BASE_URL}/${storyId}/react`, { reactionType })
+
+    // Ensure we return a properly formatted response with the updated reactions
+    if (response && response.data && !response.success) {
+      return {
+        success: true,
+        data: response.data,
+        message: "Reaction added successfully",
+      }
+    }
+
     return response
   } catch (error) {
     console.error(`Error reacting to story ${storyId}:`, error)

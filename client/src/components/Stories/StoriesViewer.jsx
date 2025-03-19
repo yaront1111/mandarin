@@ -1,14 +1,19 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { useStories, useUser } from "../../context"
+import { useStories, useUser, useAuth } from "../../context"
 import { FaHeart, FaRegHeart, FaComment, FaShare, FaPlay, FaPause, FaVolumeUp, FaVolumeMute } from "react-icons/fa"
+import { toast } from "react-toastify"
 import "../../styles/stories.css"
 
 const StoriesViewer = ({ storyId, userId, onClose }) => {
   // Context hooks
   const { stories = [], viewStory, loadUserStories, loadStories, reactToStory } = useStories() || {}
-  const { user } = useUser() || {}
+  const { user: contextUser } = useUser() || {}
+  const { user: authUser, isAuthenticated } = useAuth() || {}
+
+  // Use a combined user reference that tries both contexts
+  const user = authUser || contextUser
 
   // Local state
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0)
@@ -19,12 +24,18 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   const [userStories, setUserStories] = useState([])
   const [muted, setMuted] = useState(true)
   const [reacted, setReacted] = useState(false)
+  const [navigating, setNavigating] = useState(false)
+  const [actionClicked, setActionClicked] = useState(false)
 
   // Progress logic
   const progressInterval = useRef(null)
   const storyDuration = 5000 // 5 seconds
   const progressStep = 100 / (storyDuration / 100)
   const videoRef = useRef(null)
+  const actionsRef = useRef(null)
+
+  // Define currentStories BEFORE any useEffects that depend on it
+  const currentStories = userId ? userStories : stories
 
   // Ensure all stories are loaded if needed
   useEffect(() => {
@@ -72,6 +83,25 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     fetchUserStories()
   }, [userId, loadUserStories, stories])
 
+  // Set initial reaction state based on the current story
+  useEffect(() => {
+    if (currentStories.length > 0 && currentStoryIndex >= 0 && currentStoryIndex < currentStories.length) {
+      const current = currentStories[currentStoryIndex]
+      console.log("Checking reactions for story:", current?._id, "User:", user?._id)
+
+      // Check if user has already reacted to this story
+      if (current && current.reactions && Array.isArray(current.reactions) && user) {
+        const hasReacted = current.reactions.some(
+          (reaction) => reaction.user === user._id || (reaction.user && reaction.user._id === user._id),
+        )
+        console.log("Has user reacted:", hasReacted, "Reactions:", current.reactions)
+        setReacted(hasReacted)
+      } else {
+        setReacted(false)
+      }
+    }
+  }, [currentStoryIndex, currentStories, user])
+
   // If storyId is provided, find its index
   useEffect(() => {
     if (storyId && (userId ? userStories : stories).length) {
@@ -82,9 +112,6 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       }
     }
   }, [storyId, userId, userStories, stories])
-
-  // Decide which stories to display
-  const currentStories = userId ? userStories : stories
 
   // Mark story as viewed
   useEffect(() => {
@@ -198,62 +225,173 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   const handlePrevStory = useCallback(
     (e) => {
       e?.stopPropagation()
+      e?.preventDefault()
+
+      // Don't navigate if clicking on action buttons
+      if (actionClicked) {
+        setActionClicked(false)
+        return
+      }
+
+      // Prevent rapid clicks
+      if (navigating) return
+
       if (currentStoryIndex > 0) {
+        setNavigating(true)
         setCurrentStoryIndex((i) => i - 1)
         setProgress(0)
-        setReacted(false)
+
+        // Reset navigation lock after a short delay
+        setTimeout(() => setNavigating(false), 300)
       }
     },
-    [currentStoryIndex],
+    [currentStoryIndex, navigating, actionClicked],
   )
 
   const handleNextStory = useCallback(
     (e) => {
       e?.stopPropagation()
+      e?.preventDefault()
+
+      // Don't navigate if clicking on action buttons
+      if (actionClicked) {
+        setActionClicked(false)
+        return
+      }
+
+      // Prevent rapid clicks
+      if (navigating) return
+
+      setNavigating(true)
+
       if (currentStoryIndex < currentStories.length - 1) {
         setCurrentStoryIndex((i) => i + 1)
         setProgress(0)
-        setReacted(false)
       } else {
         onClose?.()
       }
+
+      // Reset navigation lock after a short delay
+      setTimeout(() => setNavigating(false), 300)
     },
-    [currentStoryIndex, currentStories, onClose],
+    [currentStoryIndex, currentStories, onClose, navigating, actionClicked],
   )
 
-  const toggleMute = useCallback(
-    (e) => {
-      e.stopPropagation()
-      setMuted((m) => !m)
+  const toggleMute = useCallback((e) => {
+    e.stopPropagation()
+    e.preventDefault()
+
+    // Prevent navigation because an action was clicked
+    setActionClicked(true)
+
+    setMuted((prevMuted) => {
+      const newMuted = !prevMuted
+
+      // Update video element muted state directly
       if (videoRef.current) {
-        videoRef.current.muted = !muted
+        videoRef.current.muted = newMuted
       }
-    },
-    [muted],
-  )
+
+      return newMuted
+    })
+
+    // Reset action clicked status after a delay
+    setTimeout(() => setActionClicked(false), 300)
+  }, [])
 
   const handleReact = useCallback(
     (e) => {
+      console.log("React button clicked")
       e.stopPropagation()
-      if (!user || !currentStories[currentStoryIndex]) return
+      e.preventDefault()
 
-      const storyId = currentStories[currentStoryIndex]._id
+      // Prevent navigation because an action was clicked
+      setActionClicked(true)
+
+      // Prevent already reacted case
+      if (reacted) {
+        console.log("Already reacted to this story")
+        setTimeout(() => setActionClicked(false), 300)
+        return
+      }
+
+      // Check if user is authenticated using isAuthenticated from AuthContext
+      if (!isAuthenticated || !user) {
+        console.log("User authentication status:", isAuthenticated, "User:", user)
+        toast.error("You must be logged in to react to stories")
+        setTimeout(() => setActionClicked(false), 300)
+        return
+      }
+
+      if (!currentStories || currentStoryIndex >= currentStories.length) {
+        setTimeout(() => setActionClicked(false), 300)
+        return
+      }
+
+      const currentStory = currentStories[currentStoryIndex]
+      if (!currentStory || !currentStory._id) {
+        setTimeout(() => setActionClicked(false), 300)
+        return
+      }
+
+      const storyId = currentStory._id
       if (storyId && reactToStory) {
-        reactToStory(storyId, "like")
+        // Set immediately to prevent double-clicks
         setReacted(true)
+
+        // Call the API
+        reactToStory(storyId, "like")
+          .then((response) => {
+            if (!response || !response.success) {
+              throw new Error(response?.message || "Failed to react to story")
+            }
+            console.log("Successfully reacted to story")
+
+            // Update the local story data with the new reaction
+            if (response.data && Array.isArray(response.data)) {
+              // Find the current story and update its reactions
+              const updatedStories = [...currentStories]
+              if (updatedStories[currentStoryIndex]) {
+                updatedStories[currentStoryIndex].reactions = response.data
+
+                // If we're viewing user stories, update that array
+                if (userId) {
+                  setUserStories(updatedStories)
+                }
+              }
+            }
+          })
+          .catch((error) => {
+            console.error("Error reacting to story:", error)
+            setReacted(false) // Reset on error
+            toast.error("Failed to react to story")
+          })
+          .finally(() => {
+            setTimeout(() => setActionClicked(false), 300)
+          })
+      } else {
+        setTimeout(() => setActionClicked(false), 300)
       }
     },
-    [user, currentStories, currentStoryIndex, reactToStory],
+    [user, isAuthenticated, currentStories, currentStoryIndex, reactToStory, reacted, userId],
   )
 
   const togglePause = useCallback((e) => {
+    // Only toggle pause if not clicked in the action buttons area
+    if (actionsRef.current && actionsRef.current.contains(e.target)) {
+      return
+    }
+
     e.stopPropagation()
-    setPaused((p) => !p)
+    e.preventDefault()
+    setPaused((prevPaused) => !prevPaused)
   }, [])
 
   // Keyboard navigation
   useEffect(() => {
     const keyHandler = (e) => {
+      if (navigating) return // Prevent rapid keypresses
+
       if (e.key === "ArrowLeft") {
         handlePrevStory()
       } else if (e.key === "ArrowRight" || e.key === " " || e.key === "Spacebar") {
@@ -264,9 +402,55 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     }
     document.addEventListener("keydown", keyHandler)
     return () => document.removeEventListener("keydown", keyHandler)
-  }, [handlePrevStory, handleNextStory, onClose])
+  }, [handlePrevStory, handleNextStory, onClose, navigating])
 
   const handleClose = () => onClose?.()
+
+  // Action buttons styles
+  const actionButtonsStyle = {
+    position: "absolute",
+    bottom: "80px",
+    right: "20px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
+    zIndex: 9999,
+    pointerEvents: "auto",
+  }
+
+  const storyActionButtonStyle = {
+    width: "46px",
+    height: "46px",
+    borderRadius: "50%",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    color: "white",
+    border: "none",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    backdropFilter: "blur(4px)",
+    WebkitBackdropFilter: "blur(4px)",
+    pointerEvents: "auto",
+    boxShadow: "0 2px 10px rgba(0, 0, 0, 0.3)",
+  }
+
+  const activeButtonStyle = {
+    ...storyActionButtonStyle,
+    color: "var(--primary, #ff3366)",
+    backgroundColor: "rgba(255, 51, 102, 0.2)",
+    transform: "scale(1.1)",
+  }
+
+  const navigationStyle = {
+    pointerEvents: "auto",
+    zIndex: 900,
+  }
+
+  const navArrowStyle = {
+    zIndex: 950,
+  }
 
   // Loading or Error states
   if (loading) {
@@ -474,7 +658,11 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
               <FaPlay size={24} />
             </div>
           )}
-          <button className="video-control mute-button" onClick={toggleMute}>
+          <button
+            className="video-control mute-button"
+            onClick={toggleMute}
+            aria-label={muted ? "Unmute video" : "Mute video"}
+          >
             {muted ? <FaVolumeMute size={16} /> : <FaVolumeUp size={16} />}
           </button>
           {currentStory.content && currentStory.content.trim() && (
@@ -538,59 +726,99 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
           </button>
         </div>
 
-        <div className="stories-viewer-content" onClick={togglePause}>
+        <div
+          className="stories-viewer-content"
+          onClick={(e) => {
+            // Only toggle pause if click is directly on content (not on a button or other element)
+            if (e.target === e.currentTarget) {
+              togglePause(e)
+            }
+          }}
+        >
           {getStoryContent()}
         </div>
 
-        <div className="stories-viewer-navigation">
-          <div className="stories-nav-left" onClick={handlePrevStory}></div>
-          <div className="stories-nav-right" onClick={handleNextStory}></div>
+        <div className="stories-viewer-navigation" style={navigationStyle}>
+          <div
+            className="stories-nav-left"
+            onClick={handlePrevStory}
+            aria-label="Previous story"
+            style={navArrowStyle}
+          ></div>
+          <div
+            className="stories-nav-right"
+            onClick={handleNextStory}
+            aria-label="Next story"
+            style={navArrowStyle}
+          ></div>
         </div>
 
-        {/* Story actions */}
-        <div className="stories-actions">
+        {/* Improved Story actions */}
+        <div
+          ref={actionsRef}
+          className="stories-actions"
+          style={actionButtonsStyle}
+          onClick={(e) => {
+            // Prevent event bubbling
+            e.stopPropagation()
+            e.preventDefault()
+            setActionClicked(true)
+          }}
+        >
           <button
             className={`story-action-button ${reacted ? "active" : ""}`}
-            onClick={(e) => {
-              e.stopPropagation() // Prevent click from bubbling to parent
-              handleReact(e)
-            }}
+            style={reacted ? activeButtonStyle : storyActionButtonStyle}
+            onClick={handleReact}
             aria-label="Like story"
           >
-            {reacted ? <FaHeart /> : <FaRegHeart />}
+            {reacted ? <FaHeart size={20} /> : <FaRegHeart size={20} />}
           </button>
           <button
             className="story-action-button"
-            onClick={(e) => e.stopPropagation()} // Prevent click from bubbling
+            style={storyActionButtonStyle}
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              setActionClicked(true)
+              toast.info("Comments feature coming soon!")
+              setTimeout(() => setActionClicked(false), 300)
+            }}
             aria-label="Comment on story"
           >
-            <FaComment />
+            <FaComment size={20} />
           </button>
           <button
             className="story-action-button"
-            onClick={(e) => e.stopPropagation()} // Prevent click from bubbling
+            style={storyActionButtonStyle}
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              setActionClicked(true)
+              toast.info("Share feature coming soon!")
+              setTimeout(() => setActionClicked(false), 300)
+            }}
             aria-label="Share story"
           >
-            <FaShare />
+            <FaShare size={20} />
           </button>
           <button
             className="story-action-button"
+            style={storyActionButtonStyle}
             onClick={(e) => {
-              e.stopPropagation() // Prevent click from bubbling
+              e.stopPropagation()
+              e.preventDefault()
+              setActionClicked(true)
               togglePause(e)
+              setTimeout(() => setActionClicked(false), 300)
             }}
             aria-label={paused ? "Play story" : "Pause story"}
           >
-            {paused ? <FaPlay /> : <FaPause />}
+            {paused ? <FaPlay size={20} /> : <FaPause size={20} />}
           </button>
         </div>
       </div>
     </div>
   )
-
-  function areEqual(prevProps, nextProps) {
-    return prevProps.storyId === nextProps.storyId && prevProps.userId === nextProps.userId
-  }
 }
 
 export default StoriesViewer

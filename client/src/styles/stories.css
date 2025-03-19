@@ -1,4 +1,4 @@
-/* Modern Stories CSS - Improved & Bug-fixed for 2025 */
+/* Modern Stories CSS - Fixed & Optimized for 2025 */
 
 /* Stories Carousel Styles */
 .stories-carousel-container {
@@ -203,15 +203,16 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   border-radius: 16px;
   animation: scaleIn 0.3s ease;
+  transform: translateZ(0); /* Force GPU acceleration for smoother animations */
 }
 
 @keyframes scaleIn {
   from {
-    transform: scale(0.95);
+    transform: scale(0.95) translateZ(0);
     opacity: 0.5;
   }
   to {
-    transform: scale(1);
+    transform: scale(1) translateZ(0);
     opacity: 1;
   }
 }
@@ -221,7 +222,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  z-index: 10;
+  z-index: 1051;
   position: relative;
 }
 
@@ -233,6 +234,7 @@
   display: flex;
   padding: 8px;
   gap: 4px;
+  z-index: 1052;
 }
 
 .stories-progress-bar {
@@ -252,13 +254,14 @@
   background-color: white;
   border-radius: 3px;
   transition: width linear;
+  will-change: width; /* Optimization for animation */
 }
 
 .stories-user-info {
   display: flex;
   align-items: center;
   color: white;
-  z-index: 1001;
+  z-index: 1053;
   margin-top: 12px;
 }
 
@@ -292,7 +295,7 @@
   color: white;
   font-size: 28px;
   cursor: pointer;
-  z-index: 1001;
+  z-index: 1054;
   width: 32px;
   height: 32px;
   display: flex;
@@ -303,6 +306,7 @@
   transition: all 0.25s ease;
   border: none;
   outline: none;
+  margin-left: auto;
 }
 
 .stories-close-btn:hover {
@@ -397,7 +401,7 @@
   }
 }
 
-.stories-caption {
+.story-caption {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -436,7 +440,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  z-index: 10;
+  z-index: 1056;
 }
 
 .story-action-button {
@@ -469,7 +473,7 @@
   position: absolute;
   bottom: 20px;
   left: 20px;
-  z-index: 10;
+  z-index: 1055;
   background-color: rgba(0, 0, 0, 0.5);
   border: none;
   color: white;
@@ -516,7 +520,7 @@
 .story-creator {
   width: 90%;
   max-width: 520px;
-  background: var(--bg-color, #ffffff);
+  background: var(--card-bg, #ffffff);
   border-radius: var(--radius-lg, 16px);
   box-shadow: var(--card-shadow, 0 6px 16px rgba(0, 0, 0, 0.06));
   overflow: hidden;
@@ -544,7 +548,7 @@
   align-items: center;
   padding: var(--space-md, 16px) var(--space-lg, 24px);
   border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background-color: var(--bg-color, #ffffff);
+  background-color: var(--card-bg, #ffffff);
 }
 
 .creator-header h2 {
@@ -581,7 +585,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-lg, 24px);
-  background-color: var(--bg-color, #ffffff);
+  background-color: var(--card-bg, #ffffff);
   position: relative;
   border-radius: var(--radius-md, 8px);
   scrollbar-width: thin;
@@ -613,20 +617,17 @@
   overflow: hidden;
   box-shadow: var(--hover-shadow, 0 10px 24px rgba(0, 0, 0, 0.1));
   position: relative;
-  transition: all 0.25s ease;
-  transform: scale(1);
   margin-bottom: 0;
   background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
   background-size: 200% 200%;
   animation: gradientAnimation 15s ease infinite;
-  backdrop-filter: blur(0px);
-  transition: backdrop-filter 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  transform: translateZ(0); /* Force GPU acceleration */
+  transition: transform 0.3s ease;
 }
 
 .story-preview:hover {
-  transform: scale(1.02);
+  transform: scale(1.02) translateZ(0);
   box-shadow: var(--hover-shadow, 0 10px 24px rgba(0, 0, 0, 0.1));
-  backdrop-filter: blur(2px);
 }
 
 .story-text-content {
@@ -807,7 +808,7 @@
 .tab-content {
   margin-bottom: 28px;
   padding: 16px;
-  background-color: var(--bg-color, #ffffff);
+  background-color: var(--card-bg, #ffffff);
   border-radius: var(--radius-lg, 16px);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
   transition: all 0.25s ease;
@@ -837,7 +838,7 @@
   border-color: var(--primary, #ff3366);
   outline: none;
   box-shadow: 0 0 0 4px rgba(255, 51, 102, 0.08), inset 0 2px 4px rgba(0, 0, 0, 0.05);
-  background-color: var(--bg-color, #ffffff);
+  background-color: var(--card-bg, #ffffff);
 }
 
 .text-tab textarea::placeholder {
@@ -995,12 +996,12 @@
   border: none;
 }
 
-.create-button:hover {
+.create-button:hover:not(:disabled) {
   background-color: var(--primary-dark, #cc2952);
   transform: translateY(-2px);
 }
 
-.create-button:active {
+.create-button:active:not(:disabled) {
   transform: translateY(0);
 }
 
@@ -1008,6 +1009,7 @@
   background-color: var(--text-light, #7e7e7e);
   cursor: not-allowed;
   transform: none;
+  opacity: 0.7;
 }
 
 .cancel-button {
@@ -1016,9 +1018,14 @@
   border: 1px solid var(--border-color, #e0e0e0);
 }
 
-.cancel-button:hover {
+.cancel-button:hover:not(:disabled) {
   background-color: var(--light, #f2f2f2);
   color: var(--text-dark, #1a1a1a);
+}
+
+.cancel-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .upload-progress {
@@ -1040,6 +1047,7 @@
   height: 100%;
   background-color: var(--primary, #ff3366);
   transition: width 0.3s ease;
+  will-change: width;
 }
 
 .spinner-icon {
@@ -1051,7 +1059,7 @@
 .stories-section {
   margin-bottom: var(--space-xl, 32px);
   padding: var(--space-md, 16px);
-  background-color: var(--bg-color, #ffffff);
+  background-color: var(--card-bg, #ffffff);
   border-radius: var(--radius-lg, 16px);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
@@ -1113,13 +1121,13 @@
   margin-right: 6px;
 }
 
-.create-story-btn:hover {
+.create-story-btn:hover:not(:disabled) {
   background-color: var(--primary-dark, #cc2952);
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
 }
 
-.create-story-btn:active {
+.create-story-btn:active:not(:disabled) {
   transform: translateY(0);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
@@ -1184,6 +1192,24 @@
   .tab-button {
     min-width: 33.33%;
   }
+
+  .stories-actions {
+    bottom: 15px;
+    right: 15px;
+    gap: 12px;
+  }
+
+  .story-action-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .video-control {
+    bottom: 15px;
+    left: 15px;
+    width: 36px;
+    height: 36px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -1208,16 +1234,81 @@
 
   .tab-button {
     min-width: 50%;
+    padding: 10px 6px;
+    font-size: 12px;
   }
 
   .stories-actions {
     bottom: 10px;
     right: 10px;
+    gap: 10px;
   }
 
   .story-action-button {
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
+    font-size: 14px;
+  }
+
+  .video-control {
+    bottom: 10px;
+    left: 10px;
+    width: 34px;
+    height: 34px;
+  }
+
+  .stories-viewer-container {
+    border-radius: 0;
+  }
+
+  .stories-close-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 22px;
+  }
+
+  .stories-user-avatar {
+    width: 30px;
+    height: 30px;
+  }
+
+  .stories-username {
+    font-size: 13px;
+  }
+
+  .stories-timestamp {
+    font-size: 11px;
+  }
+
+  .pause-indicator {
+    width: 50px;
+    height: 50px;
+  }
+
+  .creator-header h2 {
+    font-size: 18px;
+  }
+
+  .create-button, .cancel-button {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+}
+
+/* Touch device optimizations */
+@media (pointer: coarse) {
+  .story-action-button,
+  .video-control,
+  .stories-close-btn,
+  .tab-button,
+  .create-button,
+  .cancel-button {
+    min-height: 44px; /* Better touch target */
+  }
+
+  .carousel-nav-button {
+    width: 44px;
+    height: 44px;
   }
 }
 
@@ -1317,6 +1408,7 @@
 
 .dark .font-option.selected {
   background-color: #2a2a2a;
+  color: var(--primary, #ff3366);
 }
 
 .dark .creator-footer {
@@ -1329,8 +1421,9 @@
   border-color: var(--border-color, #444);
 }
 
-.dark .cancel-button:hover {
+.dark .cancel-button:hover:not(:disabled) {
   background-color: rgba(255, 255, 255, 0.1);
+  color: white;
 }
 
 .dark .progress-bar-container {
@@ -1354,5 +1447,21 @@
 }
 
 .dark .stories-close-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.dark .story-preview {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+}
+
+.dark .story-placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.dark .stories-viewer-navigation {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.dark .stories-progress-bar {
   background-color: rgba(255, 255, 255, 0.2);
 }

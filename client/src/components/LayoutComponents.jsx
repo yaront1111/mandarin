@@ -1,303 +1,30 @@
-
+"use client"
 
 // client/src/components/LayoutComponents.js
 import { useEffect, useState, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth } from "../context"
 import { toast } from "react-toastify"
-import {
-  FaUserCircle,
-  FaBell,
-  FaSearch,
-  FaHeart,
-  FaTimes,
-  FaExclamationTriangle,
-  FaComment,
-  FaEnvelope,
-} from "react-icons/fa"
+import { FaUserCircle, FaBell, FaSearch, FaHeart, FaTimes, FaExclamationTriangle } from "react-icons/fa"
 import { ThemeToggle } from "./theme-toggle.tsx"
-
-// Dropdown and notification CSS styles injected into document head
-const dropdownStyles = `
-  .dropdown-menu {
-    display: none;
-    position: absolute;
-    right: 0;
-    background-color: #fff;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 1000;
-    min-width: 180px;
-    padding: 8px 0;
-    margin-top: 8px;
-  }
-  
-  .dropdown-menu.show {
-    display: block;
-  }
-  
-  .dropdown-item {
-    padding: 8px 16px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-  }
-  
-  .dropdown-item:hover {
-    background-color: #f5f5f5;
-  }
-  
-  .dropdown-divider {
-    height: 1px;
-    background-color: #e9ecef;
-    margin: 4px 0;
-  }
-  
-  .text-danger {
-    color: #dc3545;
-  }
-  
-  .dropdown {
-    position: relative;
-  }
-
-  /* Notification styles */
-  .notification-badge {
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    background-color: #ff4757;
-    color: white;
-    border-radius: 50%;
-    min-width: 18px;
-    height: 18px;
-    font-size: 11px;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid #fff;
-  }
-
-  .notification-dropdown {
-    width: 320px;
-    max-height: 400px;
-    overflow-y: auto;
-    padding: 0;
-  }
-
-  .notification-header {
-    padding: 12px 16px;
-    font-weight: bold;
-    border-bottom: 1px solid #e9ecef;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .notification-item {
-    padding: 12px 16px;
-    border-bottom: 1px solid #f0f0f0;
-    display: flex;
-    align-items: flex-start;
-    transition: background-color 0.2s;
-  }
-
-  .notification-item:hover {
-    background-color: #f5f5f5;
-  }
-
-  .notification-item.unread {
-    background-color: #f0f8ff;
-  }
-
-  .notification-item.unread:hover {
-    background-color: #e6f3ff;
-  }
-
-  .notification-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background-color: #f0f0f0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: 12px;
-    flex-shrink: 0;
-  }
-
-  .notification-icon.message { background-color: #e3f2fd; color: #2196f3; }
-  .notification-icon.like { background-color: #ffebee; color: #f44336; }
-  .notification-icon.comment { background-color: #e8f5e9; color: #4caf50; }
-  .notification-icon.story { background-color: #fff3e0; color: #ff9800; }
-
-  .notification-content {
-    flex: 1;
-  }
-
-  .notification-title {
-    font-weight: 500;
-    margin-bottom: 4px;
-  }
-
-  .notification-message {
-    font-size: 13px;
-    color: #666;
-  }
-
-  .notification-time {
-    font-size: 11px;
-    color: #999;
-    margin-top: 4px;
-  }
-
-  .notification-empty {
-    padding: 24px 16px;
-    text-align: center;
-    color: #666;
-  }
-
-  .mark-all-read {
-    color: #2196f3;
-    font-size: 13px;
-    cursor: pointer;
-  }
-
-  .mark-all-read:hover {
-    text-decoration: underline;
-  }
-
-  /* Dark mode support */
-  .dark .dropdown-menu {
-    background-color: #2d3748;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  }
-
-  .dark .dropdown-item:hover {
-    background-color: #3a4556;
-  }
-
-  .dark .dropdown-divider {
-    background-color: #4a5568;
-  }
-
-  .dark .notification-item {
-    border-bottom-color: #3a4556;
-  }
-
-  .dark .notification-item:hover {
-    background-color: #3a4556;
-  }
-
-  .dark .notification-item.unread {
-    background-color: #2c3e50;
-  }
-
-  .dark .notification-item.unread:hover {
-    background-color: #34495e;
-  }
-
-  .dark .notification-message {
-    color: #cbd5e0;
-  }
-
-  .dark .notification-time {
-    color: #a0aec0;
-  }
-
-  .dark .notification-empty {
-    color: #a0aec0;
-  }
-
-  .dark .notification-header {
-    border-bottom-color: #4a5568;
-  }
-`
 
 // Modern Navbar Component
 export const Navbar = () => {
   // Local state for notifications and dropdown toggling
   const [notifications, setNotifications] = useState([])
-  const [loadingNotifications, setLoadingNotifications] = useState(true)
+  const [loadingNotifications, setLoadingNotifications] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [showUserDropdown, setShowUserDropdown] = useState(false)
 
   // Refs for dropdown elements
   const notificationDropdownRef = useRef(null)
   const userDropdownRef = useRef(null)
-
-  // Inject dropdown styles on mount
-  useEffect(() => {
-    const styleElement = document.createElement("style")
-    styleElement.innerHTML = dropdownStyles
-    document.head.appendChild(styleElement)
-    return () => {
-      document.head.removeChild(styleElement)
-    }
-  }, [])
-
-  // Simulate fetching notifications
-  useEffect(() => {
-    const fetchNotifications = async () => {
-      try {
-        setLoadingNotifications(true)
-        // Simulate API call with timeout
-        setTimeout(() => {
-          setNotifications([
-            {
-              _id: "1",
-              type: "message",
-              message: "Sarah sent you a message",
-              read: false,
-              createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-              data: { conversationId: "123" },
-            },
-            {
-              _id: "2",
-              type: "like",
-              message: "Michael liked your profile",
-              read: false,
-              createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-              data: { userId: "456" },
-            },
-            {
-              _id: "3",
-              type: "match",
-              message: "You matched with Jessica!",
-              read: true,
-              createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-              data: { userId: "789" },
-            },
-          ])
-          setLoadingNotifications(false)
-        }, 1000)
-      } catch (error) {
-        console.error("Failed to fetch notifications:", error)
-        toast.error("Could not load notifications")
-        setLoadingNotifications(false)
-      }
-    }
-    fetchNotifications()
-
-    // Simulate receiving a new notification after 10 seconds
-    const timer = setTimeout(() => {
-      const newNotification = {
-        _id: "4",
-        type: "like",
-        message: "David liked your photo",
-        read: false,
-        createdAt: new Date().toISOString(),
-        data: { userId: "101" },
-      }
-      setNotifications(prev => [newNotification, ...prev])
-      toast.info(newNotification.message)
-    }, 10000)
-
-    return () => clearTimeout(timer)
-  }, [])
+  const notificationButtonRef = useRef(null)
 
   // Update unread count when notifications change
   useEffect(() => {
-    const count = notifications.filter(n => !n.read).length
+    const count = notifications.filter((n) => !n.read).length
     setUnreadCount(count)
   }, [notifications])
 
@@ -313,42 +40,52 @@ export const Navbar = () => {
     navigate("/profile")
   }
 
-  // Toggle notification dropdown using ref
+  // Toggle notification dropdown using state
   const toggleNotificationDropdown = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (notificationDropdownRef.current) {
-      notificationDropdownRef.current.classList.toggle("show")
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
     }
-    // Close user dropdown if open
-    if (userDropdownRef.current && userDropdownRef.current.classList.contains("show")) {
-      userDropdownRef.current.classList.remove("show")
+    console.log("Toggling notification dropdown")
+    setShowNotifications((prevState) => !prevState)
+    setShowUserDropdown(false) // Close user dropdown
+
+    // Show a toast to confirm the button works
+    if (!showNotifications) {
+      toast.info("Notifications opened")
     }
   }
 
-  // Toggle user dropdown using ref
+  // Toggle user dropdown using state
   const toggleUserDropdown = (e) => {
     e.preventDefault()
     e.stopPropagation()
-    if (userDropdownRef.current) {
-      userDropdownRef.current.classList.toggle("show")
-    }
-    // Close notification dropdown if open
-    if (notificationDropdownRef.current && notificationDropdownRef.current.classList.contains("show")) {
-      notificationDropdownRef.current.classList.remove("show")
-    }
+    console.log("User dropdown button clicked")
+    setShowUserDropdown(!showUserDropdown)
+    setShowNotifications(false) // Close notification dropdown
   }
 
   // Close dropdowns if clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (notificationDropdownRef.current && !notificationDropdownRef.current.contains(event.target)) {
-        notificationDropdownRef.current.classList.remove("show")
+      if (
+        notificationDropdownRef.current &&
+        !notificationDropdownRef.current.contains(event.target) &&
+        notificationButtonRef.current &&
+        !notificationButtonRef.current.contains(event.target)
+      ) {
+        setShowNotifications(false)
       }
-      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
-        userDropdownRef.current.classList.remove("show")
+
+      if (
+        userDropdownRef.current &&
+        !userDropdownRef.current.contains(event.target) &&
+        !event.target.closest(".user-avatar-dropdown")
+      ) {
+        setShowUserDropdown(false)
       }
     }
+
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
@@ -358,9 +95,7 @@ export const Navbar = () => {
     if (!notification.read) {
       try {
         // Simulate marking notification as read
-        setNotifications(prev =>
-          prev.map(n => (n._id === notification._id ? { ...n, read: true } : n))
-        )
+        setNotifications((prev) => prev.map((n) => (n._id === notification._id ? { ...n, read: true } : n)))
         toast.success("Notification marked as read")
       } catch (error) {
         console.error("Failed to mark notification as read:", error)
@@ -373,78 +108,79 @@ export const Navbar = () => {
       navigate(`/profile`)
     }
     // Close dropdown
-    if (notificationDropdownRef.current) {
-      notificationDropdownRef.current.classList.remove("show")
-    }
+    setShowNotifications(false)
   }
 
   const markAllAsRead = (e) => {
     e.stopPropagation()
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
     toast.success("All notifications marked as read")
-  }
-
-  // Return appropriate icon for notification type
-  const getNotificationIcon = (type) => {
-    switch (type) {
-      case "message":
-        return <FaEnvelope />
-      case "like":
-        return <FaHeart />
-      case "comment":
-        return <FaComment />
-      case "match":
-        return <FaHeart />
-      default:
-        return <FaBell />
-    }
-  }
-
-  // Format time to relative string (e.g., "5 minutes ago")
-  const formatRelativeTime = (dateString) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now - date
-    const diffSec = Math.floor(diffMs / 1000)
-    const diffMin = Math.floor(diffSec / 60)
-    const diffHour = Math.floor(diffMin / 60)
-    const diffDay = Math.floor(diffHour / 24)
-
-    if (diffSec < 60) return "just now"
-    if (diffMin < 60) return `${diffMin} minute${diffMin > 1 ? "s" : ""} ago`
-    if (diffHour < 24) return `${diffHour} hour${diffHour > 1 ? "s" : ""} ago`
-    if (diffDay < 7) return `${diffDay} day${diffDay > 1 ? "s" : ""} ago`
-    return date.toLocaleDateString()
   }
 
   // Render notifications list
   const renderNotifications = () => {
     if (loadingNotifications) {
       return (
-        <div className="flex justify-center p-4 text-center py-4">
+        <div style={{ padding: "20px", textAlign: "center" }}>
           <div className="spinner"></div>
-          <p className="mt-2">Loading notifications...</p>
+          <p style={{ marginTop: "10px" }}>Loading notifications...</p>
         </div>
       )
     }
     if (notifications.length === 0) {
-      return <div className="notification-empty">No notifications yet</div>
+      return (
+        <div style={{ padding: "20px", textAlign: "center", color: "var(--text-light)" }}>No notifications yet</div>
+      )
     }
-    return notifications.map(notification => (
+    return notifications.map((notification) => (
       <div
         key={notification._id}
-        className={`notification-item ${!notification.read ? "unread" : ""}`}
+        style={{
+          padding: "12px 16px",
+          borderBottom: "1px solid var(--border-color)",
+          display: "flex",
+          alignItems: "flex-start",
+          cursor: "pointer",
+          backgroundColor: !notification.read ? "rgba(0, 123, 255, 0.05)" : "transparent",
+        }}
         onClick={() => handleNotificationClick(notification)}
       >
-        <div className={`notification-icon ${notification.type}`}>
-          {getNotificationIcon(notification.type)}
+        <div
+          style={{
+            width: "40px",
+            height: "40px",
+            borderRadius: "50%",
+            backgroundColor: "var(--bg-light)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: "12px",
+          }}
+        >
+          <FaBell />
         </div>
-        <div className="notification-content">
-          <div className="notification-title">{notification.message}</div>
-          <div className="notification-time">{formatRelativeTime(notification.createdAt)}</div>
+        <div>
+          <div style={{ fontWeight: "500", marginBottom: "4px" }}>{notification.message}</div>
+          <div style={{ fontSize: "11px", color: "var(--text-light)" }}>
+            {new Date(notification.createdAt).toLocaleTimeString()}
+          </div>
         </div>
       </div>
     ))
+  }
+
+  // Add a test notification
+  const addTestNotification = () => {
+    const newNotification = {
+      _id: Date.now().toString(),
+      type: "message",
+      message: "Test notification",
+      read: false,
+      createdAt: new Date().toISOString(),
+      data: { conversationId: "test" },
+    }
+    setNotifications((prev) => [newNotification, ...prev])
+    toast.info("Test notification added")
   }
 
   return (
@@ -475,69 +211,198 @@ export const Navbar = () => {
 
         <div className="header-actions d-flex align-items-center">
           <ThemeToggle />
+
+          {/* Test button to add a notification */}
+          <button
+            onClick={addTestNotification}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: "8px",
+              color: "var(--text-color)",
+              fontSize: "14px",
+            }}
+          >
+            Add Test
+          </button>
+
           {isAuthenticated ? (
             <>
-              <div className="dropdown" ref={notificationDropdownRef}>
+              <div style={{ position: "relative", marginLeft: "10px", zIndex: "101" }}>
                 <button
-                  className="header-action-button position-relative"
+                  ref={notificationButtonRef}
                   onClick={toggleNotificationDropdown}
                   aria-label="Notifications"
-                  aria-expanded={notificationDropdownRef.current?.classList.contains("show") || false}
-                  aria-haspopup="true"
+                  style={{
+                    background: "var(--primary-color)",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "10px",
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    position: "relative",
+                    width: "40px",
+                    height: "40px",
+                    boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
+                    zIndex: "101",
+                    pointerEvents: "auto",
+                  }}
                 >
-                  <FaBell />
+                  <FaBell size={20} color="white" />
                   {unreadCount > 0 && (
-                    <span className="notification-badge" aria-label={`${unreadCount} unread notifications`}>
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: "-5px",
+                        right: "-5px",
+                        background: "#ff4757",
+                        color: "white",
+                        borderRadius: "50%",
+                        width: "18px",
+                        height: "18px",
+                        fontSize: "11px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: "bold",
+                        border: "2px solid white",
+                      }}
+                    >
                       {unreadCount > 9 ? "9+" : unreadCount}
                     </span>
                   )}
                 </button>
-                <div id="notification-dropdown" className="dropdown-menu notification-dropdown" ref={notificationDropdownRef}>
-                  <div className="notification-header">
-                    <span>Notifications</span>
-                    {unreadCount > 0 && (
-                      <span className="mark-all-read" onClick={markAllAsRead}>
-                        Mark all as read
-                      </span>
-                    )}
+
+                {showNotifications && (
+                  <div
+                    ref={notificationDropdownRef}
+                    style={{
+                      position: "absolute",
+                      right: "0",
+                      top: "100%",
+                      width: "320px",
+                      maxHeight: "400px",
+                      overflowY: "auto",
+                      background: "var(--bg-color)",
+                      borderRadius: "8px",
+                      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+                      zIndex: "1000",
+                      marginTop: "8px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: "12px 16px",
+                        fontWeight: "bold",
+                        borderBottom: "1px solid var(--border-color)",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <span>Notifications</span>
+                      {unreadCount > 0 && (
+                        <span
+                          style={{
+                            color: "var(--primary-color)",
+                            fontSize: "13px",
+                            cursor: "pointer",
+                          }}
+                          onClick={markAllAsRead}
+                        >
+                          Mark all as read
+                        </span>
+                      )}
+                    </div>
+                    <div>{renderNotifications()}</div>
                   </div>
-                  <div className="notification-list">{renderNotifications()}</div>
-                </div>
+                )}
               </div>
-              <div className="user-avatar-dropdown">
-                <div className="dropdown" ref={userDropdownRef}>
+
+              <div className="user-avatar-dropdown" style={{ marginLeft: "10px" }}>
+                <div style={{ position: "relative" }}>
                   {user?.photos?.length > 0 ? (
                     <img
                       src={user.photos[0].url || "/placeholder.svg?height=32&width=32"}
                       alt={user.nickname}
-                      className="user-avatar dropdown-toggle"
+                      style={{
+                        width: "32px",
+                        height: "32px",
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                        cursor: "pointer",
+                      }}
                       onClick={toggleUserDropdown}
-                      aria-label="User menu"
-                      aria-expanded={userDropdownRef.current?.classList.contains("show") || false}
-                      aria-haspopup="true"
                     />
                   ) : (
                     <FaUserCircle
-                      className="user-avatar dropdown-toggle"
-                      style={{ fontSize: "32px" }}
+                      style={{
+                        fontSize: "32px",
+                        cursor: "pointer",
+                        color: "var(--text-color)",
+                      }}
                       onClick={toggleUserDropdown}
-                      aria-label="User menu"
-                      aria-expanded={userDropdownRef.current?.classList.contains("show") || false}
-                      aria-haspopup="true"
                     />
                   )}
-                  <div id="user-dropdown" className="dropdown-menu dropdown-menu-end" ref={userDropdownRef}>
-                    <div className="dropdown-item" onClick={navigateToProfile}>
-                      Profile
+
+                  {showUserDropdown && (
+                    <div
+                      ref={userDropdownRef}
+                      style={{
+                        position: "absolute",
+                        right: "0",
+                        top: "100%",
+                        background: "var(--bg-color)",
+                        borderRadius: "8px",
+                        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+                        zIndex: 1000,
+                        minWidth: "180px",
+                        marginTop: "8px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: "8px 16px",
+                          cursor: "pointer",
+                          transition: "background-color 0.2s",
+                        }}
+                        onClick={navigateToProfile}
+                      >
+                        Profile
+                      </div>
+                      <div
+                        style={{
+                          padding: "8px 16px",
+                          cursor: "pointer",
+                          transition: "background-color 0.2s",
+                        }}
+                        onClick={() => navigate("/settings")}
+                      >
+                        Settings
+                      </div>
+                      <div
+                        style={{
+                          height: "1px",
+                          background: "var(--border-color)",
+                          margin: "4px 0",
+                        }}
+                      ></div>
+                      <div
+                        style={{
+                          padding: "8px 16px",
+                          cursor: "pointer",
+                          transition: "background-color 0.2s",
+                          color: "var(--error-color)",
+                        }}
+                        onClick={handleLogout}
+                      >
+                        Logout
+                      </div>
                     </div>
-                    <div className="dropdown-item" onClick={() => navigate("/settings")}>
-                      Settings
-                    </div>
-                    <div className="dropdown-divider"></div>
-                    <div className="dropdown-item text-danger" onClick={handleLogout}>
-                      Logout
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </>

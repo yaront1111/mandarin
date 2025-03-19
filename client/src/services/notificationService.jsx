@@ -164,6 +164,11 @@ class NotificationService {
       onClick: () => this.handleNotificationClick(notification),
       autoClose: 5000,
       className: `notification-toast notification-${notification.type}`,
+      position: "top-right",
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
     }
 
     toast(
@@ -189,6 +194,11 @@ class NotificationService {
         detail: notification,
       }),
     )
+
+    // Close any open notification dropdowns
+    document.querySelectorAll(".notification-dropdown").forEach((dropdown) => {
+      dropdown.style.display = "none"
+    })
   }
 
   /**

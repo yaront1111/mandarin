@@ -1,5 +1,3 @@
-
-
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import {
@@ -23,16 +21,16 @@ import { useAuth, useUser, useChat, useStories } from "../context"
 import EmbeddedChat from "../components/EmbeddedChat"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
 import StoriesCarousel from "../components/Stories/StoriesCarousel"
-import StoriesViewer from "../components/Stories/StoriesViewer" // Import StoriesViewer
-import StoryCreator from "../components/Stories/StoryCreator" // Import StoryCreator
+import StoriesViewer from "../components/Stories/StoriesViewer"
+import StoryCreator from "../components/Stories/StoryCreator"
 import SubscriptionStatus from "../components/SubscriptionStatus"
 
 const Dashboard = () => {
   const navigate = useNavigate()
-  const { user, logout } = useAuth() // Add logout from AuthContext
+  const { user, logout } = useAuth()
   const { users, getUsers, loading } = useUser()
   const { unreadMessages } = useChat()
-  const { createStory } = useStories() // Add Stories context
+  const { createStory } = useStories()
   const { likeUser, unlikeUser, isUserLiked } = useUser()
 
   const [activeTab, setActiveTab] = useState("discover")
@@ -47,7 +45,7 @@ const Dashboard = () => {
     interests: [],
   })
 
-  // New state for user dropdown, chat, and story creation
+  // User dropdown, chat, and story creation state
   const [showUserDropdown, setShowUserDropdown] = useState(false)
   const [chatUser, setChatUser] = useState(null)
   const [showChat, setShowChat] = useState(false)
@@ -55,7 +53,7 @@ const Dashboard = () => {
   const [imageLoadErrors, setImageLoadErrors] = useState({})
   const [showStoryCreator, setShowStoryCreator] = useState(false)
 
-  // Add state for story viewing
+  // Story viewing state
   const [viewingStoryId, setViewingStoryId] = useState(null)
   const [creatingStory, setCreatingStory] = useState(false)
 
@@ -190,31 +188,41 @@ const Dashboard = () => {
     toast.success("You have been logged out")
   }
 
-  // Handle story creation
-  const handleCreateStory = (storyData) => {
-    if (createStory && !creatingStory) {
-      setCreatingStory(true)
-      createStory(storyData)
-        .then((response) => {
-          setShowStoryCreator(false)
-          if (response.success) {
-            toast.success("Your story has been created!")
-          } else {
-            throw new Error(response.message || "Failed to create story")
-          }
-        })
-        .catch((error) => {
-          toast.error("Failed to create story: " + (error.message || "Unknown error"))
-        })
-        .finally(() => {
-          setCreatingStory(false)
-        })
-    } else if (creatingStory) {
+  // Improved story creation handler
+const handleCreateStory = (storyData) => {
+  // Prevent multiple submissions or actions while in progress
+  if (!createStory || creatingStory) {
+    if (creatingStory) {
       toast.info("Story creation in progress, please wait...")
     } else {
       toast.error("Story creation is not available right now")
     }
+    return
   }
+
+  setCreatingStory(true)
+
+  createStory(storyData)
+    .then((response) => {
+      if (response.success) {
+        toast.success("Your story has been created!")
+        setShowStoryCreator(false) // Only close on success
+      } else if (response.message && response.message.includes("already in progress")) {
+        // Handle the duplicate submission gracefully
+        // Don't close the creator
+      } else {
+        throw new Error(response.message || "Failed to create story")
+      }
+    })
+    .catch((error) => {
+      toast.error("Failed to create story: " + (error.message || "Unknown error"))
+      // Don't close the creator on error
+    })
+    .finally(() => {
+      // Always reset the creating state
+      setCreatingStory(false)
+    })
+}
 
   // Reset image load errors when filter changes
   useEffect(() => {
@@ -251,7 +259,7 @@ const Dashboard = () => {
   }, [])
 
   const handleLikeUser = (e, matchedUser) => {
-    e.stopPropagation()
+    e.stopPropagation() // Prevent card click navigation
 
     if (isUserLiked(matchedUser._id)) {
       unlikeUser(matchedUser._id, matchedUser.nickname)
@@ -344,13 +352,13 @@ const Dashboard = () => {
       <main className="dashboard-content">
         <div className="container">
           <SubscriptionStatus />
-          {/* Stories Section with Create Story Button */}
+          {/* Stories Section with Create Story Button - FIXED */}
           <div className="stories-section">
             <div className="stories-header d-flex justify-content-between align-items-center mb-3">
               <h2>Stories</h2>
               <button
                 className="btn btn-primary create-story-btn"
-                onClick={() => setShowStoryCreator(true)}
+                onClick={() => !creatingStory && setShowStoryCreator(true)}
                 aria-label="Create a new story"
                 disabled={creatingStory}
               >
@@ -358,7 +366,12 @@ const Dashboard = () => {
                 <span className="d-none d-md-inline">{creatingStory ? "Creating..." : "Create Story"}</span>
               </button>
             </div>
-            <StoriesCarousel onStoryClick={(storyId) => setViewingStoryId(storyId)} />
+            <StoriesCarousel 
+              onStoryClick={(storyId) => {
+                if (viewingStoryId) return; // Prevent multiple clicks
+                setViewingStoryId(storyId);
+              }}
+            />
           </div>
 
           <div className="content-header d-flex justify-content-between align-items-center">
@@ -571,14 +584,22 @@ const Dashboard = () => {
                     <div className="user-actions">
                       <button
                         className={`card-action-button like ${isUserLiked(matchedUser._id) ? "active" : ""}`}
-                        onClick={(e) => handleLikeUser(e, matchedUser)}
+                        onClick={(e) => {
+                          e.stopPropagation(); // Stop event propagation
+                          handleLikeUser(e, matchedUser);
+                        }}
                         aria-label={`${isUserLiked(matchedUser._id) ? "Unlike" : "Like"} ${matchedUser.nickname}`}
                       >
                         <FaHeart />
                       </button>
                       <button
                         className="card-action-button message"
-                        onClick={(e) => handleMessageUser(e, matchedUser)}
+                        onClick={(e) => {
+                          e.stopPropagation(); // Stop event propagation
+                          if (!showChat) { // Prevent multiple clicks
+                            handleMessageUser(e, matchedUser);
+                          }
+                        }}
                         aria-label={`Message ${matchedUser.nickname}`}
                       >
                         <FaComments />
@@ -614,7 +635,7 @@ const Dashboard = () => {
       {/* Story Creator Modal */}
       {showStoryCreator && <StoryCreator onClose={() => setShowStoryCreator(false)} onSubmit={handleCreateStory} />}
 
-      {/* Stories Viewer - Now using component-based approach instead of navigation */}
+      {/* Stories Viewer */}
       {viewingStoryId && <StoriesViewer storyId={viewingStoryId} onClose={() => setViewingStoryId(null)} />}
 
       <style>{`
@@ -720,6 +741,19 @@ const Dashboard = () => {
 
         .card-action-button.like.active:hover {
           background-color: rgba(255, 75, 75, 0.2);
+        }
+        
+        /* Dark mode adjustments */
+        .dark .dropdown-divider {
+          background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .dark .dropdown-item:hover {
+          background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .dark .user-dropdown-menu {
+          background: var(--card-bg, #1e1e1e);
         }
       `}</style>
     </div>
