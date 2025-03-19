@@ -455,25 +455,28 @@ router.post(
       const isPrivate = req.body.isPrivate === "true" || req.body.isPrivate === true
       // Check photo count limit
       if (req.user.photos && req.user.photos.length >= 10) {
-        fs.unlinkSync(path.join(config.FILE_UPLOAD_PATH, req.file.filename))
+        fs.unlinkSync(req.file.path)
         return res.status(400).json({
           success: false,
           error: "Maximum number of photos (10) reached. Delete some photos to upload more.",
         })
       }
-      filePath = path.join(config.FILE_UPLOAD_PATH, req.file.filename)
+
+      filePath = req.file.path
       const fileBuffer = fs.readFileSync(filePath)
       const fileType = await fileTypeFromBuffer(fileBuffer)
       if (!fileType || !fileType.mime.startsWith("image/")) {
         fs.unlinkSync(filePath)
         return res.status(400).json({ success: false, error: "File is not a valid image" })
       }
+
       const declaredExt = path.extname(req.file.originalname).toLowerCase().substring(1)
       const actualExt = fileType.ext
       if (declaredExt !== actualExt && !(declaredExt === "jpg" && actualExt === "jpeg")) {
         fs.unlinkSync(filePath)
         return res.status(400).json({ success: false, error: "File type mismatch" })
       }
+
       try {
         const image = sharp(filePath)
         const metadata = await image.metadata()
@@ -489,22 +492,37 @@ router.post(
           fs.renameSync(resizedFilePath, filePath)
         }
         processingSuccessful = true
+
+        // Generate the proper URL path for the uploaded file
+        // Extract directory name for URL path
+        const dirName = path.basename(path.dirname(filePath))
+        const fileName = path.basename(filePath)
+        const photoUrl = `/uploads/${dirName}/${fileName}`
+
         const photoMetadata = {
           contentType: metadata.format,
           size: metadata.size,
           dimensions: { width: metadata.width, height: metadata.height },
         }
+
         const photo = {
-          url: `/uploads/photos/${req.file.filename}`, // Make sure this includes the /photos path
+          url: photoUrl, // Use the correct URL format with directory structure
           isPrivate,
           metadata: photoMetadata,
         };
+
         const isFirstPhoto = !req.user.photos || req.user.photos.length === 0
         req.user.photos.push(photo)
         await req.user.save()
         const newPhoto = req.user.photos[req.user.photos.length - 1]
         logger.info(`Photo uploaded for user ${req.user._id} (isPrivate: ${isPrivate})`)
-        res.status(200).json({ success: true, data: newPhoto, isProfilePhoto: isFirstPhoto })
+        res.status(200).json({
+          success: true,
+          data: newPhoto,
+          isProfilePhoto: isFirstPhoto,
+          // Include the URL explicitly for clarity
+          url: photoUrl
+        })
       } catch (processingErr) {
         throw processingErr
       }

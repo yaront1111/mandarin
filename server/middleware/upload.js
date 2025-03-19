@@ -1,4 +1,4 @@
-// middleware/upload.js - Enhanced with ES modules, improved file validation, and deletion tracking
+// middleware/upload.js - Enhanced with ES modules, improved file validation, and directory organization
 import multer from "multer"
 import path from "path"
 import fs from "fs"
@@ -16,13 +16,14 @@ if (!fs.existsSync(uploadDir)) {
 
 // Sub-directories for different file types with enhanced organization
 const directories = {
+  images: path.join(uploadDir, "images"),
   photos: path.join(uploadDir, "photos"),
   videos: path.join(uploadDir, "videos"),
   messages: path.join(uploadDir, "messages"),
   profiles: path.join(uploadDir, "profiles"),
   stories: path.join(uploadDir, "stories"),
   temp: path.join(uploadDir, "temp"),
-  deleted: path.join(uploadDir, "deleted"), // New directory for soft-deleted files
+  deleted: path.join(uploadDir, "deleted"), // For soft-deleted files
 }
 
 // Ensure all sub-directories exist
@@ -59,26 +60,34 @@ const generateSecureFilename = (originalname) => {
 const getUploadDirectory = (req, file) => {
   const url = req.originalUrl.toLowerCase()
 
-  // Default to photos directory for all photo uploads
-  if (file.mimetype.startsWith("image/")) {
-    return directories.photos
+  // For image routes, use images directory
+  if (url.includes("/images") || url.includes("/upload/image")) {
+    return directories.images
   }
 
-  // For specific routes, use dedicated directories
-  if (url.includes("/messages")) {
+  // Classify by URL first
+  if (url.includes("/photos")) {
+    return directories.photos
+  } else if (url.includes("/messages")) {
     return directories.messages
   } else if (url.includes("/stories")) {
     return directories.stories
   } else if (url.includes("/profiles") || url.includes("/users")) {
     return directories.profiles
+  }
+
+  // Then classify by file type if not already categorized
+  if (file.mimetype.startsWith("image/")) {
+    return directories.images
   } else if (file.mimetype.startsWith("video/")) {
     return directories.videos
   }
 
+  // Default fallback
   return directories.temp
 }
 
-// Configure storage with enhanced security
+// Configure storage with enhanced security and organization
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     try {
@@ -285,6 +294,21 @@ const validateUpload = async (req, res, next) => {
       success: false,
       error: "The uploaded file appears to be corrupted or is not the type it claims to be.",
     })
+  }
+
+  // Update file URL to match the correct directory structure
+  // This ensures front-end references point to the proper location
+  if (req.file) {
+    // Extract the base directory where file was saved
+    const baseDir = path.basename(path.dirname(req.file.path))
+
+    // Ensure URLs consistently use forward slashes
+    req.file.filename = req.file.filename.replace(/\\/g, '/')
+
+    // Update the path that will be sent to the client
+    req.file.url = `/uploads/${baseDir}/${req.file.filename}`
+
+    logger.debug(`File URL set to: ${req.file.url}`)
   }
 
   next()

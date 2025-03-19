@@ -17,8 +17,6 @@ import routes from "./routes/index.js"
 import { initSubscriptionTasks } from "./cron/subscriptionTasks.js"
 import { configureCors, corsErrorHandler } from "./middleware/cors.js"
 
-// REMOVED: import photoRoutes from "./routes/photoRoutes.js"
-
 // Get directory name in ES modules context
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -85,15 +83,22 @@ app.use(requestLogger)
 // Set static folder
 app.use(express.static(path.join(__dirname, "public")))
 
-// Add this near your other middleware setup to serve the uploads directory
-// Make sure this is added BEFORE your route handlers
-
 // Ensure uploads directory exists
 const uploadsPath = path.join(__dirname, "uploads")
 if (!fs.existsSync(uploadsPath)) {
   fs.mkdirSync(uploadsPath, { recursive: true })
   logger.info(`Created uploads directory: ${uploadsPath}`)
 }
+
+// Ensure required subdirectories exist
+const requiredDirs = ['images', 'photos', 'videos', 'messages', 'profiles', 'stories', 'temp', 'deleted']
+requiredDirs.forEach(dir => {
+  const dirPath = path.join(uploadsPath, dir)
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true })
+    logger.info(`Created uploads subdirectory: ${dirPath}`)
+  }
+})
 
 // Serve uploaded files with caching
 app.use(
@@ -102,8 +107,16 @@ app.use(
     maxAge: "1d", // Cache for 1 day
     etag: true,
     lastModified: true,
+    index: false, // Don't serve directory indexes
+    fallthrough: true // Continue if file not found
   }),
 )
+
+// Log the actual paths being served for debugging
+logger.info(`Serving static files from: ${uploadsPath}`)
+requiredDirs.forEach(dir => {
+  logger.info(`  - ${dir}: ${path.join(uploadsPath, dir)}`)
+})
 
 // Add request ID to each request for better logging
 app.use((req, res, next) => {
@@ -116,8 +129,6 @@ const API_PREFIX = "/api"
 
 // API routes
 app.use(API_PREFIX, routes)
-
-// REMOVED: app.use("/api/photos", photoRoutes)
 
 // Global error handler
 app.use((err, req, res, next) => {
