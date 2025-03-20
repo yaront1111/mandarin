@@ -96,26 +96,36 @@ const getUploadDirectory = (req, file) => {
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     try {
-      // Determine the appropriate directory based on file type and route
-      const destDir = getUploadDirectory(req, file)
-      logger.debug(`Uploading file to directory: ${destDir}`)
-      cb(null, destDir)
+      // Always use the images directory for uploaded photos
+      const uploadPath = path.join(process.cwd(), "uploads", "images");
+
+      // Ensure the directory exists
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+        logger.info(`Created upload directory: ${uploadPath}`);
+      }
+
+      logger.debug(`Setting upload destination: ${uploadPath}`);
+      cb(null, uploadPath);
     } catch (error) {
-      logger.error(`Error determining upload destination: ${error.message}`)
-      cb(error)
+      logger.error(`Error determining upload destination: ${error.message}`);
+      cb(error);
     }
   },
   filename: (req, file, cb) => {
     try {
-      const secureFilename = generateSecureFilename(file.originalname)
-      logger.debug(`Generated secure filename: ${secureFilename}`)
-      cb(null, secureFilename)
+      // Create a unique filename that includes original extension
+      const fileExt = path.extname(file.originalname).toLowerCase();
+      const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${fileExt}`;
+
+      logger.debug(`Generated filename for upload: ${uniqueName}`);
+      cb(null, uniqueName);
     } catch (error) {
-      logger.error(`Error generating secure filename: ${error.message}`)
-      cb(error)
+      logger.error(`Error generating filename: ${error.message}`);
+      cb(error);
     }
   },
-})
+});
 
 /**
  * Validate file type and contents
@@ -288,45 +298,35 @@ const upload = multer({
  */
 const validateUpload = async (req, res, next) => {
   if (!req.file) {
-    return next()
+    return next();
   }
 
-  const isValid = await validateFileContents(req.file)
+  const isValid = await validateFileContents(req.file);
 
   if (!isValid) {
-    cleanupInvalidFile(req.file)
+    cleanupInvalidFile(req.file);
     return res.status(400).json({
       success: false,
       error: "The uploaded file appears to be corrupted or is not the type it claims to be.",
-    })
+    });
   }
 
-  // Update file URL to match the correct directory structure
-  // This ensures front-end references point to the proper location
+  // Set the correct URL for the file
   if (req.file) {
-    // Get the full path and determine which subdirectory it's in
-    const fullDirPath = path.dirname(req.file.path)
+    // Get just the filename without the path
+    const fileName = path.basename(req.file.path);
 
-    // Find which of our predefined directories this file is in
-    let subDir = "temp" // Default fallback
-    for (const [key, dirPath] of Object.entries(directories)) {
-      if (fullDirPath === dirPath) {
-        subDir = key
-        break
-      }
-    }
+    // Get the subdirectory (like "images", "photos", etc.)
+    const subDir = path.basename(path.dirname(req.file.path));
 
-    // Ensure URLs consistently use forward slashes
-    req.file.filename = req.file.filename.replace(/\\/g, '/')
+    // Set the URL in the consistent format: /uploads/subdirectory/filename
+    req.file.url = `/uploads/${subDir}/${fileName}`;
 
-    // Update the path that will be sent to the client
-    req.file.url = `/uploads/${subDir}/${req.file.filename}`
-
-    logger.debug(`File URL set to: ${req.file.url}`)
+    logger.debug(`File URL set to: ${req.file.url}`);
   }
 
-  next()
-}
+  next();
+};
 
 // Create a wrapped upload middleware that includes validation
 const createUploadMiddleware = (field) => {

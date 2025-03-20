@@ -433,6 +433,7 @@ router.put(
     }
   }),
 )
+// Replace the corresponding section in your userRoutes.js file
 
 /**
  * @route   POST /api/users/photos
@@ -444,104 +445,118 @@ router.post(
   protect,
   upload.single("photo"),
   asyncHandler(async (req, res) => {
-    logger.debug(`Processing photo upload for user ${req.user._id}`)
-    let filePath = null
-    let processingSuccessful = false
+    logger.debug(`Processing photo upload for user ${req.user._id}`);
+    let filePath = null;
+    let processingSuccessful = false;
+
     try {
       if (!req.file) {
-        logger.warn("Photo upload failed: No file provided")
-        return res.status(400).json({ success: false, error: "Please upload a file" })
+        logger.warn("Photo upload failed: No file provided");
+        return res.status(400).json({ success: false, error: "Please upload a file" });
       }
-      const isPrivate = req.body.isPrivate === "true" || req.body.isPrivate === true
+
+      const isPrivate = req.body.isPrivate === "true" || req.body.isPrivate === true;
+
       // Check photo count limit
       if (req.user.photos && req.user.photos.length >= 10) {
-        fs.unlinkSync(req.file.path)
+        fs.unlinkSync(req.file.path);
         return res.status(400).json({
           success: false,
           error: "Maximum number of photos (10) reached. Delete some photos to upload more.",
-        })
+        });
       }
 
-      filePath = req.file.path
-      const fileBuffer = fs.readFileSync(filePath)
-      const fileType = await fileTypeFromBuffer(fileBuffer)
+      filePath = req.file.path;
+      logger.debug(`File saved to: ${filePath}`);
+
+      const fileBuffer = fs.readFileSync(filePath);
+      const fileType = await fileTypeFromBuffer(fileBuffer);
+
       if (!fileType || !fileType.mime.startsWith("image/")) {
-        fs.unlinkSync(filePath)
-        return res.status(400).json({ success: false, error: "File is not a valid image" })
-      }
-
-      const declaredExt = path.extname(req.file.originalname).toLowerCase().substring(1)
-      const actualExt = fileType.ext
-      if (declaredExt !== actualExt && !(declaredExt === "jpg" && actualExt === "jpeg")) {
-        fs.unlinkSync(filePath)
-        return res.status(400).json({ success: false, error: "File type mismatch" })
+        fs.unlinkSync(filePath);
+        return res.status(400).json({ success: false, error: "File is not a valid image" });
       }
 
       try {
-        const image = sharp(filePath)
-        const metadata = await image.metadata()
-        const resizedFilePath = filePath + "_resized"
+        const image = sharp(filePath);
+        const metadata = await image.metadata();
+
+        // Resize image if needed
+        const resizedFilePath = filePath + "_resized";
         if (metadata.width > 1200 || metadata.height > 1200) {
           await image
             .resize(1200, 1200, {
               fit: "inside",
               withoutEnlargement: true,
             })
-            .toFile(resizedFilePath)
-          fs.unlinkSync(filePath)
-          fs.renameSync(resizedFilePath, filePath)
-        }
-        processingSuccessful = true
+            .toFile(resizedFilePath);
 
-        // Generate the proper URL path for the uploaded file
-        // Extract directory name for URL path
-        const dirName = path.basename(path.dirname(filePath))
-        const fileName = path.basename(filePath)
-        const photoUrl = `/uploads/images/${fileName}`
+          fs.unlinkSync(filePath);
+          fs.renameSync(resizedFilePath, filePath);
+          logger.debug(`Image resized and saved back to: ${filePath}`);
+        }
+
+        processingSuccessful = true;
+
+        // Get the file name only (not the full path)
+        const fileName = path.basename(filePath);
+
+        // This is critical: create the correct URL format
+        // It should be a web-accessible path that maps to your static file middleware
+        const photoUrl = `/uploads/images/${fileName}`;
+
+        logger.debug(`Generated photo URL: ${photoUrl}`);
 
         const photoMetadata = {
           contentType: metadata.format,
           size: metadata.size,
           dimensions: { width: metadata.width, height: metadata.height },
-        }
+        };
 
         const photo = {
-          url: photoUrl, // Use the correct URL format with directory structure
+          url: photoUrl,
           isPrivate,
           metadata: photoMetadata,
         };
 
-        const isFirstPhoto = !req.user.photos || req.user.photos.length === 0
-        req.user.photos.push(photo)
-        await req.user.save()
-        const newPhoto = req.user.photos[req.user.photos.length - 1]
-        logger.info(`Photo uploaded for user ${req.user._id} (isPrivate: ${isPrivate})`)
+        const isFirstPhoto = !req.user.photos || req.user.photos.length === 0;
+        req.user.photos.push(photo);
+        await req.user.save();
+
+        const newPhoto = req.user.photos[req.user.photos.length - 1];
+
+        logger.info(`Photo uploaded successfully for user ${req.user._id} (isPrivate: ${isPrivate})`);
+        logger.debug(`Photo details: ${JSON.stringify({
+          id: newPhoto._id,
+          url: newPhoto.url,
+          isPrivate: newPhoto.isPrivate
+        })}`);
+
         res.status(200).json({
           success: true,
           data: newPhoto,
           isProfilePhoto: isFirstPhoto,
-          // Include the URL explicitly for clarity
-          url: photoUrl
-        })
+          url: photoUrl // Include the URL explicitly for clarity
+        });
       } catch (processingErr) {
-        throw processingErr
+        logger.error(`Error processing image: ${processingErr.message}`);
+        throw processingErr;
       }
     } catch (err) {
-      logger.error(`Error uploading photo: ${err.message}`)
-      res.status(400).json({ success: false, error: err.message })
+      logger.error(`Error uploading photo: ${err.message}`);
+      res.status(400).json({ success: false, error: err.message });
     } finally {
       if (!processingSuccessful && filePath && fs.existsSync(filePath)) {
         try {
-          fs.unlinkSync(filePath)
-          logger.debug(`Cleaned up failed upload file: ${filePath}`)
+          fs.unlinkSync(filePath);
+          logger.debug(`Cleaned up failed upload file: ${filePath}`);
         } catch (cleanupErr) {
-          logger.error(`Error during file cleanup: ${cleanupErr.message}`)
+          logger.error(`Error during file cleanup: ${cleanupErr.message}`);
         }
       }
     }
-  }),
-)
-
+  })
+);
 /**
  * @route   PUT /api/users/photos/:id/privacy
  * @desc    Update photo privacy setting

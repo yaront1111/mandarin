@@ -243,61 +243,69 @@ const Profile = () => {
     }
   }
 
-  const handlePhotoUpload = async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-    const fileType = file.type.split("/")[0]
-    if (fileType !== "image") {
-      toast.error("Please upload an image file")
-      return
-    }
-    const maxSize = 5 * 1024 * 1024 // 5MB
-    if (file.size > maxSize) {
-      toast.error("Image size should be less than 5MB")
-      return
-    }
-    setIsUploading(true)
-    setUploadProgress(0)
-
-    // Create a temporary ID for this upload
-    const tempId = `temp-${Date.now()}`
-
-    // Add a temporary photo with loading state
-    setLocalPhotos((prev) => [
-      ...prev,
-      {
-        _id: tempId,
-        url: URL.createObjectURL(file),
-        isPrivate: false,
-        isProfile: false,
-        isLoading: true,
-      },
-    ])
-
-    try {
-      const newPhoto = await uploadPhoto(file, false, (progress) => {
-        setUploadProgress(progress)
-      })
-      if (newPhoto) {
-        toast.success("Photo uploaded successfully")
-        await refreshUserData()
-        setUploadProgress(0)
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ""
-        }
-      } else {
-        throw new Error("Failed to upload photo")
-      }
-    } catch (error) {
-      console.error("Failed to upload photo:", error)
-      toast.error(error.message || "Failed to upload photo. Please try again.")
-      // Remove the temporary photo
-      setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
-    } finally {
-      setIsUploading(false)
-    }
+const handlePhotoUpload = async (e) => {
+  const file = e.target.files[0]
+  if (!file) return
+  const fileType = file.type.split("/")[0]
+  if (fileType !== "image") {
+    toast.error("Please upload an image file")
+    return
   }
+  const maxSize = 5 * 1024 * 1024 // 5MB
+  if (file.size > maxSize) {
+    toast.error("Image size should be less than 5MB")
+    return
+  }
+  setIsUploading(true)
+  setUploadProgress(0)
 
+  // Create a temporary ID for this upload
+  const tempId = `temp-${Date.now()}`
+
+  // Add a temporary photo with loading state
+  setLocalPhotos((prev) => [
+    ...prev,
+    {
+      _id: tempId,
+      url: URL.createObjectURL(file),
+      isPrivate: false,
+      isProfile: false,
+      isLoading: true,
+    },
+  ])
+
+  try {
+    const newPhoto = await uploadPhoto(file, false, (progress) => {
+      setUploadProgress(progress)
+    })
+
+    if (newPhoto) {
+      toast.success("Photo uploaded successfully")
+
+      // Clean up temporary photo before refreshing data
+      setLocalPhotos(prev => prev.filter(photo => photo._id !== tempId))
+
+      // Refresh user data to get the updated photos
+      await refreshUserData()
+
+      // Reset upload progress and file input
+      setUploadProgress(0)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    } else {
+      throw new Error("Failed to upload photo")
+    }
+  } catch (error) {
+    console.error("Failed to upload photo:", error)
+    toast.error(error.message || "Failed to upload photo. Please try again.")
+
+    // Remove the temporary photo on error
+    setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
+  } finally {
+    setIsUploading(false)
+  }
+}
   const triggerFileInput = () => {
     fileInputRef.current?.click()
   }

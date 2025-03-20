@@ -1,13 +1,12 @@
-import { defineConfig } from "vite"
-import react from "@vitejs/plugin-react"
-import path from "path"
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Define path aliases to match any existing in your project
       "@": path.resolve(__dirname, "./src"),
       "@components": path.resolve(__dirname, "./src/components"),
       "@context": path.resolve(__dirname, "./src/context"),
@@ -16,26 +15,31 @@ export default defineConfig({
       "@styles": path.resolve(__dirname, "./src/styles"),
       "@utils": path.resolve(__dirname, "./src/utils"),
     },
-    extensions: [".mjs", ".js", ".jsx", ".ts", ".tsx", ".json"], // Add this line to ensure all extensions are properly resolved
+    extensions: [".mjs", ".js", ".jsx", ".ts", ".tsx", ".json"],
   },
   server: {
-    port: 3000, // Set your preferred development port
-    open: true, // Auto-open browser on start
+    port: 3000,
+    open: true,
     proxy: {
-      // Configure API proxy if needed
+      // Configure API proxy
       "/api": {
         target: "http://localhost:5000",
         changeOrigin: true,
         secure: false,
       },
-      // Add WebSocket proxy for Socket.IO
+      // Add uploads proxy
+      "/uploads": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+        secure: false,
+      },
+      // WebSocket proxy for Socket.IO
       "/socket.io": {
         target: "http://localhost:5000",
         ws: true,
         changeOrigin: true,
       },
     },
-    // Configure HMR to use the correct host
     hmr: {
       host: "localhost",
       protocol: "ws",
@@ -45,7 +49,6 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: true,
-    // Customize chunk size to optimize loading
     chunkSizeWarningLimit: 1600,
     rollupOptions: {
       output: {
@@ -56,4 +59,4 @@ export default defineConfig({
       },
     },
   },
-})
+});
