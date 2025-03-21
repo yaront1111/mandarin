@@ -85,25 +85,6 @@
   min-height: 100px;
 }
 
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
-  border-top: 3px solid var(--primary, #ff3366);
-  animation: spin 1s linear infinite;
-  margin-bottom: 12px;
-}
-
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
 /* Story Thumbnail Styles */
 .story-thumbnail {
   display: flex;
@@ -178,15 +159,6 @@
   -webkit-backdrop-filter: blur(5px); /* Safari support */
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
 .stories-viewer-container {
   position: relative;
   width: 100%;
@@ -201,17 +173,6 @@
   border-radius: 16px;
   animation: scaleIn 0.3s ease;
   transform: translateZ(0); /* Force GPU acceleration for smoother animations */
-}
-
-@keyframes scaleIn {
-  from {
-    transform: scale(0.95) translateZ(0);
-    opacity: 0.5;
-  }
-  to {
-    transform: scale(1) translateZ(0);
-    opacity: 1;
-  }
 }
 
 .stories-viewer-header {
@@ -387,17 +348,6 @@
   z-index: 6;
 }
 
-@keyframes pulseIn {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.8);
-  }
-  100% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
 .story-caption {
   position: absolute;
   bottom: 0;
@@ -526,17 +476,6 @@
   max-height: 90vh;
   animation: slideUp 0.4s ease;
   border: 1px solid var(--border-color, #e0e0e0);
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .creator-header {
@@ -702,27 +641,6 @@
 
 .clear-media-btn:hover {
   background-color: #d83056;
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: 0% center;
-  }
-  100% {
-    background-position: 200% center;
-  }
-}
-
-@keyframes gradientAnimation {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
 }
 
 .story-creator-tabs {
@@ -1159,6 +1077,71 @@
   background-color: var(--primary-light, #ff6b99);
 }
 
+/* Keyframes - Using those from utilities.css to avoid duplication */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.95) translateZ(0);
+    opacity: 0.5;
+  }
+  to {
+    transform: scale(1) translateZ(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulseIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 0% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+@keyframes gradientAnimation {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 /* Responsive styles */
 @media (max-width: 768px) {
   .stories-viewer-container {
@@ -1316,11 +1299,6 @@
 .dark .stories-carousel-empty,
 .dark .stories-carousel-error {
   background-color: rgba(255, 255, 255, 0.05);
-}
-
-.dark .spinner {
-  border-color: rgba(80, 80, 80, 0.3);
-  border-top-color: var(--primary, #ff3366);
 }
 
 .dark .story-creator {

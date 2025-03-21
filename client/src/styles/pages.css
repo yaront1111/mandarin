@@ -492,7 +492,8 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  opacity: 0;
+  z-index: 5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: opacity var(--transition-normal), background var(--transition-normal);
 }
 
@@ -822,6 +823,7 @@
 .message.sent .message-time {
   right: 10px;
 }
+
 /* Enhanced Embedded Chat Styles */
 
 /* Main container */
@@ -1174,21 +1176,6 @@
   text-align: center;
 }
 
-.spinner {
-  border: 3px solid rgba(0, 0, 0, 0.1);
-  border-top: 3px solid var(--primary, #ff3366);
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  animation: spin 1s linear infinite;
-  margin-bottom: 10px;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
 /* Typing indicator */
 .typing-indicator {
   display: flex;
@@ -1465,21 +1452,6 @@
   transform: scale(1.1);
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* Spinner animation for sending */
-.fa-spin {
-  animation: fa-spin 1s linear infinite;
-}
-
-@keyframes fa-spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
 /* Chat overlay for mobile */
 .chat-overlay {
   position: fixed;
@@ -1490,6 +1462,15 @@
   background-color: rgba(0, 0, 0, 0.5);
   z-index: 999;
   animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes spinner {
+  to { transform: rotate(360deg); }
 }
 
 /* Dark mode adjustments */
