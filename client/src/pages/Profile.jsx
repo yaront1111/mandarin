@@ -33,6 +33,11 @@ const Profile = () => {
       location: "",
       bio: "",
       interests: [],
+      // Add new fields
+      iAm: "",
+      lookingFor: [],
+      intoTags: [],
+      turnOns: [],
     },
   })
   const [localPhotos, setLocalPhotos] = useState([])
@@ -57,6 +62,57 @@ const Profile = () => {
     "Photography",
     "Dancing",
     "Cooking",
+  ])
+  const [iAmOptions] = useState(["woman", "man", "couple"])
+  const [lookingForOptions] = useState(["women", "men", "couples"])
+  const [intoTagsOptions] = useState([
+    "Meetups",
+    "Power play",
+    "Threesomes",
+    "Online fun",
+    "Hot chat",
+    "Photo sharing",
+    "Camera chat",
+    "Cuckold",
+    "Golden showers",
+    "Strap-on",
+    "Forced bi",
+    "Erotic domination",
+    "Humiliation",
+    "Crossdressing",
+    "Worship",
+    "Foot fetish",
+    "Oral",
+    "From behind",
+    "Role-play",
+    "Toys",
+    "Massages",
+    "Foreplay",
+    "Casual meetups",
+    "Fantasy fulfillment",
+    "Bizarre",
+    "Education",
+    "Experiences",
+    "Tantra",
+  ])
+  const [turnOnsOptions] = useState([
+    "Sexy ass",
+    "Dirty talk",
+    "Aggressive",
+    "Slow and gentle",
+    "In a public place",
+    "Pampering",
+    "Sexy clothing",
+    "Leather/latex clothing",
+    "Watching porn",
+    "Fit body",
+    "Bathing together",
+    "Erotic writing",
+    "Eye contact",
+    "Being pampered",
+    "Sexy legs",
+    "Teasing",
+    "Pushing boundaries",
   ])
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -88,6 +144,11 @@ const Profile = () => {
           location: user.details?.location || "",
           bio: user.details?.bio || "",
           interests: user.details?.interests || [],
+          // Add new fields
+          iAm: user.details?.iAm || "",
+          lookingFor: user.details?.lookingFor || [],
+          intoTags: user.details?.intoTags || [],
+          turnOns: user.details?.turnOns || [],
         },
       })
 
@@ -173,6 +234,65 @@ const Profile = () => {
     }))
   }
 
+  const handleIAmSelection = (option) => {
+    setProfileData((prev) => ({
+      ...prev,
+      details: { ...prev.details, iAm: prev.details.iAm === option ? "" : option },
+    }))
+  }
+
+  const toggleLookingFor = (option) => {
+    const lookingFor = profileData.details.lookingFor
+    let updated
+
+    if (lookingFor.includes(option)) {
+      updated = lookingFor.filter((item) => item !== option)
+    } else {
+      if (lookingFor.length >= 3) {
+        toast.warning("You can select up to 3 options")
+        return
+      }
+      updated = [...lookingFor, option]
+    }
+
+    setProfileData((prev) => ({
+      ...prev,
+      details: { ...prev.details, lookingFor: updated },
+    }))
+  }
+
+  const toggleIntoTag = (tag) => {
+    const intoTags = profileData.details.intoTags
+
+    if (!intoTags.includes(tag) && intoTags.length >= 20) {
+      toast.warning("You can select up to 20 'I'm into' tags")
+      return
+    }
+
+    const updated = intoTags.includes(tag) ? intoTags.filter((t) => t !== tag) : [...intoTags, tag]
+
+    setProfileData((prev) => ({
+      ...prev,
+      details: { ...prev.details, intoTags: updated },
+    }))
+  }
+
+  const toggleTurnOn = (tag) => {
+    const turnOns = profileData.details.turnOns
+
+    if (!turnOns.includes(tag) && turnOns.length >= 20) {
+      toast.warning("You can select up to 20 'Turn ons' tags")
+      return
+    }
+
+    const updated = turnOns.includes(tag) ? turnOns.filter((t) => t !== tag) : [...turnOns, tag]
+
+    setProfileData((prev) => ({
+      ...prev,
+      details: { ...prev.details, turnOns: updated },
+    }))
+  }
+
   const validateForm = () => {
     const validationErrors = {}
     if (!profileData.nickname.trim()) {
@@ -243,69 +363,69 @@ const Profile = () => {
     }
   }
 
-const handlePhotoUpload = async (e) => {
-  const file = e.target.files[0]
-  if (!file) return
-  const fileType = file.type.split("/")[0]
-  if (fileType !== "image") {
-    toast.error("Please upload an image file")
-    return
-  }
-  const maxSize = 5 * 1024 * 1024 // 5MB
-  if (file.size > maxSize) {
-    toast.error("Image size should be less than 5MB")
-    return
-  }
-  setIsUploading(true)
-  setUploadProgress(0)
-
-  // Create a temporary ID for this upload
-  const tempId = `temp-${Date.now()}`
-
-  // Add a temporary photo with loading state
-  setLocalPhotos((prev) => [
-    ...prev,
-    {
-      _id: tempId,
-      url: URL.createObjectURL(file),
-      isPrivate: false,
-      isProfile: false,
-      isLoading: true,
-    },
-  ])
-
-  try {
-    const newPhoto = await uploadPhoto(file, false, (progress) => {
-      setUploadProgress(progress)
-    })
-
-    if (newPhoto) {
-      toast.success("Photo uploaded successfully")
-
-      // Clean up temporary photo before refreshing data
-      setLocalPhotos(prev => prev.filter(photo => photo._id !== tempId))
-
-      // Refresh user data to get the updated photos
-      await refreshUserData()
-
-      // Reset upload progress and file input
-      setUploadProgress(0)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ""
-      }
-    } else {
-      throw new Error("Failed to upload photo")
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const fileType = file.type.split("/")[0]
+    if (fileType !== "image") {
+      toast.error("Please upload an image file")
+      return
     }
-  } catch (error) {
-    console.error("Failed to upload photo:", error)
-    toast.error(error.message || "Failed to upload photo. Please try again.")
+    const maxSize = 5 * 1024 * 1024 // 5MB
+    if (file.size > maxSize) {
+      toast.error("Image size should be less than 5MB")
+      return
+    }
+    setIsUploading(true)
+    setUploadProgress(0)
 
-    // Remove the temporary photo on error
-    setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
-  } finally {
-    setIsUploading(false)
+    // Create a temporary ID for this upload
+    const tempId = `temp-${Date.now()}`
+
+    // Add a temporary photo with loading state
+    setLocalPhotos((prev) => [
+      ...prev,
+      {
+        _id: tempId,
+        url: URL.createObjectURL(file),
+        isPrivate: false,
+        isProfile: false,
+        isLoading: true,
+      },
+    ])
+
+    try {
+      const newPhoto = await uploadPhoto(file, false, (progress) => {
+        setUploadProgress(progress)
+      })
+
+      if (newPhoto) {
+        toast.success("Photo uploaded successfully")
+
+        // Clean up temporary photo before refreshing data
+        setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
+
+        // Refresh user data to get the updated photos
+        await refreshUserData()
+
+        // Reset upload progress and file input
+        setUploadProgress(0)
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ""
+        }
+      } else {
+        throw new Error("Failed to upload photo")
+      }
+    } catch (error) {
+      console.error("Failed to upload photo:", error)
+      toast.error(error.message || "Failed to upload photo. Please try again.")
+
+      // Remove the temporary photo on error
+      setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
+    } finally {
+      setIsUploading(false)
+    }
   }
-}
   const triggerFileInput = () => {
     fileInputRef.current?.click()
   }
@@ -1114,6 +1234,161 @@ const handlePhotoUpload = async (e) => {
                     </div>
                     {profileData.details.interests.length === 0 && !isEditing && (
                       <p className="text-muted fst-italic mt-2">No interests selected</p>
+                    )}
+                  </div>
+
+                  <div className="info-section">
+                    <h3>I am a</h3>
+                    <div className="d-flex flex-wrap gap-2">
+                      {iAmOptions.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className={`interest-tag ${profileData.details.iAm === option ? "selected" : ""}`}
+                          onClick={() => isEditing && handleIAmSelection(option)}
+                          disabled={!isEditing}
+                          style={{
+                            padding: "4px 12px",
+                            borderRadius: "20px",
+                            backgroundColor: profileData.details.iAm === option ? "var(--primary)" : "var(--light)",
+                            color: profileData.details.iAm === option ? "#fff" : "var(--text-medium)",
+                            border: "none",
+                            cursor: isEditing ? "pointer" : "default",
+                            transition: "all 0.3s ease",
+                          }}
+                          aria-pressed={profileData.details.iAm === option}
+                        >
+                          {option.charAt(0).toUpperCase() + option.slice(1)}
+                          {profileData.details.iAm === option && <FaCheck style={{ marginLeft: "4px" }} />}
+                        </button>
+                      ))}
+                    </div>
+                    {!profileData.details.iAm && !isEditing && (
+                      <p className="text-muted fst-italic mt-2">Not specified</p>
+                    )}
+                  </div>
+
+                  <div className="info-section">
+                    <h3>Looking For</h3>
+                    {isEditing && (
+                      <div className="text-muted mb-2" style={{ fontSize: "0.8rem" }}>
+                        Select up to 3 options
+                      </div>
+                    )}
+                    <div className="d-flex flex-wrap gap-2">
+                      {lookingForOptions.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className={`interest-tag ${profileData.details.lookingFor.includes(option) ? "selected" : ""}`}
+                          onClick={() => isEditing && toggleLookingFor(option)}
+                          disabled={
+                            !isEditing ||
+                            (!profileData.details.lookingFor.includes(option) &&
+                              profileData.details.lookingFor.length >= 3)
+                          }
+                          style={{
+                            padding: "4px 12px",
+                            borderRadius: "20px",
+                            backgroundColor: profileData.details.lookingFor.includes(option)
+                              ? "var(--primary)"
+                              : "var(--light)",
+                            color: profileData.details.lookingFor.includes(option) ? "#fff" : "var(--text-medium)",
+                            border: "none",
+                            cursor: isEditing ? "pointer" : "default",
+                            transition: "all 0.3s ease",
+                          }}
+                          aria-pressed={profileData.details.lookingFor.includes(option)}
+                        >
+                          {option.charAt(0).toUpperCase() + option.slice(1)}
+                          {profileData.details.lookingFor.includes(option) && <FaCheck style={{ marginLeft: "4px" }} />}
+                        </button>
+                      ))}
+                    </div>
+                    {profileData.details.lookingFor.length === 0 && !isEditing && (
+                      <p className="text-muted fst-italic mt-2">Not specified</p>
+                    )}
+                  </div>
+
+                  <div className="info-section">
+                    <h3>I'm Into</h3>
+                    {isEditing && (
+                      <div className="text-muted mb-2" style={{ fontSize: "0.8rem" }}>
+                        Select up to 20 tags
+                      </div>
+                    )}
+                    <div className="interests-tags" style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {intoTagsOptions.map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          className={`interest-tag ${profileData.details.intoTags.includes(tag) ? "selected" : ""}`}
+                          onClick={() => isEditing && toggleIntoTag(tag)}
+                          disabled={
+                            !isEditing ||
+                            (!profileData.details.intoTags.includes(tag) && profileData.details.intoTags.length >= 20)
+                          }
+                          style={{
+                            padding: "4px 12px",
+                            borderRadius: "20px",
+                            backgroundColor: profileData.details.intoTags.includes(tag)
+                              ? "var(--primary)"
+                              : "var(--light)",
+                            color: profileData.details.intoTags.includes(tag) ? "#fff" : "var(--text-medium)",
+                            border: "none",
+                            cursor: isEditing ? "pointer" : "default",
+                            transition: "all 0.3s ease",
+                          }}
+                          aria-pressed={profileData.details.intoTags.includes(tag)}
+                        >
+                          {tag}
+                          {profileData.details.intoTags.includes(tag) && <FaCheck style={{ marginLeft: "4px" }} />}
+                        </button>
+                      ))}
+                    </div>
+                    {profileData.details.intoTags.length === 0 && !isEditing && (
+                      <p className="text-muted fst-italic mt-2">No tags selected</p>
+                    )}
+                  </div>
+
+                  <div className="info-section">
+                    <h3>It Turns Me On</h3>
+                    {isEditing && (
+                      <div className="text-muted mb-2" style={{ fontSize: "0.8rem" }}>
+                        Select up to 20 tags
+                      </div>
+                    )}
+                    <div className="interests-tags" style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {turnOnsOptions.map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          className={`interest-tag ${profileData.details.turnOns.includes(tag) ? "selected" : ""}`}
+                          onClick={() => isEditing && toggleTurnOn(tag)}
+                          disabled={
+                            !isEditing ||
+                            (!profileData.details.turnOns.includes(tag) && profileData.details.turnOns.length >= 20)
+                          }
+                          style={{
+                            padding: "4px 12px",
+                            borderRadius: "20px",
+                            backgroundColor: profileData.details.turnOns.includes(tag)
+                              ? "var(--primary)"
+                              : "var(--light)",
+                            color: profileData.details.turnOns.includes(tag) ? "#fff" : "var(--text-medium)",
+                            border: "none",
+                            cursor: isEditing ? "pointer" : "default",
+                            transition: "all 0.3s ease",
+                          }}
+                          aria-pressed={profileData.details.turnOns.includes(tag)}
+                        >
+                          {tag}
+                          {profileData.details.turnOns.includes(tag) && <FaCheck style={{ marginLeft: "4px" }} />}
+                        </button>
+                      ))}
+                    </div>
+                    {profileData.details.turnOns.length === 0 && !isEditing && (
+                      <p className="text-muted fst-italic mt-2">No tags selected</p>
                     )}
                   </div>
                 </form>

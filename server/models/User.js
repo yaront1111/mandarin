@@ -121,6 +121,39 @@ const userSchema = new Schema(
           message: "Cannot have more than 10 interests",
         },
       },
+      // New fields for enhanced profile information
+      iAm: {
+        type: String,
+        enum: ["woman", "man", "couple", ""],
+        default: "",
+      },
+      lookingFor: {
+        type: [String],
+        default: [],
+        validate: {
+          validator: (lookingFor) => {
+            if (lookingFor.length > 3) return false
+            return lookingFor.every((item) => ["women", "men", "couples"].includes(item))
+          },
+          message: "Looking for must include only valid options: women, men, couples",
+        },
+      },
+      intoTags: {
+        type: [String],
+        default: [],
+        validate: {
+          validator: (tags) => tags.length <= 20,
+          message: "Cannot have more than 20 'into' tags",
+        },
+      },
+      turnOns: {
+        type: [String],
+        default: [],
+        validate: {
+          validator: (tags) => tags.length <= 20,
+          message: "Cannot have more than 20 'turn ons' tags",
+        },
+      },
     },
     photos: [photoSchema],
     isOnline: {

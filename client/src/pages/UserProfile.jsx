@@ -1,4 +1,4 @@
-
+"use client"
 
 // client/src/pages/UserProfile.js
 import { useEffect, useState, useCallback } from "react"
@@ -508,6 +508,52 @@ const UserProfile = () => {
               </div>
             )}
 
+            {profileUser?.details?.iAm && (
+              <div className="profile-section">
+                <h4>I am a</h4>
+                <p>{profileUser.details.iAm}</p>
+              </div>
+            )}
+
+            {profileUser?.details?.lookingFor?.length > 0 && (
+              <div className="profile-section">
+                <h4>Looking for</h4>
+                <div className="interests-tags">
+                  {profileUser.details.lookingFor.map((item) => (
+                    <span key={item} className="interest-tag">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {profileUser?.details?.intoTags?.length > 0 && (
+              <div className="profile-section">
+                <h4>I'm into</h4>
+                <div className="interests-tags">
+                  {profileUser.details.intoTags.map((tag) => (
+                    <span key={tag} className="interest-tag tag-purple">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {profileUser?.details?.turnOns?.length > 0 && (
+              <div className="profile-section">
+                <h4>It turns me on</h4>
+                <div className="interests-tags">
+                  {profileUser.details.turnOns.map((tag) => (
+                    <span key={tag} className="interest-tag tag-pink">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {commonInterests.length > 0 && (
               <div className="profile-section">
                 <h2>Common Interests</h2>
@@ -535,6 +581,27 @@ const UserProfile = () => {
         {/* Stories Viewer */}
         {showStories && <StoriesViewer userId={profileUser._id} onClose={handleCloseStories} />}
       </div>
+      <style jsx>{`
+        .tag-purple {
+          background-color: rgba(147, 51, 234, 0.1);
+          color: rgb(147, 51, 234);
+        }
+        
+        .tag-pink {
+          background-color: rgba(236, 72, 153, 0.1);
+          color: rgb(236, 72, 153);
+        }
+        
+        .dark .tag-purple {
+          background-color: rgba(147, 51, 234, 0.2);
+          color: rgb(216, 180, 254);
+        }
+        
+        .dark .tag-pink {
+          background-color: rgba(236, 72, 153, 0.2);
+          color: rgb(251, 207, 232);
+        }
+      `}</style>
     </div>
   )
 }

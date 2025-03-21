@@ -1,4 +1,4 @@
-
+"use client"
 
 // client/src/pages/Register.js
 import { useState, useEffect, useCallback } from "react"
@@ -39,6 +39,10 @@ const Register = () => {
     agreeTerms: false,
     agreePrivacy: false,
     newsletter: false,
+    // Add new fields
+    iAm: "",
+    intoTags: [],
+    turnOns: [],
   })
   const [showPassword, setShowPassword] = useState(false)
   const [formErrors, setFormErrors] = useState({})
@@ -47,7 +51,7 @@ const Register = () => {
   const [attemptedSubmit, setAttemptedSubmit] = useState(false)
   const [errors, setErrors] = useState({})
 
-  const { register, error, clearErrors, isAuthenticated } = useAuth()
+  const { register, error, isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -80,6 +84,64 @@ const Register = () => {
     "Just Chatting",
   ]
 
+  // Add these new constants for the additional preference options
+  // Add after the relationshipGoals array (around line 60)
+
+  const iAmOptions = ["woman", "man", "couple"]
+
+  const lookingForOptions = ["women", "men", "couples"]
+
+  const intoTagsOptions = [
+    "Meetups",
+    "Power play",
+    "Threesomes",
+    "Online fun",
+    "Hot chat",
+    "Photo sharing",
+    "Camera chat",
+    "Cuckold",
+    "Golden showers",
+    "Strap-on",
+    "Forced bi",
+    "Erotic domination",
+    "Humiliation",
+    "Crossdressing",
+    "Worship",
+    "Foot fetish",
+    "Oral",
+    "From behind",
+    "Role-play",
+    "Toys",
+    "Massages",
+    "Foreplay",
+    "Casual meetups",
+    "Fantasy fulfillment",
+    "Bizarre",
+    "Education",
+    "Experiences",
+    "Tantra",
+  ]
+
+  const turnOnsOptions = [
+    "Sexy ass",
+    "Dirty talk",
+    "Aggressive",
+    "Slow and gentle",
+    "In a public place",
+    "Pampering",
+    "Sexy clothing",
+    "Leather/latex clothing",
+    "Watching porn",
+    "Fit body",
+    "Bathing together",
+    "Erotic writing",
+    "Eye contact",
+    "Being pampered",
+    "Sexy legs",
+    "Teasing",
+    "Pushing boundaries",
+  ]
+
   // Handle initial state
   useEffect(() => {
     // If user is already authenticated, redirect to dashboard
@@ -92,8 +154,7 @@ const Register = () => {
       setFormData((prev) => ({ ...prev, email: location.state.email }))
     }
 
-    // Clear any previous errors
-    clearErrors()
+    // No need to explicitly clear errors here
 
     // Clean up form on unmount
     return () => {
@@ -110,9 +171,12 @@ const Register = () => {
         agreeTerms: false,
         agreePrivacy: false,
         newsletter: false,
+        iAm: "",
+        intoTags: [],
+        turnOns: [],
       })
     }
-  }, [isAuthenticated, navigate, location.state?.email, clearErrors])
+  }, [isAuthenticated, navigate, location.state?.email])
 
   // Handle auth errors from context
   useEffect(() => {
@@ -202,18 +266,34 @@ const Register = () => {
       }
 
       if (step === 3) {
+        // Existing validation code...
+
+        // Add validation for iAm
+        if (!formData.iAm) {
+          errors.iAm = "Please select who you are"
+        }
+
+        // Add validation for lookingFor
+        if (formData.lookingFor.length === 0) {
+          errors.lookingFor = "Please select what you're looking for"
+        } else if (formData.lookingFor.length > 3) {
+          errors.lookingFor = "Please select no more than 3 options"
+        }
+
+        // We won't make intoTags and turnOns required, but we'll validate the count
+        if (formData.intoTags.length > 20) {
+          errors.intoTags = "Please select no more than 20 'I'm into' tags"
+        }
+
+        if (formData.turnOns.length > 20) {
+          errors.turnOns = "Please select no more than 20 'Turn ons' tags"
+        }
+
         // Interests validation
         if (formData.interests.length === 0) {
           errors.interests = "Please select at least one interest"
         } else if (formData.interests.length > 10) {
           errors.interests = "Please select no more than 10 interests"
-        }
-
-        // Looking for validation
-        if (formData.lookingFor.length === 0) {
-          errors.lookingFor = "Please select what you're looking for"
-        } else if (formData.lookingFor.length > 5) {
-          errors.lookingFor = "Please select no more than 5 options"
         }
 
         // Agreement validations
@@ -339,6 +419,74 @@ const Register = () => {
     }
   }
 
+  // Add a new function to toggle the iAm selection
+  // Add after the toggleGoal function (around line 230)
+  const handleIAmSelection = (option) => {
+    setFormData({
+      ...formData,
+      iAm: formData.iAm === option ? "" : option,
+    })
+
+    // Clear iAm error if now valid
+    if (formErrors.iAm && option) {
+      setFormErrors({ ...formErrors, iAm: "" })
+    }
+  }
+
+  // Add functions to toggle the new tag selections
+  // Add after the toggleGoal function
+  const toggleIntoTag = (tag) => {
+    let updatedTags
+
+    if (formData.intoTags.includes(tag)) {
+      // Remove tag if already selected
+      updatedTags = formData.intoTags.filter((t) => t !== tag)
+    } else {
+      // Add tag if not already selected and under limit
+      if (formData.intoTags.length >= 20) {
+        toast.warning("You can select up to 20 'I'm into' tags")
+        return
+      }
+      updatedTags = [...formData.intoTags, tag]
+    }
+
+    setFormData({
+      ...formData,
+      intoTags: updatedTags,
+    })
+
+    // Clear intoTags error if now valid
+    if (formErrors.intoTags && updatedTags.length > 0) {
+      setFormErrors({ ...formErrors, intoTags: "" })
+    }
+  }
+
+  const toggleTurnOn = (tag) => {
+    let updatedTags
+
+    if (formData.turnOns.includes(tag)) {
+      // Remove tag if already selected
+      updatedTags = formData.turnOns.filter((t) => t !== tag)
+    } else {
+      // Add tag if not already selected and under limit
+      if (formData.turnOns.length >= 20) {
+        toast.warning("You can select up to 20 'Turn ons' tags")
+        return
+      }
+      updatedTags = [...formData.turnOns, tag]
+    }
+
+    setFormData({
+      ...formData,
+      turnOns: updatedTags,
+    })
+
+    // Clear turnOns error if now valid
+    if (formErrors.turnOns && updatedTags.length > 0) {
+      setFormErrors({ ...formErrors, turnOns: "" })
+    }
+  }
+
   const validateForm = useCallback(() => {
     const errors = {}
     // Add your validation logic here, accessing formData
@@ -378,6 +526,18 @@ const Register = () => {
         agreeTerms: formData.agreeTerms,
         agreePrivacy: formData.agreePrivacy,
         newsletter: formData.newsletter,
+        // Add new fields
+        details: {
+          age: formData.age,
+          gender: formData.gender.toLowerCase(),
+          location: formData.location.trim(),
+          bio: "",
+          interests: formData.interests,
+          iAm: formData.iAm,
+          lookingFor: formData.lookingFor,
+          intoTags: formData.intoTags,
+          turnOns: formData.turnOns,
+        },
       }
 
       const success = await register(submissionData)
@@ -691,8 +851,61 @@ const Register = () => {
     <>
       <div className="step-header text-center">
         <h3>Your Preferences</h3>
-        <p className="text-light">What do you like and what are you seeking?</p>
+        <p className="text-light">Tell us about yourself and what you're looking for</p>
       </div>
+
+      <div className="form-group">
+        <label className="form-label">I am a</label>
+        <div className="d-flex gap-2 flex-wrap">
+          {iAmOptions.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`interest-tag ${formData.iAm === option ? "selected" : ""} ${
+                formErrors.iAm && attemptedSubmit ? "error-border" : ""
+              }`}
+              onClick={() => handleIAmSelection(option)}
+            >
+              {option.charAt(0).toUpperCase() + option.slice(1)}
+              {formData.iAm === option && <FaCheck className="tag-check" />}
+            </button>
+          ))}
+        </div>
+        {formErrors.iAm && (
+          <p className="error-message text-danger">
+            <FaExclamationTriangle className="me-1" />
+            {formErrors.iAm}
+          </p>
+        )}
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Looking For</label>
+        <small className="d-block text-muted mb-2">Select up to 3 options</small>
+        <div className="d-flex gap-2 flex-wrap">
+          {lookingForOptions.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`interest-tag ${formData.lookingFor.includes(option) ? "selected" : ""} ${
+                formErrors.lookingFor && attemptedSubmit ? "error-border" : ""
+              }`}
+              onClick={() => toggleGoal(option)}
+              disabled={!formData.lookingFor.includes(option) && formData.lookingFor.length >= 3}
+            >
+              {option.charAt(0).toUpperCase() + option.slice(1)}
+              {formData.lookingFor.includes(option) && <FaCheck className="tag-check" />}
+            </button>
+          ))}
+        </div>
+        {formErrors.lookingFor && (
+          <p className="error-message text-danger">
+            <FaExclamationTriangle className="me-1" />
+            {formErrors.lookingFor}
+          </p>
+        )}
+      </div>
+
       <div className="form-group">
         <label className="form-label">Interests</label>
         <small className="d-block text-muted mb-2">Select up to 10 interests</small>
@@ -701,7 +914,9 @@ const Register = () => {
             <button
               key={interest}
               type="button"
-              className={`interest-tag ${formData.interests.includes(interest) ? "selected" : ""} ${formErrors.interests && attemptedSubmit ? "error-border" : ""}`}
+              className={`interest-tag ${formData.interests.includes(interest) ? "selected" : ""} ${
+                formErrors.interests && attemptedSubmit ? "error-border" : ""
+              }`}
               onClick={() => toggleInterest(interest)}
               disabled={!formData.interests.includes(interest) && formData.interests.length >= 10}
             >
@@ -717,30 +932,61 @@ const Register = () => {
           </p>
         )}
       </div>
+
       <div className="form-group">
-        <label className="form-label">Looking For</label>
-        <small className="d-block text-muted mb-2">Select up to 5 options</small>
+        <label className="form-label">I'm into</label>
+        <small className="d-block text-muted mb-2">Select up to 20 tags</small>
         <div className="interests-grid">
-          {relationshipGoals.map((goal) => (
+          {intoTagsOptions.map((tag) => (
             <button
-              key={goal}
+              key={tag}
               type="button"
-              className={`interest-tag ${formData.lookingFor.includes(goal) ? "selected" : ""} ${formErrors.lookingFor && attemptedSubmit ? "error-border" : ""}`}
-              onClick={() => toggleGoal(goal)}
-              disabled={!formData.lookingFor.includes(goal) && formData.lookingFor.length >= 5}
+              className={`interest-tag ${formData.intoTags.includes(tag) ? "selected" : ""} ${
+                formErrors.intoTags && attemptedSubmit ? "error-border" : ""
+              }`}
+              onClick={() => toggleIntoTag(tag)}
+              disabled={!formData.intoTags.includes(tag) && formData.intoTags.length >= 20}
             >
-              {goal}
-              {formData.lookingFor.includes(goal) && <FaCheck className="tag-check" />}
+              {tag}
+              {formData.intoTags.includes(tag) && <FaCheck className="tag-check" />}
             </button>
           ))}
         </div>
-        {formErrors.lookingFor && (
+        {formErrors.intoTags && (
           <p className="error-message text-danger">
             <FaExclamationTriangle className="me-1" />
-            {formErrors.lookingFor}
+            {formErrors.intoTags}
           </p>
         )}
       </div>
+
+      <div className="form-group">
+        <label className="form-label">It turns me on</label>
+        <small className="d-block text-muted mb-2">Select up to 20 tags</small>
+        <div className="interests-grid">
+          {turnOnsOptions.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              className={`interest-tag ${formData.turnOns.includes(tag) ? "selected" : ""} ${
+                formErrors.turnOns && attemptedSubmit ? "error-border" : ""
+              }`}
+              onClick={() => toggleTurnOn(tag)}
+              disabled={!formData.turnOns.includes(tag) && formData.turnOns.length >= 20}
+            >
+              {tag}
+              {formData.turnOns.includes(tag) && <FaCheck className="tag-check" />}
+            </button>
+          ))}
+        </div>
+        {formErrors.turnOns && (
+          <p className="error-message text-danger">
+            <FaExclamationTriangle className="me-1" />
+            {formErrors.turnOns}
+          </p>
+        )}
+      </div>
+
       <div className="form-group checkbox-group mt-3">
         <label className={`checkbox-label ${formErrors.agreeTerms ? "error" : ""}`}>
           <input type="checkbox" name="agreeTerms" checked={formData.agreeTerms} onChange={handleChange} />
