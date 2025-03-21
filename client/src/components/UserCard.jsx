@@ -1,145 +1,214 @@
-"use client"
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { HeartIcon, ChatBubbleLeftIcon, UserIcon } from "@heroicons/react/24/outline";
+import { HeartIcon as HeartIconSolid } from "@heroicons/react/24/solid";
 
-import { useState } from "react"
-import { UserIcon, HeartIcon } from "@heroicons/react/24/outline"
-import { useNavigate } from "react-router-dom"
+const UserCard = ({ user, onLike, viewMode = "grid", onMessage }) => {
+  const navigate = useNavigate();
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
-// Replace the existing UserCard component with this responsive version
-const UserCard = ({ user, viewMode, onLike }) => {
-  const navigate = useNavigate()
-  const [imageLoaded, setImageLoaded] = useState(false)
+  if (!user) return null;
 
   const handleCardClick = () => {
-    navigate(`/profile/${user._id}`)
-  }
+    navigate(`/user/${user._id}`);
+  };
 
   const handleLikeClick = (e) => {
-    e.stopPropagation()
-    onLike(user._id)
-  }
+    e.stopPropagation();
+    if (onLike) onLike(user._id, user.nickname);
+  };
 
+  const handleMessageClick = (e) => {
+    e.stopPropagation();
+    if (onMessage) onMessage(user);
+  };
+
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+  };
+
+  const handleImageError = () => {
+    setImageError(true);
+    setImageLoaded(true); // Still mark as loaded to remove placeholder
+  };
+
+  // Helper to format age and location properly
+  const getSubtitle = () => {
+    const parts = [];
+    if (user.details?.age) parts.push(`${user.details.age}`);
+    if (user.details?.location) parts.push(user.details.location);
+    return parts.join(" • ");
+  };
+
+  const renderPhoto = () => (
+    <div className="relative w-full h-full overflow-hidden">
+      {/* Loading state */}
+      {!imageLoaded && (
+        <div className="absolute inset-0 bg-gray-100 animate-pulse flex items-center justify-center">
+          <UserIcon className="h-12 w-12 text-gray-300" />
+        </div>
+      )}
+      
+      {/* Profile Photo */}
+      {!imageError ? (
+        <img
+          src={user.photos?.[0]?.url || user.profilePhoto || "/placeholder.svg?height=300&width=300"}
+          alt={`${user.nickname || 'User'}'s profile`}
+          className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? "opacity-100" : "opacity-0"}`}
+          onLoad={handleImageLoad}
+          onError={handleImageError}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center bg-gray-100">
+          <UserIcon className="h-16 w-16 text-gray-400" />
+        </div>
+      )}
+      
+      {/* Online indicator */}
+      {user.isOnline && (
+        <div className="absolute top-2 right-2">
+          <span className="flex h-3 w-3">
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+
+  // Grid view
   if (viewMode === "grid") {
     return (
-      <div
-        className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow duration-200 cursor-pointer"
+      <div 
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden cursor-pointer transition-all duration-300 ease-in-out transform hover:-translate-y-1 h-full"
         onClick={handleCardClick}
       >
-        {/* Image container with aspect ratio */}
-        <div className="relative pb-[100%]">
-          {/* Placeholder while image loads */}
-          {!imageLoaded && (
-            <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-              <UserIcon className="h-12 w-12 text-gray-300" />
-            </div>
-          )}
-
-          <img
-            src={user.profilePhoto || "/placeholder.svg?height=300&width=300"}
-            alt={`${user.firstName}'s profile`}
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? "opacity-100" : "opacity-0"}`}
-            onLoad={() => setImageLoaded(true)}
-          />
+        {/* Image container */}
+        <div className="aspect-w-1 aspect-h-1 relative">
+          {renderPhoto()}
         </div>
 
         <div className="p-4">
           <div className="flex justify-between items-start">
             <div>
-              <h3 className="font-medium text-gray-900 truncate">
-                {user.firstName}, {user.age}
+              <h3 className="font-medium text-gray-900 dark:text-white text-lg">
+                {user.nickname || user.firstName}{user.details?.age ? `, ${user.details.age}` : ""}
               </h3>
-              <p className="text-sm text-gray-500 truncate">{user.location?.city || "Unknown location"}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center">
+                {getSubtitle()}
+              </p>
             </div>
-            <button
-              className={`p-2 rounded-full ${user.isLiked ? "text-red-500 bg-red-50" : "text-gray-400 hover:bg-gray-50"}`}
-              onClick={handleLikeClick}
-              aria-label={user.isLiked ? "Unlike" : "Like"}
-            >
-              <HeartIcon className="h-5 w-5" />
-            </button>
           </div>
 
-          {user.bio && <p className="mt-2 text-sm text-gray-600 line-clamp-2">{user.bio}</p>}
+          {user.details?.bio && (
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{user.details.bio}</p>
+          )}
 
-          {user.interests?.length > 0 && (
+          {user.details?.interests?.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1">
-              {user.interests.slice(0, 3).map((interest) => (
+              {user.details.interests.slice(0, 3).map((interest) => (
                 <span
                   key={interest}
-                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700"
+                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
                 >
                   {interest}
                 </span>
               ))}
-              {user.interests.length > 3 && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-600">
-                  +{user.interests.length - 3}
+              {user.details.interests.length > 3 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  +{user.details.interests.length - 3}
                 </span>
               )}
             </div>
           )}
+
+          <div className="mt-4 flex space-x-2">
+            <button
+              onClick={handleLikeClick}
+              className={`flex-1 flex items-center justify-center py-2 px-3 rounded-lg transition-colors ${
+                user.isLiked 
+                  ? "bg-red-50 text-red-500 dark:bg-red-900 dark:text-red-300" 
+                  : "bg-gray-50 text-gray-500 hover:bg-red-50 hover:text-red-500 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900 dark:hover:text-red-300"
+              }`}
+            >
+              {user.isLiked ? <HeartIconSolid className="h-5 w-5" /> : <HeartIcon className="h-5 w-5" />}
+            </button>
+            <button
+              onClick={handleMessageClick}
+              className="flex-1 flex items-center justify-center py-2 px-3 rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-500 hover:text-blue-500 transition-colors dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-blue-900 dark:hover:text-blue-300"
+            >
+              <ChatBubbleLeftIcon className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       </div>
-    )
+    );
   }
 
   // List view
   return (
     <div
-      className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow duration-200 cursor-pointer"
+      className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden cursor-pointer transition-all duration-300 ease-in-out transform hover:-translate-y-1"
       onClick={handleCardClick}
     >
       <div className="flex flex-col sm:flex-row">
         {/* Image container with fixed dimensions on mobile, aspect ratio on desktop */}
-        <div className="relative w-full sm:w-40 h-48 sm:h-auto">
-          {!imageLoaded && (
-            <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-              <UserIcon className="h-12 w-12 text-gray-300" />
-            </div>
-          )}
-
-          <img
-            src={user.profilePhoto || "/placeholder.svg?height=300&width=300"}
-            alt={`${user.firstName}'s profile`}
-            className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? "opacity-100" : "opacity-0"}`}
-            onLoad={() => setImageLoaded(true)}
-          />
+        <div className="relative w-full sm:w-48 h-48 sm:h-auto">
+          {renderPhoto()}
         </div>
 
-        <div className="p-4 flex-1">
+        <div className="p-4 flex-1 flex flex-col">
           <div className="flex justify-between items-start">
             <div>
-              <h3 className="font-medium text-gray-900">
-                {user.firstName}, {user.age}
+              <h3 className="font-medium text-gray-900 dark:text-white text-lg">
+                {user.nickname || user.firstName}{user.details?.age ? `, ${user.details.age}` : ""}
               </h3>
-              <p className="text-sm text-gray-500">{user.location?.city || "Unknown location"}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {getSubtitle()}
+              </p>
             </div>
-            <button
-              className={`p-2 rounded-full ${user.isLiked ? "text-red-500 bg-red-50" : "text-gray-400 hover:bg-gray-50"}`}
-              onClick={handleLikeClick}
-              aria-label={user.isLiked ? "Unlike" : "Like"}
-            >
-              <HeartIcon className="h-5 w-5" />
-            </button>
           </div>
 
-          {user.bio && <p className="mt-2 text-sm text-gray-600 line-clamp-3">{user.bio}</p>}
+          {user.details?.bio && (
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 line-clamp-3 flex-grow">{user.details.bio}</p>
+          )}
 
-          {user.interests?.length > 0 && (
+          {user.details?.interests?.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1">
-              {user.interests.map((interest) => (
+              {user.details.interests.map((interest) => (
                 <span
                   key={interest}
-                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700"
+                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
                 >
                   {interest}
                 </span>
               ))}
             </div>
           )}
+
+          <div className="mt-4 flex space-x-2">
+            <button
+              onClick={handleLikeClick}
+              className={`flex-1 flex items-center justify-center py-2 px-3 rounded-lg transition-colors ${
+                user.isLiked 
+                  ? "bg-red-50 text-red-500 dark:bg-red-900 dark:text-red-300" 
+                  : "bg-gray-50 text-gray-500 hover:bg-red-50 hover:text-red-500 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900 dark:hover:text-red-300"
+              }`}
+            >
+              {user.isLiked ? <HeartIconSolid className="h-5 w-5" /> : <HeartIcon className="h-5 w-5" />}
+            </button>
+            <button
+              onClick={handleMessageClick}
+              className="flex-1 flex items-center justify-center py-2 px-3 rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-500 hover:text-blue-500 transition-colors dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-blue-900 dark:hover:text-blue-300"
+            >
+              <ChatBubbleLeftIcon className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default UserCard
+export default UserCard;
