@@ -396,18 +396,18 @@ input:checked + .toggle-slider:before {
 }
 
 .save-button.has-changes {
-  animation: pulse 2s infinite;
+  animation: settings-pulse 2s infinite;
 }
 
-@keyframes pulse {
+@keyframes settings-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0.4);
+    box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.4);
   }
   70% {
-    box-shadow: 0 0 0 10px rgba(var(--primary-rgb), 0);
+    box-shadow: 0 0 0 10px rgba(255, 51, 102, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0);
+    box-shadow: 0 0 0 0 rgba(255, 51, 102, 0);
   }
 }
 
@@ -522,7 +522,7 @@ input:checked + .toggle-slider:before {
   border-color: var(--danger-color);
 }
 
-.error-message {
+.settings-error-message {
   color: var(--danger-color);
   font-size: 14px;
   margin-top: 5px;
@@ -536,7 +536,8 @@ input:checked + .toggle-slider:before {
   border-top: 1px solid var(--border-color);
 }
 
-.btn {
+/* Settings-specific button styles (to avoid conflicts) */
+.settings-btn {
   padding: 10px 15px;
   border: none;
   border-radius: 8px;
@@ -547,25 +548,25 @@ input:checked + .toggle-slider:before {
   gap: 8px;
 }
 
-.btn-secondary {
+.settings-btn-secondary {
   background-color: var(--bg-secondary);
   color: var(--text-primary);
 }
 
-.btn-secondary:hover {
+.settings-btn-secondary:hover {
   background-color: var(--bg-hover);
 }
 
-.btn-danger {
+.settings-btn-danger {
   background-color: var(--danger-color);
   color: white;
 }
 
-.btn-danger:hover {
+.settings-btn-danger:hover {
   background-color: var(--danger-color-dark);
 }
 
-.btn-danger:disabled {
+.settings-btn-danger:disabled {
   background-color: var(--bg-inactive);
   color: var(--text-disabled);
   cursor: not-allowed;
@@ -611,105 +612,4 @@ input:checked + .toggle-slider:before {
     margin-bottom: 0;
     margin-right: 10px;
   }
-}
-/* Add this CSS file to your project and import it in your main CSS or component */
-
-/* Header action button styles */
-.header-action-button {
-  background: transparent;
-  border: none;
-  color: var(--text-primary, #333);
-  font-size: 1.25rem;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  position: relative;
-  margin: 0 8px;
-  transition: background-color 0.2s ease;
-}
-
-.header-action-button:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-.dark .header-action-button {
-  color: var(--text-primary-dark, #f8f9fa);
-}
-
-.dark .header-action-button:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-/* User avatar styles */
-.user-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
-  cursor: pointer;
-  border: 2px solid transparent;
-  transition: border-color 0.2s ease;
-}
-
-.user-avatar:hover {
-  border-color: var(--primary, #3498db);
-}
-
-/* Spinner styles */
-.spinner {
-  display: inline-block;
-  width: 24px;
-  height: 24px;
-  border: 3px solid rgba(0, 0, 0, 0.1);
-  border-radius: 50%;
-  border-top-color: var(--primary, #3498db);
-  animation: spin 1s ease-in-out infinite;
-}
-
-.spinner-small {
-  width: 16px;
-  height: 16px;
-  border-width: 2px;
-}
-
-.spinner-large {
-  width: 48px;
-  height: 48px;
-  border-width: 4px;
-}
-
-.spinner-dark {
-  border-color: rgba(255, 255, 255, 0.1);
-  border-top-color: #fff;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Make sure the dropdown is visible when shown */
-.dropdown {
-  position: relative;
-}
-
-.dropdown-menu {
-  z-index: 1000;
-}
-
-.dropdown-menu.show {
-  display: block !important;
-}
-
-/* Ensure notification dropdown has proper z-index and positioning */
-.notification-dropdown {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  margin-top: 8px;
 }

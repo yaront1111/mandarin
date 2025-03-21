@@ -8,6 +8,7 @@
   --text-color: #2d3436;
   --text-light: #636e72;
   --bg-color: #ffffff;
+  --danger-rgb: #ff6b6b;
   --bg-light: #f9f9f9;
   --bg-dark: #2d3436;
   --border-color: #dfe6e9;
@@ -113,7 +114,7 @@
   --bg-card: var(--white);
   --bg-secondary: var(--light);
   --bg-hover: rgba(0, 0, 0, 0.05);
-  --bg-active: rgba(var(--primary-rgb, 255, 51, 102), 0.1);
+  --bg-active: rgba(var(--primary-rgb), 0.1);
   --bg-inactive: #e0e0e0;
   --bg-warning: var(--warning-light);
   --bg-danger: var(--danger-light);
@@ -177,7 +178,7 @@
   --bg-card: var(--medium);
   --bg-secondary: var(--dark);
   --bg-hover: rgba(255, 255, 255, 0.1);
-  --bg-active: rgba(var(--primary-rgb, 255, 51, 102), 0.2);
+  --bg-active: rgba(var(--primary-rgb), 0.2);
   --bg-inactive: #444444;
   --bg-warning: rgba(255, 209, 102, 0.2);
   --bg-danger: rgba(239, 71, 111, 0.2);

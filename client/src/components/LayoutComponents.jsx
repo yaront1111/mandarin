@@ -121,47 +121,29 @@ export const Navbar = () => {
   const renderNotifications = () => {
     if (loadingNotifications) {
       return (
-        <div style={{ padding: "20px", textAlign: "center" }}>
+        <div className="notification-loading">
           <div className="spinner"></div>
-          <p style={{ marginTop: "10px" }}>Loading notifications...</p>
+          <p>Loading notifications...</p>
         </div>
       )
     }
     if (notifications.length === 0) {
       return (
-        <div style={{ padding: "20px", textAlign: "center", color: "var(--text-light)" }}>No notifications yet</div>
+        <div className="notification-empty">No notifications yet</div>
       )
     }
     return notifications.map((notification) => (
       <div
         key={notification._id}
-        style={{
-          padding: "12px 16px",
-          borderBottom: "1px solid var(--border-color)",
-          display: "flex",
-          alignItems: "flex-start",
-          cursor: "pointer",
-          backgroundColor: !notification.read ? "rgba(0, 123, 255, 0.05)" : "transparent",
-        }}
+        className={`notification-item ${!notification.read ? 'unread' : ''}`}
         onClick={() => handleNotificationClick(notification)}
       >
-        <div
-          style={{
-            width: "40px",
-            height: "40px",
-            borderRadius: "50%",
-            backgroundColor: "var(--bg-light)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            marginRight: "12px",
-          }}
-        >
+        <div className="notification-icon">
           <FaBell />
         </div>
-        <div>
-          <div style={{ fontWeight: "500", marginBottom: "4px" }}>{notification.message}</div>
-          <div style={{ fontSize: "11px", color: "var(--text-light)" }}>
+        <div className="notification-content">
+          <div className="notification-title">{notification.message}</div>
+          <div className="notification-time">
             {new Date(notification.createdAt).toLocaleTimeString()}
           </div>
         </div>
@@ -215,14 +197,7 @@ export const Navbar = () => {
           {/* Test button to add a notification */}
           <button
             onClick={addTestNotification}
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: "8px",
-              color: "var(--text-color)",
-              fontSize: "14px",
-            }}
+            className="header-action-button"
           >
             Add Test
           </button>
@@ -234,43 +209,11 @@ export const Navbar = () => {
                   ref={notificationButtonRef}
                   onClick={toggleNotificationDropdown}
                   aria-label="Notifications"
-                  style={{
-                    background: "var(--primary-color)",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "10px",
-                    borderRadius: "50%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    position: "relative",
-                    width: "40px",
-                    height: "40px",
-                    boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-                    zIndex: "101",
-                    pointerEvents: "auto",
-                  }}
+                  className="notification-button"
                 >
-                  <FaBell size={20} color="white" />
+                  <FaBell size={20} />
                   {unreadCount > 0 && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: "-5px",
-                        right: "-5px",
-                        background: "#ff4757",
-                        color: "white",
-                        borderRadius: "50%",
-                        width: "18px",
-                        height: "18px",
-                        fontSize: "11px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: "bold",
-                        border: "2px solid white",
-                      }}
-                    >
+                    <span className="notification-badge">
                       {unreadCount > 9 ? "9+" : unreadCount}
                     </span>
                   )}
@@ -279,38 +222,13 @@ export const Navbar = () => {
                 {showNotifications && (
                   <div
                     ref={notificationDropdownRef}
-                    style={{
-                      position: "absolute",
-                      right: "0",
-                      top: "100%",
-                      width: "320px",
-                      maxHeight: "400px",
-                      overflowY: "auto",
-                      background: "var(--bg-color)",
-                      borderRadius: "8px",
-                      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-                      zIndex: "1000",
-                      marginTop: "8px",
-                    }}
+                    className="notification-dropdown"
                   >
-                    <div
-                      style={{
-                        padding: "12px 16px",
-                        fontWeight: "bold",
-                        borderBottom: "1px solid var(--border-color)",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
+                    <div className="notification-header">
                       <span>Notifications</span>
                       {unreadCount > 0 && (
                         <span
-                          style={{
-                            color: "var(--primary-color)",
-                            fontSize: "13px",
-                            cursor: "pointer",
-                          }}
+                          className="notification-header-action"
                           onClick={markAllAsRead}
                         >
                           Mark all as read
@@ -328,13 +246,8 @@ export const Navbar = () => {
                     <img
                       src={user.photos[0].url || "/placeholder.svg?height=32&width=32"}
                       alt={user.nickname}
-                      style={{
-                        width: "32px",
-                        height: "32px",
-                        borderRadius: "50%",
-                        objectFit: "cover",
-                        cursor: "pointer",
-                      }}
+                      className="user-avatar"
+                      style={{width: "32px", height: "32px"}}
                       onClick={toggleUserDropdown}
                     />
                   ) : (
@@ -351,52 +264,23 @@ export const Navbar = () => {
                   {showUserDropdown && (
                     <div
                       ref={userDropdownRef}
-                      style={{
-                        position: "absolute",
-                        right: "0",
-                        top: "100%",
-                        background: "var(--bg-color)",
-                        borderRadius: "8px",
-                        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-                        zIndex: 1000,
-                        minWidth: "180px",
-                        marginTop: "8px",
-                      }}
+                      className="user-dropdown"
                     >
                       <div
-                        style={{
-                          padding: "8px 16px",
-                          cursor: "pointer",
-                          transition: "background-color 0.2s",
-                        }}
+                        className="user-dropdown-item"
                         onClick={navigateToProfile}
                       >
                         Profile
                       </div>
                       <div
-                        style={{
-                          padding: "8px 16px",
-                          cursor: "pointer",
-                          transition: "background-color 0.2s",
-                        }}
+                        className="user-dropdown-item"
                         onClick={() => navigate("/settings")}
                       >
                         Settings
                       </div>
+                      <div className="user-dropdown-divider"></div>
                       <div
-                        style={{
-                          height: "1px",
-                          background: "var(--border-color)",
-                          margin: "4px 0",
-                        }}
-                      ></div>
-                      <div
-                        style={{
-                          padding: "8px 16px",
-                          cursor: "pointer",
-                          transition: "background-color 0.2s",
-                          color: "var(--error-color)",
-                        }}
+                        className="user-dropdown-item danger"
                         onClick={handleLogout}
                       >
                         Logout

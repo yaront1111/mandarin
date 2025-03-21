@@ -275,7 +275,31 @@
   display: block !important;
 }
 
-/* Notification styles */
+/* Notification styles - FIXED */
+.notification-button {
+  position: relative;
+  z-index: 101 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  background: var(--primary-color, #ff3366) !important;
+  border: none;
+  padding: 10px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  color: white;
+  transition: all 0.3s ease;
+}
+
+.notification-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
 .notification-dropdown {
   position: absolute;
   right: 0;
@@ -288,14 +312,7 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1000;
   margin-top: 8px;
-  display: block;
-}
-
-.notification-button {
-  position: relative;
-  z-index: 101 !important;
-  cursor: pointer !important;
-  pointer-events: auto !important;
+  /* REMOVED display: block - this was causing the issue! */
 }
 
 .notification-badge {
@@ -364,7 +381,7 @@
   text-overflow: ellipsis;
 }
 
-/* Add these notification type styles to the notification section */
+/* Notification type styles */
 .notification-message {
   border-left: 3px solid var(--primary-color, #ff6b6b);
 }
@@ -476,8 +493,7 @@
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
 }
 
-/* Add user-avatar styles after the online-indicator class */
-
+/* User avatar styles */
 .user-avatar {
   width: 40px;
   height: 40px;

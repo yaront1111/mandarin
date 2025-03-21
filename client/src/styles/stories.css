@@ -5,7 +5,6 @@
   width: 100%;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: var(--primary-light, #ff6b99) var(--background, #f8f9fa);
   position: relative;
 }
 
@@ -518,7 +517,7 @@
 .story-creator {
   width: 90%;
   max-width: 520px;
-  background: var(--card-bg, #ffffff);
+  background: #ffffff;
   border-radius: var(--radius-lg, 16px);
   box-shadow: var(--card-shadow, 0 6px 16px rgba(0, 0, 0, 0.06));
   overflow: hidden;
@@ -546,7 +545,7 @@
   align-items: center;
   padding: var(--space-md, 16px) var(--space-lg, 24px);
   border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background-color: var(--card-bg, #ffffff);
+  background-color: #ffffff;
 }
 
 .creator-header h2 {
@@ -583,11 +582,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-lg, 24px);
-  background-color: var(--card-bg, #ffffff);
+  background-color: #ffffff;
   position: relative;
   border-radius: var(--radius-md, 8px);
   scrollbar-width: thin;
-  scrollbar-color: var(--border-color, #e0e0e0) transparent;
+  scrollbar-color: #e0e0e0 transparent;
 }
 
 .creator-content::-webkit-scrollbar {
@@ -805,7 +804,7 @@
 .tab-content {
   margin-bottom: 28px;
   padding: 16px;
-  background-color: var(--card-bg, #ffffff);
+  background-color: #ffffff;
   border-radius: var(--radius-lg, 16px);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
   transition: all 0.25s ease;
@@ -835,7 +834,7 @@
   border-color: var(--primary, #ff3366);
   outline: none;
   box-shadow: 0 0 0 4px rgba(255, 51, 102, 0.08), inset 0 2px 4px rgba(0, 0, 0, 0.05);
-  background-color: var(--card-bg, #ffffff);
+  background-color: #ffffff;
 }
 
 .text-tab textarea::placeholder {
@@ -1056,7 +1055,7 @@
 .stories-section {
   margin-bottom: var(--space-xl, 32px);
   padding: var(--space-md, 16px);
-  background-color: var(--card-bg, #ffffff);
+  background-color: #ffffff;
   border-radius: var(--radius-lg, 16px);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
