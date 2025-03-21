@@ -1,10 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { HeartIcon, ChatBubbleLeftIcon, UserIcon } from "@heroicons/react/24/outline"
 import { HeartIcon as HeartIconSolid } from "@heroicons/react/24/solid"
 
+/**
+ * Enhanced UserCard component with proper server integration
+ * Handles image loading errors and network issues gracefully
+ */
 const UserCard = ({ user, onLike, viewMode = "grid", onMessage }) => {
   const navigate = useNavigate()
   const [imageLoaded, setImageLoaded] = useState(false)
@@ -12,6 +16,39 @@ const UserCard = ({ user, onLike, viewMode = "grid", onMessage }) => {
   const [isHovered, setIsHovered] = useState(false)
 
   if (!user) return null
+
+  // Format profile photo URL to handle both local and server paths
+  const getProfilePhotoUrl = useCallback(() => {
+    if (!user || !user.photos || !user.photos.length) {
+      return "/placeholder.svg"
+    }
+
+    const photoUrl = user.photos[0].url || user.profilePhoto
+
+    // If it's already a full URL, return it
+    if (photoUrl && photoUrl.startsWith("http")) {
+      return photoUrl
+    }
+
+    // If it's a path that starts with /api/, keep it as is
+    if (photoUrl && photoUrl.startsWith("/api/")) {
+      return photoUrl
+    }
+
+    // For uploads, ensure proper path structure
+    if (photoUrl && photoUrl.startsWith("/uploads/")) {
+      // Ensure no double slashes by removing potential duplicates
+      return photoUrl.replace(/\/+/g, '/')
+    }
+
+    // For server-side photo paths to match client expectations
+    if (photoUrl && (photoUrl.includes("/images/") || photoUrl.includes("/photos/"))) {
+      // Ensure it starts with /uploads/ if it doesn't already
+      return photoUrl.startsWith("/uploads") ? photoUrl : `/uploads${photoUrl.startsWith("/") ? "" : "/"}${photoUrl}`
+    }
+
+    return photoUrl || "/placeholder.svg"
+  }, [user])
 
   const handleCardClick = () => {
     navigate(`/user/${user._id}`)
@@ -64,7 +101,7 @@ const UserCard = ({ user, onLike, viewMode = "grid", onMessage }) => {
 
           {!imageError ? (
             <img
-              src={user.photos?.[0]?.url || user.profilePhoto || "/placeholder.svg"}
+              src={getProfilePhotoUrl()}
               alt={`${user.nickname || "User"}'s profile`}
               className="w-full h-full object-cover transition-all duration-500"
               style={{
@@ -218,7 +255,7 @@ const UserCard = ({ user, onLike, viewMode = "grid", onMessage }) => {
 
           {!imageError ? (
             <img
-              src={user.photos?.[0]?.url || user.profilePhoto || "/placeholder.svg"}
+              src={getProfilePhotoUrl()}
               alt={`${user.nickname || "User"}'s profile`}
               className="w-full h-full object-cover transition-all duration-500"
               style={{

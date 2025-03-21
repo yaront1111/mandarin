@@ -1,3 +1,4 @@
+// client/src/components/index.js
 // Import all components and re-export them for easier imports throughout the app
 
 // Layout Components
@@ -13,10 +14,10 @@ import {
 } from "./UserComponents"
 
 // Chat Components
-import ChatBox from "./Chat/ChatBox"
-import VideoCall from "./Chat/VideoCall"
-import Spinner from "./Spinner"
+// Fixing the imports for Chat components
 import EmbeddedChat from "./EmbeddedChat"
+
+// We'll skip importing Spinner if it doesn't exist as a direct file
 
 // Stories Components
 import StoriesCarousel from "./Stories/StoriesCarousel"
@@ -47,9 +48,6 @@ export {
   UserFilter,
 
   // Chat Components
-  ChatBox,
-  VideoCall,
-  Spinner,
   EmbeddedChat,
 
   // Stories Components

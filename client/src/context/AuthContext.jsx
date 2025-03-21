@@ -53,6 +53,7 @@ export const AuthProvider = ({ children }) => {
   // Refs for refresh token promise and timer
   const refreshTokenPromiseRef = useRef(null)
   const tokenRefreshTimerRef = useRef(null)
+  const authCheckTimeoutRef = useRef(null)
 
   const clearError = useCallback(() => {
     setError(null)
@@ -366,8 +367,19 @@ export const AuthProvider = ({ children }) => {
     }
   }, [])
 
-  // Check authentication status on mount
+  // Check authentication status on mount with safety timeout
   useEffect(() => {
+    // Safety timeout to prevent infinite loading
+    if (authCheckTimeoutRef.current) {
+      clearTimeout(authCheckTimeoutRef.current)
+    }
+
+    authCheckTimeoutRef.current = setTimeout(() => {
+      console.warn("Auth check timeout - forcing loading state to false")
+      setLoading(false)
+      setAuthChecked(true)
+    }, 15000) // 15-second timeout
+
     const checkAuth = async () => {
       const token = getToken()
       if (token) {
@@ -380,6 +392,7 @@ export const AuthProvider = ({ children }) => {
               setIsAuthenticated(false)
               removeToken()
               setAuthChecked(true)
+              setLoading(false)
               return
             }
           }
@@ -390,14 +403,31 @@ export const AuthProvider = ({ children }) => {
           setIsAuthenticated(false)
           removeToken()
           setAuthChecked(true)
+          setLoading(false)
         }
       } else {
         setUser(null)
         setIsAuthenticated(false)
         setAuthChecked(true)
+        setLoading(false)
+      }
+
+      // Clear safety timeout
+      if (authCheckTimeoutRef.current) {
+        clearTimeout(authCheckTimeoutRef.current)
+        authCheckTimeoutRef.current = null
       }
     }
+
     checkAuth()
+
+    // Clean up timeout on unmount
+    return () => {
+      if (authCheckTimeoutRef.current) {
+        clearTimeout(authCheckTimeoutRef.current)
+        authCheckTimeoutRef.current = null
+      }
+    }
   }, [getCurrentUser, refreshToken])
 
   // Clean up token refresh timer on unmount

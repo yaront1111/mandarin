@@ -1,7 +1,5 @@
-"use client"
-
-// client/src/pages/UserProfile.js
-import { useEffect, useState, useCallback } from "react"
+// client/src/pages/UserProfile.jsx
+import { useEffect, useState, useCallback, useRef } from "react"
 import {
   FaArrowLeft,
   FaHeart,
@@ -18,16 +16,25 @@ import {
   FaTrophy,
   FaFlag,
   FaBan,
+  FaStar,
+  FaCamera,
+  FaSpinner
 } from "react-icons/fa"
 import { useParams, useNavigate } from "react-router-dom"
-import { useUser, useChat, useAuth, useStories } from "../context" // Add useStories
-import EmbeddedChat from "../components/EmbeddedChat"
-import StoriesViewer from "../components/Stories/StoriesViewer" // Import StoriesViewer
-import StoryThumbnail from "../components/Stories/StoryThumbnail" // Import StoryThumbnail
-import { toast } from "react-toastify"
-import apiService from "@services/apiService.jsx"
+import { useUser, useChat, useAuth, useStories } from "../context"
+import { EmbeddedChat } from "../components"
 
-// Update the UserProfile component with a more modern design
+// Simple local Spinner component
+const Spinner = () => (
+  <div className="spinner">
+    <FaSpinner className="spinner-icon" size={32} />
+  </div>
+)
+import StoriesViewer from "../components/Stories/StoriesViewer"
+import StoryThumbnail from "../components/Stories/StoryThumbnail"
+import { toast } from "react-toastify"
+import apiService from "../services/apiService.jsx"
+
 const UserProfile = () => {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -40,22 +47,74 @@ const UserProfile = () => {
     likeUser,
     unlikeUser,
     isUserLiked,
+    error
   } = useUser()
-  const {} = useChat() // Will be used in future implementation
-  const { loadUserStories, hasUnviewedStories } = useStories() // Add stories context
+  const { } = useChat() // Using empty destructuring to avoid missing methods
+  const { loadUserStories, hasUnviewedStories } = useStories()
+  const [userStories, setUserStories] = useState([])
 
   const [showChat, setShowChat] = useState(false)
   const [activePhotoIndex, setActivePhotoIndex] = useState(0)
   const [showActions, setShowActions] = useState(false)
   const [showAllInterests, setShowAllInterests] = useState(false)
-  const [showStories, setShowStories] = useState(false) // Add state for stories viewer
-
-  // Add state for photo permissions
-  const [requestingPermission, setRequestingPermission] = useState(false)
+  const [showStories, setShowStories] = useState(false)
+  const [loadingPermission, setLoadingPermission] = useState(false)
   const [permissionStatus, setPermissionStatus] = useState({})
   const [photoLoadError, setPhotoLoadError] = useState({})
+  const [isLiking, setIsLiking] = useState(false)
+  const [isChatInitiating, setIsChatInitiating] = useState(false)
+  const profileRef = useRef(null)
 
-  // Memoized function to handle image loading errors
+  // Load user data
+  useEffect(() => {
+    if (id) {
+      getUser(id)
+
+      // Load user stories safely
+      try {
+        loadUserStories?.(id)
+          .then(stories => {
+            if (stories && Array.isArray(stories)) {
+              setUserStories(stories)
+            }
+          })
+          .catch(err => console.error("Error loading stories:", err))
+      } catch (error) {
+        console.log("Stories functionality not available")
+      }
+
+      fetchPhotoPermissions()
+    }
+
+    // Reset states when user changes
+    setActivePhotoIndex(0)
+    setShowAllInterests(false)
+    setShowActions(false)
+    setPhotoLoadError({})
+
+    return () => {
+      setShowChat(false)
+      setShowStories(false)
+    }
+  }, [id, getUser, loadUserStories])
+
+  // Fetch photo permissions
+  const fetchPhotoPermissions = async () => {
+    try {
+      const response = await apiService.get(`/users/${id}/photo-permissions`)
+      if (response.success) {
+        const statusMap = {}
+        response.data.forEach(permission => {
+          statusMap[permission.photo] = permission.status
+        })
+        setPermissionStatus(statusMap)
+      }
+    } catch (error) {
+      console.error("Error loading photo permissions:", error)
+    }
+  }
+
+  // Handle image loading errors
   const handleImageError = useCallback((photoId) => {
     setPhotoLoadError((prev) => ({
       ...prev,
@@ -63,15 +122,13 @@ const UserProfile = () => {
     }))
   }, [])
 
-  // Add function to handle permission requests
+  // Request access to private photos
   const handleRequestAccess = async (photoId, e) => {
-    if (e) {
-      e.stopPropagation() // Prevent event bubbling
-    }
+    if (e) e.stopPropagation()
 
-    if (!profileUser || requestingPermission) return
+    if (!profileUser || loadingPermission) return
 
-    setRequestingPermission(true)
+    setLoadingPermission(true)
     try {
       const result = await requestPhotoPermission(photoId, profileUser._id)
       if (result) {
@@ -85,97 +142,59 @@ const UserProfile = () => {
       console.error("Error requesting photo access:", error)
       toast.error(error.message || "Failed to request photo access")
     } finally {
-      setRequestingPermission(false)
+      setLoadingPermission(false)
     }
   }
 
-  // Add useEffect to load permission statuses
-  useEffect(() => {
-    const loadPhotoPermissions = async () => {
-      if (profileUser && profileUser.photos && profileUser.photos.length > 0) {
-        try {
-          // This would be an API call to get permission statuses
-          const permissions = await apiService.get(`/users/${profileUser._id}/photo-permissions`)
-
-          if (permissions.success) {
-            const statusMap = {}
-            permissions.data.forEach((permission) => {
-              statusMap[permission.photo] = permission.status
-            })
-            setPermissionStatus(statusMap)
-          }
-        } catch (error) {
-          console.error("Error loading photo permissions:", error)
-        }
-      }
-    }
-
-    if (profileUser) {
-      loadPhotoPermissions()
-    }
-  }, [profileUser])
-
-  // Load user data and messages when component mounts
-  useEffect(() => {
-    if (id) {
-      getUser(id)
-      // Load user stories
-      loadUserStories(id)
-    }
-
-    // Reset states when user changes
-    setActivePhotoIndex(0)
-    setShowAllInterests(false)
-    setShowActions(false)
-    setPhotoLoadError({})
-
-    return () => {
-      // Clean up any pending operations when component unmounts
-      setShowChat(false)
-      setShowStories(false)
-    }
-  }, [id, getUser, loadUserStories])
-
-  // Redirect if user not found after loading
-  useEffect(() => {
-    if (!loading && !profileUser && id) {
-      toast.error("User profile not found")
-      navigate("/dashboard")
-    }
-  }, [loading, profileUser, id, navigate])
-
+  // Go back to previous page
   const handleBack = () => {
     navigate("/dashboard")
   }
 
-  const handleLike = () => {
-    if (!profileUser) return
+  // Handle liking/unliking users
+  const handleLike = async () => {
+    if (!profileUser || isLiking) return
 
-    if (isUserLiked(profileUser._id)) {
-      unlikeUser(profileUser._id, profileUser.nickname)
-    } else {
-      likeUser(profileUser._id, profileUser.nickname)
+    setIsLiking(true)
+    try {
+      if (isUserLiked(profileUser._id)) {
+        await unlikeUser(profileUser._id, profileUser.nickname)
+      } else {
+        await likeUser(profileUser._id, profileUser.nickname)
+      }
+    } catch (error) {
+      console.error("Error toggling like:", error)
+    } finally {
+      setIsLiking(false)
     }
   }
 
+  // Handle starting chat
   const handleMessage = () => {
-    setShowChat(true)
+    setIsChatInitiating(true)
+    // Simply open the chat dialog without using the initiateChat function
+    setTimeout(() => {
+      setShowChat(true)
+      setIsChatInitiating(false)
+    }, 500) // Small delay to show the loading state
   }
 
+  // Close chat window
   const handleCloseChat = () => {
     setShowChat(false)
   }
 
-  // Handle opening stories viewer
+  // View user stories
   const handleViewStories = () => {
     setShowStories(true)
   }
 
-  // Handle closing stories viewer
+  // Close stories viewer
   const handleCloseStories = () => {
     setShowStories(false)
   }
 
+  // Navigate through photos
   const nextPhoto = () => {
     if (profileUser?.photos && activePhotoIndex < profileUser.photos.length - 1) {
       setActivePhotoIndex(activePhotoIndex + 1)
@@ -188,47 +207,69 @@ const UserProfile = () => {
     }
   }
 
+  // Calculate compatibility score between users
   const calculateCompatibility = () => {
     if (!profileUser || !profileUser.details || !currentUser || !currentUser.details) return 0
 
     let score = 0
+
     // Location
     if (profileUser.details.location === currentUser.details.location) {
       score += 25
     }
+
     // Age proximity
     const ageDiff = Math.abs((profileUser.details.age || 0) - (currentUser.details.age || 0))
     if (ageDiff <= 5) score += 25
     else if (ageDiff <= 10) score += 15
     else score += 5
+
     // Interests
     const profileInterests = profileUser.details?.interests || []
     const userInterests = currentUser.details?.interests || []
-    const commonInterests = profileInterests.filter((i) => userInterests.includes(i))
+    const commonInterests = profileInterests.filter(i => userInterests.includes(i))
     score += Math.min(50, commonInterests.length * 10)
 
     return Math.min(100, score)
   }
 
+  // Handle errors and loading states
   if (loading) {
     return (
       <div className="loading-container">
-        <div className="spinner spinner-dark"></div>
+        <Spinner />
         <p className="loading-text">Loading profile...</p>
       </div>
     )
   }
 
+  if (error) {
+    return (
+      <div className="error-container">
+        <h3>Error Loading Profile</h3>
+        <p>{error}</p>
+        <button className="btn btn-primary" onClick={handleBack}>Return to Dashboard</button>
+      </div>
+    )
+  }
+
   if (!profileUser) {
-    return null
+    return (
+      <div className="not-found-container">
+        <h3>User Not Found</h3>
+        <p>The user you're looking for doesn't exist or has been removed.</p>
+        <button className="btn btn-primary" onClick={handleBack}>Return to Dashboard</button>
+      </div>
+    )
   }
 
   const compatibility = calculateCompatibility()
-  const commonInterests =
-    profileUser.details?.interests?.filter((interest) => currentUser.details?.interests?.includes(interest)) || []
+  const commonInterests = profileUser.details?.interests?.filter(
+    interest => currentUser.details?.interests?.includes(interest)
+  ) || []
 
   return (
-    <div className="modern-user-profile">
+    <div className="modern-user-profile" ref={profileRef}>
       <div className="container profile-content">
         <button className="back-button" onClick={handleBack}>
           <FaArrowLeft /> Back to Discover
@@ -237,14 +278,16 @@ const UserProfile = () => {
         <div className="profile-layout">
           {/* Left: Photos */}
           <div className="profile-photos-section">
-            {/* Add Stories Thumbnail */}
-            <div className="profile-stories">
-              <StoryThumbnail
-                user={profileUser}
-                hasUnviewedStories={hasUnviewedStories(profileUser._id)}
-                onClick={handleViewStories}
-              />
-            </div>
+            {/* Stories Thumbnail */}
+            {userStories && userStories.length > 0 && (
+              <div className="profile-stories">
+                <StoryThumbnail
+                  user={profileUser}
+                  hasUnviewedStories={hasUnviewedStories(profileUser._id)}
+                  onClick={handleViewStories}
+                />
+              </div>
+            )}
 
             {profileUser.photos && profileUser.photos.length > 0 ? (
               <div className="photo-gallery-container">
@@ -259,9 +302,9 @@ const UserProfile = () => {
                         <button
                           className="request-access-btn"
                           onClick={() => handleRequestAccess(profileUser.photos[activePhotoIndex]._id)}
-                          disabled={requestingPermission}
+                          disabled={loadingPermission}
                         >
-                          {requestingPermission ? "Requesting..." : "Request Access"}
+                          {loadingPermission ? "Requesting..." : "Request Access"}
                         </button>
                       )}
                       {permissionStatus[profileUser.photos[activePhotoIndex]._id] === "pending" && (
@@ -281,6 +324,7 @@ const UserProfile = () => {
                   )}
                   {photoLoadError[profileUser.photos[activePhotoIndex]._id] && (
                     <div className="image-error-placeholder">
+                      <FaCamera size={48} />
                       <p>Image could not be loaded</p>
                     </div>
                   )}
@@ -309,7 +353,7 @@ const UserProfile = () => {
                   <div className="photo-thumbnails">
                     {profileUser.photos.map((photo, index) => (
                       <div
-                        key={index}
+                        key={photo._id || index}
                         className={`photo-thumbnail ${index === activePhotoIndex ? "active" : ""}`}
                         onClick={() => setActivePhotoIndex(index)}
                       >
@@ -318,17 +362,17 @@ const UserProfile = () => {
                             <FaLock />
                             {permissionStatus[photo._id] ? (
                               <div className={`permission-status ${permissionStatus[photo._id]}`}>
-                                {permissionStatus[photo._id] === "pending" && "Request Pending"}
+                                {permissionStatus[photo._id] === "pending" && "Pending"}
                                 {permissionStatus[photo._id] === "approved" && "Access Granted"}
-                                {permissionStatus[photo._id] === "rejected" && "Access Denied"}
+                                {permissionStatus[photo._id] === "rejected" && "Denied"}
                               </div>
                             ) : (
                               <button
-                                className="request-access-btn"
+                                className="request-access-btn small"
                                 onClick={(e) => handleRequestAccess(photo._id, e)}
-                                disabled={requestingPermission}
+                                disabled={loadingPermission}
                               >
-                                {requestingPermission ? "Requesting..." : "Request Access"}
+                                Request
                               </button>
                             )}
                           </div>
@@ -337,6 +381,7 @@ const UserProfile = () => {
                             src={photo.url || "/placeholder.svg"}
                             alt={`${profileUser.nickname} ${index + 1}`}
                             onError={() => handleImageError(photo._id)}
+                            style={{ display: photoLoadError[photo._id] ? "none" : "block" }}
                           />
                         )}
                         {photoLoadError[photo._id] && (
@@ -351,39 +396,47 @@ const UserProfile = () => {
               </div>
             ) : (
               <div className="no-photo-placeholder">
-                <FaUserAlt />
+                <FaUserAlt size={64} />
                 <p>No photos available</p>
               </div>
             )}
-            <button
-              className={`btn ${isUserLiked(profileUser._id) ? "btn-primary" : "btn-outline"}`}
-              onClick={handleLike}
-            >
-              <FaHeart />
-              <span>{isUserLiked(profileUser._id) ? "Liked" : "Like"}</span>
-            </button>
-            <button className="btn btn-primary" onClick={handleMessage}>
-              <FaComment />
-              <span>Message</span>
-            </button>
-            <div className="more-actions-dropdown">
-              <button className="btn btn-subtle" onClick={() => setShowActions(!showActions)}>
-                <FaEllipsisH />
+
+            <div className="profile-actions">
+              <button
+                className={`btn profile-action-btn ${isUserLiked(profileUser._id) ? "liked" : ""}`}
+                onClick={handleLike}
+                disabled={isLiking}
+              >
+                {isLiking ? <FaSpinner className="spinner-icon" /> : <FaHeart />}
+                <span>{isUserLiked(profileUser._id) ? "Liked" : "Like"}</span>
               </button>
-              {showActions && (
-                <div className="actions-dropdown">
-                  <button className="dropdown-item">
-                    <FaFlag /> Report User
-                  </button>
-                  <button className="dropdown-item">
-                    <FaBan /> Block User
-                  </button>
-                </div>
-              )}
+              <button
+                className="btn btn-primary profile-action-btn"
+                onClick={handleMessage}
+                disabled={isChatInitiating}
+              >
+                {isChatInitiating ? <FaSpinner className="spinner-icon" /> : <FaComment />}
+                <span>Message</span>
+              </button>
+              <div className="more-actions-dropdown">
+                <button className="btn btn-subtle" onClick={() => setShowActions(!showActions)}>
+                  <FaEllipsisH />
+                </button>
+                {showActions && (
+                  <div className="actions-dropdown">
+                    <button className="dropdown-item">
+                      <FaFlag /> Report User
+                    </button>
+                    <button className="dropdown-item">
+                      <FaBan /> Block User
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Right: Details */}
+          {/* Right: User Details */}
           <div className="profile-details-section">
             <div className="user-headline">
               <h1>
@@ -395,6 +448,7 @@ const UserProfile = () => {
                 </div>
               )}
             </div>
+
             <div className="user-location">
               <FaMapMarkerAlt />
               <span>{profileUser.details?.location || "Unknown location"}</span>
@@ -402,6 +456,7 @@ const UserProfile = () => {
                 {profileUser.isOnline ? "Online now" : "Offline"}
               </div>
             </div>
+
             <div className="user-activity">
               <div className="activity-item">
                 <FaRegClock />
@@ -581,27 +636,6 @@ const UserProfile = () => {
         {/* Stories Viewer */}
         {showStories && <StoriesViewer userId={profileUser._id} onClose={handleCloseStories} />}
       </div>
-      <style jsx>{`
-        .tag-purple {
-          background-color: rgba(147, 51, 234, 0.1);
-          color: rgb(147, 51, 234);
-        }
-        
-        .tag-pink {
-          background-color: rgba(236, 72, 153, 0.1);
-          color: rgb(236, 72, 153);
-        }
-        
-        .dark .tag-purple {
-          background-color: rgba(147, 51, 234, 0.2);
-          color: rgb(216, 180, 254);
-        }
-        
-        .dark .tag-pink {
-          background-color: rgba(236, 72, 153, 0.2);
-          color: rgb(251, 207, 232);
-        }
-      `}</style>
     </div>
   )
 }
