@@ -56,6 +56,8 @@
 .btn-secondary {
   background-color: var(--secondary);
   color: white;
+  border: none;
+  transition: background-color 0.3s ease;
 }
 
 .btn-secondary:hover {
@@ -63,13 +65,23 @@
 }
 
 .btn-success {
-  background-color: var(--success);
+  background-color: #00b894;
   color: white;
+  border: none;
+}
+
+.btn-success:hover {
+  background-color: #00a885;
 }
 
 .btn-danger {
-  background-color: var(--danger);
+  background-color: #ff7675;
   color: white;
+  border: none;
+}
+
+.btn-danger:hover {
+  background-color: #e06867;
 }
 
 .btn-subtle {
@@ -415,10 +427,10 @@
   width: 48% !important;
   padding: var(--space-sm) !important;
   border-radius: var(--radius-md) !important;
-  background-color: var(--light) ;
+  background-color: var(--light);
   font-size: var(--font-size-lg) !important;
   border: none;
-  transition: all var(--transition-normal) ;
+  transition: all var(--transition-normal);
   display: flex !important;
   align-items: center;
   justify-content: center;
@@ -466,9 +478,134 @@
   color: var(--primary);
   transform: scale(1.05);
 }
------
-/* UserCard Component Styles */
 
+/* Spinner animation for request buttons */
+.spinner-icon {
+  animation: spin 1s linear infinite;
+}
+
+.spinner-icon.small {
+  font-size: 0.8rem;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Improve the styling of permission status indicators */
+.permission-status {
+  font-size: 0.8rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-top: 4px;
+  text-align: center;
+}
+
+.permission-status.pending {
+  background-color: #f0ad4e;
+  color: #fff;
+}
+
+.permission-status.approved {
+  background-color: #5cb85c;
+  color: #fff;
+}
+
+.permission-status.rejected {
+  background-color: #d9534f;
+  color: #fff;
+}
+
+/* Improve the request access button styling */
+.request-access-btn {
+  background-color: #5bc0de;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.request-access-btn:hover {
+  background-color: #46b8da;
+}
+
+.request-access-btn:disabled {
+  background-color: #a0d3e4;
+  cursor: not-allowed;
+}
+
+.request-access-btn.small {
+  font-size: 0.75rem;
+  padding: 3px 6px;
+}
+
+/* Improve private photo placeholder */
+.private-photo-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  padding: 2rem;
+  height: 100%;
+  text-align: center;
+}
+
+.private-photo-placeholder .lock-icon {
+  font-size: 2.5rem;
+  color: #888;
+  margin-bottom: 1rem;
+}
+
+.private-thumbnail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+  height: 100%;
+  width: 100%;
+  position: relative;
+}
+
+.private-thumbnail .fa-lock {
+  font-size: 1.2rem;
+  color: #888;
+  margin-bottom: 0.5rem;
+}
+
+/* Request All Photos button styling */
+.btn.btn-secondary {
+  background-color: #6c5ce7;
+  color: white;
+  border: none;
+  transition: background-color 0.3s ease;
+}
+
+.btn.btn-secondary:hover {
+  background-color: #5b4bc9;
+}
+
+.btn.btn-secondary:disabled {
+  background-color: #a29bea;
+  cursor: not-allowed;
+}
+
+/* UserCard Component Styles */
 /* Base user card styles */
 .user-card {
   background-color: var(--white, #ffffff);
@@ -520,13 +657,13 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background-color: #4CAF50;
+  background-color: #4caf50;
   border: 2px solid white;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
 }
 
 .online-indicator::after {
-  content: '';
+  content: "";
   position: absolute;
   top: -4px;
   left: -4px;
@@ -708,7 +845,8 @@
   color: white;
 }
 
-.like-btn:hover, .like-btn.liked {
+.like-btn:hover,
+.like-btn.liked {
   background-color: #ff3366;
   color: white;
 }
@@ -787,6 +925,33 @@
   align-items: center;
   gap: 8px;
   padding: 16px;
+}
+
+/* Adjust profile actions to accommodate the new button */
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 15px;
+  justify-content: center;
+}
+
+.profile-action-btn {
+  flex: 1;
+  min-width: 120px;
+  max-width: 180px;
+}
+
+@media (max-width: 768px) {
+  .profile-action-btn {
+    flex: 0 0 calc(50% - 10px);
+  }
+}
+
+@media (max-width: 480px) {
+  .profile-action-btn {
+    flex: 1 0 100%;
+  }
 }
 
 /* Dark mode adjustments */
@@ -889,9 +1054,7 @@
   }
 }
 
----
 /* UserAvatar Component Styles */
-
 .user-avatar-container {
   display: inline-block;
   position: relative;
@@ -922,12 +1085,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    rgba(0, 0, 0, 0.05) 25%,
-    rgba(0, 0, 0, 0.1) 50%,
-    rgba(0, 0, 0, 0.05) 75%
-  );
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.05) 25%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.05) 75%);
   background-size: 200% 100%;
   border-radius: 50%;
   animation: shimmer 1.5s infinite linear;
@@ -946,14 +1104,14 @@
 
 .avatar-status-indicator {
   position: absolute;
-  background-color: #4CAF50;
+  background-color: #4caf50;
   border-radius: 50%;
   border: 2px solid white;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
 }
 
 .avatar-status-indicator::after {
-  content: '';
+  content: "";
   position: absolute;
   top: -4px;
   left: -4px;
@@ -966,27 +1124,32 @@
 }
 
 /* Size variants */
-.w-6, .h-6 {
+.w-6,
+.h-6 {
   width: 1.5rem;
   height: 1.5rem;
 }
 
-.w-8, .h-8 {
+.w-8,
+.h-8 {
   width: 2rem;
   height: 2rem;
 }
 
-.w-10, .h-10 {
+.w-10,
+.h-10 {
   width: 2.5rem;
   height: 2.5rem;
 }
 
-.w-16, .h-16 {
+.w-16,
+.h-16 {
   width: 4rem;
   height: 4rem;
 }
 
-.w-24, .h-24 {
+.w-24,
+.h-24 {
   width: 6rem;
   height: 6rem;
 }
@@ -1004,7 +1167,8 @@
   overflow: hidden;
 }
 
-.w-full, .h-full {
+.w-full,
+.h-full {
   width: 100%;
   height: 100%;
 }
@@ -1054,4 +1218,327 @@
     rgba(255, 255, 255, 0.1) 50%,
     rgba(255, 255, 255, 0.05) 75%
   );
+}
+
+/* Add these styles to your components.css file */
+
+/* Pending Requests Notification */
+.pending-requests-notification {
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.notification-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.notification-icon {
+  font-size: 24px;
+  color: #6c5ce7;
+}
+
+.notification-text p {
+  margin: 0;
+  font-size: 16px;
+}
+
+.notification-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* Pending Requests Section */
+.pending-requests-section {
+  margin-top: 30px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.pending-requests-section h2 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 20px;
+  color: #2d3436;
+}
+
+.requests-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.request-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.request-user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.request-user-photo {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  overflow: hidden;
+  background-color: #dfe6e9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.request-user-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.request-user-details h4 {
+  margin: 0;
+  font-size: 16px;
+  color: #2d3436;
+}
+
+.request-user-details p {
+  margin: 5px 0 0;
+  font-size: 14px;
+  color: #636e72;
+}
+
+.request-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Spinner Animation */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-icon {
+  animation: spin 1s linear infinite;
+}
+/* Add these styles to your components.css file */
+
+/* Photo Request Banner in Chat */
+.photo-request-banner {
+  display: flex;
+  align-items: center;
+  background-color: rgba(108, 92, 231, 0.1);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  gap: 12px;
+}
+
+.photo-request-banner .request-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background-color: rgba(108, 92, 231, 0.2);
+  border-radius: 50%;
+  color: #6c5ce7;
+}
+
+.photo-request-banner .request-text {
+  flex: 1;
+}
+
+.photo-request-banner .request-text p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-color, #333);
+}
+
+.photo-request-banner .approve-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #00b894;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.photo-request-banner .approve-button:hover {
+  background-color: #00a885;
+}
+
+.photo-request-banner .approve-button:disabled {
+  background-color: #7fdfca;
+  cursor: not-allowed;
+}
+
+.photo-request-banner .spinner-icon {
+  animation: spin 1s linear infinite;
+}
+
+/* System Message Styling */
+.message.system-message {
+  display: flex;
+  justify-content: center;
+  margin: 8px 0;
+}
+
+.message.system-message .message-content,
+.system-message-content {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--text-color, #333);
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-style: italic;
+  text-align: center;
+  max-width: 80%;
+  margin: 0 auto;
+}
+
+.system-message-content p {
+  margin: 0;
+}
+
+.system-message-content .message-time {
+  display: block;
+  font-size: 11px;
+  color: var(--text-light, #777);
+  margin-top: 2px;
+  text-align: center;
+}
+/* Photo Request Button in Chat Header */
+.photo-request-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background-color: #6c5ce7;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  margin-right: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.photo-request-btn:hover {
+  background-color: #5b4bc4;
+}
+
+.photo-request-btn:disabled {
+  background-color: #a29bea;
+  cursor: not-allowed;
+}
+
+.photo-request-btn .fa-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.request-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background-color: #ff6b6b;
+  color: white;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+/* System Message Styling */
+.message.system-message {
+  display: flex;
+  justify-content: center;
+  margin: 8px 0;
+}
+
+.message.system-message .message-content,
+.system-message-content {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--text-color, #333);
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-style: italic;
+  text-align: center;
+  max-width: 80%;
+  margin: 0 auto;
+}
+
+.system-message-content p {
+  margin: 0;
+}
+
+.system-message-content .message-time {
+  display: block;
+  font-size: 11px;
+  color: var(--text-light, #777);
+  margin-top: 2px;
+  text-align: center;
+}
+
+/* Dark mode adjustments */
+.dark .photo-request-btn {
+  background-color: #7d6ee7;
+}
+
+.dark .photo-request-btn:hover {
+  background-color: #6c5ce7;
+}
+
+.dark .photo-request-btn:disabled {
+  background-color: #a29bea;
+}
+
+.dark .message.system-message .message-content,
+.dark .system-message-content {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-color-dark, #f0f0f0);
+}
+
+.dark .system-message-content .message-time {
+  color: var(--text-light-dark, #aaa);
 }
