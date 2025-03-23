@@ -83,56 +83,59 @@ app.use(requestLogger)
 // Set static folder for public assets
 app.use(express.static(path.join(__dirname, "public")))
 
-
 // Define base upload path - use an absolute path to avoid confusion
-const uploadsBasePath = path.join(process.cwd(), "uploads");
+const uploadsBasePath = path.join(process.cwd(), "uploads")
 
 // Ensure uploads directory exists
 if (!fs.existsSync(uploadsBasePath)) {
-  fs.mkdirSync(uploadsBasePath, { recursive: true });
-  logger.info(`Created uploads directory: ${uploadsBasePath}`);
+  fs.mkdirSync(uploadsBasePath, { recursive: true })
+  logger.info(`Created uploads directory: ${uploadsBasePath}`)
 }
 
 // Ensure required subdirectories exist
-const requiredDirs = ['images', 'photos', 'videos', 'messages', 'profiles', 'stories', 'temp', 'deleted'];
-requiredDirs.forEach(dir => {
-  const dirPath = path.join(uploadsBasePath, dir);
+const requiredDirs = ["images", "photos", "videos", "messages", "profiles", "stories", "temp", "deleted"]
+requiredDirs.forEach((dir) => {
+  const dirPath = path.join(uploadsBasePath, dir)
   if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-    logger.info(`Created uploads subdirectory: ${dirPath}`);
+    fs.mkdirSync(dirPath, { recursive: true })
+    logger.info(`Created uploads subdirectory: ${dirPath}`)
   }
-});
+})
 
 // Log all directories to help debug
-logger.info(`Main uploads directory: ${uploadsBasePath}`);
-requiredDirs.forEach(dir => {
-  logger.info(`  - ${dir} directory: ${path.join(uploadsBasePath, dir)}`);
-});
+logger.info(`Main uploads directory: ${uploadsBasePath}`)
+requiredDirs.forEach((dir) => {
+  logger.info(`  - ${dir} directory: ${path.join(uploadsBasePath, dir)}`)
+})
 
 // Set up static file serving for uploaded files - with debug info
-app.use("/uploads", (req, res, next) => {
-  logger.debug(`Upload request for: ${req.path}`);
-  next();
-}, express.static(uploadsBasePath, {
-  maxAge: "1d", // Cache for 1 day
-  etag: true,
-  lastModified: true,
-  index: false, // Don't serve directory indexes
-  dotfiles: 'ignore',
-}));
+app.use(
+  "/uploads",
+  (req, res, next) => {
+    logger.debug(`Upload request for: ${req.path}`)
+    next()
+  },
+  express.static(uploadsBasePath, {
+    maxAge: "1d", // Cache for 1 day
+    etag: true,
+    lastModified: true,
+    index: false, // Don't serve directory indexes
+    dotfiles: "ignore",
+  }),
+)
 
 // Add a diagnostic endpoint to check file existence
 app.get("/api/check-file", (req, res) => {
-  const filePath = req.query.path;
+  const filePath = req.query.path
   if (!filePath) {
-    return res.status(400).json({ success: false, error: "No file path provided" });
+    return res.status(400).json({ success: false, error: "No file path provided" })
   }
 
-  const fullPath = path.join(uploadsBasePath, filePath);
+  const fullPath = path.join(uploadsBasePath, filePath)
 
   // Prevent path traversal
   if (!fullPath.startsWith(uploadsBasePath)) {
-    return res.status(403).json({ success: false, error: "Invalid file path" });
+    return res.status(403).json({ success: false, error: "Invalid file path" })
   }
 
   fs.stat(fullPath, (err, stats) => {
@@ -142,8 +145,8 @@ app.get("/api/check-file", (req, res) => {
         error: err.message,
         exists: false,
         requestedPath: filePath,
-        fullPath: fullPath
-      });
+        fullPath: fullPath,
+      })
     }
 
     return res.json({
@@ -152,10 +155,10 @@ app.get("/api/check-file", (req, res) => {
       isDirectory: stats.isDirectory(),
       size: stats.size,
       requestedPath: filePath,
-      fullPath: fullPath
-    });
-  });
-});
+      fullPath: fullPath,
+    })
+  })
+})
 
 // Add request ID to each request for better logging
 app.use((req, res, next) => {

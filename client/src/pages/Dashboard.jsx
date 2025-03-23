@@ -5,32 +5,26 @@ import { useNavigate } from "react-router-dom"
 import {
   FaSearch,
   FaHeart,
-  FaBell,
   FaUserCircle,
   FaMapMarkerAlt,
   FaComments,
   FaThLarge,
   FaList,
   FaFilter,
-  FaSignOutAlt,
-  FaCog,
-  FaUser,
   FaPlus,
-  FaChevronDown,
 } from "react-icons/fa"
 import { toast } from "react-toastify"
 import { useAuth, useUser, useChat, useStories } from "../context"
 import EmbeddedChat from "../components/EmbeddedChat"
-import { ThemeToggle } from "../components/theme-toggle.tsx"
+import { Navbar } from "../components/LayoutComponents" // Import the Navbar from layout components
 import StoriesCarousel from "../components/Stories/StoriesCarousel"
 import StoriesViewer from "../components/Stories/StoriesViewer"
 import StoryCreator from "../components/Stories/StoryCreator"
-import SubscriptionStatus from "../components/SubscriptionStatus"
 import UserProfileModal from "../components/UserProfileModal"
 
 const Dashboard = () => {
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const { users, getUsers, loading } = useUser()
   const { unreadMessages } = useChat()
   const { createStory } = useStories()
@@ -49,7 +43,6 @@ const Dashboard = () => {
   })
 
   // User dropdown, chat, and story creation state
-  const [showUserDropdown, setShowUserDropdown] = useState(false)
   const [chatUser, setChatUser] = useState(null)
   const [showChat, setShowChat] = useState(false)
   const [viewMode, setViewMode] = useState("grid") // 'grid' or 'list'
@@ -99,20 +92,6 @@ const Dashboard = () => {
       setChatUser(null)
     }
   }, [getUsers])
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (showUserDropdown && !event.target.closest(".user-avatar-dropdown")) {
-        setShowUserDropdown(false)
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-    }
-  }, [showUserDropdown])
 
   // Memoized filtered users to avoid recalculation on every render
   const filteredUsers = useMemo(() => {
@@ -183,20 +162,6 @@ const Dashboard = () => {
     setChatUser(null)
   }
 
-  const navigateToProfile = () => {
-    navigate("/profile")
-  }
-
-  const navigateToSettings = () => {
-    navigate("/settings")
-  }
-
-  const handleLogout = () => {
-    logout()
-    navigate("/login")
-    toast.success("You have been logged out")
-  }
-
   // Improved story creation handler
   const handleCreateStory = (storyData) => {
     // Prevent multiple submissions or actions while in progress
@@ -239,7 +204,7 @@ const Dashboard = () => {
   }, [filterValues])
 
   // Check if a user has unread messages - with proper null/undefined checks
-  const hasUnreadMessages = useCallback(
+  const hasUnreadMessagesFrom = useCallback(
     (userId) => {
       return Array.isArray(unreadMessages) && unreadMessages.some((msg) => msg.sender === userId)
     },
@@ -247,7 +212,7 @@ const Dashboard = () => {
   )
 
   // Count unread messages for a user - with proper null/undefined checks
-  const unreadCount = useCallback(
+  const countUnreadMessages = useCallback(
     (userId) => {
       return Array.isArray(unreadMessages) ? unreadMessages.filter((msg) => msg.sender === userId).length : 0
     },
@@ -279,91 +244,13 @@ const Dashboard = () => {
 
   return (
     <div className="modern-dashboard">
-      {/* Header */}
-      <header className="modern-header">
-        <div className="container d-flex justify-content-between align-items-center">
-          <div className="logo">Mandarin</div>
-          <div className="main-tabs d-none d-md-flex">
-            <button
-              className={`tab-button ${activeTab === "discover" ? "active" : ""}`}
-              onClick={() => setActiveTab("discover")}
-            >
-              <FaSearch className="tab-icon" />
-              <span>Discover</span>
-            </button>
-            <button
-              className={`tab-button ${activeTab === "matches" ? "active" : ""}`}
-              onClick={() => setActiveTab("matches")}
-            >
-              <FaHeart className="tab-icon" />
-              <span>Matches</span>
-            </button>
-          </div>
-          <div className="header-actions d-flex align-items-center">
-            <div className="subscription-indicator">
-              <SubscriptionStatus compact={true} />
-            </div>
-            <ThemeToggle />
-            <button className="header-action-button" aria-label="Notifications">
-              <FaBell />
-              {unreadMessages && unreadMessages.length > 0 && (
-                <span className="notification-badge">{unreadMessages.length}</span>
-              )}
-            </button>
-            <div className="user-avatar-dropdown">
-              <div
-                className="avatar-container"
-                onClick={() => setShowUserDropdown(!showUserDropdown)}
-                aria-expanded={showUserDropdown}
-              >
-                {user?.photos?.length > 0 ? (
-                  <img
-                    src={user.photos[0].url || "/placeholder.svg"}
-                    alt={user.nickname}
-                    className="user-avatar"
-                    onError={() => handleImageError("current-user")}
-                  />
-                ) : (
-                  <FaUserCircle className="user-avatar" style={{ fontSize: "32px" }} />
-                )}
-                {imageLoadErrors["current-user"] && (
-                  <FaUserCircle className="user-avatar" style={{ fontSize: "32px" }} />
-                )}
-                <FaChevronDown className="dropdown-icon" />
-              </div>
+      {/* Use the Navbar component from LayoutComponents */}
+      <Navbar />
 
-              {/* User dropdown menu */}
-              {showUserDropdown && (
-                <div className="user-dropdown-menu">
-                  <div className="dropdown-user-info">
-                    <strong>{user?.nickname || "User"}</strong>
-                    <span>{user?.email || ""}</span>
-                  </div>
-                  <div className="dropdown-divider"></div>
-                  <button className="dropdown-item" onClick={navigateToProfile}>
-                    <FaUser className="dropdown-icon" />
-                    <span>Profile</span>
-                  </button>
-                  <button className="dropdown-item" onClick={navigateToSettings}>
-                    <FaCog className="dropdown-icon" />
-                    <span>Settings</span>
-                  </button>
-                  <div className="dropdown-divider"></div>
-                  <button className="dropdown-item logout" onClick={handleLogout}>
-                    <FaSignOutAlt className="dropdown-icon" />
-                    <span>Logout</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Content */}
+      {/* Main content */}
       <main className="dashboard-content">
         <div className="container">
-          {/* Stories Section with Create Story Button - FIXED */}
+          {/* Stories Section with Create Story Button */}
           <div className="stories-section">
             <div className="stories-header d-flex justify-content-between align-items-center mb-3">
               <h2>Stories</h2>
@@ -570,8 +457,8 @@ const Dashboard = () => {
                       <h3>
                         {matchedUser.nickname}, {matchedUser.details?.age || "?"}
                       </h3>
-                      {hasUnreadMessages(matchedUser._id) && (
-                        <span className="unread-badge">{unreadCount(matchedUser._id)}</span>
+                      {hasUnreadMessagesFrom(matchedUser._id) && (
+                        <span className="unread-badge">{countUnreadMessages(matchedUser._id)}</span>
                       )}
                     </div>
                     <p className="location">
@@ -660,75 +547,7 @@ const Dashboard = () => {
       )}
 
       <style>{`
-        /* User Dropdown Menu Styles */
-        .avatar-container {
-          display: flex;
-          align-items: center;
-          cursor: pointer;
-        }
-        
-        .dropdown-icon {
-          margin-left: 5px;
-          font-size: 12px;
-          transition: transform 0.2s;
-        }
-        
-        .user-dropdown-menu {
-          position: absolute;
-          top: 100%;
-          right: 0;
-          width: 220px;
-          background: var(--bg-card);
-          border-radius: 8px;
-          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-          z-index: 1000;
-          overflow: hidden;
-          margin-top: 8px;
-        }
-        
-        .dropdown-user-info {
-          padding: 12px 16px;
-          display: flex;
-          flex-direction: column;
-        }
-        
-        .dropdown-user-info span {
-          font-size: 0.8rem;
-          opacity: 0.7;
-          margin-top: 4px;
-        }
-        
-        .dropdown-divider {
-          height: 1px;
-          background: rgba(0, 0, 0, 0.1);
-          margin: 4px 0;
-        }
-        
-        .dropdown-item {
-          display: flex;
-          align-items: center;
-          padding: 10px 16px;
-          width: 100%;
-          text-align: left;
-          background: none;
-          border: none;
-          cursor: pointer;
-          transition: background 0.2s;
-        }
-        
-        .dropdown-item:hover {
-          background: rgba(0, 0, 0, 0.05);
-        }
-        
-        .dropdown-item .dropdown-icon {
-          margin-right: 10px;
-          font-size: 16px;
-        }
-        
-        .dropdown-item.logout {
-          color: #e74c3c;
-        }
-        
+        /* User Dropdown Menu Styles */        
         /* Stories Section Styles */
         .stories-section {
           margin-bottom: 30px;
@@ -760,41 +579,16 @@ const Dashboard = () => {
           background-color: rgba(255, 75, 75, 0.2);
         }
         
-        /* Subscription indicator in header */
-        .subscription-indicator {
-          margin-right: 15px;
+        /* Dashboard content specific styles */
+        .dashboard-content {
+          padding-top: 20px;
         }
         
-        .subscription-badge .premium-icon {
-          color: gold;
-          filter: drop-shadow(0 0 2px rgba(255, 215, 0, 0.5));
-        }
-        
-        .subscription-badge .free-badge {
-          background: rgba(0, 0, 0, 0.1);
-          color: var(--text-muted);
-          padding: 2px 8px;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 500;
-          cursor: pointer;
-        }
-        
-        .dark .subscription-badge .free-badge {
-          background: rgba(255, 255, 255, 0.1);
-        }
-        
-        /* Dark mode adjustments */
-        .dark .dropdown-divider {
-          background: rgba(255, 255, 255, 0.1);
-        }
-        
-        .dark .dropdown-item:hover {
-          background: rgba(255, 255, 255, 0.05);
-        }
-        
-        .dark .user-dropdown-menu {
-          background: var(--card-bg, #1e1e1e);
+        /* More padding on mobile */
+        @media (max-width: 768px) {
+          .dashboard-content {
+            padding-top: 10px;
+          }
         }
       `}</style>
     </div>

@@ -2,17 +2,24 @@
 // client/src/components/LayoutComponents.js
 import { useEffect, useState, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { useAuth } from "../context"
+import { useAuth, useNotifications } from "../context"
 import { toast } from "react-toastify"
-import { FaUserCircle, FaBell, FaSearch, FaHeart, FaTimes, FaExclamationTriangle, FaPlus } from "react-icons/fa"
+import {
+  FaUserCircle,
+  FaBell,
+  FaSearch,
+  FaHeart,
+  FaTimes,
+  FaExclamationTriangle,
+  FaEnvelope,
+  FaCamera,
+  FaImage,
+} from "react-icons/fa"
 import { ThemeToggle } from "./theme-toggle.tsx"
 
 // Modern Navbar Component
 export const Navbar = () => {
   // Local state for notifications and dropdown toggling
-  const [notifications, setNotifications] = useState([])
-  const [loadingNotifications, setLoadingNotifications] = useState(false)
-  const [unreadCount, setUnreadCount] = useState(0)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showUserDropdown, setShowUserDropdown] = useState(false)
   const [notificationPulse, setNotificationPulse] = useState(false)
@@ -21,13 +28,17 @@ export const Navbar = () => {
   const notificationDropdownRef = useRef(null)
   const userDropdownRef = useRef(null)
   const notificationButtonRef = useRef(null)
-  const addNotificationBtnRef = useRef(null)
 
-  // Update unread count when notifications change
-  useEffect(() => {
-    const count = notifications.filter((n) => !n.read).length
-    setUnreadCount(count)
-  }, [notifications])
+  // Get global notification state from context
+  const {
+    notifications,
+    unreadCount,
+    isLoading: loadingNotifications,
+    addTestNotification,
+    markAsRead,
+    markAllAsRead,
+    handleNotificationClick,
+  } = useNotifications()
 
   const { isAuthenticated, logout, user } = useAuth()
   const navigate = useNavigate()
@@ -47,20 +58,14 @@ export const Navbar = () => {
       e.preventDefault()
       e.stopPropagation()
     }
-    console.log("Toggling notification dropdown")
     setShowNotifications((prevState) => !prevState)
     setShowUserDropdown(false) // Close user dropdown
-    // Show a toast to confirm the button works
-    if (!showNotifications) {
-      toast.info("Notifications opened")
-    }
   }
 
   // Toggle user dropdown using state
   const toggleUserDropdown = (e) => {
     e.preventDefault()
     e.stopPropagation()
-    console.log("User dropdown button clicked")
     setShowUserDropdown(!showUserDropdown)
     setShowNotifications(false) // Close notification dropdown
   }
@@ -88,34 +93,60 @@ export const Navbar = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
-  // Handle notification click
-  const handleNotificationClick = async (notification) => {
-    if (!notification.read) {
-      try {
-        // Simulate marking notification as read
-        setNotifications((prev) => prev.map((n) => (n._id === notification._id ? { ...n, read: true } : n)))
-        toast.success("Notification marked as read")
-      } catch (error) {
-        console.error("Failed to mark notification as read:", error)
-      }
+  // Handle adding a test notification
+  const handleAddTestNotification = (e) => {
+    if (e) {
+      e.stopPropagation()
     }
-    // Navigate based on notification type
-    if (notification.type === "message") {
-      navigate(`/messages`)
-    } else if (notification.type === "like" || notification.type === "match") {
-      navigate(`/profile`)
-    }
-    // Close dropdown
-    setShowNotifications(false)
+
+    setNotificationPulse(true)
+    setTimeout(() => setNotificationPulse(false), 2000)
+
+    addTestNotification()
   }
 
-  const markAllAsRead = (e) => {
-    e.stopPropagation()
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-    toast.success("All notifications marked as read")
+  // Format notification time in a human-readable way
+  const formatNotificationTime = (timestamp) => {
+    if (!timestamp) return "Just now"
+
+    const now = new Date()
+    const notificationTime = new Date(timestamp)
+    const diffMs = now - notificationTime
+    const diffSec = Math.floor(diffMs / 1000)
+    const diffMin = Math.floor(diffSec / 60)
+    const diffHour = Math.floor(diffMin / 60)
+    const diffDay = Math.floor(diffHour / 24)
+
+    if (diffSec < 60) return "Just now"
+    if (diffMin < 60) return `${diffMin}m ago`
+    if (diffHour < 24) return `${diffHour}h ago`
+    if (diffDay < 7) return `${diffDay}d ago`
+
+    return notificationTime.toLocaleDateString()
   }
 
-  // Render notifications list
+  // Get appropriate action text based on notification type
+  const getNotificationAction = (notification) => {
+    switch (notification.type) {
+      case "message":
+        return "sent you a message"
+      case "like":
+        return "liked your profile"
+      case "photoRequest":
+        return "requested access to your photo"
+      case "photoResponse":
+        const status = notification.data?.status || ""
+        return status === "approved" ? "approved your photo request" : "declined your photo request"
+      case "story":
+        return "shared a new story"
+      case "comment":
+        return "commented on your post"
+      default:
+        return "sent a notification"
+    }
+  }
+
+  // Render notifications list with validation
   const renderNotifications = () => {
     if (loadingNotifications) {
       return (
@@ -125,54 +156,85 @@ export const Navbar = () => {
         </div>
       )
     }
-    if (notifications.length === 0) {
-      return <div className="notification-empty">No notifications yet</div>
+
+    // Filter out invalid notifications before rendering
+    const validNotifications = notifications.filter((notification) => {
+      // Check if notification has required fields
+      const hasMessage = notification.message || notification.title || notification.content
+      const hasId = notification._id || notification.id
+
+      // Only return notifications that have at least basic required fields
+      return hasId && hasMessage
+    })
+
+    if (!validNotifications || validNotifications.length === 0) {
+      return (
+        <div className="notification-empty">
+          <FaBell size={32} />
+          <p>No notifications yet</p>
+          <button onClick={handleAddTestNotification} className="btn btn-sm btn-primary mt-3">
+            Add Test Notification
+          </button>
+        </div>
+      )
     }
-    return notifications.map((notification) => (
-      <div
-        key={notification._id}
-        className={`notification-item ${!notification.read ? "unread" : ""}`}
-        onClick={() => handleNotificationClick(notification)}
-      >
-        <div className="notification-icon">
-          <FaBell />
+
+    return validNotifications.map((notification) => {
+      // Extract notification message from available fields
+      const notificationMessage =
+        notification.message || notification.title || notification.content || "New notification"
+
+      // Extract sender nickname from various possible locations
+      const senderNickname =
+        notification.sender?.nickname ||
+        notification.data?.sender?.nickname ||
+        notification.data?.requester?.nickname ||
+        notification.data?.owner?.nickname ||
+        notification.data?.user?.nickname ||
+        "Someone"
+
+      // Format the notification time
+      const notificationTime = formatNotificationTime(notification.createdAt)
+
+      // Choose icon based on notification type
+      let NotificationIcon = FaBell
+      if (notification.type === "message") NotificationIcon = FaEnvelope
+      if (notification.type === "like") NotificationIcon = FaHeart
+      if (notification.type === "photoRequest" || notification.type === "photoResponse") NotificationIcon = FaCamera
+      if (notification.type === "story") NotificationIcon = FaImage
+
+      // Determine if this is a new notification (less than 1 minute old)
+      const isNew = notification.createdAt && new Date().getTime() - new Date(notification.createdAt).getTime() < 60000
+
+      return (
+        <div
+          key={notification._id || notification.id || Date.now()}
+          className={`notification-item ${!notification.read ? "unread" : ""} ${isNew ? "new-notification" : ""}`}
+          onClick={() => handleNotificationClick(notification)}
+        >
+          <div className="notification-icon">
+            <NotificationIcon />
+          </div>
+          <div className="notification-content">
+            <div className="notification-title">
+              <span className="notification-sender">{senderNickname}</span> {getNotificationAction(notification)}
+            </div>
+            <div className="notification-message">{notificationMessage}</div>
+            <div className="notification-time">
+              {notificationTime}
+              {!notification.read && <span className="notification-time-dot"></span>}
+              {!notification.read && <span>Unread</span>}
+            </div>
+          </div>
         </div>
-        <div className="notification-content">
-          <div className="notification-title">{notification.message}</div>
-          <div className="notification-time">{new Date(notification.createdAt).toLocaleTimeString()}</div>
-        </div>
-      </div>
-    ))
+      )
+    })
   }
 
-  // Add a test notification
-  const addTestNotification = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    console.log("Adding test notification");
-
-    // Create a new test notification
-    const newNotification = {
-      _id: Date.now().toString(),
-      type: "message",
-      message: "Test notification",
-      read: false,
-      createdAt: new Date().toISOString(),
-      data: { conversationId: "test" },
-    }
-
-    // Add to notifications
-    setNotifications((prev) => [newNotification, ...prev])
-
-    // Add pulse animation to notification bell
-    setNotificationPulse(true)
-    setTimeout(() => setNotificationPulse(false), 2000)
-
-    // Show confirmation toast
-    toast.info("Test notification added")
+  const handleMarkAllAsRead = (e) => {
+    e.stopPropagation()
+    markAllAsRead()
+    toast.success("All notifications marked as read")
   }
 
   return (
@@ -204,26 +266,15 @@ export const Navbar = () => {
         <div className="header-actions d-flex align-items-center">
           <ThemeToggle />
 
-          {/* Special add notification button with custom class */}
-          {isAuthenticated && (
-            <button
-              ref={addNotificationBtnRef}
-              onClick={addTestNotification}
-              className="add-notification-btn"
-              aria-label="Add Test Notification"
-            >
-              <FaPlus size={16} />
-            </button>
-          )}
-
           {isAuthenticated ? (
             <>
               <div style={{ position: "relative", marginLeft: "10px" }}>
+                {/* Using notification-specific class to avoid conflicts */}
                 <button
                   ref={notificationButtonRef}
                   onClick={toggleNotificationDropdown}
                   aria-label="Notifications"
-                  className={`notification-button ${notificationPulse ? "notification-pulse" : ""}`}
+                  className={`notification-specific-button ${notificationPulse ? "notification-pulse" : ""}`}
                 >
                   <FaBell size={20} />
                   {unreadCount > 0 && (
@@ -236,12 +287,12 @@ export const Navbar = () => {
                     <div className="notification-header">
                       <span>Notifications</span>
                       {unreadCount > 0 && (
-                        <span className="notification-header-action" onClick={markAllAsRead}>
+                        <span className="notification-header-action" onClick={handleMarkAllAsRead}>
                           Mark all as read
                         </span>
                       )}
                     </div>
-                    <div>{renderNotifications()}</div>
+                    <div className="notification-list">{renderNotifications()}</div>
                   </div>
                 )}
               </div>
@@ -299,6 +350,125 @@ export const Navbar = () => {
           )}
         </div>
       </div>
+
+      {/* Custom styles for notification specific elements */}
+      <style jsx="true">{`
+        .notification-specific-button {
+          background: var(--primary-color, #ff3366);
+          border: none;
+          cursor: pointer;
+          padding: 0.6rem;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          width: 40px;
+          height: 40px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+          z-index: 101;
+          transition: all 0.3s ease;
+          pointer-events: auto;
+          color: white;
+          outline: none;
+        }
+
+        .notification-specific-button:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .notification-specific-button:active {
+          transform: translateY(0);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .notification-dropdown {
+          z-index: 1050;
+          display: block;
+          visibility: visible;
+          opacity: 1;
+          position: absolute;
+          right: 0;
+          top: 100%;
+          width: 320px;
+          max-height: 400px;
+          overflow-y: auto;
+        }
+        
+        .notification-empty {
+          padding: 20px;
+          text-align: center;
+          color: var(--text-light);
+        }
+        
+        .notification-list {
+          max-height: 300px;
+          overflow-y: auto;
+        }
+
+        .notification-item {
+          padding: 12px 16px;
+          border-bottom: 1px solid var(--border-color);
+          display: flex;
+          align-items: flex-start;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+        }
+
+        .notification-item:hover {
+          background-color: var(--bg-light);
+        }
+
+        .notification-item.unread {
+          background-color: var(--bg-unread);
+        }
+
+        .mt-3 {
+          margin-top: 12px;
+        }
+
+        .btn-sm {
+          padding: 4px 12px;
+          font-size: 0.875rem;
+        }
+
+        .spinner {
+          display: inline-block;
+          width: 24px;
+          height: 24px;
+          border: 2px solid rgba(0, 0, 0, 0.1);
+          border-radius: 50%;
+          border-top-color: var(--primary);
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        @keyframes notification-pulse {
+          0% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.7);
+          }
+          
+          70% {
+            transform: scale(1.1);
+            box-shadow: 0 0 0 10px rgba(255, 51, 102, 0);
+          }
+          
+          100% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(255, 51, 102, 0);
+          }
+        }
+
+        .notification-pulse {
+          animation: notification-pulse 1s cubic-bezier(0.66, 0, 0, 1) 2;
+        }
+      `}</style>
     </header>
   )
 }

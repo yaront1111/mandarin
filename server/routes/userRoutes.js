@@ -748,7 +748,7 @@ router.delete(
  */
 router.post(
   "/photos/:id/request",
-  enhancedProtect, // Use enhancedProtect instead of protect
+  enhancedProtect,
   asyncHandler(async (req, res) => {
     const photoId = req.params.id
     const { userId } = req.body
@@ -826,6 +826,21 @@ router.post(
       })
 
       await permission.save()
+
+      // Send notification via socket if available
+      try {
+        const io = req.app.get("io")
+        const { sendPhotoPermissionRequestNotification } = await import("../socket/socketHandlers.js")
+
+        if (io && sendPhotoPermissionRequestNotification) {
+          const requester = await User.findById(req.user._id).select("nickname photos")
+
+          await sendPhotoPermissionRequestNotification(io, requester, owner, permission)
+          logger.info(`Photo permission request notification sent to user ${owner._id}`)
+        }
+      } catch (notificationError) {
+        logger.error(`Error sending photo permission request notification: ${notificationError.message}`)
+      }
 
       logger.info(`Photo access request created: ${permission._id}`)
       res.status(201).json({
@@ -930,6 +945,22 @@ router.put(
     }
     permission.status = status
     await permission.save()
+
+    // Send notification via socket if available
+    try {
+      const io = req.app.get("io")
+      const { sendPhotoPermissionResponseNotification } = await import("../socket/socketHandlers.js")
+
+      if (io && sendPhotoPermissionResponseNotification) {
+        const requester = await User.findById(permission.requestedBy)
+
+        await sendPhotoPermissionResponseNotification(io, owner, requester, permission)
+        logger.info(`Photo permission response notification sent to user ${requester._id}`)
+      }
+    } catch (notificationError) {
+      logger.error(`Error sending photo permission response notification: ${notificationError.message}`)
+    }
+
     logger.info(`Permission ${permissionId} updated to ${status}`)
     res.status(200).json({ success: true, data: permission })
   }),
@@ -1044,11 +1075,7 @@ router.get(
   }),
 )
 
-/**
- * @route   POST /api/users/:id/like
- * @desc    Like a user
- * @access  Private
- */
+// Update the like route to send notifications
 router.post(
   "/:id/like",
   protect,
@@ -1086,6 +1113,26 @@ router.post(
         sender: req.params.id,
         recipient: req.user._id,
       })
+
+      // Send notification via socket if available
+      try {
+        const io = req.app.get("io")
+        const { sendLikeNotification } = await import("../socket/socketHandlers.js")
+
+        if (io && sendLikeNotification) {
+          const senderUser = await User.findById(req.user._id).select("nickname photos")
+
+          await sendLikeNotification(io, senderUser, targetUser, {
+            _id: like._id,
+            isMatch: !!mutualLike,
+          })
+
+          logger.info(`Like notification sent to user ${targetUser._id}`)
+        }
+      } catch (notificationError) {
+        logger.error(`Error sending like notification: ${notificationError.message}`)
+      }
+
       res.status(200).json({
         success: true,
         message: `You liked ${targetUser.nickname}`,
@@ -1271,5 +1318,181 @@ router.post("/photos/approve-all", protect, async (req, res) => {
     })
   }
 })
+
+// Update the photo permission request route to send notifications
+router.post(
+  "/photos/:id/request",
+  enhancedProtect,
+  asyncHandler(async (req, res) => {
+    const photoId = req.params.id
+    const { userId } = req.body
+
+    logger.debug(`User ${req.user._id} requesting access to photo ${photoId} from user ${userId}`)
+
+    // Validate IDs
+    if (!mongoose.Types.ObjectId.isValid(photoId) || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid photo ID or user ID format",
+      })
+    }
+
+    // Find the photo owner
+    const owner = await User.findById(userId)
+    if (!owner) {
+      logger.warn(`Photo access request failed: User ${userId} not found`)
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      })
+    }
+
+    // Find the specific photo
+    const photo = owner.photos.id(photoId)
+    if (!photo) {
+      logger.warn(`Photo access request failed: Photo ${photoId} not found`)
+      return res.status(404).json({
+        success: false,
+        error: "Photo not found",
+      })
+    }
+
+    // Check if the photo is private
+    if (!photo.isPrivate) {
+      logger.warn(`Photo access request failed: Photo ${photoId} is not private`)
+      return res.status(400).json({
+        success: false,
+        error: "Photo is not private",
+      })
+    }
+
+    // Check if the user is requesting access to their own photo
+    if (owner._id.toString() === req.user._id.toString()) {
+      logger.warn(`Photo access request failed: User ${req.user._id} trying to request access to their own photo`)
+      return res.status(400).json({
+        success: false,
+        error: "You cannot request access to your own photo",
+      })
+    }
+
+    try {
+      // Check for existing permission request
+      let permission = await PhotoPermission.findOne({
+        photo: photoId,
+        requestedBy: req.user._id,
+      })
+
+      if (permission) {
+        // If request already exists, return success with a message
+        logger.info(`Permission request already exists: ${permission._id}`)
+        return res.status(200).json({
+          success: true,
+          data: permission,
+          message: "Permission request already exists",
+        })
+      }
+
+      // Create new permission request
+      permission = new PhotoPermission({
+        photo: photoId,
+        requestedBy: req.user._id,
+        status: "pending",
+      })
+
+      await permission.save()
+
+      // Send notification via socket if available
+      try {
+        const io = req.app.get("io")
+        const { sendPhotoPermissionRequestNotification } = await import("../socket/socketHandlers.js")
+
+        if (io && sendPhotoPermissionRequestNotification) {
+          const requester = await User.findById(req.user._id).select("nickname photos")
+
+          await sendPhotoPermissionRequestNotification(io, requester, owner, permission)
+          logger.info(`Photo permission request notification sent to user ${owner._id}`)
+        }
+      } catch (notificationError) {
+        logger.error(`Error sending photo permission request notification: ${notificationError.message}`)
+      }
+
+      logger.info(`Photo access request created: ${permission._id}`)
+      res.status(201).json({
+        success: true,
+        data: permission,
+      })
+    } catch (error) {
+      logger.error(`Error creating permission request: ${error.message}`)
+
+      // Handle duplicate key error
+      if (error.code === 11000) {
+        // Find the existing permission and return it
+        const existingPermission = await PhotoPermission.findOne({
+          photo: photoId,
+          requestedBy: req.user._id,
+        })
+
+        return res.status(200).json({
+          success: true,
+          data: existingPermission,
+          message: "Permission request already exists",
+        })
+      }
+
+      res.status(500).json({
+        success: false,
+        error: error.message || "Server error while creating permission request",
+      })
+    }
+  }),
+)
+
+// Update the photo permission response route to send notifications
+router.put(
+  "/photos/permissions/:id",
+  protect,
+  asyncHandler(async (req, res) => {
+    const permissionId = req.params.id
+    const { status } = req.body
+    logger.debug(`Updating photo permission ${permissionId} to ${status}`)
+    if (!mongoose.Types.ObjectId.isValid(permissionId)) {
+      return res.status(400).json({ success: false, error: "Invalid permission ID format" })
+    }
+    if (!["approved", "rejected"].includes(status)) {
+      logger.warn(`Invalid permission status: ${status}`)
+      return res.status(400).json({ success: false, error: 'Status must be either "approved" or "rejected"' })
+    }
+    const permission = await PhotoPermission.findById(permissionId)
+    if (!permission) {
+      logger.warn(`Permission ${permissionId} not found`)
+      return res.status(404).json({ success: false, error: "Permission request not found" })
+    }
+    const owner = await User.findOne({ _id: req.user._id, "photos._id": permission.photo })
+    if (!owner) {
+      logger.warn(`User ${req.user._id} not authorized to update permission ${permissionId}`)
+      return res.status(401).json({ success: false, error: "Not authorized to update this permission" })
+    }
+    permission.status = status
+    await permission.save()
+
+    // Send notification via socket if available
+    try {
+      const io = req.app.get("io")
+      const { sendPhotoPermissionResponseNotification } = await import("../socket/socketHandlers.js")
+
+      if (io && sendPhotoPermissionResponseNotification) {
+        const requester = await User.findById(permission.requestedBy)
+
+        await sendPhotoPermissionResponseNotification(io, owner, requester, permission)
+        logger.info(`Photo permission response notification sent to user ${requester._id}`)
+      }
+    } catch (notificationError) {
+      logger.error(`Error sending photo permission response notification: ${notificationError.message}`)
+    }
+
+    logger.info(`Permission ${permissionId} updated to ${status}`)
+    res.status(200).json({ success: true, data: permission })
+  }),
+)
 
 export default router

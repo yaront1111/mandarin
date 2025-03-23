@@ -46,12 +46,14 @@ class NotificationService {
     // Listen for new message notifications
     socketService.socket.on("new_message", (data) => {
       if (this.shouldShowNotification("messages")) {
+        const senderNickname = data.sender?.nickname || "Someone"
         this.addNotification({
           type: "message",
-          title: `New message from ${data.sender.nickname}`,
-          message: data.content,
+          title: `New message from ${senderNickname}`,
+          message: data.content || "Click to view message",
           time: "Just now",
           read: false,
+          sender: data.sender,
           data: data,
         })
       }
@@ -60,12 +62,14 @@ class NotificationService {
     // Listen for incoming call notifications
     socketService.socket.on("incoming_call", (data) => {
       if (this.shouldShowNotification("calls")) {
+        const callerNickname = data.caller?.nickname || data.caller?.name || "Someone"
         this.addNotification({
           type: "call",
-          title: `Incoming call from ${data.caller.nickname}`,
+          title: `Incoming call from ${callerNickname}`,
           message: "Click to answer",
           time: "Just now",
           read: false,
+          sender: data.caller,
           data: data,
         })
       }
@@ -74,12 +78,14 @@ class NotificationService {
     // Listen for new story notifications
     socketService.socket.on("new_story", (data) => {
       if (this.shouldShowNotification("stories")) {
+        const creatorNickname = data.creator?.nickname || "Someone"
         this.addNotification({
           type: "story",
-          title: `New story from ${data.creator.nickname}`,
+          title: `New story from ${creatorNickname}`,
           message: "Click to view",
           time: "Just now",
           read: false,
+          sender: data.creator,
           data: data,
         })
       }
@@ -88,12 +94,47 @@ class NotificationService {
     // Listen for like notifications
     socketService.socket.on("new_like", (data) => {
       if (this.shouldShowNotification("likes")) {
+        const senderNickname = data.sender?.nickname || "Someone"
         this.addNotification({
           type: "like",
-          title: `${data.sender.nickname} liked your ${data.contentType}`,
-          message: "Click to view",
+          title: `${senderNickname} liked your profile`,
+          message: "Click to view their profile",
           time: "Just now",
           read: false,
+          sender: data.sender,
+          data: data,
+        })
+      }
+    })
+
+    // Listen for photo permission request notifications
+    socketService.socket.on("photo_permission_request", (data) => {
+      if (this.shouldShowNotification("photoRequests")) {
+        const requesterNickname = data.requester?.nickname || "Someone"
+        this.addNotification({
+          type: "photoRequest",
+          title: `${requesterNickname} requested access to your private photo`,
+          message: "Click to review the request",
+          time: "Just now",
+          read: false,
+          sender: data.requester,
+          data: data,
+        })
+      }
+    })
+
+    // Listen for photo permission response notifications
+    socketService.socket.on("photo_permission_response", (data) => {
+      if (this.shouldShowNotification("photoRequests")) {
+        const ownerNickname = data.owner?.nickname || "Someone"
+        const action = data.status === "approved" ? "approved" : "rejected"
+        this.addNotification({
+          type: "photoResponse",
+          title: `${ownerNickname} ${action} your photo request`,
+          message: data.status === "approved" ? "You can now view their private photo" : "Your request was declined",
+          time: "Just now",
+          read: false,
+          sender: data.owner,
           data: data,
         })
       }
@@ -102,14 +143,24 @@ class NotificationService {
     // Listen for comment notifications
     socketService.socket.on("new_comment", (data) => {
       if (this.shouldShowNotification("comments")) {
+        const commenterNickname = data.commenter?.nickname || "Someone"
+        const commentText = data.comment || ""
         this.addNotification({
           type: "comment",
-          title: `${data.commenter.nickname} commented on your ${data.contentType}`,
-          message: data.comment.substring(0, 50) + (data.comment.length > 50 ? "..." : ""),
+          title: `${commenterNickname} commented on your ${data.contentType || "content"}`,
+          message: commentText.substring(0, 50) + (commentText.length > 50 ? "..." : ""),
           time: "Just now",
           read: false,
+          sender: data.commenter,
           data: data,
         })
+      }
+    })
+
+    // Listen for direct API notifications (for non-socket events)
+    socketService.socket.on("notification", (data) => {
+      if (this.shouldShowNotification(data.type)) {
+        this.addNotification(data)
       }
     })
   }
@@ -123,8 +174,67 @@ class NotificationService {
     // If not initialized or no settings, default to showing
     if (!this.initialized || !this.userSettings) return true
 
+    // For photo requests, check if general notifications are enabled
+    if (notificationType === "photoRequest" || notificationType === "photoResponse") {
+      return this.userSettings.notifications?.general !== false
+    }
+
     // Check if this notification type is enabled in user settings
     return this.userSettings.notifications?.[notificationType] !== false
+  }
+
+  /**
+   * Validate a notification object to ensure it has required fields
+   * @param {Object} notification - The notification to validate
+   * @returns {boolean} - Whether the notification is valid
+   */
+  isValidNotification(notification) {
+    if (!notification) return false
+
+    // Check for required fields
+    const hasId = notification._id || notification.id
+    const hasMessage = notification.message || notification.title || notification.content
+    const hasType = notification.type
+
+    return Boolean(hasId && hasMessage && hasType)
+  }
+
+  /**
+   * Sanitize notification data to ensure it has all required fields
+   * @param {Object} notification - The notification to sanitize
+   * @returns {Object} - Sanitized notification
+   */
+  sanitizeNotification(notification) {
+    if (!notification) return null
+
+    const sanitized = { ...notification }
+
+    // Ensure we have an ID
+    if (!sanitized._id && !sanitized.id) {
+      sanitized._id = Date.now().toString()
+    }
+
+    // Ensure we have a message
+    if (!sanitized.message && !sanitized.title && !sanitized.content) {
+      sanitized.message = "New notification"
+    }
+
+    // Ensure we have a type
+    if (!sanitized.type) {
+      sanitized.type = "system"
+    }
+
+    // Ensure we have a timestamp
+    if (!sanitized.createdAt) {
+      sanitized.createdAt = new Date().toISOString()
+    }
+
+    // Ensure read status is defined
+    if (sanitized.read === undefined) {
+      sanitized.read = false
+    }
+
+    return sanitized
   }
 
   /**
@@ -132,17 +242,19 @@ class NotificationService {
    * @param {Object} notification - Notification data
    */
   addNotification(notification) {
-    // Generate ID if not provided
-    if (!notification.id) {
-      notification.id = Date.now().toString()
+    // Sanitize and validate the notification
+    const sanitizedNotification = this.sanitizeNotification(notification)
+
+    if (!this.isValidNotification(sanitizedNotification)) {
+      return
     }
 
     // Add to notifications list
-    this.notifications.unshift(notification)
+    this.notifications.unshift(sanitizedNotification)
     this.unreadCount++
 
     // Show toast notification
-    this.showToast(notification)
+    this.showToast(sanitizedNotification)
 
     // Notify listeners
     this.notifyListeners()
@@ -150,14 +262,9 @@ class NotificationService {
     // Dispatch event for UI updates
     window.dispatchEvent(
       new CustomEvent("newNotification", {
-        detail: notification,
+        detail: sanitizedNotification,
       }),
     )
-
-    // For debugging
-    console.log("Notification added:", notification)
-    console.log("Current notifications:", this.notifications)
-    console.log("Unread count:", this.unreadCount)
   }
 
   /**
@@ -176,10 +283,13 @@ class NotificationService {
       draggable: true,
     }
 
+    const title = notification.title || notification.message
+    const message = notification.message !== title ? notification.message : ""
+
     toast(
       <div className="notification-content">
-        <div className="notification-title">{notification.title}</div>
-        <div className="notification-message">{notification.message}</div>
+        <div className="notification-title">{title}</div>
+        {message && <div className="notification-message">{message}</div>}
       </div>,
       toastOptions,
     )
@@ -191,7 +301,7 @@ class NotificationService {
    */
   handleNotificationClick(notification) {
     // Mark as read
-    this.markAsRead(notification.id)
+    this.markAsRead(notification._id || notification.id)
 
     // Dispatch event for UI to handle navigation
     window.dispatchEvent(
@@ -211,18 +321,39 @@ class NotificationService {
    * @param {string} notificationId - ID of notification to mark as read
    */
   markAsRead(notificationId) {
-    const index = this.notifications.findIndex((n) => n.id === notificationId)
-    if (index !== -1 && !this.notifications[index].read) {
-      this.notifications[index].read = true
-      this.unreadCount = Math.max(0, this.unreadCount - 1)
+    if (!notificationId) return
 
-      // Update backend
-      apiService.put(`/notifications/${notificationId}/read`).catch((err) => {
-        console.error("Error marking notification as read:", err)
+    // Find the notification in our local list
+    const index = this.notifications.findIndex(
+      (n) => (n._id && n._id === notificationId) || (n.id && n.id === notificationId),
+    )
+
+    // If not found or already read, don't proceed
+    if (index === -1) return
+    if (this.notifications[index].read) return
+
+    // Update local state
+    this.notifications[index].read = true
+    this.unreadCount = Math.max(0, this.unreadCount - 1)
+
+    // Notify listeners of the update
+    this.notifyListeners()
+
+    // Don't update backend for test notifications
+    if (notificationId.length > 10 && !isNaN(Number(notificationId))) {
+      return
+    }
+
+    // Try the server endpoint that matches your API
+    try {
+      apiService.put("/notifications/read", { ids: [notificationId] }).catch(() => {
+        // Fallback to alternative endpoint if the first one fails
+        apiService.put(`/notifications/${notificationId}/read`).catch(() => {
+          // Silently fail - we've already updated the UI
+        })
       })
-
-      // Notify listeners
-      this.notifyListeners()
+    } catch (error) {
+      // Silently fail - we've already updated the UI
     }
   }
 
@@ -240,13 +371,27 @@ class NotificationService {
 
     this.unreadCount = 0
 
-    // Update backend
-    apiService.post("/notifications/mark-all-read").catch((err) => {
-      console.error("Error marking all notifications as read:", err)
-    })
-
     // Notify listeners
     this.notifyListeners()
+
+    // Collect real notification IDs (not test ones)
+    const realNotificationIds = this.notifications
+      .filter((n) => {
+        const id = n._id || n.id
+        return id && !(id.length > 10 && !isNaN(Number(id)))
+      })
+      .map((n) => n._id || n.id)
+
+    // Only update backend if we have real notifications
+    if (realNotificationIds.length > 0) {
+      // Try the server endpoint that matches your API
+      apiService.put("/notifications/read-all").catch(() => {
+        // Fallback to alternative endpoint
+        apiService.put("/notifications/read", { ids: realNotificationIds }).catch(() => {
+          // Silently fail - we've already updated the UI
+        })
+      })
+    }
   }
 
   /**
@@ -258,7 +403,12 @@ class NotificationService {
     try {
       const response = await apiService.get("/notifications", options)
       if (response.success) {
-        this.notifications = response.data
+        // Filter and sanitize notifications before storing them
+        const validNotifications = (response.data || [])
+          .map((notification) => this.sanitizeNotification(notification))
+          .filter((notification) => this.isValidNotification(notification))
+
+        this.notifications = validNotifications
         this.unreadCount = this.notifications.filter((n) => !n.read).length
 
         // Notify listeners
@@ -268,7 +418,6 @@ class NotificationService {
       }
       return []
     } catch (error) {
-      console.error("Error fetching notifications:", error)
       return []
     }
   }
@@ -311,9 +460,25 @@ class NotificationService {
       try {
         listener(data)
       } catch (err) {
-        console.error("Error in notification listener:", err)
+        // Silently catch listener errors
       }
     })
+  }
+
+  /**
+   * Add a test notification for development/testing
+   */
+  addTestNotification() {
+    const newNotification = {
+      _id: Date.now().toString(),
+      type: "message",
+      title: "Test Notification",
+      message: "This is a test notification",
+      read: false,
+      createdAt: new Date().toISOString(),
+    }
+
+    this.addNotification(newNotification)
   }
 }
 
