@@ -1,11 +1,10 @@
 "use client"
-
 // client/src/components/LayoutComponents.js
 import { useEffect, useState, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth } from "../context"
 import { toast } from "react-toastify"
-import { FaUserCircle, FaBell, FaSearch, FaHeart, FaTimes, FaExclamationTriangle } from "react-icons/fa"
+import { FaUserCircle, FaBell, FaSearch, FaHeart, FaTimes, FaExclamationTriangle, FaPlus } from "react-icons/fa"
 import { ThemeToggle } from "./theme-toggle.tsx"
 
 // Modern Navbar Component
@@ -22,7 +21,7 @@ export const Navbar = () => {
   const notificationDropdownRef = useRef(null)
   const userDropdownRef = useRef(null)
   const notificationButtonRef = useRef(null)
-  const testButtonRef = useRef(null)
+  const addNotificationBtnRef = useRef(null)
 
   // Update unread count when notifications change
   useEffect(() => {
@@ -51,7 +50,6 @@ export const Navbar = () => {
     console.log("Toggling notification dropdown")
     setShowNotifications((prevState) => !prevState)
     setShowUserDropdown(false) // Close user dropdown
-
     // Show a toast to confirm the button works
     if (!showNotifications) {
       toast.info("Notifications opened")
@@ -78,7 +76,6 @@ export const Navbar = () => {
       ) {
         setShowNotifications(false)
       }
-
       if (
         userDropdownRef.current &&
         !userDropdownRef.current.contains(event.target) &&
@@ -87,7 +84,6 @@ export const Navbar = () => {
         setShowUserDropdown(false)
       }
     }
-
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
@@ -150,8 +146,15 @@ export const Navbar = () => {
   }
 
   // Add a test notification
-  const addTestNotification = () => {
-    console.log("Adding test notification")
+  const addTestNotification = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    console.log("Adding test notification");
+
+    // Create a new test notification
     const newNotification = {
       _id: Date.now().toString(),
       type: "message",
@@ -160,12 +163,15 @@ export const Navbar = () => {
       createdAt: new Date().toISOString(),
       data: { conversationId: "test" },
     }
+
+    // Add to notifications
     setNotifications((prev) => [newNotification, ...prev])
 
     // Add pulse animation to notification bell
     setNotificationPulse(true)
     setTimeout(() => setNotificationPulse(false), 2000)
 
+    // Show confirmation toast
     toast.info("Test notification added")
   }
 
@@ -198,25 +204,21 @@ export const Navbar = () => {
         <div className="header-actions d-flex align-items-center">
           <ThemeToggle />
 
-          {/* Test button to add a notification */}
-          <button
-            ref={testButtonRef}
-            onClick={addTestNotification}
-            className="header-action-button"
-            aria-label="Add Test Notification"
-            style={{
-              position: "relative",
-              zIndex: 101,
-              cursor: "pointer",
-              pointerEvents: "auto",
-            }}
-          >
-            Add Test
-          </button>
+          {/* Special add notification button with custom class */}
+          {isAuthenticated && (
+            <button
+              ref={addNotificationBtnRef}
+              onClick={addTestNotification}
+              className="add-notification-btn"
+              aria-label="Add Test Notification"
+            >
+              <FaPlus size={16} />
+            </button>
+          )}
 
           {isAuthenticated ? (
             <>
-              <div style={{ position: "relative", marginLeft: "10px", zIndex: "101" }}>
+              <div style={{ position: "relative", marginLeft: "10px" }}>
                 <button
                   ref={notificationButtonRef}
                   onClick={toggleNotificationDropdown}
@@ -419,6 +421,7 @@ export const PrivateRoute = ({ children }) => {
       typeof error === "object" && error !== null
         ? error.message || JSON.stringify(error)
         : String(error || "Authentication error")
+
     return (
       <div className="auth-error">
         <div className="auth-error-content">
