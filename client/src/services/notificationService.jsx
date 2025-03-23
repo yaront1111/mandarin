@@ -153,6 +153,11 @@ class NotificationService {
         detail: notification,
       }),
     )
+
+    // For debugging
+    console.log("Notification added:", notification)
+    console.log("Current notifications:", this.notifications)
+    console.log("Unread count:", this.unreadCount)
   }
 
   /**

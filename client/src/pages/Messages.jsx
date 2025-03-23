@@ -1,176 +1,351 @@
-
+"use client"
 
 import { useState, useEffect, useRef } from "react"
-import axios from "axios"
 import { toast } from "react-toastify"
-import { ChatBubbleLeftEllipsisIcon, PaperAirplaneIcon } from "@heroicons/react/24/outline"
+import { FaPaperPlane, FaPaperclip, FaTimes, FaSpinner } from "react-icons/fa"
 
-import { LoadingState, LoadingButton } from "../components/common/LoadingState"
+import { useAuth } from "../context/AuthContext"
+import { useChat } from "../context/ChatContext"
+import MessageBubble from "../components/MessageBubble"
+import UserAvatar from "../components/UserAvatar"
+import "../styles/messages.css"
 
-const MessageBubble = ({ message, isOwn, onRetry }) => {
-  const bubbleClass = isOwn ? "bg-blue-500 text-white self-end" : "bg-gray-200 text-gray-800 self-start"
-  const statusIndicator = message.status === "sending" ? "..." : message.status === "failed" ? "!" : ""
-  const retryButton =
-    message.status === "failed" ? (
-      <button onClick={onRetry} className="text-sm text-blue-500">
-        Retry
-      </button>
-    ) : null
+const ConversationList = ({ conversations, activeId, onSelect, unreadCounts }) => {
+  if (!conversations || conversations.length === 0) {
+    return (
+      <div className="no-conversations">
+        <p>No conversations yet</p>
+      </div>
+    )
+  }
 
   return (
-    <div className={`flex flex-col ${bubbleClass} rounded-xl p-2 my-1 max-w-xs break-words`}>
-      <div className="text-sm">{message.content}</div>
-      <div className="text-xs text-gray-400 self-end">
-        {new Date(message.createdAt).toLocaleTimeString()} {statusIndicator} {retryButton}
-      </div>
+    <div className="conversations-list">
+      {conversations.map((conv) => (
+        <div
+          key={conv.user._id}
+          className={`conversation-item ${activeId === conv.user._id ? "active" : ""}`}
+          onClick={() => onSelect(conv.user._id)}
+        >
+          <div className="conversation-avatar">
+            <UserAvatar user={conv.user} size="md" />
+            {conv.user.isOnline && <span className="online-indicator"></span>}
+          </div>
+          <div className="conversation-details">
+            <div className="conversation-header">
+              <h4 className="conversation-name">{conv.user.nickname || "User"}</h4>
+              <span className="conversation-time">
+                {conv.lastMessage &&
+                  new Date(conv.lastMessage.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </div>
+            <div className="conversation-preview">
+              {conv.lastMessage && (
+                <p className="last-message">
+                  {conv.lastMessage.type === "text"
+                    ? conv.lastMessage.content
+                    : conv.lastMessage.type === "file"
+                      ? "📎 Attachment"
+                      : conv.lastMessage.type === "wink"
+                        ? "😉 Wink"
+                        : "Message"}
+                </p>
+              )}
+              {unreadCounts[conv.user._id] > 0 && <span className="unread-badge">{unreadCounts[conv.user._id]}</span>}
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
 
-const Messages = ({ activeConversation, currentUser }) => {
-  const [messages, setMessages] = useState([])
+const Messages = () => {
+  const { user } = useAuth()
+  const {
+    messages,
+    conversations,
+    unreadCounts,
+    typingUsers,
+    loading,
+    sending,
+    uploading,
+    error,
+    activeConversation,
+    getMessages,
+    getConversations,
+    sendMessage,
+    sendFileMessage,
+    sendTyping,
+    markMessagesAsRead,
+    setActiveConversation,
+  } = useChat()
+
   const [messageText, setMessageText] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [sending, setSending] = useState(false)
-  const messagesContainerRef = useRef(null)
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const messagesEndRef = useRef(null)
+  const fileInputRef = useRef(null)
+  const typingTimeoutRef = useRef(null)
 
+  // Get active conversation user
+  const activeUser = conversations.find((conv) => conv.user && conv.user._id === activeConversation)?.user
+
+  // Load conversations on mount
   useEffect(() => {
-    const fetchMessages = async () => {
-      try {
-        setLoading(true)
-        const response = await axios.get(`/api/conversations/${activeConversation}/messages`)
-        setMessages(response.data)
-      } catch (error) {
-        console.error("Failed to fetch messages:", error)
-        toast.error("Could not load messages")
-      } finally {
-        setLoading(false)
+    if (user && user._id) {
+      // Validate user ID format
+      if (!/^[0-9a-fA-F]{24}$/.test(user._id)) {
+        console.error(`Invalid user ID format: ${user._id}`)
+        toast.error("Authentication error. Please log out and log in again.")
+        return
       }
-    }
 
-    if (activeConversation) {
-      fetchMessages()
+      getConversations().catch((err) => {
+        console.error("Failed to load conversations:", err)
+        toast.error("Failed to load conversations. Please try again.")
+      })
+    } else if (!user) {
+      // Handle case when user is not authenticated
+      console.warn("User is not authenticated. Redirecting to login...")
+      // You might want to redirect to login page here
     }
-  }, [activeConversation])
+  }, [user, getConversations])
 
+  // Load messages when active conversation changes
   useEffect(() => {
-    // Scroll to bottom when messages change
-    if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
-    }
-  }, [messages])
-
-  const sendMessage = async (e) => {
-    e.preventDefault()
-    if (!messageText.trim()) return
-
-    const tempId = Date.now().toString()
-    const newMessage = {
-      _id: tempId,
-      sender: currentUser._id,
-      content: messageText,
-      createdAt: new Date().toISOString(),
-      status: "sending",
-    }
-
-    // Optimistically add message to UI
-    setMessages((prev) => [...prev, newMessage])
-    setMessageText("")
-
-    try {
-      setSending(true)
-      const response = await axios.post(`/api/conversations/${activeConversation}/messages`, {
-        content: messageText,
-        type: "text",
+    if (activeConversation && user && user._id) {
+      getMessages(activeConversation).catch((err) => {
+        console.error("Failed to load messages:", err)
       })
 
-      // Update with actual message from server
-      setMessages((prev) => prev.map((msg) => (msg._id === tempId ? response.data : msg)))
+      // Mark messages as read
+      const unreadMessages = messages.filter((m) => m.sender === activeConversation && !m.read).map((m) => m._id)
+
+      if (unreadMessages.length > 0) {
+        markMessagesAsRead(unreadMessages, activeConversation)
+      }
+    }
+  }, [activeConversation, user, getMessages, messages, markMessagesAsRead])
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
+
+  // Cleanup typing timeout
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  const handleSelectConversation = (userId) => {
+    if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
+      console.error(`Invalid recipient ID format: ${userId}`)
+      toast.error("Invalid conversation selected")
+      return
+    }
+
+    if (userId !== activeConversation) {
+      setActiveConversation(userId)
+    }
+  }
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault()
+
+    if (selectedFile) {
+      await handleSendFile()
+      return
+    }
+
+    if (!messageText.trim() || !activeConversation) return
+
+    try {
+      await sendMessage(activeConversation, "text", messageText.trim())
+      setMessageText("")
     } catch (error) {
       console.error("Failed to send message:", error)
       toast.error("Failed to send message")
-
-      // Mark message as failed
-      setMessages((prev) => prev.map((msg) => (msg._id === tempId ? { ...msg, status: "failed" } : msg)))
-    } finally {
-      setSending(false)
     }
   }
 
-  const handleRetry = async (failedMessage) => {
-    try {
-      // Optimistically update status to sending
-      setMessages((prev) => prev.map((msg) => (msg._id === failedMessage._id ? { ...msg, status: "sending" } : msg)))
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
 
-      const response = await axios.post(`/api/conversations/${activeConversation}/messages`, {
-        content: failedMessage.content,
-        type: "text",
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File is too large. Maximum size is 5MB.")
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      return
+    }
+
+    setSelectedFile(file)
+  }
+
+  const handleSendFile = async () => {
+    if (!selectedFile || !activeConversation) return
+
+    try {
+      await sendFileMessage(activeConversation, selectedFile, (progress) => {
+        setUploadProgress(progress)
       })
 
-      // Update with actual message from server
-      setMessages((prev) => prev.map((msg) => (msg._id === failedMessage._id ? response.data : msg)))
+      setSelectedFile(null)
+      setUploadProgress(0)
+      if (fileInputRef.current) fileInputRef.current.value = ""
     } catch (error) {
-      console.error("Failed to resend message:", error)
-      toast.error("Failed to resend message")
-
-      // Mark message as failed again
-      setMessages((prev) => prev.map((msg) => (msg._id === failedMessage._id ? { ...msg, status: "failed" } : msg)))
+      console.error("Failed to send file:", error)
+      toast.error("Failed to send file")
     }
   }
 
+  const handleCancelFileUpload = () => {
+    setSelectedFile(null)
+    setUploadProgress(0)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  const handleTyping = () => {
+    if (!activeConversation) return
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current)
+    }
+
+    sendTyping(activeConversation)
+
+    typingTimeoutRef.current = setTimeout(() => {
+      typingTimeoutRef.current = null
+    }, 3000)
+  }
+
+  const isUserTyping =
+    activeConversation && typingUsers[activeConversation] && Date.now() - typingUsers[activeConversation] < 3000
+
   return (
-    <div className="flex flex-col h-full">
-      {activeConversation ? (
-        <>
-          <div className="flex-1 overflow-y-auto p-4" ref={messagesContainerRef}>
-            {loading ? (
-              <LoadingState text="Loading messages..." />
-            ) : messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-gray-500">
-                <ChatBubbleLeftEllipsisIcon className="h-12 w-12 mb-4 text-gray-300" />
-                <p>No messages yet</p>
-                <p className="text-sm">Start the conversation!</p>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <MessageBubble
-                  key={message._id}
-                  message={message}
-                  isOwn={message.sender === currentUser._id}
-                  onRetry={message.status === "failed" ? () => handleRetry(message) : undefined}
-                />
-              ))
-            )}
-          </div>
-          <div className="border-t p-4">
-            <form onSubmit={sendMessage} className="flex items-center gap-2">
-              <input
-                type="text"
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                placeholder="Type a message..."
-                className="flex-1 border rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
-                disabled={sending}
-              />
-              <LoadingButton
-                type="submit"
-                loading={sending}
-                disabled={!messageText.trim()}
-                className="bg-primary text-white rounded-full p-2 hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary"
-                aria-label="Send message"
-              >
-                <PaperAirplaneIcon className="h-5 w-5" />
-              </LoadingButton>
-            </form>
-          </div>
-        </>
-      ) : (
-        <div className="h-full flex flex-col items-center justify-center text-gray-500">
-          <ChatBubbleLeftEllipsisIcon className="h-16 w-16 mb-4 text-gray-300" />
-          <p className="text-lg">Select a conversation</p>
-          <p className="text-sm">Choose a conversation from the list to start chatting</p>
+    <div className="messages-page">
+      <div className="conversations-panel">
+        <div className="conversations-header">
+          <h2>Conversations</h2>
         </div>
-      )}
+        <ConversationList
+          conversations={conversations}
+          activeId={activeConversation}
+          onSelect={handleSelectConversation}
+          unreadCounts={unreadCounts}
+        />
+      </div>
+
+      <div className="messages-panel">
+        {activeConversation && activeUser ? (
+          <>
+            <div className="messages-header">
+              <div className="user-avatar">
+                <UserAvatar user={activeUser} size="md" />
+                {activeUser.isOnline && <span className="online-indicator"></span>}
+              </div>
+              <div className="user-info">
+                <h3>{activeUser.nickname || "User"}</h3>
+                {isUserTyping && <p className="typing-status">typing...</p>}
+              </div>
+            </div>
+
+            <div className="messages-container">
+              {loading ? (
+                <div className="loading-container">
+                  <FaSpinner className="spinner" />
+                  <p>Loading messages...</p>
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="empty-messages">
+                  <p>No messages yet. Start the conversation!</p>
+                </div>
+              ) : (
+                <div className="messages-list">
+                  {messages.map((message) => (
+                    <MessageBubble key={message._id} message={message} isOwn={message.sender === user?._id} />
+                  ))}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </div>
+
+            <div className="message-input-container">
+              {selectedFile && (
+                <div className="selected-file">
+                  <div className="file-info">
+                    <span className="file-name">{selectedFile.name}</span>
+                    <span className="file-size">({Math.round(selectedFile.size / 1024)} KB)</span>
+                  </div>
+                  {uploading ? (
+                    <div className="upload-progress">
+                      <div className="progress-bar" style={{ width: `${uploadProgress}%` }}></div>
+                      <span>{uploadProgress}%</span>
+                    </div>
+                  ) : (
+                    <button className="cancel-file" onClick={handleCancelFileUpload}>
+                      <FaTimes />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <form onSubmit={handleSendMessage} className="message-form">
+                <button
+                  type="button"
+                  className="attachment-button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sending || uploading}
+                >
+                  <FaPaperclip />
+                </button>
+
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  style={{ display: "none" }}
+                  accept="image/*,application/pdf,text/plain,audio/*,video/*"
+                />
+
+                <input
+                  type="text"
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  onKeyDown={() => handleTyping()}
+                  placeholder="Type a message..."
+                  className="message-input"
+                  disabled={sending || uploading || !!selectedFile}
+                />
+
+                <button
+                  type="submit"
+                  className="send-button"
+                  disabled={(!messageText.trim() && !selectedFile) || sending || uploading}
+                >
+                  {sending || uploading ? <FaSpinner className="spinner" /> : <FaPaperPlane />}
+                </button>
+              </form>
+            </div>
+          </>
+        ) : (
+          <div className="no-conversation-selected">
+            <div className="empty-state">
+              <h3>Select a conversation</h3>
+              <p>Choose a conversation from the list to start chatting</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

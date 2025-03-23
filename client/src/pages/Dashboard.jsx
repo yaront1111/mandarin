@@ -1,3 +1,5 @@
+"use client"
+
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import {
@@ -24,6 +26,7 @@ import StoriesCarousel from "../components/Stories/StoriesCarousel"
 import StoriesViewer from "../components/Stories/StoriesViewer"
 import StoryCreator from "../components/Stories/StoryCreator"
 import SubscriptionStatus from "../components/SubscriptionStatus"
+import UserProfileModal from "../components/UserProfileModal"
 
 const Dashboard = () => {
   const navigate = useNavigate()
@@ -56,6 +59,10 @@ const Dashboard = () => {
   // Story viewing state
   const [viewingStoryId, setViewingStoryId] = useState(null)
   const [creatingStory, setCreatingStory] = useState(false)
+
+  // User profile modal state
+  const [selectedUserId, setSelectedUserId] = useState(null)
+  const [showUserProfileModal, setShowUserProfileModal] = useState(false)
 
   // Handle image loading errors
   const handleImageError = useCallback((userId) => {
@@ -159,8 +166,10 @@ const Dashboard = () => {
     })
   }
 
-  const navigateToUserProfile = (userId) => {
-    navigate(`/user/${userId}`)
+  // Open user profile modal instead of navigating
+  const handleUserCardClick = (userId) => {
+    setSelectedUserId(userId)
+    setShowUserProfileModal(true)
   }
 
   const handleMessageUser = (e, user) => {
@@ -189,40 +198,40 @@ const Dashboard = () => {
   }
 
   // Improved story creation handler
-const handleCreateStory = (storyData) => {
-  // Prevent multiple submissions or actions while in progress
-  if (!createStory || creatingStory) {
-    if (creatingStory) {
-      toast.info("Story creation in progress, please wait...")
-    } else {
-      toast.error("Story creation is not available right now")
-    }
-    return
-  }
-
-  setCreatingStory(true)
-
-  createStory(storyData)
-    .then((response) => {
-      if (response.success) {
-        toast.success("Your story has been created!")
-        setShowStoryCreator(false) // Only close on success
-      } else if (response.message && response.message.includes("already in progress")) {
-        // Handle the duplicate submission gracefully
-        // Don't close the creator
+  const handleCreateStory = (storyData) => {
+    // Prevent multiple submissions or actions while in progress
+    if (!createStory || creatingStory) {
+      if (creatingStory) {
+        toast.info("Story creation in progress, please wait...")
       } else {
-        throw new Error(response.message || "Failed to create story")
+        toast.error("Story creation is not available right now")
       }
-    })
-    .catch((error) => {
-      toast.error("Failed to create story: " + (error.message || "Unknown error"))
-      // Don't close the creator on error
-    })
-    .finally(() => {
-      // Always reset the creating state
-      setCreatingStory(false)
-    })
-}
+      return
+    }
+
+    setCreatingStory(true)
+
+    createStory(storyData)
+      .then((response) => {
+        if (response.success) {
+          toast.success("Your story has been created!")
+          setShowStoryCreator(false) // Only close on success
+        } else if (response.message && response.message.includes("already in progress")) {
+          // Handle the duplicate submission gracefully
+          // Don't close the creator
+        } else {
+          throw new Error(response.message || "Failed to create story")
+        }
+      })
+      .catch((error) => {
+        toast.error("Failed to create story: " + (error.message || "Unknown error"))
+        // Don't close the creator on error
+      })
+      .finally(() => {
+        // Always reset the creating state
+        setCreatingStory(false)
+      })
+  }
 
   // Reset image load errors when filter changes
   useEffect(() => {
@@ -291,6 +300,9 @@ const handleCreateStory = (storyData) => {
             </button>
           </div>
           <div className="header-actions d-flex align-items-center">
+            <div className="subscription-indicator">
+              <SubscriptionStatus compact={true} />
+            </div>
             <ThemeToggle />
             <button className="header-action-button" aria-label="Notifications">
               <FaBell />
@@ -351,7 +363,6 @@ const handleCreateStory = (storyData) => {
       {/* Content */}
       <main className="dashboard-content">
         <div className="container">
-          <SubscriptionStatus />
           {/* Stories Section with Create Story Button - FIXED */}
           <div className="stories-section">
             <div className="stories-header d-flex justify-content-between align-items-center mb-3">
@@ -366,10 +377,10 @@ const handleCreateStory = (storyData) => {
                 <span className="d-none d-md-inline">{creatingStory ? "Creating..." : "Create Story"}</span>
               </button>
             </div>
-            <StoriesCarousel 
+            <StoriesCarousel
               onStoryClick={(storyId) => {
-                if (viewingStoryId) return; // Prevent multiple clicks
-                setViewingStoryId(storyId);
+                if (viewingStoryId) return // Prevent multiple clicks
+                setViewingStoryId(storyId)
               }}
             />
           </div>
@@ -531,7 +542,7 @@ const handleCreateStory = (storyData) => {
               </div>
             ) : sortedUsers.length > 0 ? (
               sortedUsers.map((matchedUser) => (
-                <div key={matchedUser._id} className="user-card" onClick={() => navigateToUserProfile(matchedUser._id)}>
+                <div key={matchedUser._id} className="user-card" onClick={() => handleUserCardClick(matchedUser._id)}>
                   <div className="user-card-photo">
                     {matchedUser.photos && matchedUser.photos.length > 0 ? (
                       <>
@@ -585,8 +596,8 @@ const handleCreateStory = (storyData) => {
                       <button
                         className={`card-action-button like ${isUserLiked(matchedUser._id) ? "active" : ""}`}
                         onClick={(e) => {
-                          e.stopPropagation(); // Stop event propagation
-                          handleLikeUser(e, matchedUser);
+                          e.stopPropagation() // Stop event propagation
+                          handleLikeUser(e, matchedUser)
                         }}
                         aria-label={`${isUserLiked(matchedUser._id) ? "Unlike" : "Like"} ${matchedUser.nickname}`}
                       >
@@ -595,9 +606,10 @@ const handleCreateStory = (storyData) => {
                       <button
                         className="card-action-button message"
                         onClick={(e) => {
-                          e.stopPropagation(); // Stop event propagation
-                          if (!showChat) { // Prevent multiple clicks
-                            handleMessageUser(e, matchedUser);
+                          e.stopPropagation() // Stop event propagation
+                          if (!showChat) {
+                            // Prevent multiple clicks
+                            handleMessageUser(e, matchedUser)
                           }
                         }}
                         aria-label={`Message ${matchedUser.nickname}`}
@@ -637,6 +649,15 @@ const handleCreateStory = (storyData) => {
 
       {/* Stories Viewer */}
       {viewingStoryId && <StoriesViewer storyId={viewingStoryId} onClose={() => setViewingStoryId(null)} />}
+
+      {/* User Profile Modal */}
+      {showUserProfileModal && (
+        <UserProfileModal
+          userId={selectedUserId}
+          isOpen={showUserProfileModal}
+          onClose={() => setShowUserProfileModal(false)}
+        />
+      )}
 
       <style>{`
         /* User Dropdown Menu Styles */
@@ -737,6 +758,30 @@ const handleCreateStory = (storyData) => {
 
         .card-action-button.like.active:hover {
           background-color: rgba(255, 75, 75, 0.2);
+        }
+        
+        /* Subscription indicator in header */
+        .subscription-indicator {
+          margin-right: 15px;
+        }
+        
+        .subscription-badge .premium-icon {
+          color: gold;
+          filter: drop-shadow(0 0 2px rgba(255, 215, 0, 0.5));
+        }
+        
+        .subscription-badge .free-badge {
+          background: rgba(0, 0, 0, 0.1);
+          color: var(--text-muted);
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+        }
+        
+        .dark .subscription-badge .free-badge {
+          background: rgba(255, 255, 255, 0.1);
         }
         
         /* Dark mode adjustments */

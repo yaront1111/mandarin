@@ -1,6 +1,6 @@
 // middleware/permissions.js - Enhanced with ES modules and improved error handling
-import { User } from '../models/index.js';
-import logger from '../logger.js';
+import { User } from "../models/index.js"
+import logger from "../logger.js"
 
 /**
  * Middleware to check if user can send messages (not just winks)
@@ -12,45 +12,45 @@ const canSendMessages = async (req, res, next) => {
   try {
     // Ensure the user is authenticated
     if (!req.user || !req.user._id) {
-      logger.error('canSendMessages middleware used without authentication');
+      logger.error("canSendMessages middleware used without authentication")
       return res.status(401).json({
         success: false,
-        error: "Authentication required"
-      });
+        error: "Authentication required",
+      })
     }
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id)
 
     if (!user) {
-      logger.warn(`User not found in canSendMessages middleware: ${req.user._id}`);
+      logger.warn(`User not found in canSendMessages middleware: ${req.user._id}`)
       return res.status(404).json({
         success: false,
-        error: "User not found"
-      });
+        error: "User not found",
+      })
     }
 
     if (!user.canSendMessages()) {
-      logger.debug(`Message permission denied for user ${user._id} (account tier: ${user.accountTier})`);
+      logger.debug(`Message permission denied for user ${user._id} (account tier: ${user.accountTier})`)
       return res.status(403).json({
         success: false,
         error: "Free accounts can only send winks. Upgrade to send messages.",
         code: "UPGRADE_REQUIRED",
         subscriptionDetails: {
           accountTier: user.accountTier,
-          canSendMessages: false
-        }
-      });
+          canSendMessages: false,
+        },
+      })
     }
 
-    next();
+    next()
   } catch (err) {
-    logger.error(`Error checking message permissions: ${err.message}`, { stack: err.stack });
+    logger.error(`Error checking message permissions: ${err.message}`, { stack: err.stack })
     return res.status(500).json({
       success: false,
-      error: "Server error while checking permissions"
-    });
+      error: "Server error while checking permissions",
+    })
   }
-};
+}
 
 /**
  * Middleware to check if user can create a story
@@ -62,33 +62,31 @@ const canCreateStory = async (req, res, next) => {
   try {
     // Ensure the user is authenticated
     if (!req.user || !req.user._id) {
-      logger.error('canCreateStory middleware used without authentication');
+      logger.error("canCreateStory middleware used without authentication")
       return res.status(401).json({
         success: false,
-        error: "Authentication required"
-      });
+        error: "Authentication required",
+      })
     }
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id)
 
     if (!user) {
-      logger.warn(`User not found in canCreateStory middleware: ${req.user._id}`);
+      logger.warn(`User not found in canCreateStory middleware: ${req.user._id}`)
       return res.status(404).json({
         success: false,
-        error: "User not found"
-      });
+        error: "User not found",
+      })
     }
 
     if (!user.canCreateStory()) {
       // Calculate time remaining in cooldown
-      const cooldownPeriod = 72 * 60 * 60 * 1000; // 72 hours in milliseconds
-      const timeSinceLastStory = user.lastStoryCreated
-        ? Date.now() - user.lastStoryCreated.getTime()
-        : cooldownPeriod;
-      const timeRemaining = Math.max(0, cooldownPeriod - timeSinceLastStory);
-      const hoursRemaining = Math.ceil(timeRemaining / (60 * 60 * 1000));
+      const cooldownPeriod = 72 * 60 * 60 * 1000 // 72 hours in milliseconds
+      const timeSinceLastStory = user.lastStoryCreated ? Date.now() - user.lastStoryCreated.getTime() : cooldownPeriod
+      const timeRemaining = Math.max(0, cooldownPeriod - timeSinceLastStory)
+      const hoursRemaining = Math.ceil(timeRemaining / (60 * 60 * 1000))
 
-      logger.debug(`Story creation denied for user ${user._id} (cooldown: ${hoursRemaining} hours remaining)`);
+      logger.debug(`Story creation denied for user ${user._id} (cooldown: ${hoursRemaining} hours remaining)`)
 
       return res.status(403).json({
         success: false,
@@ -99,24 +97,24 @@ const canCreateStory = async (req, res, next) => {
           hoursRemaining,
           nextAvailable: user.lastStoryCreated
             ? new Date(user.lastStoryCreated.getTime() + cooldownPeriod)
-            : new Date()
-        }
-      });
+            : new Date(),
+        },
+      })
     }
 
     // If we get here, user can create a story
     // Update lastStoryCreated timestamp after successful story creation
-    req.updateLastStoryCreated = true;
+    req.updateLastStoryCreated = true
 
-    next();
+    next()
   } catch (err) {
-    logger.error(`Error checking story creation permissions: ${err.message}`, { stack: err.stack });
+    logger.error(`Error checking story creation permissions: ${err.message}`, { stack: err.stack })
     return res.status(500).json({
       success: false,
-      error: "Server error while checking permissions"
-    });
+      error: "Server error while checking permissions",
+    })
   }
-};
+}
 
 /**
  * Middleware to check if user can like another user
@@ -129,40 +127,41 @@ const canLikeUser = async (req, res, next) => {
   try {
     // Ensure the user is authenticated
     if (!req.user || !req.user._id) {
-      logger.error('canLikeUser middleware used without authentication');
+      logger.error("canLikeUser middleware used without authentication")
       return res.status(401).json({
         success: false,
-        error: "Authentication required"
-      });
+        error: "Authentication required",
+      })
     }
 
     // Get the full user object with account tier info
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id)
 
     if (!user) {
-      logger.warn(`User not found in canLikeUser middleware: ${req.user._id}`);
+      logger.warn(`User not found in canLikeUser middleware: ${req.user._id}`)
       return res.status(404).json({
         success: false,
-        error: "User not found"
-      });
+        error: "User not found",
+      })
     }
 
     // Store the user object for use in the route handler
-    req.userObj = user;
+    req.userObj = user
 
     // Premium users can always like
-    if (user.accountTier === "PREMIUM" || user.accountTier === "PAID") {
-      return next();
+    // Note: Using only PAID since that's the actual tier name in the User model
+    if (user.accountTier === "PAID") {
+      return next()
     }
 
     // Female users get unlimited likes
     if (user.accountTier === "FEMALE") {
-      return next();
+      return next()
     }
 
     // Couple accounts get unlimited likes
     if (user.accountTier === "COUPLE") {
-      return next();
+      return next()
     }
 
     // Free users have a daily limit
@@ -170,13 +169,13 @@ const canLikeUser = async (req, res, next) => {
       // Check if they've reached their daily limit
       if (user.dailyLikesRemaining <= 0) {
         // Check when likes will reset
-        const now = new Date();
-        const resetTime = user.dailyLikesReset;
-        const timeToReset = resetTime > now
-          ? Math.ceil((resetTime - now) / (1000 * 60 * 60))
-          : 0;
+        const now = new Date()
+        const resetTime = user.dailyLikesReset
+        const timeToReset = resetTime > now ? Math.ceil((resetTime - now) / (1000 * 60 * 60)) : 0
 
-        logger.debug(`Like permission denied for user ${user._id} (remaining: ${user.dailyLikesRemaining}, reset in: ${timeToReset} hours)`);
+        logger.debug(
+          `Like permission denied for user ${user._id} (remaining: ${user.dailyLikesRemaining}, reset in: ${timeToReset} hours)`,
+        )
 
         return res.status(403).json({
           success: false,
@@ -186,21 +185,21 @@ const canLikeUser = async (req, res, next) => {
             accountTier: user.accountTier,
             dailyLikesRemaining: 0,
             dailyLikesReset: user.dailyLikesReset,
-            resetInHours: timeToReset
-          }
-        });
+            resetInHours: timeToReset,
+          },
+        })
       }
     }
 
-    next();
+    next()
   } catch (err) {
-    logger.error(`Error in canLikeUser middleware: ${err.message}`, { stack: err.stack });
+    logger.error(`Error in canLikeUser middleware: ${err.message}`, { stack: err.stack })
     return res.status(500).json({
       success: false,
-      error: "Server error while checking permissions"
-    });
+      error: "Server error while checking permissions",
+    })
   }
-};
+}
 
 /**
  * Middleware to check if the user has blocked the target user
@@ -210,54 +209,49 @@ const canLikeUser = async (req, res, next) => {
  */
 const checkBlockStatus = async (req, res, next) => {
   try {
-    const targetUserId = req.params.id || req.body.userId || req.body.recipientId;
+    const targetUserId = req.params.id || req.body.userId || req.body.recipientId
 
     if (!targetUserId) {
-      return next(); // No target user to check
+      return next() // No target user to check
     }
 
     // Ensure we have a valid user
     if (!req.user || !req.user._id) {
-      return next();
+      return next()
     }
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id)
 
     if (!user) {
-      return next();
+      return next()
     }
 
     // Check if the user has blocked the target
     if (user.hasBlocked && user.hasBlocked(targetUserId)) {
-      logger.debug(`User ${user._id} attempted to interact with blocked user ${targetUserId}`);
+      logger.debug(`User ${user._id} attempted to interact with blocked user ${targetUserId}`)
       return res.status(403).json({
         success: false,
         error: "You have blocked this user",
-        code: "USER_BLOCKED"
-      });
+        code: "USER_BLOCKED",
+      })
     }
 
     // Check if the user is blocked by the target
-    const targetUser = await User.findById(targetUserId);
+    const targetUser = await User.findById(targetUserId)
     if (targetUser && targetUser.hasBlocked && targetUser.hasBlocked(user._id)) {
-      logger.debug(`User ${user._id} attempted to interact with user ${targetUserId} who has blocked them`);
+      logger.debug(`User ${user._id} attempted to interact with user ${targetUserId} who has blocked them`)
       return res.status(403).json({
         success: false,
         error: "You cannot interact with this user",
-        code: "BLOCKED_BY_USER"
-      });
+        code: "BLOCKED_BY_USER",
+      })
     }
 
-    next();
+    next()
   } catch (err) {
-    logger.error(`Error in checkBlockStatus middleware: ${err.message}`, { stack: err.stack });
-    next(); // Continue even if there's an error checking block status
+    logger.error(`Error in checkBlockStatus middleware: ${err.message}`, { stack: err.stack })
+    next() // Continue even if there's an error checking block status
   }
-};
+}
 
-export {
-  canSendMessages,
-  canCreateStory,
-  canLikeUser,
-  checkBlockStatus
-};
+export { canSendMessages, canCreateStory, canLikeUser, checkBlockStatus }

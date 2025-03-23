@@ -7,7 +7,7 @@ import { fileTypeFromBuffer } from "file-type"
 import mongoose from "mongoose"
 import { User, PhotoPermission, Message, Like } from "../models/index.js"
 import config from "../config.js"
-import { protect, asyncHandler } from "../middleware/auth.js"
+import { protect, enhancedProtect, asyncHandler } from "../middleware/auth.js"
 import logger from "../logger.js"
 import { canLikeUser } from "../middleware/permissions.js"
 
@@ -312,14 +312,15 @@ router.get(
 
 /**
  * @route   GET /api/users/:id/photo-permissions
- * @desc    Get photo permission statuses for a user
+ * @desc    Get photo permission statuses for a user with improved error handling
  * @access  Private
  */
 router.get(
   "/:id/photo-permissions",
-  protect,
+  enhancedProtect, // Use enhancedProtect instead of protect
   asyncHandler(async (req, res) => {
     logger.debug(`Fetching photo permissions for user ${req.params.id} requested by ${req.user._id}`)
+
     try {
       if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
         return res.status(400).json({
@@ -327,6 +328,7 @@ router.get(
           error: "Invalid user ID format",
         })
       }
+
       const user = await User.findById(req.params.id).select("photos")
       if (!user) {
         return res.status(404).json({
@@ -334,22 +336,35 @@ router.get(
           error: "User not found",
         })
       }
+
+      // Get all private photo IDs
       const privatePhotoIds = user.photos.filter((photo) => photo.isPrivate).map((photo) => photo._id)
+
       if (privatePhotoIds.length === 0) {
         return res.status(200).json({
           success: true,
           data: [],
         })
       }
+
+      // Find all permission requests for these photos by the current user
       const permissions = await PhotoPermission.find({
         photo: { $in: privatePhotoIds },
         requestedBy: req.user._id,
       })
+
+      // Format the permissions for the client
       const formattedPermissions = permissions.map((permission) => ({
         photo: permission.photo,
         status: permission.status,
         createdAt: permission.createdAt,
+        updatedAt: permission.updatedAt,
+        respondedAt: permission.respondedAt,
+        expiresAt: permission.expiresAt,
       }))
+
+      logger.debug(`Found ${formattedPermissions.length} permission records for user ${req.user._id}`)
+
       res.status(200).json({
         success: true,
         data: formattedPermissions,
@@ -414,7 +429,46 @@ router.put(
             updateData.details.interests = details.interests
           }
         }
+
+        // Handle new fields
+        if (details.iAm !== undefined) {
+          updateData.details.iAm = details.iAm
+        }
+
+        if (details.lookingFor !== undefined) {
+          if (Array.isArray(details.lookingFor)) {
+            if (details.lookingFor.length > 3) {
+              return res.status(400).json({ success: false, error: "Cannot have more than 3 'looking for' options" })
+            }
+            updateData.details.lookingFor = details.lookingFor
+          }
+        }
+
+        if (details.intoTags !== undefined) {
+          if (Array.isArray(details.intoTags)) {
+            if (details.intoTags.length > 20) {
+              return res.status(400).json({ success: false, error: "Cannot have more than 20 'into' tags" })
+            }
+            updateData.details.intoTags = details.intoTags
+          }
+        }
+
+        if (details.turnOns !== undefined) {
+          if (Array.isArray(details.turnOns)) {
+            if (details.turnOns.length > 20) {
+              return res.status(400).json({ success: false, error: "Cannot have more than 20 'turn ons' tags" })
+            }
+            updateData.details.turnOns = details.turnOns
+          }
+        }
+
+        if (details.maritalStatus !== undefined) {
+          updateData.details.maritalStatus = details.maritalStatus
+        }
       }
+
+      logger.debug(`Updating user with data: ${JSON.stringify(updateData)}`)
+
       const updatedUser = await User.findByIdAndUpdate(req.user._id, updateData, {
         new: true,
         runValidators: true,
@@ -445,118 +499,120 @@ router.post(
   protect,
   upload.single("photo"),
   asyncHandler(async (req, res) => {
-    logger.debug(`Processing photo upload for user ${req.user._id}`);
-    let filePath = null;
-    let processingSuccessful = false;
+    logger.debug(`Processing photo upload for user ${req.user._id}`)
+    let filePath = null
+    let processingSuccessful = false
 
     try {
       if (!req.file) {
-        logger.warn("Photo upload failed: No file provided");
-        return res.status(400).json({ success: false, error: "Please upload a file" });
+        logger.warn("Photo upload failed: No file provided")
+        return res.status(400).json({ success: false, error: "Please upload a file" })
       }
 
-      const isPrivate = req.body.isPrivate === "true" || req.body.isPrivate === true;
+      const isPrivate = req.body.isPrivate === "true" || req.body.isPrivate === true
 
       // Check photo count limit
       if (req.user.photos && req.user.photos.length >= 10) {
-        fs.unlinkSync(req.file.path);
+        fs.unlinkSync(req.file.path)
         return res.status(400).json({
           success: false,
           error: "Maximum number of photos (10) reached. Delete some photos to upload more.",
-        });
+        })
       }
 
-      filePath = req.file.path;
-      logger.debug(`File saved to: ${filePath}`);
+      filePath = req.file.path
+      logger.debug(`File saved to: ${filePath}`)
 
-      const fileBuffer = fs.readFileSync(filePath);
-      const fileType = await fileTypeFromBuffer(fileBuffer);
+      const fileBuffer = fs.readFileSync(filePath)
+      const fileType = await fileTypeFromBuffer(fileBuffer)
 
       if (!fileType || !fileType.mime.startsWith("image/")) {
-        fs.unlinkSync(filePath);
-        return res.status(400).json({ success: false, error: "File is not a valid image" });
+        fs.unlinkSync(filePath)
+        return res.status(400).json({ success: false, error: "File is not a valid image" })
       }
 
       try {
-        const image = sharp(filePath);
-        const metadata = await image.metadata();
+        const image = sharp(filePath)
+        const metadata = await image.metadata()
 
         // Resize image if needed
-        const resizedFilePath = filePath + "_resized";
+        const resizedFilePath = filePath + "_resized"
         if (metadata.width > 1200 || metadata.height > 1200) {
           await image
             .resize(1200, 1200, {
               fit: "inside",
               withoutEnlargement: true,
             })
-            .toFile(resizedFilePath);
+            .toFile(resizedFilePath)
 
-          fs.unlinkSync(filePath);
-          fs.renameSync(resizedFilePath, filePath);
-          logger.debug(`Image resized and saved back to: ${filePath}`);
+          fs.unlinkSync(filePath)
+          fs.renameSync(resizedFilePath, filePath)
+          logger.debug(`Image resized and saved back to: ${filePath}`)
         }
 
-        processingSuccessful = true;
+        processingSuccessful = true
 
         // Get the file name only (not the full path)
-        const fileName = path.basename(filePath);
+        const fileName = path.basename(filePath)
 
         // This is critical: create the correct URL format
         // It should be a web-accessible path that maps to your static file middleware
-        const photoUrl = `/uploads/images/${fileName}`;
+        const photoUrl = `/uploads/images/${fileName}`
 
-        logger.debug(`Generated photo URL: ${photoUrl}`);
+        logger.debug(`Generated photo URL: ${photoUrl}`)
 
         const photoMetadata = {
           contentType: metadata.format,
           size: metadata.size,
           dimensions: { width: metadata.width, height: metadata.height },
-        };
+        }
 
         const photo = {
           url: photoUrl,
           isPrivate,
           metadata: photoMetadata,
-        };
+        }
 
-        const isFirstPhoto = !req.user.photos || req.user.photos.length === 0;
-        req.user.photos.push(photo);
-        await req.user.save();
+        const isFirstPhoto = !req.user.photos || req.user.photos.length === 0
+        req.user.photos.push(photo)
+        await req.user.save()
 
-        const newPhoto = req.user.photos[req.user.photos.length - 1];
+        const newPhoto = req.user.photos[req.user.photos.length - 1]
 
-        logger.info(`Photo uploaded successfully for user ${req.user._id} (isPrivate: ${isPrivate})`);
-        logger.debug(`Photo details: ${JSON.stringify({
-          id: newPhoto._id,
-          url: newPhoto.url,
-          isPrivate: newPhoto.isPrivate
-        })}`);
+        logger.info(`Photo uploaded successfully for user ${req.user._id} (isPrivate: ${isPrivate})`)
+        logger.debug(
+          `Photo details: ${JSON.stringify({
+            id: newPhoto._id,
+            url: newPhoto.url,
+            isPrivate: newPhoto.isPrivate,
+          })}`,
+        )
 
         res.status(200).json({
           success: true,
           data: newPhoto,
           isProfilePhoto: isFirstPhoto,
-          url: photoUrl // Include the URL explicitly for clarity
-        });
+          url: photoUrl, // Include the URL explicitly for clarity
+        })
       } catch (processingErr) {
-        logger.error(`Error processing image: ${processingErr.message}`);
-        throw processingErr;
+        logger.error(`Error processing image: ${processingErr.message}`)
+        throw processingErr
       }
     } catch (err) {
-      logger.error(`Error uploading photo: ${err.message}`);
-      res.status(400).json({ success: false, error: err.message });
+      logger.error(`Error uploading photo: ${err.message}`)
+      res.status(400).json({ success: false, error: err.message })
     } finally {
       if (!processingSuccessful && filePath && fs.existsSync(filePath)) {
         try {
-          fs.unlinkSync(filePath);
-          logger.debug(`Cleaned up failed upload file: ${filePath}`);
+          fs.unlinkSync(filePath)
+          logger.debug(`Cleaned up failed upload file: ${filePath}`)
         } catch (cleanupErr) {
-          logger.error(`Error during file cleanup: ${cleanupErr.message}`);
+          logger.error(`Error during file cleanup: ${cleanupErr.message}`)
         }
       }
     }
-  })
-);
+  }),
+)
 /**
  * @route   PUT /api/users/photos/:id/privacy
  * @desc    Update photo privacy setting
@@ -679,52 +735,126 @@ router.delete(
       message: "Photo deleted successfully",
       data: {
         photoId,
-        wasDeleted: true
-      }
+        wasDeleted: true,
+      },
     })
-  })
+  }),
 )
 
 /**
  * @route   POST /api/users/photos/:id/request
- * @desc    Request permission to view a private photo (avoiding race conditions)
+ * @desc    Request permission to view a private photo (with improved error handling)
  * @access  Private
  */
 router.post(
   "/photos/:id/request",
-  protect,
+  enhancedProtect, // Use enhancedProtect instead of protect
   asyncHandler(async (req, res) => {
     const photoId = req.params.id
     const { userId } = req.body
+
     logger.debug(`User ${req.user._id} requesting access to photo ${photoId} from user ${userId}`)
+
+    // Validate IDs
     if (!mongoose.Types.ObjectId.isValid(photoId) || !mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({ success: false, error: "Invalid photo ID or user ID format" })
+      return res.status(400).json({
+        success: false,
+        error: "Invalid photo ID or user ID format",
+      })
     }
+
+    // Find the photo owner
     const owner = await User.findById(userId)
     if (!owner) {
       logger.warn(`Photo access request failed: User ${userId} not found`)
-      return res.status(404).json({ success: false, error: "User not found" })
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      })
     }
+
+    // Find the specific photo
     const photo = owner.photos.id(photoId)
     if (!photo) {
       logger.warn(`Photo access request failed: Photo ${photoId} not found`)
-      return res.status(404).json({ success: false, error: "Photo not found" })
+      return res.status(404).json({
+        success: false,
+        error: "Photo not found",
+      })
     }
+
+    // Check if the photo is private
     if (!photo.isPrivate) {
       logger.warn(`Photo access request failed: Photo ${photoId} is not private`)
-      return res.status(400).json({ success: false, error: "Photo is not private" })
+      return res.status(400).json({
+        success: false,
+        error: "Photo is not private",
+      })
     }
-    const permission = await PhotoPermission.findOneAndUpdate(
-      { photo: photoId, requestedBy: req.user._id },
-      { $setOnInsert: { status: "pending", createdAt: new Date() } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    )
-    if (permission.createdAt && new Date(permission.createdAt).getTime() < Date.now() - 1000) {
-      logger.warn(`Photo access request failed: Request already exists`)
-      return res.status(400).json({ success: false, error: "Permission request already exists" })
+
+    // Check if the user is requesting access to their own photo
+    if (owner._id.toString() === req.user._id.toString()) {
+      logger.warn(`Photo access request failed: User ${req.user._id} trying to request access to their own photo`)
+      return res.status(400).json({
+        success: false,
+        error: "You cannot request access to your own photo",
+      })
     }
-    logger.info(`Photo access request created: ${permission._id}`)
-    res.status(201).json({ success: true, data: permission })
+
+    try {
+      // Check for existing permission request
+      let permission = await PhotoPermission.findOne({
+        photo: photoId,
+        requestedBy: req.user._id,
+      })
+
+      if (permission) {
+        // If request already exists, return success with a message
+        logger.info(`Permission request already exists: ${permission._id}`)
+        return res.status(200).json({
+          success: true,
+          data: permission,
+          message: "Permission request already exists",
+        })
+      }
+
+      // Create new permission request
+      permission = new PhotoPermission({
+        photo: photoId,
+        requestedBy: req.user._id,
+        status: "pending",
+      })
+
+      await permission.save()
+
+      logger.info(`Photo access request created: ${permission._id}`)
+      res.status(201).json({
+        success: true,
+        data: permission,
+      })
+    } catch (error) {
+      logger.error(`Error creating permission request: ${error.message}`)
+
+      // Handle duplicate key error
+      if (error.code === 11000) {
+        // Find the existing permission and return it
+        const existingPermission = await PhotoPermission.findOne({
+          photo: photoId,
+          requestedBy: req.user._id,
+        })
+
+        return res.status(200).json({
+          success: true,
+          data: existingPermission,
+          message: "Permission request already exists",
+        })
+      }
+
+      res.status(500).json({
+        success: false,
+        error: error.message || "Server error while creating permission request",
+      })
+    }
   }),
 )
 
@@ -1091,6 +1221,54 @@ router.put("/settings/privacy", protect, async (req, res) => {
   } catch (err) {
     console.error("Error updating privacy settings:", err)
     res.status(500).json({ success: false, error: "Server error" })
+  }
+})
+
+// Add the following route handler after the existing photo-related routes
+
+// Approve all pending photo access requests
+router.post("/photos/approve-all", protect, async (req, res) => {
+  try {
+    const userId = req.user.id
+
+    // Find all pending photo permission requests for photos owned by this user
+    const pendingRequests = await PhotoPermission.find({
+      photoOwnerId: userId,
+      status: "pending",
+    })
+
+    if (!pendingRequests || pendingRequests.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No pending requests found",
+        approvedCount: 0,
+      })
+    }
+
+    // Update all pending requests to 'approved'
+    const updatePromises = pendingRequests.map((request) => {
+      request.status = "approved"
+      request.updatedAt = Date.now()
+      return request.save()
+    })
+
+    await Promise.all(updatePromises)
+
+    // Log the approval action
+    console.log(`User ${userId} approved ${pendingRequests.length} photo access requests`)
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully approved ${pendingRequests.length} photo access requests`,
+      approvedCount: pendingRequests.length,
+      requests: pendingRequests,
+    })
+  } catch (error) {
+    console.error("Error approving photo requests:", error)
+    return res.status(500).json({
+      success: false,
+      message: "Server error while approving photo requests",
+    })
   }
 })
 

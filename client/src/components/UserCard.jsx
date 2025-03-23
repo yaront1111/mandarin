@@ -1,9 +1,12 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { HeartIcon, ChatBubbleLeftIcon, UserIcon } from "@heroicons/react/24/outline"
 import { HeartIcon as HeartIconSolid } from "@heroicons/react/24/solid"
+
+// Import the normalizePhotoUrl utility
+import { normalizePhotoUrl } from "../utils/index.js"
 
 /**
  * Enhanced UserCard component with proper server integration
@@ -17,38 +20,29 @@ const UserCard = ({ user, onLike, viewMode = "grid", onMessage }) => {
 
   if (!user) return null
 
-  // Format profile photo URL to handle both local and server paths
-  const getProfilePhotoUrl = useCallback(() => {
+  // Replace the getProfilePhotoUrl function with this improved version
+  const getProfilePhotoUrlRef = useRef(() => {
     if (!user || !user.photos || !user.photos.length) {
       return "/placeholder.svg"
     }
 
     const photoUrl = user.photos[0].url || user.profilePhoto
+    return normalizePhotoUrl(photoUrl)
+  })
 
-    // If it's already a full URL, return it
-    if (photoUrl && photoUrl.startsWith("http")) {
-      return photoUrl
+  // Update the ref whenever the user object changes
+  useCallback(() => {
+    getProfilePhotoUrlRef.current = () => {
+      if (!user || !user.photos || !user.photos.length) {
+        return "/placeholder.svg"
+      }
+
+      const photoUrl = user.photos[0].url || user.profilePhoto
+      return normalizePhotoUrl(photoUrl)
     }
-
-    // If it's a path that starts with /api/, keep it as is
-    if (photoUrl && photoUrl.startsWith("/api/")) {
-      return photoUrl
-    }
-
-    // For uploads, ensure proper path structure
-    if (photoUrl && photoUrl.startsWith("/uploads/")) {
-      // Ensure no double slashes by removing potential duplicates
-      return photoUrl.replace(/\/+/g, '/')
-    }
-
-    // For server-side photo paths to match client expectations
-    if (photoUrl && (photoUrl.includes("/images/") || photoUrl.includes("/photos/"))) {
-      // Ensure it starts with /uploads/ if it doesn't already
-      return photoUrl.startsWith("/uploads") ? photoUrl : `/uploads${photoUrl.startsWith("/") ? "" : "/"}${photoUrl}`
-    }
-
-    return photoUrl || "/placeholder.svg"
   }, [user])
+
+  const getProfilePhotoUrl = getProfilePhotoUrlRef.current
 
   const handleCardClick = () => {
     navigate(`/user/${user._id}`)
@@ -101,7 +95,7 @@ const UserCard = ({ user, onLike, viewMode = "grid", onMessage }) => {
 
           {!imageError ? (
             <img
-              src={getProfilePhotoUrl()}
+              src={getProfilePhotoUrl() || "/placeholder.svg"}
               alt={`${user.nickname || "User"}'s profile`}
               className="w-full h-full object-cover transition-all duration-500"
               style={{
@@ -255,7 +249,7 @@ const UserCard = ({ user, onLike, viewMode = "grid", onMessage }) => {
 
           {!imageError ? (
             <img
-              src={getProfilePhotoUrl()}
+              src={getProfilePhotoUrl() || "/placeholder.svg"}
               alt={`${user.nickname || "User"}'s profile`}
               className="w-full h-full object-cover transition-all duration-500"
               style={{

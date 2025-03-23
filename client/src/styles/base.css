@@ -123,6 +123,13 @@
   --text-disabled: #a0a0a0;
   --bg-input: var(--white);
   --primary-rgb: 255, 51, 102;
+
+  /* Add notification color variables */
+  --color-heart: #ff4b4b;
+  --color-comment: #4b7bff;
+  --color-story: #ff9f4b;
+  --color-call: #4bff7b;
+  --bg-unread: rgba(0, 123, 255, 0.05);
 }
 
 /* Dark mode variables */
@@ -184,6 +191,9 @@
   --bg-danger: rgba(239, 71, 111, 0.2);
   --text-disabled: #666666;
   --bg-input: var(--dark);
+
+  /* Add these lines to your existing dark mode variables */
+  --bg-unread: rgba(0, 123, 255, 0.1);
 }
 
 /* Reset and base styles */

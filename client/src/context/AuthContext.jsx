@@ -172,21 +172,50 @@ export const AuthProvider = ({ children }) => {
   const register = useCallback(async (userData) => {
     setLoading(true)
     setError(null)
+
     try {
       const response = await authApiService.register(userData)
+
       if (response.success) {
-        toast.success("Registration successful! Please check your email to verify your account.")
-        return response
+        setToken(response.token)
+        setUser(response.user)
+        setIsAuthenticated(true)
+        setLoading(false)
+        return true
       } else {
-        throw new Error(response.error || "Registration failed")
+        setError(response.error || "Registration failed")
+        setLoading(false)
+        return false
       }
     } catch (err) {
-      const errorMessage = err.error || err.message || "Registration failed"
-      setError(errorMessage)
-      toast.error(errorMessage)
-      throw err
-    } finally {
+      console.error("Registration error:", err)
+
+      // Handle specific validation errors
+      if (err.response && err.response.data) {
+        if (err.response.data.error) {
+          const errorMessage = err.response.data.error
+          setError(errorMessage)
+
+          // Throw a more specific error for the component to handle
+          throw new Error(errorMessage)
+        } else if (err.response.data.errors && err.response.data.errors.length > 0) {
+          // If there are multiple errors, show the first one
+          const errorMessage = err.response.data.errors[0].msg
+          setError(errorMessage)
+          throw new Error(errorMessage)
+        } else {
+          const errorMessage = "Registration failed. Please check your information and try again."
+          setError(errorMessage)
+          throw new Error(errorMessage)
+        }
+      } else {
+        const errorMessage = "Network error. Please check your connection and try again."
+        setError(errorMessage)
+        throw new Error(errorMessage)
+      }
+
       setLoading(false)
+      return false
     }
   }, [])
 

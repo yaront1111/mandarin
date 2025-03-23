@@ -16,11 +16,13 @@ export const Navbar = () => {
   const [unreadCount, setUnreadCount] = useState(0)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showUserDropdown, setShowUserDropdown] = useState(false)
+  const [notificationPulse, setNotificationPulse] = useState(false)
 
   // Refs for dropdown elements
   const notificationDropdownRef = useRef(null)
   const userDropdownRef = useRef(null)
   const notificationButtonRef = useRef(null)
+  const testButtonRef = useRef(null)
 
   // Update unread count when notifications change
   useEffect(() => {
@@ -128,14 +130,12 @@ export const Navbar = () => {
       )
     }
     if (notifications.length === 0) {
-      return (
-        <div className="notification-empty">No notifications yet</div>
-      )
+      return <div className="notification-empty">No notifications yet</div>
     }
     return notifications.map((notification) => (
       <div
         key={notification._id}
-        className={`notification-item ${!notification.read ? 'unread' : ''}`}
+        className={`notification-item ${!notification.read ? "unread" : ""}`}
         onClick={() => handleNotificationClick(notification)}
       >
         <div className="notification-icon">
@@ -143,9 +143,7 @@ export const Navbar = () => {
         </div>
         <div className="notification-content">
           <div className="notification-title">{notification.message}</div>
-          <div className="notification-time">
-            {new Date(notification.createdAt).toLocaleTimeString()}
-          </div>
+          <div className="notification-time">{new Date(notification.createdAt).toLocaleTimeString()}</div>
         </div>
       </div>
     ))
@@ -153,6 +151,7 @@ export const Navbar = () => {
 
   // Add a test notification
   const addTestNotification = () => {
+    console.log("Adding test notification")
     const newNotification = {
       _id: Date.now().toString(),
       type: "message",
@@ -162,6 +161,11 @@ export const Navbar = () => {
       data: { conversationId: "test" },
     }
     setNotifications((prev) => [newNotification, ...prev])
+
+    // Add pulse animation to notification bell
+    setNotificationPulse(true)
+    setTimeout(() => setNotificationPulse(false), 2000)
+
     toast.info("Test notification added")
   }
 
@@ -196,8 +200,16 @@ export const Navbar = () => {
 
           {/* Test button to add a notification */}
           <button
+            ref={testButtonRef}
             onClick={addTestNotification}
             className="header-action-button"
+            aria-label="Add Test Notification"
+            style={{
+              position: "relative",
+              zIndex: 101,
+              cursor: "pointer",
+              pointerEvents: "auto",
+            }}
           >
             Add Test
           </button>
@@ -209,28 +221,20 @@ export const Navbar = () => {
                   ref={notificationButtonRef}
                   onClick={toggleNotificationDropdown}
                   aria-label="Notifications"
-                  className="notification-button"
+                  className={`notification-button ${notificationPulse ? "notification-pulse" : ""}`}
                 >
                   <FaBell size={20} />
                   {unreadCount > 0 && (
-                    <span className="notification-badge">
-                      {unreadCount > 9 ? "9+" : unreadCount}
-                    </span>
+                    <span className="notification-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
                   )}
                 </button>
 
                 {showNotifications && (
-                  <div
-                    ref={notificationDropdownRef}
-                    className="notification-dropdown"
-                  >
+                  <div ref={notificationDropdownRef} className="notification-dropdown">
                     <div className="notification-header">
                       <span>Notifications</span>
                       {unreadCount > 0 && (
-                        <span
-                          className="notification-header-action"
-                          onClick={markAllAsRead}
-                        >
+                        <span className="notification-header-action" onClick={markAllAsRead}>
                           Mark all as read
                         </span>
                       )}
@@ -247,7 +251,7 @@ export const Navbar = () => {
                       src={user.photos[0].url || "/placeholder.svg?height=32&width=32"}
                       alt={user.nickname}
                       className="user-avatar"
-                      style={{width: "32px", height: "32px"}}
+                      style={{ width: "32px", height: "32px" }}
                       onClick={toggleUserDropdown}
                     />
                   ) : (
@@ -262,27 +266,18 @@ export const Navbar = () => {
                   )}
 
                   {showUserDropdown && (
-                    <div
-                      ref={userDropdownRef}
-                      className="user-dropdown"
-                    >
-                      <div
-                        className="user-dropdown-item"
-                        onClick={navigateToProfile}
-                      >
+                    <div ref={userDropdownRef} className="user-dropdown">
+                      <div className="user-dropdown-item" onClick={navigateToProfile}>
                         Profile
                       </div>
-                      <div
-                        className="user-dropdown-item"
-                        onClick={() => navigate("/settings")}
-                      >
+                      <div className="user-dropdown-item" onClick={() => navigate("/settings")}>
                         Settings
                       </div>
+                      <div className="user-dropdown-item" onClick={() => navigate("/subscription")}>
+                        Subscription
+                      </div>
                       <div className="user-dropdown-divider"></div>
-                      <div
-                        className="user-dropdown-item danger"
-                        onClick={handleLogout}
-                      >
+                      <div className="user-dropdown-item danger" onClick={handleLogout}>
                         Logout
                       </div>
                     </div>

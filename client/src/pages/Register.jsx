@@ -1,6 +1,5 @@
 "use client"
 
-// client/src/pages/Register.js
 import { useState, useEffect, useCallback } from "react"
 import { Link, useNavigate, useLocation } from "react-router-dom"
 import {
@@ -9,20 +8,18 @@ import {
   FaLock,
   FaEye,
   FaEyeSlash,
-  FaBirthdayCake,
   FaMapMarkerAlt,
-  FaMars,
-  FaVenus,
-  FaGenderless,
   FaCheck,
   FaArrowRight,
   FaArrowLeft,
   FaGoogle,
   FaFacebook,
   FaExclamationTriangle,
+  FaCalendarAlt,
 } from "react-icons/fa"
 import { useAuth } from "../context"
 import { toast } from "react-toastify"
+import "../styles/registration.css"
 
 const Register = () => {
   const [currentStep, setCurrentStep] = useState(1)
@@ -31,8 +28,7 @@ const Register = () => {
     email: "",
     password: "",
     confirmPassword: "",
-    age: "",
-    gender: "",
+    dateOfBirth: "", // Changed from age to dateOfBirth
     location: "",
     interests: [],
     lookingFor: [],
@@ -43,6 +39,7 @@ const Register = () => {
     iAm: "",
     intoTags: [],
     turnOns: [],
+    maritalStatus: "",
   })
   const [showPassword, setShowPassword] = useState(false)
   const [formErrors, setFormErrors] = useState({})
@@ -50,6 +47,7 @@ const Register = () => {
   // Track if a submission has been attempted to improve validation UX
   const [attemptedSubmit, setAttemptedSubmit] = useState(false)
   const [errors, setErrors] = useState({})
+  const [locationSuggestions, setLocationSuggestions] = useState([])
 
   const { register, error, isAuthenticated } = useAuth()
   const navigate = useNavigate()
@@ -85,10 +83,7 @@ const Register = () => {
   ]
 
   // Add these new constants for the additional preference options
-  // Add after the relationshipGoals array (around line 60)
-
   const iAmOptions = ["woman", "man", "couple"]
-
   const lookingForOptions = ["women", "men", "couples"]
 
   const intoTagsOptions = [
@@ -142,6 +137,58 @@ const Register = () => {
     "Pushing boundaries",
   ]
 
+  // Add marital status options
+  const maritalStatusOptions = [
+    "Single",
+    "Married",
+    "Divorced",
+    "Separated",
+    "Widowed",
+    "In a relationship",
+    "It's complicated",
+    "Open relationship",
+    "Polyamorous",
+  ]
+
+  // Common locations in Israel for the datalist
+  const commonLocations = [
+    "Tel Aviv, Israel",
+    "Jerusalem, Israel",
+    "Haifa, Israel",
+    "Eilat, Israel",
+    "Beer Sheva, Israel",
+    "Netanya, Israel",
+    "Herzliya, Israel",
+    "Ashdod, Israel",
+    "Ashkelon, Israel",
+    "Tiberias, Israel",
+    "Ramat Gan, Israel",
+    "Rishon LeZion, Israel",
+    "Petah Tikva, Israel",
+    "Holon, Israel",
+    "Bat Yam, Israel",
+    "Rehovot, Israel",
+    "Kfar Saba, Israel",
+    "Raanana, Israel",
+    "Nahariya, Israel",
+    "Acre, Israel",
+  ]
+
+  // Calculate age from date of birth
+  const calculateAge = (dob) => {
+    if (!dob) return 0
+    const birthDate = new Date(dob)
+    const today = new Date()
+    let age = today.getFullYear() - birthDate.getFullYear()
+    const monthDiff = today.getMonth() - birthDate.getMonth()
+
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--
+    }
+
+    return age
+  }
+
   // Handle initial state
   useEffect(() => {
     // If user is already authenticated, redirect to dashboard
@@ -154,8 +201,6 @@ const Register = () => {
       setFormData((prev) => ({ ...prev, email: location.state.email }))
     }
 
-    // No need to explicitly clear errors here
-
     // Clean up form on unmount
     return () => {
       setFormData({
@@ -163,8 +208,7 @@ const Register = () => {
         email: "",
         password: "",
         confirmPassword: "",
-        age: "",
-        gender: "",
+        dateOfBirth: "",
         location: "",
         interests: [],
         lookingFor: [],
@@ -174,6 +218,7 @@ const Register = () => {
         iAm: "",
         intoTags: [],
         turnOns: [],
+        maritalStatus: "",
       })
     }
   }, [isAuthenticated, navigate, location.state?.email])
@@ -220,13 +265,19 @@ const Register = () => {
           errors.email = "Please enter a valid email address"
         }
 
-        // Password validation with more robust requirements
+        // Password validation with more robust requirements to match backend
         if (!formData.password) {
           errors.password = "Password is required"
-        } else if (formData.password.length < 6) {
-          errors.password = "Password must be at least 6 characters"
-        } else if (formData.password.length > 100) {
-          errors.password = "Password cannot exceed 100 characters"
+        } else if (formData.password.length < 8) {
+          errors.password = "Password must be at least 8 characters"
+        } else if (!/(?=.*[a-z])/.test(formData.password)) {
+          errors.password = "Password must include at least one lowercase letter"
+        } else if (!/(?=.*[A-Z])/.test(formData.password)) {
+          errors.password = "Password must include at least one uppercase letter"
+        } else if (!/(?=.*\d)/.test(formData.password)) {
+          errors.password = "Password must include at least one number"
+        } else if (!/(?=.*[@$!%*?&])/.test(formData.password)) {
+          errors.password = "Password must include at least one special character (@$!%*?&)"
         }
 
         // Password confirmation
@@ -236,23 +287,21 @@ const Register = () => {
       }
 
       if (step === 2) {
-        // Age validation
-        if (!formData.age) {
-          errors.age = "Age is required"
+        // Date of Birth validation
+        if (!formData.dateOfBirth) {
+          errors.dateOfBirth = "Date of birth is required"
         } else {
-          const ageValue = Number.parseInt(formData.age)
-          if (isNaN(ageValue)) {
-            errors.age = "Please enter a valid number"
-          } else if (ageValue < 18) {
-            errors.age = "You must be at least 18 years old"
-          } else if (ageValue > 120) {
-            errors.age = "Please enter a valid age"
+          const age = calculateAge(formData.dateOfBirth)
+          if (age < 18) {
+            errors.dateOfBirth = "You must be at least 18 years old"
+          } else if (age > 120) {
+            errors.dateOfBirth = "Please enter a valid date of birth"
           }
         }
 
-        // Gender validation
-        if (!formData.gender) {
-          errors.gender = "Gender is required"
+        // I am validation (moved from step 3)
+        if (!formData.iAm) {
+          errors.iAm = "Please select who you are"
         }
 
         // Location validation
@@ -266,11 +315,9 @@ const Register = () => {
       }
 
       if (step === 3) {
-        // Existing validation code...
-
-        // Add validation for iAm
-        if (!formData.iAm) {
-          errors.iAm = "Please select who you are"
+        // Add validation for marital status
+        if (!formData.maritalStatus) {
+          errors.maritalStatus = "Please select your marital status"
         }
 
         // Add validation for lookingFor
@@ -280,7 +327,7 @@ const Register = () => {
           errors.lookingFor = "Please select no more than 3 options"
         }
 
-        // We won't make intoTags and turnOns required, but we'll validate the count
+        // Validate the count of intoTags and turnOns
         if (formData.intoTags.length > 20) {
           errors.intoTags = "Please select no more than 20 'I'm into' tags"
         }
@@ -321,7 +368,6 @@ const Register = () => {
     }
     // For number inputs, ensure valid numbers
     else if (type === "number") {
-      // Allow empty string or valid numbers
       if (value === "" || !isNaN(Number.parseInt(value))) {
         setFormData({ ...formData, [name]: value })
       }
@@ -337,6 +383,23 @@ const Register = () => {
     }
   }
 
+  // Handle location input change with suggestions
+  const handleLocationChange = (e) => {
+    const value = e.target.value
+    setFormData({ ...formData, location: value })
+
+    if (formErrors.location) {
+      setFormErrors({ ...formErrors, location: "" })
+    }
+
+    if (value.length > 1) {
+      const filtered = commonLocations.filter((loc) => loc.toLowerCase().includes(value.toLowerCase()))
+      setLocationSuggestions(filtered)
+    } else {
+      setLocationSuggestions([])
+    }
+  }
+
   // Validate current step and move to next if valid
   const handleNextStep = () => {
     setAttemptedSubmit(true)
@@ -345,7 +408,6 @@ const Register = () => {
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors)
 
-      // Scroll to first error
       const firstErrorElement = document.querySelector(".error-message")
       if (firstErrorElement) {
         firstErrorElement.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -354,12 +416,10 @@ const Register = () => {
       return
     }
 
-    // Clear errors and move to next step
     setFormErrors({})
     setCurrentStep(currentStep + 1)
     setAttemptedSubmit(false)
 
-    // Scroll to top of form
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
@@ -369,7 +429,6 @@ const Register = () => {
     setFormErrors({})
     setAttemptedSubmit(false)
 
-    // Scroll to top of form
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
@@ -378,10 +437,8 @@ const Register = () => {
     let updatedInterests
 
     if (formData.interests.includes(interest)) {
-      // Remove interest if already selected
       updatedInterests = formData.interests.filter((i) => i !== interest)
     } else {
-      // Add interest if not already selected
       updatedInterests = [...formData.interests, interest]
     }
 
@@ -390,7 +447,6 @@ const Register = () => {
       interests: updatedInterests,
     })
 
-    // Clear interests error if now valid
     if (formErrors.interests && updatedInterests.length > 0) {
       setFormErrors({ ...formErrors, interests: "" })
     }
@@ -401,10 +457,8 @@ const Register = () => {
     let updatedGoals
 
     if (formData.lookingFor.includes(goal)) {
-      // Remove goal if already selected
       updatedGoals = formData.lookingFor.filter((g) => g !== goal)
     } else {
-      // Add goal if not already selected
       updatedGoals = [...formData.lookingFor, goal]
     }
 
@@ -413,36 +467,30 @@ const Register = () => {
       lookingFor: updatedGoals,
     })
 
-    // Clear lookingFor error if now valid
     if (formErrors.lookingFor && updatedGoals.length > 0) {
       setFormErrors({ ...formErrors, lookingFor: "" })
     }
   }
 
-  // Add a new function to toggle the iAm selection
-  // Add after the toggleGoal function (around line 230)
+  // Toggle "I am" selection
   const handleIAmSelection = (option) => {
     setFormData({
       ...formData,
       iAm: formData.iAm === option ? "" : option,
     })
 
-    // Clear iAm error if now valid
     if (formErrors.iAm && option) {
       setFormErrors({ ...formErrors, iAm: "" })
     }
   }
 
-  // Add functions to toggle the new tag selections
-  // Add after the toggleGoal function
+  // Toggle "I'm into" tag selection
   const toggleIntoTag = (tag) => {
     let updatedTags
 
     if (formData.intoTags.includes(tag)) {
-      // Remove tag if already selected
       updatedTags = formData.intoTags.filter((t) => t !== tag)
     } else {
-      // Add tag if not already selected and under limit
       if (formData.intoTags.length >= 20) {
         toast.warning("You can select up to 20 'I'm into' tags")
         return
@@ -455,20 +503,18 @@ const Register = () => {
       intoTags: updatedTags,
     })
 
-    // Clear intoTags error if now valid
     if (formErrors.intoTags && updatedTags.length > 0) {
       setFormErrors({ ...formErrors, intoTags: "" })
     }
   }
 
+  // Toggle "Turn on" tag selection
   const toggleTurnOn = (tag) => {
     let updatedTags
 
     if (formData.turnOns.includes(tag)) {
-      // Remove tag if already selected
       updatedTags = formData.turnOns.filter((t) => t !== tag)
     } else {
-      // Add tag if not already selected and under limit
       if (formData.turnOns.length >= 20) {
         toast.warning("You can select up to 20 'Turn ons' tags")
         return
@@ -481,15 +527,26 @@ const Register = () => {
       turnOns: updatedTags,
     })
 
-    // Clear turnOns error if now valid
     if (formErrors.turnOns && updatedTags.length > 0) {
       setFormErrors({ ...formErrors, turnOns: "" })
     }
   }
 
+  // Handle marital status selection
+  const handleMaritalStatusChange = (e) => {
+    setFormData({
+      ...formData,
+      maritalStatus: e.target.value,
+    })
+
+    if (formErrors.maritalStatus) {
+      setFormErrors({ ...formErrors, maritalStatus: "" })
+    }
+  }
+
   const validateForm = useCallback(() => {
     const errors = {}
-    // Add your validation logic here, accessing formData
+    // Add your validation logic here if needed
     return errors
   }, [formData])
 
@@ -508,28 +565,34 @@ const Register = () => {
     setErrors({})
     setIsSubmitting(true)
     try {
-      // Determine account tier based on gender
+      // Map iAm to proper gender format
+      let gender = ""
+      if (formData.iAm.toLowerCase() === "woman") {
+        gender = "female"
+      } else if (formData.iAm.toLowerCase() === "man") {
+        gender = "male"
+      } else if (formData.iAm.toLowerCase() === "couple") {
+        gender = "other" // Using "other" for couples
+      }
+
+      // Determine account tier based on gender and couple status
       let accountTier = "FREE"
-      if (formData.gender.toLowerCase() === "female") {
+      const isCouple = formData.iAm.toLowerCase() === "couple"
+      if (formData.iAm.toLowerCase() === "woman") {
         accountTier = "FEMALE"
+      } else if (isCouple) {
+        accountTier = "COUPLE"
       }
 
       const submissionData = {
         nickname: formData.nickname.trim(),
         email: formData.email.trim().toLowerCase(),
         password: formData.password,
-        age: formData.age,
-        gender: formData.gender.toLowerCase(),
-        location: formData.location.trim(),
-        interests: formData.interests,
-        lookingFor: formData.lookingFor,
-        agreeTerms: formData.agreeTerms,
-        agreePrivacy: formData.agreePrivacy,
-        newsletter: formData.newsletter,
-        // Add new fields
+        accountTier,
+        isCouple,
         details: {
-          age: formData.age,
-          gender: formData.gender.toLowerCase(),
+          age: calculateAge(formData.dateOfBirth),
+          gender,
           location: formData.location.trim(),
           bio: "",
           interests: formData.interests,
@@ -537,26 +600,48 @@ const Register = () => {
           lookingFor: formData.lookingFor,
           intoTags: formData.intoTags,
           turnOns: formData.turnOns,
+          maritalStatus: formData.maritalStatus,
+          dateOfBirth: formData.dateOfBirth,
         },
       }
 
-      const success = await register(submissionData)
+      try {
+        const success = await register(submissionData)
+        if (success) {
+          toast.success("Welcome to Mandarin! Your account has been created successfully.")
+          navigate("/dashboard")
+        }
+      } catch (err) {
+        if (err.message === "User already exists") {
+          setFormErrors({
+            email: "This email is already registered. Please log in or use a different email.",
+            general: "An account with this email already exists. Would you like to log in instead?",
+          })
 
-      if (success) {
-        toast.success("Welcome to Mandarin! Your account has been created successfully.")
-        navigate("/dashboard")
+          // Scroll to the error message
+          const errorElement = document.querySelector(".error-message")
+          if (errorElement) {
+            errorElement.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+        } else {
+          setFormErrors((prev) => ({
+            ...prev,
+            general: err.message || "An unexpected error occurred. Please try again.",
+          }))
+        }
       }
     } catch (err) {
       console.error("Registration error", err)
       setIsSubmitting(false)
 
-      // Fallback error handling
       if (!formErrors.general) {
         setFormErrors((prev) => ({
           ...prev,
           general: "An unexpected error occurred. Please try again.",
         }))
       }
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -565,7 +650,7 @@ const Register = () => {
     setShowPassword(!showPassword)
   }
 
-  // Render progress indicator
+  // Render progress indicator with three steps
   const renderProgress = () => (
     <div className="registration-progress">
       <div className="progress-steps d-flex justify-content-center align-items-center">
@@ -580,7 +665,7 @@ const Register = () => {
         </div>
         <div className="progress-line"></div>
         <div className={`progress-step ${currentStep >= 3 ? "active" : ""}`}>
-          <div className="step-circle">3</div>
+          <div className="step-circle">{currentStep > 3 ? <FaCheck /> : 3}</div>
           <span className="step-label">Preferences</span>
         </div>
       </div>
@@ -684,7 +769,7 @@ const Register = () => {
           </p>
         ) : (
           <small id="password-help" className="form-text text-muted">
-            Must be at least 6 characters
+            Must be at least 8 characters with uppercase, lowercase, number, and special character
           </small>
         )}
       </div>
@@ -727,131 +812,32 @@ const Register = () => {
         <p className="text-light">Add some basic profile details</p>
       </div>
       <div className="form-group">
-        <label className="form-label" htmlFor="age">
-          Age
+        <label className="form-label" htmlFor="dateOfBirth">
+          Date of Birth
         </label>
         <div className="input-with-icon">
-          <FaBirthdayCake className="field-icon" />
+          <FaCalendarAlt className="field-icon" />
           <input
-            type="number"
-            id="age"
-            name="age"
-            placeholder="Enter your age"
-            className={`form-control ${formErrors.age ? "border-danger" : ""}`}
-            min="18"
-            max="120"
-            value={formData.age}
+            type="date"
+            id="dateOfBirth"
+            name="dateOfBirth"
+            className={`form-control ${formErrors.dateOfBirth ? "border-danger" : ""}`}
+            value={formData.dateOfBirth}
             onChange={handleChange}
-            aria-describedby="age-help"
+            max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split("T")[0]}
+            aria-describedby="dob-help"
           />
         </div>
-        {formErrors.age ? (
+        {formErrors.dateOfBirth ? (
           <p className="error-message text-danger">
             <FaExclamationTriangle className="me-1" />
-            {formErrors.age}
+            {formErrors.dateOfBirth}
           </p>
         ) : (
-          <small id="age-help" className="form-text text-muted">
+          <small id="dob-help" className="form-text text-muted">
             You must be at least 18 years old to use this service
           </small>
         )}
-      </div>
-      <div className="form-group">
-        <label className="form-label">Gender</label>
-        <div className="d-flex gap-2">
-          <label
-            className={`gender-option ${formData.gender === "Male" ? "selected" : ""} ${formErrors.gender ? "error" : ""}`}
-          >
-            <input
-              type="radio"
-              name="gender"
-              value="Male"
-              checked={formData.gender === "Male"}
-              onChange={handleChange}
-            />
-            <FaMars />
-            <span>Male</span>
-          </label>
-          <label
-            className={`gender-option ${formData.gender === "Female" ? "selected" : ""} ${formErrors.gender ? "error" : ""}`}
-          >
-            <input
-              type="radio"
-              name="gender"
-              value="Female"
-              checked={formData.gender === "Female"}
-              onChange={handleChange}
-            />
-            <FaVenus />
-            <span>Female</span>
-          </label>
-          <label
-            className={`gender-option ${formData.gender === "Other" ? "selected" : ""} ${formErrors.gender ? "error" : ""}`}
-          >
-            <input
-              type="radio"
-              name="gender"
-              value="Other"
-              checked={formData.gender === "Other"}
-              onChange={handleChange}
-            />
-            <FaGenderless />
-            <span>Other</span>
-          </label>
-        </div>
-        {formErrors.gender && (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
-            {formErrors.gender}
-          </p>
-        )}
-      </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="location">
-          Location
-        </label>
-        <div className="input-with-icon">
-          <FaMapMarkerAlt className="field-icon" />
-          <input
-            type="text"
-            id="location"
-            name="location"
-            placeholder="City, Country"
-            className={`form-control ${formErrors.location ? "border-danger" : ""}`}
-            value={formData.location}
-            onChange={handleChange}
-            maxLength={100}
-            aria-describedby="location-help"
-          />
-        </div>
-        {formErrors.location ? (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
-            {formErrors.location}
-          </p>
-        ) : (
-          <small id="location-help" className="form-text text-muted">
-            Your general location (e.g., New York, USA)
-          </small>
-        )}
-      </div>
-      <div className="form-actions d-flex justify-content-between mt-3">
-        <button type="button" className="btn btn-outline" onClick={handlePrevStep}>
-          <FaArrowLeft /> Back
-        </button>
-        <button type="button" className="btn btn-primary" onClick={handleNextStep} disabled={isSubmitting}>
-          Continue <FaArrowRight />
-        </button>
-      </div>
-    </>
-  )
-
-  // Render step 3 content (Preferences)
-  const renderStep3 = () => (
-    <>
-      <div className="step-header text-center">
-        <h3>Your Preferences</h3>
-        <p className="text-light">Tell us about yourself and what you're looking for</p>
       </div>
 
       <div className="form-group">
@@ -875,6 +861,83 @@ const Register = () => {
           <p className="error-message text-danger">
             <FaExclamationTriangle className="me-1" />
             {formErrors.iAm}
+          </p>
+        )}
+      </div>
+
+      <div className="form-group">
+        <label className="form-label" htmlFor="location">
+          Location
+        </label>
+        <div className="input-with-icon">
+          <FaMapMarkerAlt className="field-icon" />
+          <input
+            type="text"
+            id="location"
+            name="location"
+            placeholder="City, Country"
+            className={`form-control ${formErrors.location ? "border-danger" : ""}`}
+            value={formData.location}
+            onChange={handleLocationChange}
+            maxLength={100}
+            aria-describedby="location-help"
+            list="location-suggestions"
+          />
+          <datalist id="location-suggestions">
+            {commonLocations.map((loc, index) => (
+              <option key={index} value={loc} />
+            ))}
+          </datalist>
+        </div>
+        {formErrors.location ? (
+          <p className="error-message text-danger">
+            <FaExclamationTriangle className="me-1" />
+            {formErrors.location}
+          </p>
+        ) : (
+          <small id="location-help" className="form-text text-muted">
+            Your general location (e.g., Tel Aviv, Israel)
+          </small>
+        )}
+      </div>
+      <div className="form-actions d-flex justify-content-between mt-3">
+        <button type="button" className="btn btn-outline" onClick={handlePrevStep}>
+          <FaArrowLeft /> Back
+        </button>
+        <button type="button" className="btn btn-primary" onClick={handleNextStep} disabled={isSubmitting}>
+          Continue <FaArrowRight />
+        </button>
+      </div>
+    </>
+  )
+
+  // Render step 3 content (Preferences)
+  const renderStep3 = () => (
+    <>
+      <div className="step-header text-center">
+        <h3>Your Preferences</h3>
+        <p className="text-light">Tell us about yourself and what you're looking for</p>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Marital Status</label>
+        <select
+          className={`form-control ${formErrors.maritalStatus ? "border-danger" : ""}`}
+          name="maritalStatus"
+          value={formData.maritalStatus}
+          onChange={handleMaritalStatusChange}
+        >
+          <option value="">Select your status</option>
+          {maritalStatusOptions.map((status) => (
+            <option key={status} value={status}>
+              {status}
+            </option>
+          ))}
+        </select>
+        {formErrors.maritalStatus && (
+          <p className="error-message text-danger">
+            <FaExclamationTriangle className="me-1" />
+            {formErrors.maritalStatus}
           </p>
         )}
       </div>

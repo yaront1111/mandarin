@@ -38,6 +38,9 @@ import StoryThumbnail from "../components/Stories/StoryThumbnail"
 import { toast } from "react-toastify"
 import apiService from "../services/apiService.jsx"
 
+// Import the normalizePhotoUrl utility
+import { normalizePhotoUrl } from "../utils/index.js"
+
 const UserProfile = () => {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -76,6 +79,15 @@ const UserProfile = () => {
   const isOwnProfile = currentUser && profileUser && currentUser._id === profileUser._id
 
   // Load user data
+  // Add a mounted ref to prevent state updates after component unmount
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
+  // Update the useEffect to use the mounted ref
   useEffect(() => {
     if (id) {
       getUser(id)
@@ -84,7 +96,7 @@ const UserProfile = () => {
       try {
         loadUserStories?.(id)
           .then((stories) => {
-            if (stories && Array.isArray(stories)) {
+            if (isMountedRef.current && stories && Array.isArray(stories)) {
               setUserStories(stories)
             }
           })
@@ -216,9 +228,10 @@ const UserProfile = () => {
   }
 
   // Improved handleRequestAccess function to handle multiple photo requests
+  // Fix the handleRequestAccess function to properly handle API responses and prevent race conditions
   const handleRequestAccess = async (photoId, e) => {
     if (e) e.stopPropagation()
-    if (!profileUser) return
+    if (!profileUser || !photoId) return
 
     // Set loading state for this specific photo
     setLoadingPermissions((prev) => ({
@@ -240,17 +253,15 @@ const UserProfile = () => {
         }))
 
         toast.success("Photo access requested")
-      } else {
+      } else if (response.message && response.message.includes("already exists")) {
         // If there's an error but it's just that the request already exists
-        if (response.message && response.message.includes("already exists")) {
-          setPermissionStatus((prev) => ({
-            ...prev,
-            [photoId]: "pending",
-          }))
-          toast.info("Access request already sent for this photo")
-        } else {
-          throw new Error(response.error || "Failed to request access")
-        }
+        setPermissionStatus((prev) => ({
+          ...prev,
+          [photoId]: "pending",
+        }))
+        toast.info("Access request already sent for this photo")
+      } else {
+        throw new Error(response.error || "Failed to request access")
       }
     } catch (error) {
       console.error("Error requesting photo access:", error)
@@ -278,6 +289,7 @@ const UserProfile = () => {
   }
 
   // Improved fetchPhotoPermissions function
+  // Fix the fetchPhotoPermissions function to handle errors properly
   const fetchPhotoPermissions = async () => {
     if (!id) return
 
@@ -290,7 +302,6 @@ const UserProfile = () => {
         })
 
         setPermissionStatus(statusMap)
-        console.log("Updated permission statuses:", statusMap)
       } else {
         console.error("Error fetching permissions:", response.error)
       }
@@ -300,6 +311,7 @@ const UserProfile = () => {
   }
 
   // Handle image loading errors
+  // Fix the handleImageError function to properly handle image loading errors
   const handleImageError = useCallback((photoId) => {
     setPhotoLoadError((prev) => ({
       ...prev,
@@ -433,6 +445,7 @@ const UserProfile = () => {
     profileUser.details?.interests?.filter((interest) => currentUser.details?.interests?.includes(interest)) || []
 
   // Request access to all private photos at once
+  // Fix the handleRequestAccessToAllPhotos function to handle errors properly
   const handleRequestAccessToAllPhotos = async () => {
     if (!profileUser || !profileUser.photos) return
 
@@ -570,7 +583,7 @@ const UserProfile = () => {
                     </div>
                   ) : (
                     <img
-                      src={profileUser.photos[activePhotoIndex].url || "/placeholder.svg"}
+                      src={normalizePhotoUrl(profileUser.photos[activePhotoIndex].url) || "/placeholder.svg"}
                       alt={profileUser.nickname}
                       onError={() => handleImageError(profileUser.photos[activePhotoIndex]._id)}
                       style={{ display: photoLoadError[profileUser.photos[activePhotoIndex]._id] ? "none" : "block" }}
@@ -624,7 +637,7 @@ const UserProfile = () => {
                           </div>
                         ) : (
                           <img
-                            src={photo.url || "/placeholder.svg"}
+                            src={normalizePhotoUrl(photo.url) || "/placeholder.svg"}
                             alt={`${profileUser.nickname} ${index + 1}`}
                             onError={() => handleImageError(photo._id)}
                             style={{ display: photoLoadError[photo._id] ? "none" : "block" }}
@@ -750,7 +763,7 @@ const UserProfile = () => {
                         <div className="request-user-photo">
                           {item.user.photos && item.user.photos.length > 0 ? (
                             <img
-                              src={item.user.photos[0].url || "/placeholder.svg"}
+                              src={normalizePhotoUrl(item.user.photos[0].url) || "/placeholder.svg"}
                               alt={item.user.nickname}
                               onError={(e) => {
                                 e.target.onerror = null

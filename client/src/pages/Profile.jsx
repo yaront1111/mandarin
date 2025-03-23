@@ -20,6 +20,9 @@ import {
 } from "react-icons/fa"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
 
+// Import the normalizePhotoUrl utility
+import { normalizePhotoUrl } from "../utils/index.js"
+
 const Profile = () => {
   const { user } = useAuth()
   const { updateProfile, uploadPhoto, refreshUserData } = useUser()
@@ -33,11 +36,12 @@ const Profile = () => {
       location: "",
       bio: "",
       interests: [],
-      // Add new fields
+      // Change back to iAm
       iAm: "",
       lookingFor: [],
       intoTags: [],
       turnOns: [],
+      maritalStatus: "",
     },
   })
   const [localPhotos, setLocalPhotos] = useState([])
@@ -114,6 +118,17 @@ const Profile = () => {
     "Teasing",
     "Pushing boundaries",
   ])
+  const [maritalStatusOptions] = useState([
+    "Single",
+    "Married",
+    "Divorced",
+    "Separated",
+    "Widowed",
+    "In a relationship",
+    "It's complicated",
+    "Open relationship",
+    "Polyamorous",
+  ])
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -144,11 +159,12 @@ const Profile = () => {
           location: user.details?.location || "",
           bio: user.details?.bio || "",
           interests: user.details?.interests || [],
-          // Add new fields
+          // Change back to iAm
           iAm: user.details?.iAm || "",
           lookingFor: user.details?.lookingFor || [],
           intoTags: user.details?.intoTags || [],
           turnOns: user.details?.turnOns || [],
+          maritalStatus: user.details?.maritalStatus || "",
         },
       })
 
@@ -170,6 +186,14 @@ const Profile = () => {
     }
     setIsLoading(false)
   }, [user])
+
+  // Add a mounted ref to prevent state updates after component unmount
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   // Cleanup file input on unmount to prevent lingering file references.
   useEffect(() => {
@@ -203,12 +227,34 @@ const Profile = () => {
     else if (type === "number") {
       // Allow empty string or valid numbers
       if (value === "" || !isNaN(Number.parseInt(value))) {
-        setProfileData({ ...profileData, [name]: value })
+        if (name.includes("details.")) {
+          const fieldName = name.split(".")[1]
+          setProfileData({
+            ...profileData,
+            details: {
+              ...profileData.details,
+              [fieldName]: value,
+            },
+          })
+        } else {
+          setProfileData({ ...profileData, [name]: value })
+        }
       }
     }
     // For all other inputs
     else {
-      setProfileData({ ...profileData, [name]: value })
+      if (name.includes("details.")) {
+        const fieldName = name.split(".")[1]
+        setProfileData({
+          ...profileData,
+          details: {
+            ...profileData.details,
+            [fieldName]: value,
+          },
+        })
+      } else {
+        setProfileData({ ...profileData, [name]: value })
+      }
     }
 
     // Clear the error for this field if it exists
@@ -293,6 +339,13 @@ const Profile = () => {
     }))
   }
 
+  const handleMaritalStatusSelection = (status) => {
+    setProfileData((prev) => ({
+      ...prev,
+      details: { ...prev.details, maritalStatus: prev.details.maritalStatus === status ? "" : status },
+    }))
+  }
+
   const validateForm = () => {
     const validationErrors = {}
     if (!profileData.nickname.trim()) {
@@ -310,9 +363,6 @@ const Profile = () => {
       validationErrors.age = "You must be at least 18 years old"
     } else if (profileData.details.age > 120) {
       validationErrors.age = "Please enter a valid age"
-    }
-    if (!profileData.details.gender) {
-      validationErrors.gender = "Gender is required"
     }
     if (!profileData.details.location.trim()) {
       validationErrors.location = "Location is required"
@@ -343,11 +393,19 @@ const Profile = () => {
         nickname: profileData.nickname.trim(),
         details: {
           ...profileData.details,
+          age: Number(profileData.details.age),
           location: profileData.details.location.trim(),
           bio: profileData.details.bio ? profileData.details.bio.trim() : "",
           interests: Array.isArray(profileData.details.interests) ? profileData.details.interests : [],
+          // Change back to iAm
+          iAm: profileData.details.iAm || "",
+          lookingFor: Array.isArray(profileData.details.lookingFor) ? profileData.details.lookingFor : [],
+          intoTags: Array.isArray(profileData.details.intoTags) ? profileData.details.intoTags : [],
+          turnOns: Array.isArray(profileData.details.turnOns) ? profileData.details.turnOns : [],
+          maritalStatus: profileData.details.maritalStatus || "",
         },
       }
+      console.log("Submitting profile data:", submissionData)
       const updatedUser = await updateProfile(submissionData)
       if (updatedUser) {
         toast.success("Profile updated successfully")
@@ -363,6 +421,7 @@ const Profile = () => {
     }
   }
 
+  // Update the handlePhotoUpload function to fix race conditions and memory leaks
   const handlePhotoUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
@@ -586,6 +645,11 @@ const Profile = () => {
           location: user.details?.location || "",
           bio: user.details?.bio || "",
           interests: user.details?.interests || [],
+          iAm: user.details?.iAm || "",
+          lookingFor: user.details?.lookingFor || [],
+          intoTags: user.details?.intoTags || [],
+          turnOns: user.details?.turnOns || [],
+          maritalStatus: user.details?.maritalStatus || "",
         },
       })
     }
@@ -666,6 +730,14 @@ const Profile = () => {
   const handleCoverPhotoUpload = () => {
     // Implement your cover photo upload logic here
     console.log("Cover photo upload clicked")
+  }
+
+  // Update the getProfilePhoto function to use the normalizePhotoUrl utility
+  const getProfilePhoto = () => {
+    if (!user || !user.photos || user.photos.length === 0) {
+      return "/placeholder.svg"
+    }
+    return normalizePhotoUrl(user.photos[0].url)
   }
 
   // Replace the profile rendering with this
@@ -1118,32 +1190,6 @@ const Profile = () => {
                         )}
                       </div>
                       <div className="form-group">
-                        <label className="form-label" htmlFor="details.gender">
-                          Gender
-                        </label>
-                        <select
-                          id="details.gender"
-                          name="details.gender"
-                          className={`form-control ${errors.gender ? "border-danger" : ""}`}
-                          value={profileData.details.gender}
-                          onChange={handleChange}
-                          disabled={!isEditing}
-                          aria-invalid={errors.gender ? "true" : "false"}
-                          aria-describedby={errors.gender ? "gender-error" : undefined}
-                        >
-                          <option value="">Select</option>
-                          <option value="Male">Male</option>
-                          <option value="Female">Female</option>
-                          <option value="Other">Other</option>
-                        </select>
-                        {errors.gender && (
-                          <p id="gender-error" className="error-message" style={{ color: "red", marginTop: "4px" }}>
-                            <FaExclamationTriangle style={{ marginRight: "4px" }} />
-                            {errors.gender}
-                          </p>
-                        )}
-                      </div>
-                      <div className="form-group">
                         <label className="form-label" htmlFor="details.location">
                           Location
                         </label>
@@ -1264,6 +1310,38 @@ const Profile = () => {
                       ))}
                     </div>
                     {!profileData.details.iAm && !isEditing && (
+                      <p className="text-muted fst-italic mt-2">Not specified</p>
+                    )}
+                  </div>
+
+                  <div className="info-section">
+                    <h3>Marital Status</h3>
+                    <div className="d-flex flex-wrap gap-2">
+                      {maritalStatusOptions.map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          className={`interest-tag ${profileData.details.maritalStatus === status ? "selected" : ""}`}
+                          onClick={() => isEditing && handleMaritalStatusSelection(status)}
+                          disabled={!isEditing}
+                          style={{
+                            padding: "4px 12px",
+                            borderRadius: "20px",
+                            backgroundColor:
+                              profileData.details.maritalStatus === status ? "var(--primary)" : "var(--light)",
+                            color: profileData.details.maritalStatus === status ? "#fff" : "var(--text-medium)",
+                            border: "none",
+                            cursor: isEditing ? "pointer" : "default",
+                            transition: "all 0.3s ease",
+                          }}
+                          aria-pressed={profileData.details.maritalStatus === status}
+                        >
+                          {status}
+                          {profileData.details.maritalStatus === status && <FaCheck style={{ marginLeft: "4px" }} />}
+                        </button>
+                      ))}
+                    </div>
+                    {!profileData.details.maritalStatus && !isEditing && (
                       <p className="text-muted fst-italic mt-2">Not specified</p>
                     )}
                   </div>

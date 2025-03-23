@@ -1,4 +1,4 @@
-
+"use client"
 
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
@@ -6,7 +6,7 @@ import { FaCheck, FaTimes, FaCrown, FaHeart, FaImage, FaComment, FaUserCircle } 
 import { useAuth } from "../context"
 import { toast } from "react-toastify"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
-import subscriptionService from "@services/subscriptionService.jsx"
+import subscriptionService from "../services/subscriptionService.jsx"
 
 const Subscription = () => {
   const { user, getCurrentUser } = useAuth() // Add getCurrentUser from auth context
@@ -39,14 +39,16 @@ const Subscription = () => {
   }
 
   // Check if user already has premium access
-  const hasPremium = user?.isPaid || user?.accountTier === "PAID" ||
-                    user?.accountTier === "FEMALE" || user?.accountTier === "COUPLE" ||
-                    (subscriptionData && (
-                      subscriptionData.isPaid ||
-                      subscriptionData.accountTier === "PAID" ||
-                      subscriptionData.accountTier === "FEMALE" ||
-                      subscriptionData.accountTier === "COUPLE"
-                    ))
+  const hasPremium =
+    user?.isPaid ||
+    user?.accountTier === "PAID" ||
+    user?.accountTier === "FEMALE" ||
+    user?.accountTier === "COUPLE" ||
+    (subscriptionData &&
+      (subscriptionData.isPaid ||
+        subscriptionData.accountTier === "PAID" ||
+        subscriptionData.accountTier === "FEMALE" ||
+        subscriptionData.accountTier === "COUPLE"))
 
   const handleSubscribe = async (plan) => {
     setLoading(true)
@@ -247,7 +249,9 @@ const Subscription = () => {
         </div>
       </main>
 
-      <style jsx>{`
+      {/* CSS styles as regular style tag instead of styled-jsx */}
+      <style>
+        {`
         .subscription-page {
           padding: 40px 0;
         }
@@ -386,7 +390,8 @@ const Subscription = () => {
           max-width: 600px;
           margin: 0 auto;
         }
-      `}</style>
+        `}
+      </style>
     </div>
   )
 }

@@ -29,13 +29,34 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 })
 
-// Password strength validator function
+// Update the password validator function to be more explicit
 const passwordValidator = (value) => {
-  const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/
-  return (
-    regex.test(value) ||
-    "Password must be at least 8 characters and include uppercase, lowercase, number and special character"
-  )
+  // Check for minimum length
+  if (value.length < 8) {
+    return "Password must be at least 8 characters"
+  }
+
+  // Check for uppercase letter
+  if (!/(?=.*[A-Z])/.test(value)) {
+    return "Password must include at least one uppercase letter"
+  }
+
+  // Check for lowercase letter
+  if (!/(?=.*[a-z])/.test(value)) {
+    return "Password must include at least one lowercase letter"
+  }
+
+  // Check for number
+  if (!/(?=.*\d)/.test(value)) {
+    return "Password must include at least one number"
+  }
+
+  // Check for special character
+  if (!/(?=.*[@$!%*?&])/.test(value)) {
+    return "Password must include at least one special character (@$!%*?&)"
+  }
+
+  return true
 }
 
 // @route   POST /api/auth/register
@@ -58,25 +79,30 @@ router.post(
       })
     }
 
-    const { email, password, nickname } = req.body
+    const { email, password, nickname, details, accountTier, isCouple } = req.body
 
     try {
       // Check if user already exists
       let user = await User.findOne({ email })
       if (user) {
+        logger.warn(`Registration attempt with existing email: ${email}`)
         return res.status(400).json({
           success: false,
           error: "User already exists",
+          code: "EMAIL_EXISTS",
         })
       }
 
-      // Create new user instance
+      // Create new user instance with all profile details
       user = new User({
         email,
         password,
         nickname,
         isVerified: false,
         version: 1,
+        details: details || {},
+        accountTier: accountTier || "FREE",
+        isCouple: isCouple || false,
       })
 
       // Generate verification token (email sending to be implemented in production)
@@ -102,11 +128,22 @@ router.post(
           nickname: user.nickname,
           role: user.role,
           isVerified: user.isVerified,
+          accountTier: user.accountTier,
         },
         message: "Registration successful! Please verify your email address.",
       })
     } catch (err) {
       logger.error(`Registration error: ${err.message}`)
+
+      // Provide more specific error messages for validation errors
+      if (err.name === "ValidationError") {
+        const messages = Object.values(err.errors).map((val) => val.message)
+        return res.status(400).json({
+          success: false,
+          error: messages[0], // Return the first validation error
+        })
+      }
+
       res.status(500).json({ success: false, error: "Server error" })
     }
   }),

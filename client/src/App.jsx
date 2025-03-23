@@ -7,8 +7,16 @@ import "./styles/components.css"
 import "./styles/pages.css"
 import "./styles/utilities.css"
 import "./styles/settings.css"
+import "./styles/notifications.css"
 
-import { AuthProvider, UserProvider, ChatProvider, StoriesProvider, ThemeProvider } from "./context"
+import {
+  AuthProvider,
+  UserProvider,
+  ChatProvider,
+  StoriesProvider,
+  ThemeProvider,
+  NotificationProvider,
+} from "./context"
 import ErrorBoundary from "./components/ErrorBoundary.jsx"
 import PrivateRoute from "./components/PrivateRoute.jsx"
 import Login from "./pages/Login"
@@ -31,72 +39,74 @@ function App() {
             <UserProvider>
               <ChatProvider>
                 <StoriesProvider>
-                  <div className="app">
-                    <Routes>
-                      <Route path="/" element={<Home />} />
-                      <Route path="/login" element={<Login />} />
-                      <Route path="/register" element={<Register />} />
-                      <Route
-                        path="/dashboard"
-                        element={
-                          <PrivateRoute>
-                            <Dashboard />
-                          </PrivateRoute>
-                        }
+                  <NotificationProvider>
+                    <div className="app">
+                      <Routes>
+                        <Route path="/" element={<Home />} />
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/register" element={<Register />} />
+                        <Route
+                          path="/dashboard"
+                          element={
+                            <PrivateRoute>
+                              <Dashboard />
+                            </PrivateRoute>
+                          }
+                        />
+                        <Route
+                          path="/user/:id"
+                          element={
+                            <PrivateRoute>
+                              <UserProfile />
+                            </PrivateRoute>
+                          }
+                        />
+                        <Route
+                          path="/profile"
+                          element={
+                            <PrivateRoute>
+                              <Profile />
+                            </PrivateRoute>
+                          }
+                        />
+                        <Route
+                          path="/Messages"
+                          element={
+                            <PrivateRoute>
+                              <Messages />
+                            </PrivateRoute>
+                          }
+                        />
+                        <Route
+                          path="/settings"
+                          element={
+                            <PrivateRoute>
+                              <Settings />
+                            </PrivateRoute>
+                          }
+                        />
+                        {/* Add the Subscription route */}
+                        <Route
+                          path="/subscription"
+                          element={
+                            <PrivateRoute>
+                              <Subscription />
+                            </PrivateRoute>
+                          }
+                        />
+                        <Route path="*" element={<NotFound />} />
+                      </Routes>
+                      <ToastContainer
+                        position="top-right"
+                        autoClose={3000}
+                        hideProgressBar={false}
+                        closeOnClick
+                        pauseOnHover
+                        limit={5} /* Limit the number of toasts shown at once */
+                        theme="colored" /* Use colored theme for better visibility */
                       />
-                      <Route
-                        path="/user/:id"
-                        element={
-                          <PrivateRoute>
-                            <UserProfile />
-                          </PrivateRoute>
-                        }
-                      />
-                      <Route
-                        path="/profile"
-                        element={
-                          <PrivateRoute>
-                            <Profile />
-                          </PrivateRoute>
-                        }
-                      />
-                      <Route
-                        path="/Messages"
-                        element={
-                          <PrivateRoute>
-                            <Messages />
-                          </PrivateRoute>
-                        }
-                      />
-                      <Route
-                        path="/settings"
-                        element={
-                          <PrivateRoute>
-                            <Settings />
-                          </PrivateRoute>
-                        }
-                      />
-                      {/* Add the Subscription route */}
-                      <Route
-                        path="/subscription"
-                        element={
-                          <PrivateRoute>
-                            <Subscription />
-                          </PrivateRoute>
-                        }
-                      />
-                      <Route path="*" element={<NotFound />} />
-                    </Routes>
-                    <ToastContainer
-                      position="top-right"
-                      autoClose={3000}
-                      hideProgressBar={false}
-                      closeOnClick
-                      pauseOnHover
-                      limit={5} /* Limit the number of toasts shown at once */
-                      theme="colored" /* Use colored theme for better visibility */
-                    />
-                  </div>
+                    </div>
+                  </NotificationProvider>
                 </StoriesProvider>
               </ChatProvider>
             </UserProvider>
