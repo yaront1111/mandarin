@@ -1,0 +1,200 @@
+/* Notification styles */
+.notification-container {
+  position: relative;
+  z-index: 1000;
+}
+
+/* Remove duplicate header-action-button styles from notification.css */
+/* Instead, use these specific styles for notification button */
+
+.notification-button {
+  background: var(--primary-color, #ff3366) !important;
+  border: none;
+  cursor: pointer !important;
+  padding: 0.6rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 40px;
+  height: 40px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 101 !important;
+  transition: all 0.3s ease;
+  pointer-events: auto !important;
+  color: white;
+  outline: none;
+}
+
+.notification-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.notification-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.notification-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background-color: #ff4757;
+  color: white;
+  border-radius: 50%;
+  min-width: 18px;
+  height: 18px;
+  font-size: 11px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg-color, white);
+  z-index: 2;
+}
+
+/* Notification dropdown */
+.notification-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  width: 320px;
+  max-height: 400px;
+  overflow-y: auto;
+  background-color: var(--bg-color, white);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  margin-top: 10px;
+  border: 1px solid var(--border-color, rgba(230, 230, 230, 0.7));
+  animation: dropdown-fade-in 0.3s ease forwards;
+  transform-origin: top right;
+}
+
+.notification-header {
+  padding: 1rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color, rgba(230, 230, 230, 0.7));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.notification-header-action {
+  color: var(--primary-color, #ff3366);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  font-weight: 500;
+}
+
+.notification-header-action:hover {
+  color: var(--primary-hover, #ff1a53);
+  text-decoration: underline;
+}
+
+.notification-item {
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid var(--border-color, rgba(230, 230, 230, 0.7));
+  display: flex;
+  align-items: flex-start;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+.notification-item:hover {
+  background-color: var(--bg-light, rgba(0, 0, 0, 0.02));
+}
+
+.notification-item.unread {
+  background-color: var(--primary-subtle, rgba(255, 51, 102, 0.05));
+}
+
+.notification-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: var(--bg-light, #f8f9fa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.875rem;
+  color: var(--text-light, #636e72);
+}
+
+.notification-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-title {
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  color: var(--text-color, #2d3436);
+}
+
+.notification-time {
+  font-size: 0.6875rem;
+  color: var(--text-light, #636e72);
+}
+
+.notification-empty {
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--text-light, #636e72);
+  font-size: 0.9375rem;
+}
+
+.notification-loading {
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--text-light, #636e72);
+  font-size: 0.9375rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.notification-loading .spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-top-color: var(--primary-color, #ff3366);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Notification pulse animation */
+@keyframes notification-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.7);
+  }
+
+  70% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 10px rgba(255, 51, 102, 0);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(255, 51, 102, 0);
+  }
+}
+
+.notification-pulse {
+  animation: notification-pulse 1s cubic-bezier(0.66, 0, 0, 1) 2;
+}
