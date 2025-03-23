@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react"
-import { useNavigate } from "react-router-dom"
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   FaSearch,
   FaHeart,
@@ -12,26 +12,26 @@ import {
   FaList,
   FaFilter,
   FaPlus,
-} from "react-icons/fa"
-import { toast } from "react-toastify"
-import { useAuth, useUser, useChat, useStories } from "../context"
-import EmbeddedChat from "../components/EmbeddedChat"
-import { Navbar } from "../components/LayoutComponents" // Import the Navbar from layout components
-import StoriesCarousel from "../components/Stories/StoriesCarousel"
-import StoriesViewer from "../components/Stories/StoriesViewer"
-import StoryCreator from "../components/Stories/StoryCreator"
-import UserProfileModal from "../components/UserProfileModal"
+} from "react-icons/fa";
+import { toast } from "react-toastify";
+import { useAuth, useUser, useChat, useStories } from "../context";
+import EmbeddedChat from "../components/EmbeddedChat";
+import { Navbar } from "../components/LayoutComponents";
+import StoriesCarousel from "../components/Stories/StoriesCarousel";
+import StoriesViewer from "../components/Stories/StoriesViewer";
+import StoryCreator from "../components/Stories/StoryCreator";
+import UserProfileModal from "../components/UserProfileModal";
 
 const Dashboard = () => {
-  const navigate = useNavigate()
-  const { user } = useAuth()
-  const { users, getUsers, loading } = useUser()
-  const { unreadMessages } = useChat()
-  const { createStory } = useStories()
-  const { likeUser, unlikeUser, isUserLiked } = useUser()
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { users, getUsers, loading } = useUser();
+  const { unreadMessages } = useChat();
+  const { createStory } = useStories();
+  const { likeUser, unlikeUser, isUserLiked } = useUser();
 
-  const [activeTab, setActiveTab] = useState("discover")
-  const [showFilters, setShowFilters] = useState(false)
+  const [activeTab, setActiveTab] = useState("discover");
+  const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({
     ageMin: 18,
     ageMax: 99,
@@ -40,86 +40,74 @@ const Dashboard = () => {
     verified: false,
     withPhotos: false,
     interests: [],
-  })
+  });
 
-  // User dropdown, chat, and story creation state
-  const [chatUser, setChatUser] = useState(null)
-  const [showChat, setShowChat] = useState(false)
-  const [viewMode, setViewMode] = useState("grid") // 'grid' or 'list'
-  const [imageLoadErrors, setImageLoadErrors] = useState({})
-  const [showStoryCreator, setShowStoryCreator] = useState(false)
+  // Chat, story, and profile modal state
+  const [chatUser, setChatUser] = useState(null);
+  const [showChat, setShowChat] = useState(false);
+  const [viewMode, setViewMode] = useState("grid"); // "grid" or "list"
+  const [imageLoadErrors, setImageLoadErrors] = useState({});
+  const [showStoryCreator, setShowStoryCreator] = useState(false);
+  const [viewingStoryId, setViewingStoryId] = useState(null);
+  const [creatingStory, setCreatingStory] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [showUserProfileModal, setShowUserProfileModal] = useState(false);
 
-  // Story viewing state
-  const [viewingStoryId, setViewingStoryId] = useState(null)
-  const [creatingStory, setCreatingStory] = useState(false)
-
-  // User profile modal state
-  const [selectedUserId, setSelectedUserId] = useState(null)
-  const [showUserProfileModal, setShowUserProfileModal] = useState(false)
-
-  // Handle image loading errors
+  // Reset image error for a specific user
   const handleImageError = useCallback((userId) => {
-    setImageLoadErrors((prev) => ({
-      ...prev,
-      [userId]: true,
-    }))
-  }, [])
+    setImageLoadErrors((prev) => ({ ...prev, [userId]: true }));
+  }, []);
 
-  // Fetch users on mount and set up periodic refresh
+  // Fetch users on mount and refresh periodically when tab is visible.
   useEffect(() => {
-    getUsers()
+    getUsers();
 
     const refreshInterval = setInterval(() => {
       if (document.visibilityState === "visible") {
-        getUsers()
+        getUsers();
       }
-    }, 60000) // Refresh every minute when visible
+    }, 60000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        getUsers() // Refresh immediately when tab becomes visible
+        getUsers();
       }
-    }
+    };
 
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-
-    // Cleanup on unmount
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      clearInterval(refreshInterval)
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
-      // Close any open chat when unmounting
-      setShowChat(false)
-      setChatUser(null)
-    }
-  }, [getUsers])
+      clearInterval(refreshInterval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      // Close open chat when unmounting
+      setShowChat(false);
+      setChatUser(null);
+    };
+  }, [getUsers]);
 
-  // Memoized filtered users to avoid recalculation on every render
+  // Filter and sort users efficiently.
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
-      // Don't show current user
-      if (u._id === user?._id) return false
-
-      const userAge = u.details?.age || 25
-      if (userAge < filterValues.ageMin || userAge > filterValues.ageMax) return false
-      if (filterValues.online && !u.isOnline) return false
-      if (filterValues.withPhotos && (!u.photos || u.photos.length === 0)) return false
+      if (u._id === user?._id) return false;
+      const userAge = u.details?.age || 25;
+      if (userAge < filterValues.ageMin || userAge > filterValues.ageMax) return false;
+      if (filterValues.online && !u.isOnline) return false;
+      if (filterValues.withPhotos && (!u.photos || u.photos.length === 0)) return false;
       if (filterValues.interests.length > 0) {
-        const userInterests = u.details?.interests || []
-        const hasMatchingInterest = filterValues.interests.some((i) => userInterests.includes(i))
-        if (!hasMatchingInterest) return false
+        const userInterests = u.details?.interests || [];
+        const hasMatch = filterValues.interests.some((i) => userInterests.includes(i));
+        if (!hasMatch) return false;
       }
-      return true
-    })
-  }, [users, user, filterValues])
+      return true;
+    });
+  }, [users, user, filterValues]);
 
-  // Memoized sorted users to avoid recalculation on every render
   const sortedUsers = useMemo(() => {
     return [...filteredUsers].sort((a, b) => {
-      if (a.isOnline && !b.isOnline) return -1
-      if (!a.isOnline && b.isOnline) return 1
-      return new Date(b.lastActive) - new Date(a.lastActive)
-    })
-  }, [filteredUsers])
+      if (a.isOnline && !b.isOnline) return -1;
+      if (!a.isOnline && b.isOnline) return 1;
+      return new Date(b.lastActive) - new Date(a.lastActive);
+    });
+  }, [filteredUsers]);
 
   const availableInterests = [
     "Dating",
@@ -133,93 +121,81 @@ const Dashboard = () => {
     "Fitness",
     "Food",
     "Art",
-  ]
+  ];
 
   const toggleInterest = (interest) => {
     setFilterValues((prev) => {
       if (prev.interests.includes(interest)) {
-        return { ...prev, interests: prev.interests.filter((i) => i !== interest) }
-      } else {
-        return { ...prev, interests: [...prev.interests, interest] }
+        return { ...prev, interests: prev.interests.filter((i) => i !== interest) };
       }
-    })
-  }
+      return { ...prev, interests: [...prev.interests, interest] };
+    });
+  };
 
-  // Open user profile modal instead of navigating
+  // Open the user profile modal.
   const handleUserCardClick = (userId) => {
-    setSelectedUserId(userId)
-    setShowUserProfileModal(true)
-  }
+    setSelectedUserId(userId);
+    setShowUserProfileModal(true);
+  };
 
+  // Open chat with a user.
   const handleMessageUser = (e, user) => {
-    e.stopPropagation() // Prevent card click navigation
-    setChatUser(user)
-    setShowChat(true)
-  }
+    e.stopPropagation();
+    setChatUser(user);
+    setShowChat(true);
+  };
 
   const closeChat = () => {
-    setShowChat(false)
-    setChatUser(null)
-  }
+    setShowChat(false);
+    setChatUser(null);
+  };
 
-  // Improved story creation handler
+  // Handle story creation ensuring no duplicate submissions.
   const handleCreateStory = (storyData) => {
-    // Prevent multiple submissions or actions while in progress
     if (!createStory || creatingStory) {
-      if (creatingStory) {
-        toast.info("Story creation in progress, please wait...")
-      } else {
-        toast.error("Story creation is not available right now")
-      }
-      return
+      toast.info(creatingStory ? "Story creation in progress, please wait..." : "Story creation is not available right now");
+      return;
     }
-
-    setCreatingStory(true)
-
+    setCreatingStory(true);
     createStory(storyData)
       .then((response) => {
         if (response.success) {
-          toast.success("Your story has been created!")
-          setShowStoryCreator(false) // Only close on success
-        } else if (response.message && response.message.includes("already in progress")) {
-          // Handle the duplicate submission gracefully
-          // Don't close the creator
+          toast.success("Your story has been created!");
+          setShowStoryCreator(false);
         } else {
-          throw new Error(response.message || "Failed to create story")
+          throw new Error(response.message || "Failed to create story");
         }
       })
       .catch((error) => {
-        toast.error("Failed to create story: " + (error.message || "Unknown error"))
-        // Don't close the creator on error
+        toast.error("Failed to create story: " + (error.message || "Unknown error"));
       })
       .finally(() => {
-        // Always reset the creating state
-        setCreatingStory(false)
-      })
-  }
+        setCreatingStory(false);
+      });
+  };
 
-  // Reset image load errors when filter changes
+  // Reset image errors when filter values change.
   useEffect(() => {
-    setImageLoadErrors({})
-  }, [filterValues])
+    setImageLoadErrors({});
+  }, [filterValues]);
 
-  // Check if a user has unread messages - with proper null/undefined checks
+  // Check for unread messages from a given user.
   const hasUnreadMessagesFrom = useCallback(
-    (userId) => {
-      return Array.isArray(unreadMessages) && unreadMessages.some((msg) => msg.sender === userId)
-    },
-    [unreadMessages],
-  )
+    (userId) =>
+      Array.isArray(unreadMessages) &&
+      unreadMessages.some((msg) => msg.sender === userId),
+    [unreadMessages]
+  );
 
-  // Count unread messages for a user - with proper null/undefined checks
   const countUnreadMessages = useCallback(
-    (userId) => {
-      return Array.isArray(unreadMessages) ? unreadMessages.filter((msg) => msg.sender === userId).length : 0
-    },
-    [unreadMessages],
-  )
+    (userId) =>
+      Array.isArray(unreadMessages)
+        ? unreadMessages.filter((msg) => msg.sender === userId).length
+        : 0,
+    [unreadMessages]
+  );
 
-  // Reset filters function
+  // Reset filter values.
   const resetFilters = useCallback(() => {
     setFilterValues({
       ageMin: 18,
@@ -229,28 +205,23 @@ const Dashboard = () => {
       verified: false,
       withPhotos: false,
       interests: [],
-    })
-  }, [])
+    });
+  }, []);
 
   const handleLikeUser = (e, matchedUser) => {
-    e.stopPropagation() // Prevent card click navigation
-
-    if (isUserLiked(matchedUser._id)) {
-      unlikeUser(matchedUser._id, matchedUser.nickname)
-    } else {
-      likeUser(matchedUser._id, matchedUser.nickname)
-    }
-  }
+    e.stopPropagation();
+    isUserLiked(matchedUser._id)
+      ? unlikeUser(matchedUser._id, matchedUser.nickname)
+      : likeUser(matchedUser._id, matchedUser.nickname);
+  };
 
   return (
     <div className="modern-dashboard">
-      {/* Use the Navbar component from LayoutComponents */}
       <Navbar />
 
-      {/* Main content */}
       <main className="dashboard-content">
         <div className="container">
-          {/* Stories Section with Create Story Button */}
+          {/* Stories Section */}
           <div className="stories-section">
             <div className="stories-header d-flex justify-content-between align-items-center mb-3">
               <h2>Stories</h2>
@@ -261,17 +232,21 @@ const Dashboard = () => {
                 disabled={creatingStory}
               >
                 <FaPlus className="me-2 d-none d-sm-inline" />
-                <span className="d-none d-md-inline">{creatingStory ? "Creating..." : "Create Story"}</span>
+                <span className="d-none d-md-inline">
+                  {creatingStory ? "Creating..." : "Create Story"}
+                </span>
               </button>
             </div>
             <StoriesCarousel
               onStoryClick={(storyId) => {
-                if (viewingStoryId) return // Prevent multiple clicks
-                setViewingStoryId(storyId)
+                if (!viewingStoryId) {
+                  setViewingStoryId(storyId);
+                }
               }}
             />
           </div>
 
+          {/* Content Header with Filters and View Toggle */}
           <div className="content-header d-flex justify-content-between align-items-center">
             <h1>{activeTab === "discover" ? "Discover People" : "Your Matches"}</h1>
             <div className="content-actions d-flex align-items-center gap-2">
@@ -323,7 +298,12 @@ const Dashboard = () => {
                       min="18"
                       max="99"
                       value={filterValues.ageMin}
-                      onChange={(e) => setFilterValues({ ...filterValues, ageMin: Number.parseInt(e.target.value) })}
+                      onChange={(e) =>
+                        setFilterValues({
+                          ...filterValues,
+                          ageMin: Number.parseInt(e.target.value),
+                        })
+                      }
                       className="range-input"
                       aria-label="Minimum age"
                     />
@@ -332,7 +312,12 @@ const Dashboard = () => {
                       min="18"
                       max="99"
                       value={filterValues.ageMax}
-                      onChange={(e) => setFilterValues({ ...filterValues, ageMax: Number.parseInt(e.target.value) })}
+                      onChange={(e) =>
+                        setFilterValues({
+                          ...filterValues,
+                          ageMax: Number.parseInt(e.target.value),
+                        })
+                      }
                       className="range-input"
                       aria-label="Maximum age"
                     />
@@ -352,7 +337,12 @@ const Dashboard = () => {
                       min="5"
                       max="100"
                       value={filterValues.distance}
-                      onChange={(e) => setFilterValues({ ...filterValues, distance: Number.parseInt(e.target.value) })}
+                      onChange={(e) =>
+                        setFilterValues({
+                          ...filterValues,
+                          distance: Number.parseInt(e.target.value),
+                        })
+                      }
                       className="range-input"
                       aria-label="Maximum distance"
                     />
@@ -367,7 +357,12 @@ const Dashboard = () => {
                     <input
                       type="checkbox"
                       checked={filterValues.online}
-                      onChange={() => setFilterValues({ ...filterValues, online: !filterValues.online })}
+                      onChange={() =>
+                        setFilterValues({
+                          ...filterValues,
+                          online: !filterValues.online,
+                        })
+                      }
                       aria-label="Show only online users"
                     />
                     <span>Online Now</span>
@@ -376,7 +371,12 @@ const Dashboard = () => {
                     <input
                       type="checkbox"
                       checked={filterValues.verified}
-                      onChange={() => setFilterValues({ ...filterValues, verified: !filterValues.verified })}
+                      onChange={() =>
+                        setFilterValues({
+                          ...filterValues,
+                          verified: !filterValues.verified,
+                        })
+                      }
                       aria-label="Show only verified profiles"
                     />
                     <span>Verified Profiles</span>
@@ -385,7 +385,12 @@ const Dashboard = () => {
                     <input
                       type="checkbox"
                       checked={filterValues.withPhotos}
-                      onChange={() => setFilterValues({ ...filterValues, withPhotos: !filterValues.withPhotos })}
+                      onChange={() =>
+                        setFilterValues({
+                          ...filterValues,
+                          withPhotos: !filterValues.withPhotos,
+                        })
+                      }
                       aria-label="Show only profiles with photos"
                     />
                     <span>With Photos</span>
@@ -399,7 +404,9 @@ const Dashboard = () => {
                   {availableInterests.map((interest) => (
                     <button
                       key={interest}
-                      className={`filter-tag ${filterValues.interests.includes(interest) ? "active" : ""}`}
+                      className={`filter-tag ${
+                        filterValues.interests.includes(interest) ? "active" : ""
+                      }`}
                       onClick={() => toggleInterest(interest)}
                       aria-pressed={filterValues.interests.includes(interest)}
                     >
@@ -410,10 +417,18 @@ const Dashboard = () => {
               </div>
 
               <div className="filter-actions">
-                <button className="btn btn-outline" onClick={resetFilters} aria-label="Reset filters">
+                <button
+                  className="btn btn-outline"
+                  onClick={resetFilters}
+                  aria-label="Reset filters"
+                >
                   Reset
                 </button>
-                <button className="btn btn-primary" onClick={() => setShowFilters(false)} aria-label="Apply filters">
+                <button
+                  className="btn btn-primary"
+                  onClick={() => setShowFilters(false)}
+                  aria-label="Apply filters"
+                >
                   Apply Filters
                 </button>
               </div>
@@ -429,7 +444,11 @@ const Dashboard = () => {
               </div>
             ) : sortedUsers.length > 0 ? (
               sortedUsers.map((matchedUser) => (
-                <div key={matchedUser._id} className="user-card" onClick={() => handleUserCardClick(matchedUser._id)}>
+                <div
+                  key={matchedUser._id}
+                  className="user-card"
+                  onClick={() => handleUserCardClick(matchedUser._id)}
+                >
                   <div className="user-card-photo">
                     {matchedUser.photos && matchedUser.photos.length > 0 ? (
                       <>
@@ -437,7 +456,11 @@ const Dashboard = () => {
                           src={matchedUser.photos[0].url || "/placeholder.svg"}
                           alt={matchedUser.nickname}
                           onError={() => handleImageError(matchedUser._id)}
-                          style={{ display: imageLoadErrors[matchedUser._id] ? "none" : "block" }}
+                          style={{
+                            display: imageLoadErrors[matchedUser._id]
+                              ? "none"
+                              : "block",
+                          }}
                         />
                         {imageLoadErrors[matchedUser._id] && (
                           <div className="avatar-placeholder">
@@ -450,7 +473,9 @@ const Dashboard = () => {
                         <FaUserCircle />
                       </div>
                     )}
-                    {matchedUser.isOnline && <div className="online-indicator"></div>}
+                    {matchedUser.isOnline && (
+                      <div className="online-indicator"></div>
+                    )}
                   </div>
                   <div className="user-card-info">
                     <div className="d-flex justify-content-between align-items-center">
@@ -458,46 +483,52 @@ const Dashboard = () => {
                         {matchedUser.nickname}, {matchedUser.details?.age || "?"}
                       </h3>
                       {hasUnreadMessagesFrom(matchedUser._id) && (
-                        <span className="unread-badge">{countUnreadMessages(matchedUser._id)}</span>
+                        <span className="unread-badge">
+                          {countUnreadMessages(matchedUser._id)}
+                        </span>
                       )}
                     </div>
                     <p className="location">
                       <FaMapMarkerAlt className="location-icon" />
                       {matchedUser.details?.location || "Unknown location"}
                     </p>
-
-                    {matchedUser.details?.interests && matchedUser.details.interests.length > 0 && (
-                      <div className="user-interests">
-                        {matchedUser.details.interests.slice(0, 3).map((interest, idx) => (
-                          <span key={idx} className="interest-tag">
-                            {interest}
-                          </span>
-                        ))}
-                        {matchedUser.details.interests.length > 3 && (
-                          <span className="interest-more">+{matchedUser.details.interests.length - 3}</span>
-                        )}
-                      </div>
-                    )}
-
+                    {matchedUser.details?.interests &&
+                      matchedUser.details.interests.length > 0 && (
+                        <div className="user-interests">
+                          {matchedUser.details.interests.slice(0, 3).map(
+                            (interest, idx) => (
+                              <span key={idx} className="interest-tag">
+                                {interest}
+                              </span>
+                            )
+                          )}
+                          {matchedUser.details.interests.length > 3 && (
+                            <span className="interest-more">
+                              +{matchedUser.details.interests.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     <div className="user-actions">
                       <button
-                        className={`card-action-button like ${isUserLiked(matchedUser._id) ? "active" : ""}`}
+                        className={`card-action-button like ${
+                          isUserLiked(matchedUser._id) ? "active" : ""
+                        }`}
                         onClick={(e) => {
-                          e.stopPropagation() // Stop event propagation
-                          handleLikeUser(e, matchedUser)
+                          e.stopPropagation();
+                          handleLikeUser(e, matchedUser);
                         }}
-                        aria-label={`${isUserLiked(matchedUser._id) ? "Unlike" : "Like"} ${matchedUser.nickname}`}
+                        aria-label={`${
+                          isUserLiked(matchedUser._id) ? "Unlike" : "Like"
+                        } ${matchedUser.nickname}`}
                       >
                         <FaHeart />
                       </button>
                       <button
                         className="card-action-button message"
                         onClick={(e) => {
-                          e.stopPropagation() // Stop event propagation
-                          if (!showChat) {
-                            // Prevent multiple clicks
-                            handleMessageUser(e, matchedUser)
-                          }
+                          e.stopPropagation();
+                          if (!showChat) handleMessageUser(e, matchedUser);
                         }}
                         aria-label={`Message ${matchedUser.nickname}`}
                       >
@@ -514,7 +545,11 @@ const Dashboard = () => {
                 </div>
                 <h3>No matches found</h3>
                 <p>Try adjusting your filters to see more people</p>
-                <button className="btn btn-primary mt-3" onClick={resetFilters} aria-label="Reset filters">
+                <button
+                  className="btn btn-primary mt-3"
+                  onClick={resetFilters}
+                  aria-label="Reset filters"
+                >
                   Reset Filters
                 </button>
               </div>
@@ -532,10 +567,17 @@ const Dashboard = () => {
       )}
 
       {/* Story Creator Modal */}
-      {showStoryCreator && <StoryCreator onClose={() => setShowStoryCreator(false)} onSubmit={handleCreateStory} />}
+      {showStoryCreator && (
+        <StoryCreator
+          onClose={() => setShowStoryCreator(false)}
+          onSubmit={handleCreateStory}
+        />
+      )}
 
       {/* Stories Viewer */}
-      {viewingStoryId && <StoriesViewer storyId={viewingStoryId} onClose={() => setViewingStoryId(null)} />}
+      {viewingStoryId && (
+        <StoriesViewer storyId={viewingStoryId} onClose={() => setViewingStoryId(null)} />
+      )}
 
       {/* User Profile Modal */}
       {showUserProfileModal && (
@@ -547,52 +589,36 @@ const Dashboard = () => {
       )}
 
       <style>{`
-        /* User Dropdown Menu Styles */        
-        /* Stories Section Styles */
-        .stories-section {
-          margin-bottom: 30px;
+        /* Dashboard-specific styles */
+        .dashboard-content {
+          padding-top: 20px;
         }
-        
+        @media (max-width: 768px) {
+          .dashboard-content { padding-top: 10px; }
+        }
         .create-story-btn {
           display: flex;
           align-items: center;
           padding: 8px 16px;
           border-radius: 20px;
         }
-
-        /* Prevent multi-clicking during story creation */
         .create-story-btn:disabled {
           opacity: 0.7;
           cursor: not-allowed;
         }
-
         .card-action-button.like.active {
           color: #ff4b4b;
           background-color: rgba(255, 75, 75, 0.1);
         }
-
         .card-action-button.like:hover {
           background-color: rgba(255, 75, 75, 0.15);
         }
-
         .card-action-button.like.active:hover {
           background-color: rgba(255, 75, 75, 0.2);
         }
-        
-        /* Dashboard content specific styles */
-        .dashboard-content {
-          padding-top: 20px;
-        }
-        
-        /* More padding on mobile */
-        @media (max-width: 768px) {
-          .dashboard-content {
-            padding-top: 10px;
-          }
-        }
       `}</style>
     </div>
-  )
-}
+  );
+};
 
-export default Dashboard
+export default Dashboard;

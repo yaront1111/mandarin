@@ -8,7 +8,6 @@ import { useAuth } from "../context/AuthContext"
 import { useChat } from "../context/ChatContext"
 import MessageBubble from "../components/MessageBubble"
 import UserAvatar from "../components/UserAvatar"
-import "../styles/messages.css"
 
 const ConversationList = ({ conversations, activeId, onSelect, unreadCounts }) => {
   if (!conversations || conversations.length === 0) {
