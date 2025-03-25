@@ -1,5 +1,3 @@
-"use client";
-
 import React, {
   useState,
   useEffect,
@@ -30,6 +28,8 @@ import { useAuth, useChat } from "../context";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import VideoCall from "./VideoCall"; // Import our new VideoCall component
+import "../styles/video-call.css"; // Import our new CSS file
 
 const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const { user, token } = useAuth();
@@ -57,11 +57,19 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const [pendingPhotoRequests, setPendingPhotoRequests] = useState(0);
   const [isApprovingRequests, setIsApprovingRequests] = useState(false);
   const [requestsData, setRequestsData] = useState([]);
+  
+  // Video call state
+  const [activeCall, setActiveCall] = useState(false);
+  const [isCallInitiator, setIsCallInitiator] = useState(false);
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [showCallDialog, setShowCallDialog] = useState(false);
+  const [callError, setCallError] = useState(null);
 
   const messagesEndRef = useRef(null);
   const chatInputRef = useRef(null);
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const socketRef = useRef(null);
 
   // Retrieve latest token from context or localStorage.
   const getAuthToken = () => token || localStorage.getItem("token");
@@ -84,6 +92,31 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     );
     return instance;
   }, [token]);
+
+  // Access socket from context
+  useEffect(() => {
+    if (useChat.socket) {
+      socketRef.current = useChat.socket;
+    }
+  }, [useChat.socket]);
+
+  // Handle incoming call
+  useEffect(() => {
+    if (!socketRef.current) return;
+    
+    const handleIncomingCall = (data) => {
+      if (data.caller.userId === recipient._id) {
+        setIncomingCall(data);
+        setShowCallDialog(true);
+      }
+    };
+    
+    socketRef.current.on("incomingCall", handleIncomingCall);
+    
+    return () => {
+      socketRef.current.off("incomingCall", handleIncomingCall);
+    };
+  }, [recipient, socketRef.current]);
 
   // Load messages and check pending photo requests when chat opens.
   useEffect(() => {
@@ -424,16 +457,58 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  // Handle initiating a video call
   const handleVideoCall = () => {
     if (user?.accountTier === "FREE") {
       return toast.error("Free accounts cannot make video calls. Upgrade for video calls.");
     }
     if (recipient?._id) {
-      initiateVideoCall(recipient._id);
+      setIsCallInitiator(true);
+      setActiveCall(true);
+      
+      // Also send a message to notify about the call
+      sendMessage(recipient._id, "video", "Video Call").catch(error => {
+        console.error("Failed to send video call message:", error);
+      });
+      
       toast.info(`Starting video call with ${recipient.nickname}...`);
     } else {
       toast.error("Cannot start call: recipient information is missing");
     }
+  };
+  
+  // Handle accepting an incoming call
+  const handleAcceptCall = () => {
+    if (incomingCall) {
+      setActiveCall(true);
+      setIsCallInitiator(false);
+      setShowCallDialog(false);
+    }
+  };
+  
+  // Handle rejecting an incoming call
+  const handleRejectCall = () => {
+    if (incomingCall && socketRef.current) {
+      socketRef.current.emit("answerCall", {
+        callerId: incomingCall.caller.userId,
+        accept: false
+      });
+      setIncomingCall(null);
+      setShowCallDialog(false);
+    }
+  };
+  
+  // Handle ending a call
+  const handleEndCall = () => {
+    setActiveCall(false);
+    setIncomingCall(null);
+  };
+  
+  // Handle call errors
+  const handleCallError = (error) => {
+    setCallError(error.message || "Call failed");
+    toast.error(`Call error: ${error.message || "Unknown error"}`);
+    setActiveCall(false);
   };
 
   const isTyping =
@@ -443,6 +518,10 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     Date.now() - typingUsers[recipient._id] < 3000;
 
   const handleClose = () => {
+    if (activeCall) {
+      toast.info("Please end the call before closing the chat.");
+      return;
+    }
     if (typeof onClose === "function") onClose();
   };
 
@@ -505,9 +584,63 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       </div>
     );
   };
+  
+  // Render incoming call dialog
+  const renderCallDialog = () => {
+    if (!showCallDialog || !incomingCall) return null;
+    
+    return (
+      <div className="incoming-call-dialog">
+        <div className="call-dialog-content">
+          <div className="caller-info">
+            <div className="caller-avatar">
+              {recipient?.photos?.length > 0 ? (
+                <img 
+                  src={recipient.photos[0].url} 
+                  alt={recipient.nickname} 
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = "/placeholder.svg";
+                  }}
+                />
+              ) : (
+                <div className="avatar-placeholder">{recipient.nickname?.charAt(0)}</div>
+              )}
+            </div>
+            <h3>{recipient.nickname} is calling...</h3>
+          </div>
+          <div className="call-actions">
+            <button className="decline-btn" onClick={handleRejectCall}>
+              <FaTimes />
+              <span>Decline</span>
+            </button>
+            <button className="accept-btn" onClick={handleAcceptCall}>
+              <FaVideo />
+              <span>Accept</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className={`embedded-chat ${embedded ? "embedded" : "standalone"}`}>
+      {/* Render the VideoCall component if a call is active */}
+      {activeCall && (
+        <VideoCall
+          isInitiator={isCallInitiator}
+          remoteUserId={recipient._id}
+          remoteUserName={recipient.nickname}
+          onClose={handleEndCall}
+          socket={socketRef.current}
+          onError={handleCallError}
+        />
+      )}
+      
+      {/* Render incoming call dialog */}
+      {renderCallDialog()}
+      
       <div className="chat-header">
         <div className="chat-user">
           {recipient?.photos?.length ? (
@@ -547,7 +680,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
               onClick={handleVideoCall}
               title="Start Video Call"
               aria-label="Start video call"
-              disabled={isUploading || sendingMessage}
+              disabled={isUploading || sendingMessage || activeCall}
             >
               <FaVideo />
             </button>

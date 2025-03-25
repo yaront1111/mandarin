@@ -1,10 +1,19 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    nodePolyfills({
+      // Whether to polyfill `node:` protocol imports.
+      protocolImports: true,
+      // Include specific polyfills needed by simple-peer
+      include: ['events', 'stream', 'util']
+    }),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -17,23 +26,24 @@ export default defineConfig({
     },
     extensions: [".mjs", ".js", ".jsx", ".ts", ".tsx", ".json"],
   },
+  define: {
+    'global': 'globalThis',
+    'process.env': {},
+  },
   server: {
     port: 3000,
     open: true,
     proxy: {
-      // Configure API proxy
       "/api": {
         target: "http://localhost:5000",
         changeOrigin: true,
         secure: false,
       },
-      // Add uploads proxy
       "/uploads": {
         target: "http://localhost:5000",
         changeOrigin: true,
         secure: false,
       },
-      // WebSocket proxy for Socket.IO
       "/socket.io": {
         target: "http://localhost:5000",
         ws: true,

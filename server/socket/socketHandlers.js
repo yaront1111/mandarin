@@ -392,88 +392,104 @@ const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
     }
   })
 
-  // Handle initiating calls
-  socket.on("initiateCall", async (data) => {
+  // WebRTC signaling - pass signal data between peers
+  socket.on("videoSignal", (data) => {
     try {
-      const { recipientId } = data
-      try {
-        await callLimiter.consume(socket.user._id.toString())
-      } catch (rateLimitError) {
-        socket.emit("callError", { error: "Rate limit exceeded. Please try again later." })
-        return
-      }
-      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
-        socket.emit("callError", { error: "Invalid recipient ID" })
-        return
-      }
-      const recipient = await User.findById(recipientId)
-      if (!recipient) {
-        socket.emit("callError", { error: "Recipient not found" })
-        return
-      }
-      if (!userConnections.has(recipientId)) {
-        socket.emit("callError", { error: "Recipient is offline" })
-        return
-      }
-      const callData = {
-        callId: new mongoose.Types.ObjectId().toString(),
-        caller: {
-          userId: socket.user._id,
-          name: socket.user.name,
-          avatar: socket.user.avatar,
-        },
-        recipient: {
-          userId: recipientId,
-        },
-        timestamp: Date.now(),
-      }
-      userConnections.get(recipientId).forEach((recipientSocketId) => {
-        io.to(recipientSocketId).emit("incomingCall", callData)
-      })
-      socket.emit("callInitiated", callData)
-      logger.info(`Call initiated from ${socket.user._id} to ${recipientId}`)
-    } catch (error) {
-      logger.error(`Error initiating call: ${error.message}`)
-      socket.emit("callError", { error: "Failed to initiate call" })
-    }
-  })
+      const { recipientId, signal, from } = data;
 
-  // Handle answering calls
-  socket.on("answerCall", async (data) => {
-    try {
-      const { callerId, accept } = data
-      if (!mongoose.Types.ObjectId.isValid(callerId)) {
-        socket.emit("callError", { error: "Invalid caller ID" })
-        return
+      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
+        logger.error(`Invalid recipient ID in video signal: ${recipientId}`);
+        return;
       }
-      const caller = await User.findById(callerId)
-      if (!caller) {
-        socket.emit("callError", { error: "Caller not found" })
-        return
+
+      if (!signal) {
+        logger.error("Missing signal data in video signal message");
+        return;
       }
-      if (!userConnections.has(callerId)) {
-        socket.emit("callError", { error: "Caller is no longer online" })
-        return
+
+      logger.debug(`Forwarding video signal from ${socket.user._id} to ${recipientId}`);
+
+      // Forward the signal to the recipient
+      if (userConnections.has(recipientId)) {
+        userConnections.get(recipientId).forEach((recipientSocketId) => {
+          io.to(recipientSocketId).emit("videoSignal", {
+            signal,
+            userId: socket.user._id,
+            from: from || {
+              userId: socket.user._id,
+              name: socket.user.nickname || "User"
+            }
+          });
+        });
+      } else {
+        // Recipient is offline
+        socket.emit("videoError", {
+          error: "Recipient is offline",
+          recipientId
+        });
       }
-      const callData = {
-        respondent: {
-          userId: socket.user._id,
-          name: socket.user.name,
-          avatar: socket.user.avatar,
-        },
-        accepted: accept,
-        timestamp: Date.now(),
-      }
-      userConnections.get(callerId).forEach((callerSocketId) => {
-        io.to(callerSocketId).emit("callAnswered", callData)
-      })
-      socket.emit("callAnswered", callData)
-      logger.info(`Call from ${callerId} ${accept ? "accepted" : "rejected"} by ${socket.user._id}`)
     } catch (error) {
-      logger.error(`Error answering call: ${error.message}`)
-      socket.emit("callError", { error: "Failed to answer call" })
+      logger.error(`Error handling video signal: ${error.message}`);
+      socket.emit("videoError", { error: "Signal processing error" });
     }
-  })
+  });
+
+  // Handle video call hangup
+  socket.on("videoHangup", (data) => {
+    try {
+      const { recipientId } = data;
+
+      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
+        logger.error(`Invalid recipient ID in video hangup: ${recipientId}`);
+        return;
+      }
+
+      logger.debug(`Forwarding video hangup from ${socket.user._id} to ${recipientId}`);
+
+      if (userConnections.has(recipientId)) {
+        userConnections.get(recipientId).forEach((recipientSocketId) => {
+          io.to(recipientSocketId).emit("videoHangup", {
+            userId: socket.user._id,
+            timestamp: Date.now()
+          });
+        });
+      }
+    } catch (error) {
+      logger.error(`Error handling video hangup: ${error.message}`);
+    }
+  });
+
+  // Handle video media control events (mute audio/video)
+  socket.on("videoMediaControl", (data) => {
+    try {
+      const { recipientId, type, muted } = data;
+
+      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
+        logger.error(`Invalid recipient ID in media control: ${recipientId}`);
+        return;
+      }
+
+      if (!type || !["audio", "video"].includes(type)) {
+        logger.error(`Invalid media control type: ${type}`);
+        return;
+      }
+
+      logger.debug(`Forwarding ${type} control (muted: ${muted}) from ${socket.user._id} to ${recipientId}`);
+
+      if (userConnections.has(recipientId)) {
+        userConnections.get(recipientId).forEach((recipientSocketId) => {
+          io.to(recipientSocketId).emit("videoMediaControl", {
+            userId: socket.user._id,
+            type,
+            muted,
+            timestamp: Date.now()
+          });
+        });
+      }
+    } catch (error) {
+      logger.error(`Error handling video media control: ${error.message}`);
+    }
+  });
 
   // Emit user online status when they connect
   io.emit("userOnline", {

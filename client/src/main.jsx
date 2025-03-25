@@ -1,6 +1,9 @@
 import React from "react"
 import ReactDOM from "react-dom/client"
 import App from "./App.jsx" // Update extension here
+if (typeof global === 'undefined') {
+  window.global = window;
+}
 import ErrorBoundary from "./components/ErrorBoundary.jsx" // Update extension here
 import "./styles/base.css"
 import "./styles/components.css"
