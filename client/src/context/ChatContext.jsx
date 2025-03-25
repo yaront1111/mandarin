@@ -77,16 +77,25 @@ export const ChatProvider = ({ children }) => {
       }
     }
 
-    const handleUserTyping = (data) => {
-      if (!data || !data.sender) {
-        console.error("Invalid typing data:", data)
-        return
-      }
-      setTypingUsers((prev) => ({
-        ...prev,
-        [data.sender]: Date.now(),
-      }))
+  const handleUserTyping = (data) => {
+    if (!data) {
+      console.error("Invalid typing data: empty data");
+      return;
     }
+
+    // Support both data formats (userId or sender)
+    const userId = data.userId || data.sender;
+
+    if (!userId) {
+      console.error("Invalid typing data:", data);
+      return;
+    }
+
+    setTypingUsers((prev) => ({
+      ...prev,
+      [userId]: Date.now(),
+    }));
+  }
 
     const handleUserOnline = (data) => {
       if (!data || !data.userId) {

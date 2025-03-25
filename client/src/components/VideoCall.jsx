@@ -46,6 +46,27 @@ const VideoCall = ({
 
   // Initialize the call when component mounts
   useEffect(() => {
+    // Verify required props before starting call
+    if (!user || !user._id || !remoteUserId) {
+      console.error("Missing required user information for video call");
+      setConnectionStatus("error");
+      if (onError) {
+        onError(new Error("Missing required user information for video call"));
+      }
+      return;
+    }
+
+    // Check if socket exists before starting call
+    if (!socket) {
+      console.error("Socket connection required for video calls");
+      setConnectionStatus("error");
+      if (onError) {
+        onError(new Error("Socket connection required for video calls"));
+      }
+      return;
+    }
+
+    // Start the call
     startCall();
 
     // Set up timer for call duration
@@ -64,7 +85,10 @@ const VideoCall = ({
 
   // Set up socket event listeners for call control signals
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) {
+      console.warn("Cannot set up socket listeners: socket is null");
+      return;
+    }
 
     // Handle media control events
     const handleMediaControl = (data) => {
@@ -91,8 +115,12 @@ const VideoCall = ({
 
     // Clean up event listeners
     return () => {
-      socket.off("videoMediaControl", handleMediaControl);
-      socket.off("videoHangup", handleHangup);
+      try {
+        socket.off("videoMediaControl", handleMediaControl);
+        socket.off("videoHangup", handleHangup);
+      } catch (err) {
+        console.error("Error cleaning up socket event listeners:", err);
+      }
     };
   }, [socket, remoteUserId, remoteName]);
 
@@ -106,6 +134,16 @@ const VideoCall = ({
   // Initialize video call
   const startCall = async () => {
     try {
+      // Double-check socket availability
+      if (!socket) {
+        console.error("Socket connection required for video calls");
+        setConnectionStatus("error");
+        if (onError) {
+          onError(new Error("Socket connection required for video calls"));
+        }
+        return;
+      }
+
       // Request user media (camera and microphone)
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: true,
@@ -141,39 +179,61 @@ const VideoCall = ({
         console.log("PeerJS connection established with ID:", id);
         setConnectionStatus("connecting");
 
-        // Send peer ID to remote user via signaling server
-        socket.emit("peerIdExchange", {
-          recipientId: remoteUserId,
-          peerId: id,
-          from: {
-            userId: user._id,
-            name: user.nickname || "User"
-          }
-        });
+        // Check if socket is still available
+        if (socket) {
+          try {
+            // Send peer ID to remote user via signaling server
+            socket.emit("peerIdExchange", {
+              recipientId: remoteUserId,
+              peerId: id,
+              from: {
+                userId: user._id,
+                name: user.nickname || "User"
+              }
+            });
 
-        // If initiator, wait for remote peer ID and call
-        if (isInitiator) {
-          // Handle peer ID from remote user
-          const handlePeerIdReceived = (data) => {
-            if (data.userId === remoteUserId) {
-              const remotePeerId = data.peerId;
-              console.log("Received remote peer ID:", remotePeerId);
+            // If initiator, wait for remote peer ID and call
+            if (isInitiator) {
+              // Handle peer ID from remote user
+              const handlePeerIdReceived = (data) => {
+                if (data.userId === remoteUserId) {
+                  const remotePeerId = data.peerId;
+                  console.log("Received remote peer ID:", remotePeerId);
 
-              // Make the call to remote peer
-              const call = peerInstance.call(remotePeerId, mediaStream);
-              callRef.current = call;
+                  // Make the call to remote peer
+                  const call = peerInstance.call(remotePeerId, mediaStream);
+                  callRef.current = call;
 
-              // Set up call event handlers
-              setupCallHandlers(call);
+                  // Set up call event handlers
+                  setupCallHandlers(call);
+                }
+              };
+
+              socket.on("peerIdExchange", handlePeerIdReceived);
+
+              // Clean up event listener
+              setTimeout(() => {
+                try {
+                  socket.off("peerIdExchange", handlePeerIdReceived);
+                } catch (err) {
+                  console.error("Error removing peerIdExchange listener:", err);
+                }
+              }, 30000);  // Remove listener after 30 seconds
             }
-          };
+          } catch (socketError) {
+            console.error("Socket operation failed:", socketError);
+            setConnectionStatus("error");
+            if (onError) {
+              onError(new Error(`Socket operation failed: ${socketError.message}`));
+            }
+          }
+        } else {
+          console.error("Socket connection not available for signaling");
+          setConnectionStatus("error");
 
-          socket.on("peerIdExchange", handlePeerIdReceived);
-
-          // Clean up event listener
-          setTimeout(() => {
-            socket.off("peerIdExchange", handlePeerIdReceived);
-          }, 30000);  // Remove listener after 30 seconds
+          if (onError) {
+            onError(new Error("Socket connection not available for signaling"));
+          }
         }
       });
 
@@ -246,60 +306,90 @@ const VideoCall = ({
   const endCall = () => {
     // Close the call
     if (callRef.current) {
-      callRef.current.close();
+      try {
+        callRef.current.close();
+      } catch (err) {
+        console.error("Error closing call:", err);
+      }
       callRef.current = null;
     }
 
     // Stop media tracks
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      try {
+        streamRef.current.getTracks().forEach(track => {
+          try {
+            track.stop();
+          } catch (trackErr) {
+            console.error("Error stopping track:", trackErr);
+          }
+        });
+      } catch (streamErr) {
+        console.error("Error stopping stream tracks:", streamErr);
+      }
       streamRef.current = null;
     }
 
     // Close peer connection
     if (peerRef.current) {
-      peerRef.current.destroy();
+      try {
+        peerRef.current.destroy();
+      } catch (peerErr) {
+        console.error("Error destroying peer:", peerErr);
+      }
       peerRef.current = null;
     }
 
     // Notify the remote user
     if (socket && remoteUserId) {
-      socket.emit("videoHangup", {
-        recipientId: remoteUserId,
-        userId: user._id,
-      });
+      try {
+        socket.emit("videoHangup", {
+          recipientId: remoteUserId,
+          userId: user._id,
+        });
+      } catch (socketErr) {
+        console.error("Error sending hangup signal:", socketErr);
+      }
     }
 
     setConnectionStatus("disconnected");
 
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
     }
   };
 
   // Handle hanging up the call
   const handleHangup = () => {
     endCall();
-    onClose();
+    if (typeof onClose === 'function') {
+      onClose();
+    }
   };
 
   // Toggle audio mute
   const toggleAudioMute = () => {
     if (streamRef.current) {
-      const audioTracks = streamRef.current.getAudioTracks();
-      audioTracks.forEach(track => {
-        track.enabled = isAudioMuted;
-      });
-      setIsAudioMuted(!isAudioMuted);
-
-      // Notify remote peer
-      if (socket) {
-        socket.emit("videoMediaControl", {
-          recipientId: remoteUserId,
-          type: "audio",
-          muted: !isAudioMuted,
-          userId: user._id
+      try {
+        const audioTracks = streamRef.current.getAudioTracks();
+        audioTracks.forEach(track => {
+          track.enabled = isAudioMuted;
         });
+        setIsAudioMuted(!isAudioMuted);
+
+        // Notify remote peer
+        if (socket) {
+          socket.emit("videoMediaControl", {
+            recipientId: remoteUserId,
+            type: "audio",
+            muted: !isAudioMuted,
+            userId: user._id
+          });
+        }
+      } catch (err) {
+        console.error("Error toggling audio mute:", err);
+        toast.error("Failed to change audio state");
       }
     }
   };
@@ -307,20 +397,25 @@ const VideoCall = ({
   // Toggle video off/on
   const toggleVideo = () => {
     if (streamRef.current) {
-      const videoTracks = streamRef.current.getVideoTracks();
-      videoTracks.forEach(track => {
-        track.enabled = isVideoOff;
-      });
-      setIsVideoOff(!isVideoOff);
-
-      // Notify remote peer
-      if (socket) {
-        socket.emit("videoMediaControl", {
-          recipientId: remoteUserId,
-          type: "video",
-          muted: !isVideoOff,
-          userId: user._id
+      try {
+        const videoTracks = streamRef.current.getVideoTracks();
+        videoTracks.forEach(track => {
+          track.enabled = isVideoOff;
         });
+        setIsVideoOff(!isVideoOff);
+
+        // Notify remote peer
+        if (socket) {
+          socket.emit("videoMediaControl", {
+            recipientId: remoteUserId,
+            type: "video",
+            muted: !isVideoOff,
+            userId: user._id
+          });
+        }
+      } catch (err) {
+        console.error("Error toggling video:", err);
+        toast.error("Failed to change video state");
       }
     }
   };
@@ -328,16 +423,24 @@ const VideoCall = ({
   // Toggle fullscreen mode
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      if (containerRef.current.requestFullscreen) {
+      if (containerRef.current && containerRef.current.requestFullscreen) {
         containerRef.current.requestFullscreen()
           .then(() => setIsFullscreen(true))
-          .catch(err => console.error("Fullscreen error:", err));
+          .catch(err => {
+            console.error("Fullscreen error:", err);
+            toast.error("Failed to enter fullscreen mode");
+          });
+      } else {
+        toast.warning("Fullscreen not supported in your browser");
       }
     } else {
       if (document.exitFullscreen) {
         document.exitFullscreen()
           .then(() => setIsFullscreen(false))
-          .catch(err => console.error("Exit fullscreen error:", err));
+          .catch(err => {
+            console.error("Exit fullscreen error:", err);
+            toast.error("Failed to exit fullscreen mode");
+          });
       }
     }
   };

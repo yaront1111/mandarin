@@ -635,14 +635,29 @@ class SocketService {
   }
 
   /**
-   * Check if the socket is currently connected.
-   *
-   * @returns {boolean} - True if connected.
+   * Check if socket is connected and valid
+   * @returns {boolean} Whether socket is connected and ready to use
    */
   isConnected() {
-    return this.socket && this.socket.connected;
+    return (
+      this.socket !== null &&
+      typeof this.socket !== 'undefined' &&
+      this.socket.connected === true &&
+      !this.disconnecting
+    );
   }
 
+  /**
+ * Get socket instance with validation
+ * @returns {Object|null} Socket instance or null if not available
+   * * */
+  getSocket() {
+    if (this.isConnected()) {
+      return this.socket;
+    }
+    console.warn("Attempted to access socket when not connected");
+    return null;
+  }
   /**
    * Disconnect the socket and clean up all listeners and intervals.
    */

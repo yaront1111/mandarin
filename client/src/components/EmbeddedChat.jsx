@@ -23,13 +23,20 @@ import {
   FaFileVideo,
   FaCrown,
   FaLock,
+  FaPhoneSlash,
+  FaPhone,
 } from "react-icons/fa";
 import { useAuth, useChat } from "../context";
-import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import VideoCall from "./VideoCall"; // Import our new VideoCall component
-import "../styles/video-call.css"; // Import our new CSS file
+import VideoCall from "./VideoCall";
+import "../styles/video-call.css";
+import socketService from "../services/socketService.jsx";
+
+// Console logger for debugging
+const debug = (msg, ...args) => {
+  console.log(`[EmbeddedChat] ${msg}`, ...args);
+};
 
 const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const { user, token } = useAuth();
@@ -57,12 +64,11 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const [pendingPhotoRequests, setPendingPhotoRequests] = useState(0);
   const [isApprovingRequests, setIsApprovingRequests] = useState(false);
   const [requestsData, setRequestsData] = useState([]);
-  
+
   // Video call state
   const [activeCall, setActiveCall] = useState(false);
   const [isCallInitiator, setIsCallInitiator] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
-  const [showCallDialog, setShowCallDialog] = useState(false);
   const [callError, setCallError] = useState(null);
 
   const messagesEndRef = useRef(null);
@@ -93,30 +99,77 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     return instance;
   }, [token]);
 
-  // Access socket from context
+  // Access socket directly from socketService
   useEffect(() => {
-    if (useChat.socket) {
-      socketRef.current = useChat.socket;
+    if (socketService.socket) {
+      debug("Socket reference obtained");
+      socketRef.current = socketService.socket;
+    } else {
+      debug("Socket connection not available", socketService);
     }
-  }, [useChat.socket]);
+  }, []);
 
-  // Handle incoming call
-  useEffect(() => {
-    if (!socketRef.current) return;
-    
-    const handleIncomingCall = (data) => {
-      if (data.caller.userId === recipient._id) {
+  // Production-level incoming call handler without toast notifications.
+  const handleIncomingCall = useCallback(
+    (data) => {
+      try {
+        if (!data) {
+          console.error("Received empty call data");
+          return;
+        }
+        // Determine callerId by checking various possible formats
+        const callerId =
+          (data.caller && (data.caller.userId || data.caller._id)) ||
+          data.userId ||
+          (data.from && data.from.userId);
+        if (!callerId) {
+          console.error("Caller ID not found in incoming call data", data);
+          return;
+        }
+        if (!recipient || !recipient._id) {
+          console.error("Recipient information missing for incoming call", data);
+          return;
+        }
+        // Optionally, if an incoming call is already active, do not override it.
+        if (incomingCall) {
+          console.warn("An incoming call is already active. Ignoring duplicate call.");
+          return;
+        }
+        console.log(`Call from ${callerId} - recipient is ${recipient._id}`);
+        // Directly update state to trigger the custom incoming call banner.
         setIncomingCall(data);
-        setShowCallDialog(true);
+        debug("Incoming call state set", data);
+      } catch (error) {
+        console.error("Error handling incoming call:", error);
+      }
+    },
+    [recipient, incomingCall]
+  );
+
+  // Listen for incoming calls via the socket without triggering any toast.
+  useEffect(() => {
+    if (!socketRef.current) {
+      debug("No socket available for incoming call handling");
+      return;
+    }
+    socketRef.current.on("incomingCall", handleIncomingCall);
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.off("incomingCall", handleIncomingCall);
       }
     };
-    
-    socketRef.current.on("incomingCall", handleIncomingCall);
-    
-    return () => {
-      socketRef.current.off("incomingCall", handleIncomingCall);
-    };
-  }, [recipient, socketRef.current]);
+  }, [recipient, handleIncomingCall]);
+
+  // Monitor typing events for debugging
+  useEffect(() => {
+    if (recipient && typingUsers) {
+      // This example simply calculates a flag; you may add additional logging if needed.
+      const isUserTyping =
+        recipient._id &&
+        typingUsers[recipient._id] &&
+        Date.now() - typingUsers[recipient._id] < 3000;
+    }
+  }, [typingUsers, recipient]);
 
   // Load messages and check pending photo requests when chat opens.
   useEffect(() => {
@@ -132,10 +185,8 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         })
         .catch((err) => {
           setIsLoading(false);
-          toast.error("Failed to load messages. Please try again.");
+          console.error("Failed to load messages. Please try again.", err);
         });
-
-      // Check pending photo requests if user data is available.
       if (user) checkPendingPhotoRequests();
     }
     return () => {
@@ -174,6 +225,15 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     };
   }, [isUploading]);
 
+  // Mock function to force show incoming call for testing
+  const mockIncomingCall = () => {
+    console.log("Setting mock incoming call");
+    setIncomingCall({
+      caller: { userId: recipient._id, name: recipient.nickname },
+      callId: "test-call-" + Date.now(),
+    });
+  };
+
   // Check for pending photo access requests.
   const checkPendingPhotoRequests = async () => {
     try {
@@ -209,17 +269,13 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             result.status === "fulfilled" && result.value.data.success
         ).length;
         if (successCount > 0) {
-          toast.success(
-            `Approved ${successCount} photo request${
-              successCount !== 1 ? "s" : ""
-            }`
+          console.log(
+            `Approved ${successCount} photo request${successCount !== 1 ? "s" : ""}`
           );
           const systemMessage = {
             _id: Date.now().toString(),
             sender: "system",
-            content: `Photo access approved for ${successCount} photo${
-              successCount !== 1 ? "s" : ""
-            }.`,
+            content: `Photo access approved for ${successCount} photo${successCount !== 1 ? "s" : ""}.`,
             createdAt: new Date().toISOString(),
             type: "system",
           };
@@ -234,7 +290,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           setPendingPhotoRequests(0);
           setRequestsData([]);
         } else {
-          toast.error("Failed to approve photo requests");
+          console.error("Failed to approve photo requests");
         }
       } else {
         // Fallback approval method.
@@ -243,10 +299,8 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         });
         if (response.data?.success) {
           const approvedCount = response.data.approvedCount || 1;
-          toast.success(
-            `Approved ${approvedCount} photo request${
-              approvedCount !== 1 ? "s" : ""
-            }`
+          console.log(
+            `Approved ${approvedCount} photo request${approvedCount !== 1 ? "s" : ""}`
           );
           const systemMessage = {
             _id: Date.now().toString(),
@@ -269,7 +323,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         }
       }
     } catch (error) {
-      toast.error("Error approving photo requests. Please try again.");
+      console.error("Error approving photo requests. Please try again.", error);
       const systemMessage = {
         _id: Date.now().toString(),
         sender: "system",
@@ -336,19 +390,10 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Emoji handling.
   const commonEmojis = [
-    "😊",
-    "😂",
-    "😍",
-    "❤️",
-    "👍",
-    "🙌",
-    "🔥",
-    "✨",
-    "🎉",
-    "🤔",
-    "😉",
-    "🥰",
+    "😊", "😂", "😍", "❤️", "👍", "🙌",
+    "🔥", "✨", "🎉", "🤔", "😉", "🥰",
   ];
+
   const handleEmojiClick = (emoji) => {
     setNewMessage((prev) => prev + emoji);
     setShowEmojis(false);
@@ -371,15 +416,14 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     if (attachment) return handleSendAttachment();
     if (newMessage.trim() && !sendingMessage && recipient) {
       if (user?.accountTier === "FREE" && newMessage.trim() !== "😉") {
-        return toast.error(
-          "Free accounts can only send winks. Upgrade to send messages."
-        );
+        console.error("Free accounts can only send winks. Upgrade to send messages.");
+        return;
       }
       try {
         await sendMessage(recipient._id, "text", newMessage.trim());
         setNewMessage("");
       } catch (error) {
-        toast.error(error.message || "Failed to send message");
+        console.error(error.message || "Failed to send message");
       }
     }
   };
@@ -391,12 +435,12 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       await sendFileMessage(recipient._id, attachment, (progress) =>
         setUploadProgress(progress)
       );
-      toast.success("File sent successfully");
+      console.log("File sent successfully");
       setAttachment(null);
       setUploadProgress(0);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (error) {
-      toast.error(error.message || "Failed to send file. Please try again.");
+      console.error(error.message || "Failed to send file. Please try again.");
     } finally {
       setIsUploading(false);
     }
@@ -407,14 +451,15 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       try {
         await sendMessage(recipient._id, "wink", "😉");
       } catch (error) {
-        toast.error(error.message || "Failed to send wink");
+        console.error(error.message || "Failed to send wink");
       }
     }
   };
 
   const handleFileAttachment = () => {
     if (user?.accountTier === "FREE") {
-      return toast.error("Free accounts cannot send files. Upgrade to send files.");
+      console.error("Free accounts cannot send files. Upgrade to send files.");
+      return;
     }
     fileInputRef.current?.click();
   };
@@ -423,31 +468,23 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("File is too large. Maximum size is 5MB.");
+      console.error("File is too large. Maximum size is 5MB.");
       e.target.value = null;
       return;
     }
     const allowedTypes = [
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "image/gif",
-      "application/pdf",
-      "application/msword",
+      "image/jpeg", "image/jpg", "image/png", "image/gif",
+      "application/pdf", "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "text/plain",
-      "audio/mpeg",
-      "audio/wav",
-      "video/mp4",
-      "video/quicktime",
+      "text/plain", "audio/mpeg", "audio/wav", "video/mp4", "video/quicktime",
     ];
     if (!allowedTypes.includes(file.type)) {
-      toast.error("File type not supported.");
+      console.error("File type not supported.");
       e.target.value = null;
       return;
     }
     setAttachment(file);
-    toast.info(`Selected file: ${file.name}`);
+    console.log(`Selected file: ${file.name}`);
     e.target.value = null;
   };
 
@@ -460,54 +497,58 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   // Handle initiating a video call
   const handleVideoCall = () => {
     if (user?.accountTier === "FREE") {
-      return toast.error("Free accounts cannot make video calls. Upgrade for video calls.");
+      console.error("Free accounts cannot make video calls. Upgrade for video calls.");
+      return;
+    }
+    if (!socketRef.current) {
+      console.error("Cannot start call: No connection available");
+      return;
     }
     if (recipient?._id) {
       setIsCallInitiator(true);
       setActiveCall(true);
-      
       // Also send a message to notify about the call
       sendMessage(recipient._id, "video", "Video Call").catch(error => {
         console.error("Failed to send video call message:", error);
       });
-      
-      toast.info(`Starting video call with ${recipient.nickname}...`);
+      console.log(`Starting video call with ${recipient.nickname}...`);
     } else {
-      toast.error("Cannot start call: recipient information is missing");
+      console.error("Cannot start call: recipient information is missing");
     }
   };
-  
+
   // Handle accepting an incoming call
   const handleAcceptCall = () => {
+    debug("Accepting incoming call", incomingCall);
     if (incomingCall) {
       setActiveCall(true);
       setIsCallInitiator(false);
-      setShowCallDialog(false);
+      setIncomingCall(null);
     }
   };
-  
+
   // Handle rejecting an incoming call
   const handleRejectCall = () => {
+    debug("Rejecting incoming call", incomingCall);
     if (incomingCall && socketRef.current) {
       socketRef.current.emit("answerCall", {
-        callerId: incomingCall.caller.userId,
-        accept: false
+        callerId: incomingCall.caller?.userId || incomingCall.userId,
+        accept: false,
       });
       setIncomingCall(null);
-      setShowCallDialog(false);
     }
   };
-  
+
   // Handle ending a call
   const handleEndCall = () => {
     setActiveCall(false);
     setIncomingCall(null);
   };
-  
+
   // Handle call errors
   const handleCallError = (error) => {
     setCallError(error.message || "Call failed");
-    toast.error(`Call error: ${error.message || "Unknown error"}`);
+    console.error(`Call error: ${error.message || "Unknown error"}`);
     setActiveCall(false);
   };
 
@@ -519,7 +560,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   const handleClose = () => {
     if (activeCall) {
-      toast.info("Please end the call before closing the chat.");
+      console.log("Please end the call before closing the chat.");
       return;
     }
     if (typeof onClose === "function") onClose();
@@ -584,50 +625,19 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       </div>
     );
   };
-  
-  // Render incoming call dialog
-  const renderCallDialog = () => {
-    if (!showCallDialog || !incomingCall) return null;
-    
-    return (
-      <div className="incoming-call-dialog">
-        <div className="call-dialog-content">
-          <div className="caller-info">
-            <div className="caller-avatar">
-              {recipient?.photos?.length > 0 ? (
-                <img 
-                  src={recipient.photos[0].url} 
-                  alt={recipient.nickname} 
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = "/placeholder.svg";
-                  }}
-                />
-              ) : (
-                <div className="avatar-placeholder">{recipient.nickname?.charAt(0)}</div>
-              )}
-            </div>
-            <h3>{recipient.nickname} is calling...</h3>
-          </div>
-          <div className="call-actions">
-            <button className="decline-btn" onClick={handleRejectCall}>
-              <FaTimes />
-              <span>Decline</span>
-            </button>
-            <button className="accept-btn" onClick={handleAcceptCall}>
-              <FaVideo />
-              <span>Accept</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className={`embedded-chat ${embedded ? "embedded" : "standalone"}`}>
+      {/* Uncomment the test button below for debugging incoming calls */}
+      {/* <button
+        onClick={mockIncomingCall}
+        style={{position: 'absolute', top: '5px', right: '5px', zIndex: 9999, background: 'red', color: 'white'}}
+      >
+        Test Call
+      </button> */}
+
       {/* Render the VideoCall component if a call is active */}
-      {activeCall && (
+      {activeCall && socketRef.current ? (
         <VideoCall
           isInitiator={isCallInitiator}
           remoteUserId={recipient._id}
@@ -636,11 +646,14 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           socket={socketRef.current}
           onError={handleCallError}
         />
-      )}
-      
-      {/* Render incoming call dialog */}
-      {renderCallDialog()}
-      
+      ) : activeCall ? (
+        <div className="video-call-error">
+          <h3>Cannot start video call</h3>
+          <p>Connection not available. Please try again later.</p>
+          <button onClick={handleEndCall} className="error-close-btn">Close</button>
+        </div>
+      ) : null}
+
       <div className="chat-header">
         <div className="chat-user">
           {recipient?.photos?.length ? (
@@ -674,7 +687,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             {isApprovingRequests ? <FaSpinner className="fa-spin" /> : <FaLock />}
             <span className="request-badge">!</span>
           </button>
-          {user?.accountTier !== "FREE" && (
+          {user?.accountTier !== "FREE" && !activeCall && (
             <button
               className="video-call-btn"
               onClick={handleVideoCall}
@@ -695,6 +708,24 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           </button>
         </div>
       </div>
+
+      {/* Incoming call notification banner */}
+      {incomingCall && (
+        <div className="incoming-call-banner">
+          <div className="incoming-call-info">
+            <FaVideo className="call-icon pulse" />
+            <span>{recipient.nickname} is calling you</span>
+          </div>
+          <div className="incoming-call-actions">
+            <button className="decline-call-btn" onClick={handleRejectCall} title="Decline">
+              <FaPhoneSlash />
+            </button>
+            <button className="accept-call-btn" onClick={handleAcceptCall} title="Accept">
+              <FaPhone />
+            </button>
+          </div>
+        </div>
+      )}
 
       {user?.accountTier === "FREE" && (
         <div className="premium-banner">
