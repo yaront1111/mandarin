@@ -24,7 +24,7 @@ const toggleTracks = (stream, trackType, enabled) => {
   const tracks =
     trackType === "audio" ? stream.getAudioTracks() : stream.getVideoTracks();
   tracks.forEach((track) => {
-    console.log(`[ToggleTracks] ${trackType} track current enabled: ${track.enabled}, setting to ${enabled}`);
+    console.log(`[ToggleTracks] ${trackType} track (${track.kind}) current enabled: ${track.enabled} => setting to ${enabled}`);
     track.enabled = enabled;
   });
 };
@@ -35,7 +35,7 @@ const stopMediaTracks = (stream) => {
   console.log("[stopMediaTracks] Stopping all media tracks");
   stream.getTracks().forEach((track) => {
     try {
-      console.log("[stopMediaTracks] Stopping track:", track.kind);
+      console.log(`[stopMediaTracks] Stopping track: ${track.kind}`);
       track.stop();
     } catch (error) {
       console.error("[stopMediaTracks] Error stopping track:", error);
@@ -47,9 +47,7 @@ const stopMediaTracks = (stream) => {
 const formatDuration = (seconds) => {
   const minutes = Math.floor(seconds / 60);
   const secs = seconds % 60;
-  return `${minutes.toString().padStart(2, "0")}:${secs
-    .toString()
-    .padStart(2, "0")}`;
+  return `${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 };
 
 const VideoCall = ({
@@ -81,10 +79,15 @@ const VideoCall = ({
   const containerRef = useRef(null);
   const connectionInProgressRef = useRef(false);
   const hangupProcessedRef = useRef(false);
+  // Guard against duplicate initialization within the same session
+  const initializedRef = useRef(false);
 
-  // Log component mount
   useEffect(() => {
     console.log("[VideoCall] Component mounted");
+    if (initializedRef.current) {
+      console.log("[VideoCall] Already initialized, skipping startCall");
+      return;
+    }
     if (!user || !user._id || !remoteUserId) {
       const errMsg = "Missing required user information for video call";
       console.error("[VideoCall] " + errMsg);
@@ -101,6 +104,7 @@ const VideoCall = ({
     }
 
     startCall();
+    initializedRef.current = true;
 
     // Set up call duration timer
     callTimerRef.current = setInterval(() => {
@@ -114,7 +118,6 @@ const VideoCall = ({
     };
   }, []);
 
-  // Socket event handlers
   const handleMediaControl = useCallback(
     (data) => {
       console.log("[VideoCall] Media control event received:", data);
@@ -136,10 +139,8 @@ const VideoCall = ({
         if (connectionInProgressRef.current) {
           console.log("[VideoCall] Connection in progress, delaying hangup cleanup...");
           setTimeout(() => {
-            if (hangupProcessedRef.current) {
-              console.log("[VideoCall] Delayed hangup processing complete, closing call");
-              onClose && onClose();
-            }
+            console.log("[VideoCall] Delayed hangup processing complete, closing call");
+            onClose && onClose();
           }, HANGUP_DELAY);
         } else {
           console.log("[VideoCall] No connection in progress, closing call immediately");
@@ -150,7 +151,6 @@ const VideoCall = ({
     [remoteUserId, remoteName, onClose]
   );
 
-  // Setup socket listeners
   useEffect(() => {
     if (!socket) return;
     console.log("[VideoCall] Setting up socket listeners");
@@ -163,7 +163,6 @@ const VideoCall = ({
     };
   }, [socket, handleMediaControl, handleHangupSocket]);
 
-  // Start call: obtain media and initialize PeerJS
   const startCall = async () => {
     try {
       console.log("[VideoCall] Starting call");
@@ -178,7 +177,7 @@ const VideoCall = ({
       connectionInProgressRef.current = true;
 
       if (peerRef.current) {
-        console.log("[VideoCall] PeerJS instance already exists, reusing it");
+        console.log("[VideoCall] PeerJS instance already exists, skipping new initialization");
         return;
       }
 
@@ -211,7 +210,6 @@ const VideoCall = ({
       });
       peerRef.current = peerInstance;
 
-      // PeerJS open event
       peerInstance.on("open", (id) => {
         console.log("[VideoCall] PeerJS open event fired. ID:", id);
         setConnectionStatus("connecting");
@@ -228,6 +226,11 @@ const VideoCall = ({
 
           const handlePeerIdReceived = (data) => {
             console.log("[VideoCall] Received peerIdExchange data:", data);
+            // If remotePeerId is already set, ignore duplicate events.
+            if (remotePeerId) {
+              console.log("[VideoCall] Remote peer ID already set, ignoring duplicate:", remotePeerId);
+              return;
+            }
             if (data.from?.userId === remoteUserId || data.userId === remoteUserId) {
               const remoteId = data.peerId;
               console.log("[VideoCall] Remote peer ID received:", remoteId);
@@ -239,6 +242,10 @@ const VideoCall = ({
                   if (peerInstance.disconnected) {
                     console.log("[VideoCall] Peer disconnected, attempting to reconnect...");
                     peerInstance.reconnect();
+                  }
+                  if (callRef.current) {
+                    console.log("[VideoCall] Call already exists, skipping call initiation");
+                    return;
                   }
                   console.log("[VideoCall] Initiator: making call to remote ID:", remoteId);
                   const call = peerInstance.call(remoteId, mediaStream);
@@ -271,9 +278,12 @@ const VideoCall = ({
         }
       });
 
-      // Handle incoming call (for non-initiator)
       peerInstance.on("call", (call) => {
         console.log("[VideoCall] Incoming call received from PeerJS");
+        if (callRef.current) {
+          console.log("[VideoCall] Already have an active call, ignoring new incoming call");
+          return;
+        }
         callRef.current = call;
         hangupProcessedRef.current = false;
         console.log("[VideoCall] Answering incoming call...");
@@ -281,7 +291,6 @@ const VideoCall = ({
         setupCallHandlers(call);
       });
 
-      // PeerJS error event
       peerInstance.on("error", (err) => {
         console.error("[VideoCall] PeerJS error:", err);
         toast.error(`[VideoCall] Connection error: ${err.type}`);
@@ -300,7 +309,6 @@ const VideoCall = ({
     }
   };
 
-  // Set up call event handlers
   const setupCallHandlers = (call) => {
     if (!call) {
       console.error("[VideoCall] Cannot set up handlers for null call");
@@ -339,7 +347,6 @@ const VideoCall = ({
     });
   };
 
-  // End call and cleanup
   const endCall = () => {
     console.log("[VideoCall] Ending call and cleaning up resources");
     connectionInProgressRef.current = false;
@@ -384,14 +391,12 @@ const VideoCall = ({
     }
   };
 
-  // Hangup button handler
   const handleHangup = () => {
     console.log("[VideoCall] Hangup button clicked");
     endCall();
     onClose && onClose();
   };
 
-  // Toggle audio mute/unmute
   const toggleAudioMute = () => {
     if (streamRef.current) {
       try {
@@ -413,7 +418,6 @@ const VideoCall = ({
     }
   };
 
-  // Toggle video on/off
   const toggleVideo = () => {
     if (streamRef.current) {
       try {
@@ -435,7 +439,6 @@ const VideoCall = ({
     }
   };
 
-  // Toggle fullscreen mode
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       if (containerRef.current && containerRef.current.requestFullscreen) {
@@ -468,7 +471,6 @@ const VideoCall = ({
     }
   };
 
-  // Listen for fullscreen change events
   useEffect(() => {
     const handleFullscreenChange = () => {
       console.log("[VideoCall] Fullscreen change event. Fullscreen active:", !!document.fullscreenElement);
@@ -480,7 +482,6 @@ const VideoCall = ({
     };
   }, []);
 
-  // Reconnection logic if connection fails
   useEffect(() => {
     if (connectionStatus === "error" && remotePeerId && peerRef.current) {
       console.log("[VideoCall] Attempting to reconnect after error...");
@@ -538,13 +539,7 @@ const VideoCall = ({
         </div>
 
         <div className="local-video-container">
-          <video
-            ref={localVideoRef}
-            className="local-video"
-            autoPlay
-            playsInline
-            muted
-          />
+          <video ref={localVideoRef} className="local-video" autoPlay playsInline muted />
           <div className="local-user-name">{user?.nickname || "You"}</div>
         </div>
       </div>
