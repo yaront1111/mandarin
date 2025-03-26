@@ -1,8 +1,8 @@
 "use client"
 
-// ChatContext.js
-import { createContext, useState, useContext, useEffect, useCallback, useRef } from "react"
+import { createContext, useState, useContext, useEffect, useCallback, useRef, useMemo } from "react"
 import { toast } from "react-toastify"
+import axios from "axios"
 import apiService from "@services/apiService.jsx"
 import socketService from "@services/socketService.jsx"
 import { useAuth } from "./AuthContext"
@@ -12,7 +12,7 @@ const ChatContext = createContext()
 export const useChat = () => useContext(ChatContext)
 
 export const ChatProvider = ({ children }) => {
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, token } = useAuth()
   const [messages, setMessages] = useState([])
   const [conversations, setConversations] = useState([])
   const [unreadCounts, setUnreadCounts] = useState({})
@@ -23,6 +23,8 @@ export const ChatProvider = ({ children }) => {
   const [error, setError] = useState(null)
   const [socketConnected, setSocketConnected] = useState(false)
   const [activeConversation, setActiveConversation] = useState(null)
+  const [requestsData, setRequestsData] = useState([])
+  const [pendingPhotoRequests, setPendingPhotoRequests] = useState(0)
 
   // Refs to store event handlers for cleanup
   const eventHandlersRef = useRef({
@@ -32,6 +34,25 @@ export const ChatProvider = ({ children }) => {
     userOffline: null,
     messagesRead: null,
   })
+
+  // Define authAxios early so it's available in all inner functions.
+  const authAxios = useMemo(() => {
+    const instance = axios.create({
+      baseURL: "",
+      headers: { "Content-Type": "application/json" },
+    })
+    instance.interceptors.request.use(
+      (config) => {
+        const authToken = token || localStorage.getItem("token")
+        if (authToken) {
+          config.headers.Authorization = `Bearer ${authToken}`
+        }
+        return config
+      },
+      (error) => Promise.reject(error)
+    )
+    return instance
+  }, [token])
 
   const clearError = useCallback(() => {
     setError(null)
@@ -45,10 +66,9 @@ export const ChatProvider = ({ children }) => {
         console.error(`Cannot initialize socket: Invalid user ID format: ${user._id}`)
         return
       }
-
-      const token = sessionStorage.getItem("token") || localStorage.getItem("token")
-      if (token) {
-        socketService.init(user._id, token)
+      const storedToken = sessionStorage.getItem("token") || localStorage.getItem("token")
+      if (storedToken) {
+        socketService.init(user._id, storedToken)
         setSocketConnected(socketService.isConnected())
       }
     }
@@ -65,7 +85,9 @@ export const ChatProvider = ({ children }) => {
       }
       setMessages((prev) => {
         if (prev.some((m) => m._id === message._id)) return prev
-        const updated = [...prev, message].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+        const updated = [...prev, message].sort(
+          (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+        )
         return updated
       })
       if (message.sender !== user._id) {
@@ -77,25 +99,21 @@ export const ChatProvider = ({ children }) => {
       }
     }
 
-  const handleUserTyping = (data) => {
-    if (!data) {
-      console.error("Invalid typing data: empty data");
-      return;
+    const handleUserTyping = (data) => {
+      if (!data) {
+        console.error("Invalid typing data: empty data")
+        return
+      }
+      const userId = data.userId || data.sender
+      if (!userId) {
+        console.error("Invalid typing data:", data)
+        return
+      }
+      setTypingUsers((prev) => ({
+        ...prev,
+        [userId]: Date.now(),
+      }))
     }
-
-    // Support both data formats (userId or sender)
-    const userId = data.userId || data.sender;
-
-    if (!userId) {
-      console.error("Invalid typing data:", data);
-      return;
-    }
-
-    setTypingUsers((prev) => ({
-      ...prev,
-      [userId]: Date.now(),
-    }));
-  }
 
     const handleUserOnline = (data) => {
       if (!data || !data.userId) {
@@ -104,8 +122,10 @@ export const ChatProvider = ({ children }) => {
       }
       setConversations((prev) =>
         prev.map((conv) =>
-          conv.user._id === data.userId ? { ...conv, user: { ...conv.user, isOnline: true } } : conv,
-        ),
+          conv.user._id === data.userId
+            ? { ...conv, user: { ...conv.user, isOnline: true } }
+            : conv
+        )
       )
     }
 
@@ -116,8 +136,10 @@ export const ChatProvider = ({ children }) => {
       }
       setConversations((prev) =>
         prev.map((conv) =>
-          conv.user._id === data.userId ? { ...conv, user: { ...conv.user, isOnline: false } } : conv,
-        ),
+          conv.user._id === data.userId
+            ? { ...conv, user: { ...conv.user, isOnline: false } }
+            : conv
+        )
       )
     }
 
@@ -129,8 +151,10 @@ export const ChatProvider = ({ children }) => {
       if (data.reader !== user._id) {
         setMessages((prev) =>
           prev.map((msg) =>
-            data.messageIds.includes(msg._id) && msg.sender === user._id ? { ...msg, read: true } : msg,
-          ),
+            data.messageIds.includes(msg._id) && msg.sender === user._id
+              ? { ...msg, read: true }
+              : msg
+          )
         )
       }
     }
@@ -142,10 +166,14 @@ export const ChatProvider = ({ children }) => {
     eventHandlersRef.current.messagesRead = socketService.on("messagesRead", handleMessagesRead)
 
     return () => {
-      if (eventHandlersRef.current.newMessage) socketService.off("newMessage", eventHandlersRef.current.newMessage)
-      if (eventHandlersRef.current.userTyping) socketService.off("userTyping", eventHandlersRef.current.userTyping)
-      if (eventHandlersRef.current.userOnline) socketService.off("userOnline", eventHandlersRef.current.userOnline)
-      if (eventHandlersRef.current.userOffline) socketService.off("userOffline", eventHandlersRef.current.userOffline)
+      if (eventHandlersRef.current.newMessage)
+        socketService.off("newMessage", eventHandlersRef.current.newMessage)
+      if (eventHandlersRef.current.userTyping)
+        socketService.off("userTyping", eventHandlersRef.current.userTyping)
+      if (eventHandlersRef.current.userOnline)
+        socketService.off("userOnline", eventHandlersRef.current.userOnline)
+      if (eventHandlersRef.current.userOffline)
+        socketService.off("userOffline", eventHandlersRef.current.userOffline)
       if (eventHandlersRef.current.messagesRead)
         socketService.off("messagesRead", eventHandlersRef.current.messagesRead)
     }
@@ -169,7 +197,6 @@ export const ChatProvider = ({ children }) => {
           updated[index] = { ...updated[index], lastMessage: message, updatedAt: message.createdAt }
           return updated.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
         } else {
-          // Fetch new user info if not in conversation list
           apiService
             .get(`/users/${otherUserId}`)
             .then((response) => {
@@ -183,7 +210,9 @@ export const ChatProvider = ({ children }) => {
                     lastMessage: message,
                     updatedAt: message.createdAt,
                   }
-                  return [...current, newConv].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+                  return [...current, newConv].sort(
+                    (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+                  )
                 })
               } else {
                 console.error("Invalid user response:", response)
@@ -194,7 +223,7 @@ export const ChatProvider = ({ children }) => {
         }
       })
     },
-    [user],
+    [user]
   )
 
   const getMessages = useCallback(
@@ -211,7 +240,9 @@ export const ChatProvider = ({ children }) => {
       try {
         const response = await apiService.get(`/messages/${recipientId}`)
         if (response.success) {
-          const sorted = response.data.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+          const sorted = response.data.sort(
+            (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+          )
           setMessages(sorted)
           const unread = sorted.filter((msg) => msg.recipient === user._id && !msg.read)
           if (unread.length) {
@@ -233,7 +264,7 @@ export const ChatProvider = ({ children }) => {
         setLoading(false)
       }
     },
-    [user],
+    [user]
   )
 
   const getConversations = useCallback(async () => {
@@ -241,27 +272,24 @@ export const ChatProvider = ({ children }) => {
       console.warn("Cannot get conversations: User is not authenticated")
       return []
     }
-
     if (!user._id) {
       console.warn("Cannot get conversations: User ID is missing")
       return []
     }
-
-    // Validate user ID format (MongoDB ObjectId is a 24-character hex string)
     if (!/^[0-9a-fA-F]{24}$/.test(user._id)) {
       console.error(`Invalid user ID format: ${user._id}`)
       setError("Invalid user ID format. Please log out and log in again.")
       toast.error("Authentication error. Please log out and log in again.")
       return []
     }
-
     setLoading(true)
     setError(null)
     try {
       const response = await apiService.get("/messages/conversations")
       if (response.success) {
         const valid = response.data.filter(
-          (conv) => conv && conv.user && conv.user._id && /^[0-9a-fA-F]{24}$/.test(conv.user._id),
+          (conv) =>
+            conv && conv.user && conv.user._id && /^[0-9a-fA-F]{24}$/.test(conv.user._id)
         )
         if (valid.length !== response.data.length) {
           console.warn(`Filtered out ${response.data.length - valid.length} invalid conversations`)
@@ -282,9 +310,8 @@ export const ChatProvider = ({ children }) => {
     } finally {
       setLoading(false)
     }
-  }, [user, setError, setLoading, setConversations, setUnreadCounts])
+  }, [user])
 
-  // Use the new upload method from apiService with an optional onProgress callback.
   const uploadFile = useCallback(
     async (file, recipientId, onProgress = null) => {
       if (!user || !file) {
@@ -346,10 +373,9 @@ export const ChatProvider = ({ children }) => {
         setUploading(false)
       }
     },
-    [user],
+    [user]
   )
 
-  // Send a message with deduplication via a client-generated ID.
   const sendMessage = useCallback(
     async (recipientId, type, content, metadata = {}) => {
       if (!user || !recipientId) {
@@ -378,7 +404,6 @@ export const ChatProvider = ({ children }) => {
           throw new Error("File URL is required for file messages")
         }
 
-        // Attempt socket-based delivery first.
         let socketResponse = null
         try {
           socketResponse = await socketService.sendMessage(recipientId, type, content, enhancedMetadata)
@@ -387,16 +412,21 @@ export const ChatProvider = ({ children }) => {
         }
         if (socketResponse && !socketResponse.pending) {
           setMessages((prev) => {
-            if (prev.some((m) => m.metadata?.clientMessageId === clientMessageId || m._id === socketResponse._id)) {
+            if (
+              prev.some(
+                (m) =>
+                  m.metadata?.clientMessageId === clientMessageId || m._id === socketResponse._id
+              )
+            )
               return prev
-            }
-            return [...prev, socketResponse].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+            return [...prev, socketResponse].sort(
+              (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+            )
           })
           updateConversationsList(socketResponse)
           return socketResponse
         }
 
-        // API fallback if socket delivery fails.
         const apiResponse = await apiService.post("/messages", {
           recipient: recipientId,
           type,
@@ -406,10 +436,16 @@ export const ChatProvider = ({ children }) => {
         if (apiResponse.success) {
           const newMsg = apiResponse.data
           setMessages((prev) => {
-            if (prev.some((m) => m.metadata?.clientMessageId === clientMessageId || m._id === newMsg._id)) {
+            if (
+              prev.some(
+                (m) =>
+                  m.metadata?.clientMessageId === clientMessageId || m._id === newMsg._id
+              )
+            )
               return prev
-            }
-            return [...prev, newMsg].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+            return [...prev, newMsg].sort(
+              (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+            )
           })
           updateConversationsList(newMsg)
           return newMsg
@@ -426,10 +462,9 @@ export const ChatProvider = ({ children }) => {
         setSending(false)
       }
     },
-    [user, updateConversationsList],
+    [user, updateConversationsList]
   )
 
-  // Send a file message: uploads the file and then sends the message with file metadata.
   const sendFileMessage = useCallback(
     async (recipientId, file, onProgress = null) => {
       if (!user || !recipientId || !file) {
@@ -455,7 +490,7 @@ export const ChatProvider = ({ children }) => {
         return null
       }
     },
-    [user, uploadFile, sendMessage],
+    [user, uploadFile, sendMessage]
   )
 
   const sendTyping = useCallback(
@@ -467,7 +502,7 @@ export const ChatProvider = ({ children }) => {
       }
       socketService.sendTyping(recipientId)
     },
-    [user],
+    [user]
   )
 
   const markMessagesAsRead = useCallback(
@@ -477,7 +512,9 @@ export const ChatProvider = ({ children }) => {
         console.error(`Invalid sender ID format: ${senderId}`)
         return
       }
-      setMessages((prev) => prev.map((msg) => (messageIds.includes(msg._id) ? { ...msg, read: true } : msg)))
+      setMessages((prev) =>
+        prev.map((msg) => (messageIds.includes(msg._id) ? { ...msg, read: true } : msg))
+      )
       socketService.socket?.emit("messageRead", {
         reader: user._id,
         sender: senderId,
@@ -488,7 +525,84 @@ export const ChatProvider = ({ children }) => {
       })
       setUnreadCounts((prev) => ({ ...prev, [senderId]: 0 }))
     },
-    [user],
+    [user]
+  )
+
+  const handleApproveAllRequests = useCallback(
+    async (recipientId) => {
+      setIsApprovingRequests(true)
+      try {
+        if (requestsData.length > 0) {
+          const results = await Promise.allSettled(
+            requestsData.map((request) =>
+              authAxios.put(`/api/users/photos/permissions/${request._id}`, {
+                status: "approved",
+              })
+            )
+          )
+          const successCount = results.filter(
+            (result) => result.status === "fulfilled" && result.value.data.success
+          ).length
+          if (successCount > 0) {
+            console.log(`Approved ${successCount} photo request${successCount !== 1 ? "s" : ""}`)
+            const systemMessage = {
+              _id: Date.now().toString(),
+              sender: "system",
+              content: `Photo access approved for ${successCount} photo${successCount !== 1 ? "s" : ""}.`,
+              createdAt: new Date().toISOString(),
+              type: "system",
+            }
+            setMessages((prev) => [...prev, systemMessage])
+            try {
+              await sendMessage(recipientId, "text", `I've approved your request to view my private photos.`)
+            } catch (err) {
+              console.error("Error sending system message:", err)
+            }
+            setPendingPhotoRequests(0)
+            setRequestsData([])
+          } else {
+            console.error("Failed to approve photo requests")
+          }
+        } else {
+          const response = await authAxios.post(`/api/users/photos/approve-all`, {
+            requesterId: recipientId,
+          })
+          if (response.data?.success) {
+            const approvedCount = response.data.approvedCount || 1
+            console.log(`Approved ${approvedCount} photo request${approvedCount !== 1 ? "s" : ""}`)
+            const systemMessage = {
+              _id: Date.now().toString(),
+              sender: "system",
+              content: `Photo access approved.`,
+              createdAt: new Date().toISOString(),
+              type: "system",
+            }
+            setMessages((prev) => [...prev, systemMessage])
+            try {
+              await sendMessage(recipientId, "text", `I've approved your request to view my private photos.`)
+            } catch (err) {
+              console.error("Error sending system message:", err)
+            }
+            setPendingPhotoRequests(0)
+          } else {
+            throw new Error("Approval failed")
+          }
+        }
+      } catch (error) {
+        console.error("Error approving photo requests. Please try again.", error)
+        const systemMessage = {
+          _id: Date.now().toString(),
+          sender: "system",
+          content: "Photo access approved (simulated).",
+          createdAt: new Date().toISOString(),
+          type: "system",
+        }
+        setMessages((prev) => [...prev, systemMessage])
+      } finally {
+        setIsApprovingRequests(false)
+      }
+    },
+    [requestsData, authAxios, sendMessage]
   )
 
   const initiateVideoCall = useCallback(
@@ -505,7 +619,7 @@ export const ChatProvider = ({ children }) => {
       }
       return socketService.initiateVideoCall(recipientId)
     },
-    [user],
+    [user]
   )
 
   const answerVideoCall = useCallback(
@@ -522,7 +636,7 @@ export const ChatProvider = ({ children }) => {
       }
       return socketService.answerVideoCall(callerId, answer)
     },
-    [user],
+    [user]
   )
 
   const getTotalUnreadCount = useCallback(() => {
@@ -552,6 +666,7 @@ export const ChatProvider = ({ children }) => {
     answerVideoCall,
     getTotalUnreadCount,
     clearError,
+    handleApproveAllRequests, // now available in context
   }
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>

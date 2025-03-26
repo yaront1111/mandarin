@@ -31,7 +31,7 @@ import socketService from "../services/socketService.jsx"
 import { toast } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
 
-// Add this CSS style for the pulse animation
+// Add CSS for the pulse animation
 const pulseStyle = document.createElement("style")
 pulseStyle.textContent = `
   @keyframes pulse {
@@ -45,7 +45,7 @@ pulseStyle.textContent = `
 `
 document.head.appendChild(pulseStyle)
 
-// Console logger for debugging
+// Debug logger for console output
 const debug = (msg, ...args) => {
   console.log(`[EmbeddedChat] ${msg}`, ...args)
 }
@@ -58,7 +58,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     getMessages,
     sendMessage,
     sendTyping,
-    initiateVideoCall,
+    initiateVideoCall, // renamed if needed
     typingUsers,
     sending: sendingMessage,
     error: messageError,
@@ -66,6 +66,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     sendFileMessage,
   } = useChat()
 
+  // Local state for chat and attachments
   const [newMessage, setNewMessage] = useState("")
   const [showEmojis, setShowEmojis] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -83,16 +84,17 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const [incomingCall, setIncomingCall] = useState(null)
   const [callError, setCallError] = useState(null)
 
+  // Refs for DOM and socket
   const messagesEndRef = useRef(null)
   const chatInputRef = useRef(null)
   const fileInputRef = useRef(null)
   const typingTimeoutRef = useRef(null)
   const socketRef = useRef(null)
 
-  // Retrieve latest token from context or localStorage.
+  // Retrieve token from context/localStorage.
   const getAuthToken = () => token || localStorage.getItem("token")
 
-  // Create an axios instance with auth headers; memoized to avoid re-creation.
+  // Create an axios instance with auth headers; memoized
   const authAxios = useMemo(() => {
     const instance = axios.create({
       baseURL: "",
@@ -106,18 +108,18 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         }
         return config
       },
-      (error) => Promise.reject(error),
+      (error) => Promise.reject(error)
     )
     return instance
   }, [token])
 
-  // Access socket directly from socketService
+  // Set up socket reference on mount
   useEffect(() => {
     if (socketService.socket) {
       debug("Socket reference obtained")
       socketRef.current = socketService.socket
 
-      // Set up call answered handler
+      // Handle call answered events
       const handleCallAnswered = (data) => {
         console.log("Call answer received:", data)
         if (data.accept) {
@@ -130,7 +132,6 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           }
         }
       }
-
       socketRef.current.on("callAnswered", handleCallAnswered)
 
       return () => {
@@ -141,9 +142,9 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     } else {
       debug("Socket connection not available", socketService)
     }
-  }, [])
+  }, [activeCall])
 
-  // Production-level incoming call handler without toast notifications.
+  // Incoming call handler
   const handleIncomingCall = useCallback(
     (data) => {
       try {
@@ -151,55 +152,35 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           console.error("Received empty call data")
           return
         }
-
         console.log("Incoming call received:", data)
-
-        // Determine callerId by checking various possible formats
         const callerId =
-          (data.caller && (data.caller.userId || data.caller._id)) || data.userId || (data.from && data.from.userId)
-
+          (data.caller && (data.caller.userId || data.caller._id)) ||
+          data.userId ||
+          (data.from && data.from.userId)
         if (!callerId) {
           console.error("Caller ID not found in incoming call data", data)
           return
         }
-
-        // Check if this call is for the current chat recipient
-        if (recipient && recipient._id === callerId) {
-          console.log(`Incoming call from current chat recipient: ${callerId}`)
-          setIncomingCall(data)
-        } else if (recipient && recipient._id !== callerId) {
-          console.log(`Incoming call from ${callerId} but current chat is with ${recipient._id}`)
-          // Still set the incoming call even if from a different user
-          setIncomingCall(data)
-        } else {
-          console.log(`Incoming call from ${callerId} but no active chat`)
-          setIncomingCall(data)
-        }
-
+        setIncomingCall(data)
         debug("Incoming call state set", data)
       } catch (error) {
         console.error("Error handling incoming call:", error)
       }
     },
-    [recipient],
+    [recipient]
   )
 
-  // Listen for incoming calls via the socket without triggering any toast.
+  // Setup incoming call listener
   useEffect(() => {
     if (!socketRef.current) {
       debug("No socket available for incoming call handling")
       return
     }
-
-    console.log("Setting up incoming call listener")
-
     const handleIncomingCallEvent = (data) => {
       console.log("Incoming call event received:", data)
       handleIncomingCall(data)
     }
-
     socketRef.current.on("incomingCall", handleIncomingCallEvent)
-
     return () => {
       if (socketRef.current) {
         socketRef.current.off("incomingCall", handleIncomingCallEvent)
@@ -207,15 +188,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     }
   }, [recipient, handleIncomingCall])
 
-  // Monitor typing events for debugging
-  useEffect(() => {
-    if (recipient && typingUsers) {
-      // This example simply calculates a flag; you may add additional logging if needed.
-      const isUserTyping = recipient._id && typingUsers[recipient._id] && Date.now() - typingUsers[recipient._id] < 3000
-    }
-  }, [typingUsers, recipient])
-
-  // Load messages and check pending photo requests when chat opens.
+  // Load messages when chat opens
   useEffect(() => {
     let isMounted = true
     if (recipient && isOpen) {
@@ -231,33 +204,32 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           setIsLoading(false)
           console.error("Failed to load messages. Please try again.", err)
         })
-      if (user) checkPendingPhotoRequests()
     }
     return () => {
       isMounted = false
     }
-  }, [recipient, isOpen, user, getMessages])
+  }, [recipient, isOpen, getMessages])
 
-  // Update messagesData if context messages change.
+  // Update messagesData if context messages change
   useEffect(() => {
     if (Array.isArray(messages)) {
       setMessagesData(messages)
     }
   }, [messages])
 
-  // Auto-scroll to the latest message.
+  // Auto-scroll to the latest message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messagesData])
 
-  // Focus on the chat input when the chat opens.
+  // Focus chat input when chat opens
   useEffect(() => {
     if (isOpen && recipient) {
       setTimeout(() => chatInputRef.current?.focus(), 300)
     }
   }, [isOpen, recipient])
 
-  // Cleanup on component unmount.
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
@@ -269,106 +241,112 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     }
   }, [isUploading])
 
-  // Mock function to force show incoming call for testing
-  const mockIncomingCall = () => {
-    console.log("Setting mock incoming call")
-    setIncomingCall({
-      caller: { userId: recipient._id, name: recipient.nickname },
-      callId: "test-call-" + Date.now(),
-    })
-  }
+  // ------------------ Video Call Integration ------------------
 
-  // Check for pending photo access requests.
-  const checkPendingPhotoRequests = async () => {
-    try {
-      const response = await authAxios.get(`/api/users/photos/permissions`, {
-        params: { requestedBy: recipient?._id, status: "pending" },
+  // Initiate video call handler
+  const handleVideoCall = () => {
+    if (user?.accountTier === "FREE") {
+      console.error("Free accounts cannot make video calls. Upgrade for video calls.")
+      return
+    }
+    if (!socketRef.current) {
+      console.error("Cannot start call: No connection available")
+      return
+    }
+    if (activeCall) {
+      console.log("Call already in progress")
+      return
+    }
+    if (recipient?._id) {
+      console.log(`Starting video call with ${recipient.nickname}...`)
+      setIsCallInitiator(true)
+      setActiveCall(true)
+      socketRef.current.emit("initiateCall", {
+        recipientId: recipient._id,
+        callType: "video",
+        userId: user._id,
+        callId: `call-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        caller: { userId: user._id, name: user.nickname || "User" },
       })
-      if (response.data?.success) {
-        const requests = response.data.data || []
-        setPendingPhotoRequests(requests.length)
-        setRequestsData(requests)
-      } else {
-        setPendingPhotoRequests(1)
-      }
-    } catch (error) {
-      setPendingPhotoRequests(1)
+      sendMessage(recipient._id, "video", "Video Call").catch((error) => {
+        console.error("Failed to send video call message:", error)
+      })
+    } else {
+      console.error("Cannot start call: recipient information is missing")
     }
   }
 
-  // Approve all photo requests.
-  const handleApproveAllRequests = async () => {
-    setIsApprovingRequests(true)
-    try {
-      if (requestsData.length > 0) {
-        const results = await Promise.allSettled(
-          requestsData.map((request) =>
-            authAxios.put(`/api/users/photos/permissions/${request._id}`, {
-              status: "approved",
-            }),
-          ),
-        )
-        const successCount = results.filter(
-          (result) => result.status === "fulfilled" && result.value.data.success,
-        ).length
-        if (successCount > 0) {
-          console.log(`Approved ${successCount} photo request${successCount !== 1 ? "s" : ""}`)
-          const systemMessage = {
-            _id: Date.now().toString(),
-            sender: "system",
-            content: `Photo access approved for ${successCount} photo${successCount !== 1 ? "s" : ""}.`,
-            createdAt: new Date().toISOString(),
-            type: "system",
-          }
-          setMessagesData((prev) => [...prev, systemMessage])
-          if (sendMessage) {
-            await sendMessage(recipient._id, "text", `I've approved your request to view my private photos.`)
-          }
-          setPendingPhotoRequests(0)
-          setRequestsData([])
-        } else {
-          console.error("Failed to approve photo requests")
-        }
-      } else {
-        // Fallback approval method.
-        const response = await authAxios.post(`/api/users/photos/approve-all`, {
-          requesterId: recipient._id,
-        })
-        if (response.data?.success) {
-          const approvedCount = response.data.approvedCount || 1
-          console.log(`Approved ${approvedCount} photo request${approvedCount !== 1 ? "s" : ""}`)
-          const systemMessage = {
-            _id: Date.now().toString(),
-            sender: "system",
-            content: `Photo access approved.`,
-            createdAt: new Date().toISOString(),
-            type: "system",
-          }
-          setMessagesData((prev) => [...prev, systemMessage])
-          if (sendMessage) {
-            await sendMessage(recipient._id, "text", `I've approved your request to view my private photos.`)
-          }
-          setPendingPhotoRequests(0)
-        } else {
-          throw new Error("Approval failed")
-        }
-      }
-    } catch (error) {
-      console.error("Error approving photo requests. Please try again.", error)
-      const systemMessage = {
-        _id: Date.now().toString(),
-        sender: "system",
-        content: "Photo access approved (simulated).",
-        createdAt: new Date().toISOString(),
-        type: "system",
-      }
-      setMessagesData((prev) => [...prev, systemMessage])
-    } finally {
-      setIsApprovingRequests(false)
+  // Accept incoming call
+  const handleAcceptCall = () => {
+    debug("Accepting incoming call", incomingCall)
+    if (!incomingCall) {
+      console.error("No incoming call to accept")
+      return
     }
+    if (!socketRef.current) {
+      console.error("Cannot accept call: No socket connection available")
+      return
+    }
+    const callerId = incomingCall.caller?.userId || incomingCall.userId
+    if (!callerId) {
+      console.error("Cannot accept call: No caller ID found")
+      return
+    }
+    socketRef.current.emit("answerCall", {
+      callerId,
+      accept: true,
+      callId: incomingCall.callId,
+      timestamp: Date.now(),
+    })
+    console.log(`Accepting call from ${incomingCall.caller?.name || "caller"} with ID ${callerId}`)
+    setActiveCall(true)
+    setIsCallInitiator(false)
+    setIncomingCall(null)
   }
 
-  // Utility functions for file icon and message time formatting.
+  // Reject incoming call
+  const handleRejectCall = () => {
+    debug("Rejecting incoming call", incomingCall)
+    if (!incomingCall) {
+      console.error("No incoming call to reject")
+      return
+    }
+    if (!socketRef.current) {
+      console.error("Cannot reject call: No socket connection available")
+      return
+    }
+    const callerId = incomingCall.caller?.userId || incomingCall.userId
+    if (!callerId) {
+      console.error("Cannot reject call: No caller ID found")
+      return
+    }
+    socketRef.current.emit("answerCall", {
+      callerId,
+      accept: false,
+      callId: incomingCall.callId,
+      timestamp: Date.now(),
+    })
+    console.log(`Rejecting call from ${incomingCall.caller?.name || "caller"} with ID ${callerId}`)
+    setIncomingCall(null)
+  }
+
+  // End the active video call
+  const handleEndCall = useCallback(() => {
+    setActiveCall(false)
+  }, [])
+
+  // Capture any errors from VideoCall
+  const handleCallError = useCallback((error) => {
+    setCallError(error.message || "Call failed")
+    console.error("Call error:", error)
+    setActiveCall(false)
+  }, [])
+
+  // ------------------ End Video Call Integration ------------------
+
+  // ------------------ Message & Attachment Handlers ------------------
+
+  // Utility for file icon (returns a corresponding icon component)
   const getFileIcon = useCallback((file) => {
     if (!file) return <FaFile />
     const fileType = file.type || ""
@@ -379,6 +357,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     return <FaFileAlt />
   }, [])
 
+  // Format message time
   const formatMessageTime = useCallback((timestamp) => {
     if (!timestamp) return ""
     try {
@@ -391,35 +370,21 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     }
   }, [])
 
-  const formatMessageDate = useCallback((timestamp) => {
-    if (!timestamp) return "Unknown date"
-    try {
-      const date = new Date(timestamp)
-      const today = new Date()
-      const yesterday = new Date()
-      yesterday.setDate(yesterday.getDate() - 1)
-      if (date.toDateString() === today.toDateString()) return "Today"
-      if (date.toDateString() === yesterday.toDateString()) return "Yesterday"
-      return date.toLocaleDateString()
-    } catch (e) {
-      return "Unknown date"
-    }
-  }, [])
-
+  // Group messages by date
   const groupMessagesByDate = useCallback(() => {
     const groups = {}
     if (!Array.isArray(messagesData)) return groups
     messagesData.forEach((message) => {
       if (message && message.createdAt) {
-        const date = formatMessageDate(message.createdAt)
+        const date = new Date(message.createdAt).toDateString()
         groups[date] = groups[date] || []
         groups[date].push(message)
       }
     })
     return groups
-  }, [messagesData, formatMessageDate])
+  }, [messagesData])
 
-  // Emoji handling.
+  // Emoji handling
   const commonEmojis = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"]
 
   const handleEmojiClick = (emoji) => {
@@ -428,7 +393,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     chatInputRef.current?.focus()
   }
 
-  // Input event handlers.
+  // Handle typing
   const handleTyping = (e) => {
     setNewMessage(e.target.value)
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
@@ -439,6 +404,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     }, 300)
   }
 
+  // Send a message
   const handleSendMessage = async (e) => {
     e.preventDefault()
     if (attachment) return handleSendAttachment()
@@ -456,6 +422,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     }
   }
 
+  // Send attachment message
   const handleSendAttachment = async () => {
     if (!attachment || !recipient || isUploading) return
     setIsUploading(true)
@@ -472,6 +439,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     }
   }
 
+  // Send wink message
   const handleSendWink = async () => {
     if (!sendingMessage && recipient) {
       try {
@@ -482,6 +450,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     }
   }
 
+  // Handle file attachment
   const handleFileAttachment = () => {
     if (user?.accountTier === "FREE") {
       console.error("Free accounts cannot send files. Upgrade to send files.")
@@ -490,6 +459,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     fileInputRef.current?.click()
   }
 
+  // Handle file input change
   const handleFileChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -522,271 +492,96 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     e.target.value = null
   }
 
+  // Remove attached file
   const handleRemoveAttachment = () => {
     setAttachment(null)
     setUploadProgress(0)
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  // Handle initiating a video call
-  const handleVideoCall = () => {
-    if (user?.accountTier === "FREE") {
-      console.error("Free accounts cannot make video calls. Upgrade for video calls.")
-      return
-    }
-
-    if (!socketRef.current) {
-      console.error("Cannot start call: No connection available")
-      return
-    }
-
-    if (activeCall) {
-      console.log("Call already in progress")
-      return
-    }
-
-    if (recipient?._id) {
-      // Create a unique call ID
-      const callId = `call-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-
-      console.log(`Starting video call with ${recipient.nickname}...`)
-
-      // Set up the call on our end first
-      setIsCallInitiator(true)
-      setActiveCall(true)
-
-      // Then emit the call event
-      socketRef.current.emit("initiateCall", {
-        recipientId: recipient._id,
-        callType: "video",
-        userId: user._id,
-        callId: callId,
-        caller: {
-          userId: user._id,
-          name: user.nickname || "User",
-        },
-      })
-
-      // Also send a message to notify about the call
-      sendMessage(recipient._id, "video", "Video Call").catch((error) => {
-        console.error("Failed to send video call message:", error)
-      })
-    } else {
-      console.error("Cannot start call: recipient information is missing")
-    }
-  }
-
-  // Handle accepting an incoming call
-  const handleAcceptCall = () => {
-    debug("Accepting incoming call", incomingCall)
-
-    if (!incomingCall) {
-      console.error("No incoming call to accept")
-      return
-    }
-
-    if (!socketRef.current) {
-      console.error("Cannot accept call: No socket connection available")
-      return
-    }
-
-    const callerId = incomingCall.caller?.userId || incomingCall.userId
-
-    if (!callerId) {
-      console.error("Cannot accept call: No caller ID found")
-      return
-    }
-
-    // Send acceptance to the caller
-    socketRef.current.emit("answerCall", {
-      callerId: callerId,
-      accept: true,
-      callId: incomingCall.callId,
-      timestamp: Date.now(),
-    })
-
-    console.log(`Accepting call from ${incomingCall.caller?.name || "caller"} with ID ${callerId}`)
-
-    // Set up the call
-    setActiveCall(true)
-    setIsCallInitiator(false)
-    setIncomingCall(null)
-  }
-
-  // Handle ending a call
-  const handleEndCall = () => {
-    setActiveCall(false)
-    setIncomingCall(null)
-  }
-
-  // Handle call errors
-  const handleCallError = (error) => {
-    setCallError(error.message || "Call failed")
-    console.error(`Call error: ${error.message || "Unknown error"}`)
-    setActiveCall(false)
-  }
-
-  const isTyping =
-    recipient && typingUsers && typingUsers[recipient._id] && Date.now() - typingUsers[recipient._id] < 3000
-
-  const handleClose = () => {
-    if (activeCall) {
-      console.log("Please end the call before closing the chat.")
-      return
-    }
-    if (typeof onClose === "function") onClose()
-  }
-
-  // Add a useEffect to handle call hangup events
-  useEffect(() => {
-    if (!socketRef.current) return
-
-    const handleVideoHangup = (data) => {
-      console.log("Received hangup signal:", data)
-
-      if (activeCall) {
-        console.log("Call ended by remote user")
-        setActiveCall(false)
-        toast.info("Call ended by the other user")
-      }
-    }
-
-    socketRef.current.on("videoHangup", handleVideoHangup)
-
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.off("videoHangup", handleVideoHangup)
-      }
-    }
-  }, [activeCall])
-
-  // Add a useEffect to handle visibility changes
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        console.log("Tab hidden, but maintaining call connection")
+  // ------------------ Approve Photo Requests ------------------
+  // Restore the handleApproveAllRequests function from your original code
+  const handleApproveAllRequests = async () => {
+    setIsApprovingRequests(true)
+    try {
+      if (requestsData.length > 0) {
+        const results = await Promise.allSettled(
+          requestsData.map((request) =>
+            authAxios.put(`/api/users/photos/permissions/${request._id}`, {
+              status: "approved",
+            })
+          )
+        )
+        const successCount = results.filter(
+          (result) => result.status === "fulfilled" && result.value.data.success
+        ).length
+        if (successCount > 0) {
+          console.log(`Approved ${successCount} photo request${successCount !== 1 ? "s" : ""}`)
+          const systemMessage = {
+            _id: Date.now().toString(),
+            sender: "system",
+            content: `Photo access approved for ${successCount} photo${successCount !== 1 ? "s" : ""}.`,
+            createdAt: new Date().toISOString(),
+            type: "system",
+          }
+          setMessagesData((prev) => [...prev, systemMessage])
+          try {
+            await sendMessage(recipient._id, "text", `I've approved your request to view my private photos.`)
+          } catch (err) {
+            console.error("Error sending system message:", err)
+          }
+          setPendingPhotoRequests(0)
+          setRequestsData([])
+        } else {
+          console.error("Failed to approve photo requests")
+        }
       } else {
-        console.log("Tab visible again, checking call status")
-        // Don't do anything that would disrupt the call
+        const response = await authAxios.post(`/api/users/photos/approve-all`, {
+          requesterId: recipient._id,
+        })
+        if (response.data?.success) {
+          const approvedCount = response.data.approvedCount || 1
+          console.log(`Approved ${approvedCount} photo request${approvedCount !== 1 ? "s" : ""}`)
+          const systemMessage = {
+            _id: Date.now().toString(),
+            sender: "system",
+            content: `Photo access approved.`,
+            createdAt: new Date().toISOString(),
+            type: "system",
+          }
+          setMessagesData((prev) => [...prev, systemMessage])
+          try {
+            await sendMessage(recipient._id, "text", `I've approved your request to view my private photos.`)
+          } catch (err) {
+            console.error("Error sending system message:", err)
+          }
+          setPendingPhotoRequests(0)
+        } else {
+          throw new Error("Approval failed")
+        }
       }
+    } catch (error) {
+      console.error("Error approving photo requests. Please try again.", error)
+      const systemMessage = {
+        _id: Date.now().toString(),
+        sender: "system",
+        content: "Photo access approved (simulated).",
+        createdAt: new Date().toISOString(),
+        type: "system",
+      }
+      setMessagesData((prev) => [...prev, systemMessage])
+    } finally {
+      setIsApprovingRequests(false)
     }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
-    }
-  }, [])
-
-  // Handle rejecting an incoming call
-  const handleRejectCall = () => {
-    debug("Rejecting incoming call", incomingCall)
-
-    if (!incomingCall) {
-      console.error("No incoming call to reject")
-      return
-    }
-
-    if (!socketRef.current) {
-      console.error("Cannot reject call: No socket connection available")
-      return
-    }
-
-    const callerId = incomingCall.caller?.userId || incomingCall.userId
-
-    if (!callerId) {
-      console.error("Cannot reject call: No caller ID found")
-      return
-    }
-
-    // Send rejection to the caller
-    socketRef.current.emit("answerCall", {
-      callerId: callerId,
-      accept: false,
-      callId: incomingCall.callId,
-      timestamp: Date.now(),
-    })
-
-    console.log(`Rejecting call from ${incomingCall.caller?.name || "caller"} with ID ${callerId}`)
-
-    // Clear the incoming call state
-    setIncomingCall(null)
   }
+
+  // ------------------ End Message Handlers ------------------
 
   if (!isOpen) return null
 
-  const renderFileMessage = (message) => {
-    const { metadata } = message
-    if (!metadata || !metadata.fileUrl) {
-      return <p className="message-content">Attachment unavailable</p>
-    }
-    const isImage = metadata.fileType?.startsWith("image/")
-    if (message.type === "system") {
-      return (
-        <div className="system-message-content">
-          <p>{message.content}</p>
-          <span className="message-time">{formatMessageTime(message.createdAt)}</span>
-        </div>
-      )
-    }
-    return (
-      <div className="file-message">
-        {isImage ? (
-          <img
-            src={metadata.fileUrl || "/placeholder.svg"}
-            alt={metadata.fileName || "Image"}
-            className="image-attachment"
-            onError={(e) => {
-              e.target.onerror = null
-              e.target.src = "/placeholder.svg"
-            }}
-          />
-        ) : (
-          <div className="file-attachment">
-            {metadata.fileType?.startsWith("video/") ? (
-              <FaFileVideo className="file-icon" />
-            ) : metadata.fileType?.startsWith("audio/") ? (
-              <FaFileAudio className="file-icon" />
-            ) : metadata.fileType === "application/pdf" ? (
-              <FaFilePdf className="file-icon" />
-            ) : (
-              <FaFileAlt className="file-icon" />
-            )}
-            <span className="file-name">{metadata.fileName || "File"}</span>
-            <span className="file-size">{metadata.fileSize ? `(${Math.round(metadata.fileSize / 1024)} KB)` : ""}</span>
-            <a
-              href={metadata.fileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="download-link"
-              onClick={(e) => e.stopPropagation()}
-            >
-              Download
-            </a>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // Debug log for incoming call state
-  useEffect(() => {
-    if (incomingCall) {
-      console.log("Rendering with active incoming call:", incomingCall)
-    }
-  }, [incomingCall])
-
   return (
     <div className={`embedded-chat ${embedded ? "embedded" : "standalone"}`}>
-      {/* Uncomment the test button below for debugging incoming calls */}
-      {/* <button
-        onClick={mockIncomingCall}
-        style={{position: 'absolute', top: '5px', right: '5px', zIndex: 9999, background: 'red', color: 'white'}}
-      >
-        Test Call
-      </button> */}
-
-      {/* Render the VideoCall component if a call is active */}
+      {/* Video Call Integration */}
       {activeCall && socketRef.current ? (
         <VideoCall
           isInitiator={isCallInitiator}
@@ -850,13 +645,13 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
               <FaVideo />
             </button>
           )}
-          <button className="close-chat-btn" onClick={handleClose} aria-label="Close chat" title="Close chat">
+          <button className="close-chat-btn" onClick={onClose} aria-label="Close chat" title="Close chat">
             <FaTimes />
           </button>
         </div>
       </div>
 
-      {/* Incoming call notification banner */}
+      {/* Incoming Call Banner */}
       {incomingCall && (
         <div
           className="incoming-call-banner"
@@ -873,7 +668,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           }}
         >
           <div className="incoming-call-info">
-            <FaVideo className="call-icon pulse" style={{ marginRight: "10px", animation: "pulse 1s infinite" }} />
+            <FaVideo className="call-icon pulse" style={{ marginRight: "10px" }} />
             <span>{recipient?.nickname || "Someone"} is calling you</span>
           </div>
           <div className="incoming-call-actions">
@@ -937,9 +732,9 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
               {msgs.map((message) => (
                 <div
                   key={message._id}
-                  className={`message ${
-                    message.sender === user?._id ? "sent" : "received"
-                  } ${message.type === "system" ? "system-message" : ""}`}
+                  className={`message ${message.sender === user?._id ? "sent" : "received"} ${
+                    message.type === "system" ? "system-message" : ""
+                  }`}
                 >
                   {message.type === "text" && (
                     <>
@@ -968,7 +763,50 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                       <span className="message-time">{formatMessageTime(message.createdAt)}</span>
                     </div>
                   )}
-                  {message.type === "file" && renderFileMessage(message)}
+                  {message.type === "file" && (
+                    <div className="file-message">
+                      {message.metadata?.fileUrl ? (
+                        message.metadata.fileType?.startsWith("image/") ? (
+                          <img
+                            src={message.metadata.fileUrl}
+                            alt={message.metadata.fileName || "Image"}
+                            className="image-attachment"
+                            onError={(e) => {
+                              e.target.onerror = null
+                              e.target.src = "/placeholder.svg"
+                            }}
+                          />
+                        ) : (
+                          <div className="file-attachment">
+                            {message.metadata.fileType?.startsWith("video/") ? (
+                              <FaFileVideo className="file-icon" />
+                            ) : message.metadata.fileType?.startsWith("audio/") ? (
+                              <FaFileAudio className="file-icon" />
+                            ) : message.metadata.fileType === "application/pdf" ? (
+                              <FaFilePdf className="file-icon" />
+                            ) : (
+                              <FaFileAlt className="file-icon" />
+                            )}
+                            <span className="file-name">{message.metadata.fileName || "File"}</span>
+                            <span className="file-size">
+                              {message.metadata.fileSize ? `(${Math.round(message.metadata.fileSize / 1024)} KB)` : ""}
+                            </span>
+                            <a
+                              href={message.metadata.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="download-link"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              Download
+                            </a>
+                          </div>
+                        )
+                      ) : (
+                        <p className="message-content">Attachment unavailable</p>
+                      )}
+                    </div>
+                  )}
                   {message.type === "system" && (
                     <div className="system-message-content">
                       <p>{message.content}</p>
@@ -980,13 +818,16 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             </React.Fragment>
           ))
         )}
-        {isTyping && (
-          <div className="typing-indicator">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-        )}
+        {recipient &&
+          typingUsers &&
+          recipient._id &&
+          Date.now() - typingUsers[recipient._id] < 3000 && (
+            <div className="typing-indicator">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          )}
         {messageError && (
           <div className="message-error">
             <p>{messageError}</p>
