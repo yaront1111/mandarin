@@ -1,14 +1,12 @@
 // client/src/services/socketService.jsx - Refactored
-import socketClient from './socketClient.jsx';
-import { toast } from "react-toastify";
-import { getToken } from "../utils/tokenStorage";
+import socketClient from "./socketClient.jsx"
 
 class SocketService {
   constructor() {
-    this.socket = socketClient;
-    this.initialized = false;
-    this.showConnectionToasts = true;
-    this.debugMode = import.meta.env.MODE !== "production";
+    this.socket = socketClient
+    this.initialized = false
+    this.showConnectionToasts = true
+    this.debugMode = import.meta.env.MODE !== "production"
   }
 
   /**
@@ -18,45 +16,51 @@ class SocketService {
    */
   init(userId, token, options = {}) {
     if (this.initialized) {
-      this._log("Socket service already initialized");
-      return;
+      this._log("Socket service already initialized")
+      return
     }
 
-    this._log("Initializing socket service");
-    this.socket.init(userId, token, options);
-    this.initialized = true;
-    
+    this._log("Initializing socket service")
+    this.socket.init(userId, token, options)
+    this.initialized = true
+
     // Attach event emitter to window for app-wide events
-    window.socketService = this;
+    window.socketService = this
+
+    // Add this to your socket event registration section
+    this.socket.on("peerIdExchange", (data) => {
+      console.log("Received peer ID exchange:", data)
+      // The event will be re-emitted to components that are listening
+    })
   }
 
   // ----------------------
   // Core Connection Methods
   // ----------------------
-  
+
   /**
    * Check if socket is connected and valid
    * @returns {boolean} Whether socket is connected and ready to use
    */
   isConnected() {
-    return this.socket.isConnected();
+    return this.socket.isConnected()
   }
 
   /**
    * Force reconnection: disconnect and reinitialize.
    */
   reconnect() {
-    this._log("Forcing socket reconnection");
-    return this.socket.reconnect();
+    this._log("Forcing socket reconnection")
+    return this.socket.reconnect()
   }
 
   /**
    * Disconnect the socket and clean up all listeners and intervals.
    */
   disconnect() {
-    this._log("Disconnecting socket");
-    this.initialized = false;
-    return this.socket.disconnect();
+    this._log("Disconnecting socket")
+    this.initialized = false
+    return this.socket.disconnect()
   }
 
   /**
@@ -66,7 +70,7 @@ class SocketService {
    * @returns {Function} - Unsubscribe function.
    */
   on(event, callback) {
-    return this.socket.on(event, callback);
+    return this.socket.on(event, callback)
   }
 
   /**
@@ -75,7 +79,7 @@ class SocketService {
    * @param {Function} callback - Callback function.
    */
   off(event, callback) {
-    this.socket.off(event, callback);
+    this.socket.off(event, callback)
   }
 
   /**
@@ -85,13 +89,13 @@ class SocketService {
    * @returns {boolean} - True if emitted or queued.
    */
   emit(event, data = {}) {
-    return this.socket.emit(event, data);
+    return this.socket.emit(event, data)
   }
-  
+
   // ----------------------
   // Messaging Methods
   // ----------------------
-  
+
   /**
    * Send a message to a user.
    * @param {string} recipientId - Recipient user ID.
@@ -102,11 +106,11 @@ class SocketService {
    */
   async sendMessage(recipientId, content, type = "text", metadata = {}) {
     return new Promise((resolve, reject) => {
-      const tempMessageId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      const tempMessageId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 
       // If not connected, queue the message and return a temporary
       if (!this.isConnected()) {
-        this._log("Socket not connected, queueing message");
+        this._log("Socket not connected, queueing message")
         const tempMessage = {
           _id: tempMessageId,
           sender: this.socket.userId,
@@ -118,31 +122,31 @@ class SocketService {
           read: false,
           pending: true,
           tempMessageId,
-        };
-        
-        return resolve(tempMessage);
+        }
+
+        return resolve(tempMessage)
       }
 
       // Set up one-time event handlers for response
       const handleMessageSent = (data) => {
         if (data.tempMessageId === tempMessageId) {
-          this.socket.off("messageSent", handleMessageSent);
-          this.socket.off("messageError", handleMessageError);
-          resolve(data);
+          this.socket.off("messageSent", handleMessageSent)
+          this.socket.off("messageError", handleMessageError)
+          resolve(data)
         }
-      };
+      }
 
       const handleMessageError = (error) => {
         if (error.tempMessageId === tempMessageId) {
-          this.socket.off("messageSent", handleMessageSent);
-          this.socket.off("messageError", handleMessageError);
-          reject(new Error(error.error || "Failed to send message"));
+          this.socket.off("messageSent", handleMessageSent)
+          this.socket.off("messageError", handleMessageError)
+          reject(new Error(error.error || "Failed to send message"))
         }
-      };
+      }
 
       // Register event handlers
-      this.socket.on("messageSent", handleMessageSent);
-      this.socket.on("messageError", handleMessageError);
+      this.socket.on("messageSent", handleMessageSent)
+      this.socket.on("messageError", handleMessageError)
 
       // Emit the message
       this.socket.emit("sendMessage", {
@@ -151,12 +155,12 @@ class SocketService {
         content,
         metadata,
         tempMessageId,
-      });
+      })
 
       // Set a timeout for response
       setTimeout(() => {
-        this.socket.off("messageSent", handleMessageSent);
-        this.socket.off("messageError", handleMessageError);
+        this.socket.off("messageSent", handleMessageSent)
+        this.socket.off("messageError", handleMessageError)
 
         // If timed out, return a temporary message
         resolve({
@@ -170,9 +174,9 @@ class SocketService {
           read: false,
           status: "pending",
           tempMessageId,
-        });
-      }, 10000);
-    });
+        })
+      }, 10000)
+    })
   }
 
   /**
@@ -180,13 +184,13 @@ class SocketService {
    * @param {string} recipientId - Recipient user ID
    */
   sendTyping(recipientId) {
-    this.socket.emit("typing", { recipientId });
+    this.socket.emit("typing", { recipientId })
   }
 
   // ----------------------
   // Video/Call Methods
   // ----------------------
-  
+
   /**
    * Send WebRTC signaling data
    * @param {string} recipientId - Recipient user ID
@@ -195,11 +199,11 @@ class SocketService {
    * @returns {boolean} - Success status
    */
   sendVideoSignal(recipientId, signal, from = null) {
-    this._log(`Sending video signal to ${recipientId}`);
+    this._log(`Sending video signal to ${recipientId}`)
 
     // Retry logic for important signaling messages
-    const maxRetries = 3;
-    let retryCount = 0;
+    const maxRetries = 3
+    let retryCount = 0
 
     const attemptSend = () => {
       const success = this.socket.emit("videoSignal", {
@@ -209,18 +213,18 @@ class SocketService {
           userId: this.socket.userId,
         },
         timestamp: Date.now(),
-      });
+      })
 
       if (!success && retryCount < maxRetries) {
-        retryCount++;
-        this._log(`Retrying video signal send (${retryCount}/${maxRetries})`);
-        setTimeout(attemptSend, 1000);
+        retryCount++
+        this._log(`Retrying video signal send (${retryCount}/${maxRetries})`)
+        setTimeout(attemptSend, 1000)
       }
 
-      return success;
-    };
+      return success
+    }
 
-    return attemptSend();
+    return attemptSend()
   }
 
   /**
@@ -229,31 +233,31 @@ class SocketService {
    * @returns {boolean} - Success status
    */
   sendVideoHangup(recipientId) {
-    this._log(`Sending hangup signal to ${recipientId}`);
+    this._log(`Sending hangup signal to ${recipientId}`)
 
     // Retry logic for important signaling messages
-    const maxRetries = 3;
-    let retryCount = 0;
+    const maxRetries = 3
+    let retryCount = 0
 
     const attemptSend = () => {
       const success = this.socket.emit("videoHangup", {
         recipientId,
         userId: this.socket.userId,
         timestamp: Date.now(),
-      });
+      })
 
       if (!success && retryCount < maxRetries) {
-        retryCount++;
-        this._log(`Retrying hangup signal send (${retryCount}/${maxRetries})`);
-        setTimeout(attemptSend, 1000);
+        retryCount++
+        this._log(`Retrying hangup signal send (${retryCount}/${maxRetries})`)
+        setTimeout(attemptSend, 1000)
       }
 
-      return success;
-    };
+      return success
+    }
 
-    return attemptSend();
+    return attemptSend()
   }
-  
+
   /**
    * Send media control event (mute/unmute)
    * @param {string} recipientId - Recipient user ID
@@ -267,7 +271,7 @@ class SocketService {
       type,
       muted,
       userId: this.socket.userId,
-    });
+    })
   }
 
   /**
@@ -278,7 +282,7 @@ class SocketService {
   initiateVideoCall(recipientId) {
     return new Promise((resolve, reject) => {
       if (!this.isConnected()) {
-        return reject(new Error("Socket not connected"));
+        return reject(new Error("Socket not connected"))
       }
 
       const callData = {
@@ -291,36 +295,36 @@ class SocketService {
           name: localStorage.getItem("userNickname") || "User",
         },
         timestamp: Date.now(),
-      };
+      }
 
-      this._log("Initiating call with data:", callData);
+      this._log("Initiating call with data:", callData)
 
       const handleCallInitiated = (response) => {
-        this.socket.off("callInitiated", handleCallInitiated);
-        this.socket.off("callError", handleCallError);
-        resolve(response);
-      };
+        this.socket.off("callInitiated", handleCallInitiated)
+        this.socket.off("callError", handleCallError)
+        resolve(response)
+      }
 
       const handleCallError = (error) => {
-        this.socket.off("callInitiated", handleCallInitiated);
-        this.socket.off("callError", handleCallError);
-        reject(new Error(error.message || "Failed to initiate call"));
-      };
+        this.socket.off("callInitiated", handleCallInitiated)
+        this.socket.off("callError", handleCallError)
+        reject(new Error(error.message || "Failed to initiate call"))
+      }
 
       // Register event handlers
-      this.socket.on("callInitiated", handleCallInitiated);
-      this.socket.on("callError", handleCallError);
+      this.socket.on("callInitiated", handleCallInitiated)
+      this.socket.on("callError", handleCallError)
 
       // Emit call request
-      this.socket.emit("initiateCall", callData);
+      this.socket.emit("initiateCall", callData)
 
       // Set a timeout
       setTimeout(() => {
-        this.socket.off("callInitiated", handleCallInitiated);
-        this.socket.off("callError", handleCallError);
-        resolve({ success: true, callId: callData.callId });
-      }, 5000);
-    });
+        this.socket.off("callInitiated", handleCallInitiated)
+        this.socket.off("callError", handleCallError)
+        resolve({ success: true, callId: callData.callId })
+      }, 5000)
+    })
   }
 
   /**
@@ -331,11 +335,11 @@ class SocketService {
    * @returns {boolean} - Success status
    */
   answerCall(callerId, accept, callId) {
-    this._log(`Answering call from ${callerId} with accept=${accept}`);
+    this._log(`Answering call from ${callerId} with accept=${accept}`)
 
     // Retry logic for important signaling messages
-    const maxRetries = 3;
-    let retryCount = 0;
+    const maxRetries = 3
+    let retryCount = 0
 
     const attemptSend = () => {
       const success = this.socket.emit("answerCall", {
@@ -344,24 +348,24 @@ class SocketService {
         callId,
         userId: this.socket.userId,
         timestamp: Date.now(),
-      });
+      })
 
       if (!success && retryCount < maxRetries) {
-        retryCount++;
-        this._log(`Retrying call answer send (${retryCount}/${maxRetries})`);
-        setTimeout(attemptSend, 1000);
+        retryCount++
+        this._log(`Retrying call answer send (${retryCount}/${maxRetries})`)
+        setTimeout(attemptSend, 1000)
       }
 
-      return success;
-    };
+      return success
+    }
 
-    return attemptSend();
+    return attemptSend()
   }
 
   // ----------------------
   // User Status Methods
   // ----------------------
-  
+
   /**
    * Get connection status and details.
    * @returns {object} - Connection status object.
@@ -371,19 +375,19 @@ class SocketService {
       connected: this.isConnected(),
       initialized: this.initialized,
       userId: this.socket.userId,
-    };
+    }
   }
 
   // ----------------------
   // Configuration Methods
   // ----------------------
-  
+
   /**
    * Enable or disable connection toast notifications.
    * @param {boolean} enable - True to enable toasts.
    */
   setShowConnectionToasts(enable) {
-    this.showConnectionToasts = enable;
+    this.showConnectionToasts = enable
   }
 
   /**
@@ -391,24 +395,24 @@ class SocketService {
    * @param {boolean} enable - True to enable debug logging.
    */
   setDebugMode(enable) {
-    this.debugMode = enable;
+    this.debugMode = enable
   }
 
   // ----------------------
   // Utilities
   // ----------------------
-  
+
   /**
    * Log messages if in debug mode
    * @private
    */
   _log(...args) {
     if (this.debugMode) {
-      console.log("[SocketService]", ...args);
+      console.log("[SocketService]", ...args)
     }
   }
 }
 
 // Create a singleton instance
-const socketService = new SocketService();
-export default socketService;
+const socketService = new SocketService()
+export default socketService

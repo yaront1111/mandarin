@@ -196,40 +196,39 @@ const VideoCall = ({ isInitiator = false, remoteUserId, remoteUserName, onClose,
               },
             })
 
-            // If initiator, wait for remote peer ID and call
-            if (isInitiator) {
-              console.log("I am the initiator, waiting for remote peer ID")
+            // Set up handler for peer ID exchange regardless of who initiated
+            const handlePeerIdReceived = (data) => {
+              console.log("Received peer ID exchange data:", data)
 
-              // Handle peer ID from remote user
-              const handlePeerIdReceived = (data) => {
-                console.log("Received peer ID exchange data:", data)
+              // Make sure this peer ID is from the user we're trying to call
+              if (data.from?.userId === remoteUserId || data.userId === remoteUserId) {
+                const remotePeerId = data.peerId
+                console.log("Received remote peer ID:", remotePeerId)
 
-                if (data.userId === remoteUserId || data.from?.userId === remoteUserId) {
-                  const remotePeerId = data.peerId
-                  console.log("Received remote peer ID:", remotePeerId)
-
-                  // Make the call to remote peer
+                // Only the initiator should make the call
+                if (isInitiator) {
+                  console.log("I am the initiator, calling remote peer:", remotePeerId)
                   const call = peerInstance.call(remotePeerId, mediaStream)
                   callRef.current = call
 
                   // Set up call event handlers
                   setupCallHandlers(call)
+                } else {
+                  console.log("I am not the initiator, waiting for incoming call from:", remotePeerId)
                 }
               }
-
-              socket.on("peerIdExchange", handlePeerIdReceived)
-
-              // Clean up event listener
-              setTimeout(() => {
-                try {
-                  socket.off("peerIdExchange", handlePeerIdReceived)
-                } catch (err) {
-                  console.error("Error removing peerIdExchange listener:", err)
-                }
-              }, 30000) // Remove listener after 30 seconds
-            } else {
-              console.log("I am not the initiator, waiting for incoming call")
             }
+
+            socket.on("peerIdExchange", handlePeerIdReceived)
+
+            // Clean up event listener after a reasonable timeout
+            setTimeout(() => {
+              try {
+                socket.off("peerIdExchange", handlePeerIdReceived)
+              } catch (err) {
+                console.error("Error removing peerIdExchange listener:", err)
+              }
+            }, 30000) // Remove listener after 30 seconds
           } catch (socketError) {
             console.error("Socket operation failed:", socketError)
             setConnectionStatus("error")
@@ -287,9 +286,11 @@ const VideoCall = ({ isInitiator = false, remoteUserId, remoteUserName, onClose,
       return
     }
 
+    console.log("Setting up call handlers for call:", call)
+
     // Handle remote stream
     call.on("stream", (remoteStream) => {
-      console.log("Received remote stream")
+      console.log("Received remote stream:", remoteStream)
 
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream
