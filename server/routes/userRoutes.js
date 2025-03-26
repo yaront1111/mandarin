@@ -830,7 +830,7 @@ router.post(
       // Send notification via socket if available
       try {
         const io = req.app.get("io")
-        const { sendPhotoPermissionRequestNotification } = await import("../socket/socketHandlers.js")
+        const { sendPhotoPermissionRequestNotification } = await import("../socket/handlers.js")
 
         if (io && sendPhotoPermissionRequestNotification) {
           const requester = await User.findById(req.user._id).select("nickname photos")
@@ -949,7 +949,7 @@ router.put(
     // Send notification via socket if available
     try {
       const io = req.app.get("io")
-      const { sendPhotoPermissionResponseNotification } = await import("../socket/socketHandlers.js")
+      const { sendPhotoPermissionResponseNotification } = await import("../socket/handlers.js")
 
       if (io && sendPhotoPermissionResponseNotification) {
         const requester = await User.findById(permission.requestedBy)
@@ -1117,7 +1117,7 @@ router.post(
       // Send notification via socket if available
       try {
         const io = req.app.get("io")
-        const { sendLikeNotification } = await import("../socket/socketHandlers.js")
+        const { sendLikeNotification } = await import("../socket/handlers.js")
 
         if (io && sendLikeNotification) {
           const senderUser = await User.findById(req.user._id).select("nickname photos")
@@ -1404,7 +1404,7 @@ router.post(
       // Send notification via socket if available
       try {
         const io = req.app.get("io")
-        const { sendPhotoPermissionRequestNotification } = await import("../socket/socketHandlers.js")
+        const { sendPhotoPermissionRequestNotification } = await import("../socket/handlers.js")
 
         if (io && sendPhotoPermissionRequestNotification) {
           const requester = await User.findById(req.user._id).select("nickname photos")
@@ -1478,7 +1478,7 @@ router.put(
     // Send notification via socket if available
     try {
       const io = req.app.get("io")
-      const { sendPhotoPermissionResponseNotification } = await import("../socket/socketHandlers.js")
+      const { sendPhotoPermissionResponseNotification } = await import("../socket/handlers.js")
 
       if (io && sendPhotoPermissionResponseNotification) {
         const requester = await User.findById(permission.requestedBy)
