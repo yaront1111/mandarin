@@ -575,24 +575,24 @@
   color: var(--primary);
 }
 
-.user-actions {
-  display: flex;
-  justify-content: space-between;
-  margin-top: auto;
+.user-actions { /* */
+  display: flex; /* */
+  justify-content: space-between; /* */
+  margin-top: auto; /* */
 }
 
-.card-action-button {
-  width: 48% !important;
-  padding: var(--space-sm) !important;
-  border-radius: var(--radius-md) !important;
-  background-color: var(--light);
-  font-size: var(--font-size-lg) !important;
-  border: none;
-  transition: all var(--transition-normal);
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  height: 40px;
+.card-action-button { /* */
+  width: 48% !important; /* */
+  padding: var(--space-sm) !important; /* */
+  border-radius: var(--radius-md) !important; /* */
+  background-color: var(--light); /* */
+  font-size: var(--font-size-lg) !important; /* */
+  border: none; /* */
+  transition: all var(--transition-normal); /* */
+  display: flex !important; /* */
+  align-items: center; /* */
+  justify-content: center; /* */
+  height: 40px; /* */ /* Added height for consistency */
 }
 
 .card-action-button.like {
@@ -1134,6 +1134,36 @@
   max-width: 180px;
 }
 
+/* Styles for the Like button on the user card */
+
+/* Style for the LIKE button when it's ACTIVE (user has liked) */
+.card-action-button.like.active {
+  color: #ff4b4b; /* Active color (red) - consider using a CSS variable */
+  background-color: rgba(255, 75, 75, 0.1); /* Light red background when active */
+}
+
+/* Hover style for the LIKE button (when NOT active) */
+/* Note: components.css already had a general hover rule for .card-action-button.like.
+   This specific rule provides a red-tinted background on hover.
+   You might need to adjust this based on desired hover effect vs. the general one. */
+.card-action-button.like:hover {
+  background-color: rgba(255, 75, 75, 0.15);
+  /* You might also want to define the text color on hover here if it differs */
+  /* color: white; */
+}
+
+/* Hover style for the LIKE button when it IS active */
+.card-action-button.like.active:hover {
+  background-color: rgba(255, 75, 75, 0.2); /* Slightly darker red background on hover when active */
+}
+
+/* --- Optional: Dark Mode Adjustment --- */
+/* Include this if you want the active like button to look correct in dark mode */
+/* Ensure this selector is specific enough if placed in a general file */
+.dark .card-action-button.like.active {
+  color: #ff4b4b; /* Keep the active color consistent */
+  background-color: rgba(255, 51, 102, 0.2); /* Adjust background for dark mode */
+}
 /* Dark mode adjustments */
 .dark .user-card,
 .dark .user-list-item {
@@ -2310,4 +2340,109 @@
   .message-video-container {
     max-width: 200px;
   }
+}
+
+/* Additional CSS styles for infinite scrolling */
+
+/* Smooth fade-in animation for newly loaded cards */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.users-grid .user-card:nth-last-child(-n+10) {
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* Loading more indicator */
+.loading-more-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  width: 100%;
+  clear: both;
+}
+
+.loading-spinner {
+  animation: spin 1s linear infinite;
+  color: var(--primary-color, #5c6bc0);
+  font-size: 24px;
+  margin-bottom: 10px;
+}
+
+.loading-more-container p {
+  color: var(--text-secondary, #666);
+  font-size: 0.9rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Smooth scrolling for better UX */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Adjust grid layout to handle varying numbers of items better */
+.users-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 767px) {
+  .users-grid {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 15px;
+  }
+
+  /* Optimize for mobile scrolling performance */
+  .user-card {
+    will-change: transform, opacity;
+  }
+}
+
+/* For list view - maintain clean look with infinite scroll */
+.users-list .user-card {
+  margin-bottom: 15px;
+  transition: transform 0.2s ease;
+}
+
+/* Give visual feedback when scrolling past boundaries (for mobile) */
+@supports (-webkit-overflow-scrolling: touch) {
+  .dashboard-content {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+}
+
+/* Back to top button (appears after scrolling down) */
+.back-to-top {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--primary-color, #5c6bc0);
+  color: white;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.3s, transform 0.3s;
+  cursor: pointer;
+  z-index: 100;
+}
+
+.back-to-top.visible {
+  opacity: 1;
+  transform: translateY(0);
 }

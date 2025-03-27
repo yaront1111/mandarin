@@ -232,7 +232,7 @@ export const StoriesProvider = ({ children }) => {
 
       // Prevent duplicate submissions using both state and ref
       if (isCreatingStory || storyBeingCreated.current) {
-        return { success: false, message: "Story creation already in progress" }
+        return
       }
 
       // Set creating state and ref

@@ -17,6 +17,8 @@ const userReducer = (state, action) => {
       return { ...state, loading: action.payload }
     case "GET_USERS":
       return { ...state, users: action.payload, loading: false }
+    case "APPEND_USERS":
+      return { ...state, users: [...state.users, ...action.payload], loading: false }
     case "GET_USER":
       return {
         ...state,
@@ -111,21 +113,29 @@ export const UserProvider = ({ children }) => {
   // Use a ref to store the debounce timeout ID
   const debounceTimeoutRef = useRef(null)
 
-  // getUsers function: fetches all users and updates state
-  const getUsers = useCallback(async () => {
-    dispatch({ type: "SET_LOADING", payload: true })
+  // getUsers function: fetches users with pagination support
+  const getUsers = useCallback(async (page = 1, limit = 20) => {
+    dispatch({ type: "SET_LOADING", payload: page === 1 })
     try {
-      const data = await apiService.get("/users")
+      const data = await apiService.get(`/users?page=${page}&limit=${limit}`)
       if (data.success) {
-        dispatch({ type: "GET_USERS", payload: data.data })
-        return data.data
+        // If it's the first page, replace users array, otherwise append
+        dispatch({
+          type: page === 1 ? "GET_USERS" : "APPEND_USERS",
+          payload: data.data
+        })
+        return {
+          users: data.data,
+          hasMore: data.hasMore || data.pagination?.hasNext || data.data.length === limit, // Check if there are more pages
+          totalPages: data.pagination?.totalPages || Math.ceil(data.totalCount / limit) || 1
+        }
       } else {
         throw new Error(data.error || "Failed to fetch users")
       }
     } catch (err) {
       const errorMsg = err.error || err.message || "Failed to fetch users"
       dispatch({ type: "USER_ERROR", payload: errorMsg })
-      return []
+      return { users: [], hasMore: false, totalPages: 1 }
     }
   }, [])
 
