@@ -27,26 +27,10 @@ class SocketService {
     // Attach event emitter to window for app-wide events
     window.socketService = this
 
-    // Add improved handling for peer ID exchange
+    // Add this to your socket event registration section
     this.socket.on("peerIdExchange", (data) => {
-      this._log("Received peer ID exchange:", data)
-
-      // Validate the data
-      if (!data || !data.peerId) {
-        this._log("Invalid peer ID exchange data received:", data)
-        return
-      }
-
-      // Add timestamp for debugging
-      data.receivedAt = Date.now()
-
-      // Ensure the event is properly forwarded to components
-      try {
-        // The event will be re-emitted to components that are listening
-        window.dispatchEvent(new CustomEvent("peerIdExchangeReceived", { detail: data }))
-      } catch (err) {
-        this._log("Error dispatching peerIdExchange event:", err)
-      }
+      console.log("Received peer ID exchange:", data)
+      // The event will be re-emitted to components that are listening
     })
   }
 
@@ -206,45 +190,6 @@ class SocketService {
   // ----------------------
   // Video/Call Methods
   // ----------------------
-
-  /**
-   * Send peer ID to remote user with retry mechanism
-   * @param {string} recipientId - Recipient user ID
-   * @param {string} peerId - Local peer ID
-   * @returns {Promise<boolean>} - Success status
-   */
-  sendPeerId(recipientId, peerId) {
-    this._log(`Sending peer ID ${peerId} to ${recipientId}`)
-
-    return new Promise((resolve) => {
-      // Retry logic for important signaling messages
-      const maxRetries = 3
-      let retryCount = 0
-      let success = false
-
-      const attemptSend = () => {
-        success = this.socket.emit("peerIdExchange", {
-          recipientId,
-          peerId,
-          from: {
-            userId: this.socket.userId,
-            name: localStorage.getItem("userNickname") || "User",
-          },
-          timestamp: Date.now(),
-        })
-
-        if (!success && retryCount < maxRetries) {
-          retryCount++
-          this._log(`Retrying peer ID send (${retryCount}/${maxRetries})`)
-          setTimeout(attemptSend, 1000)
-        } else {
-          resolve(success)
-        }
-      }
-
-      attemptSend()
-    })
-  }
 
   /**
    * Send WebRTC signaling data

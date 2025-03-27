@@ -1,197 +1,256 @@
-import logger from "../logger.js"
-import { checkSocketPermission } from "./Auth.js"
+import { User } from "../models/index.js";
+import logger from "../logger.js";
+import mongoose from "mongoose";
 
 /**
- * Setup WebRTC call signaling handlers
- * @param {Object} io - Socket.IO instance
- * @param {Object} socket - Socket instance
+ * Register call and video-related socket handlers
+ * @param {Object} io - Socket.IO server instance
+ * @param {Object} socket - Socket connection
+ * @param {Map} userConnections - Map of user connections
+ * @param {Object} rateLimiters - Rate limiters
  */
-const setupCallHandlers = (io, socket) => {
-  // Handle peer ID exchange for WebRTC
-  socket.on("peerIdExchange", async (data) => {
+const registerCallHandlers = (io, socket, userConnections, rateLimiters) => {
+  const { callLimiter } = rateLimiters;
+
+  // WebRTC signaling - pass signal data between peers
+  socket.on("videoSignal", (data) => {
     try {
-      const { peerId, targetUserId, callId } = data
+      const { recipientId, signal, from } = data;
 
-      if (!peerId || !targetUserId || !callId) {
-        logger.warn(`Invalid peerIdExchange data from ${socket.id}: ${JSON.stringify(data)}`)
-        return
+      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
+        logger.error(`Invalid recipient ID in video signal: ${recipientId}`);
+        return;
       }
 
-      logger.info(`Peer ID exchange: ${socket.id} -> ${targetUserId}, callId: ${callId}`)
-
-      // Check if user has permission to initiate calls
-      if (!checkSocketPermission(socket, "initiateCall")) {
-        logger.warn(`User ${socket.id} attempted to exchange peer ID without permission`)
-        socket.emit("callError", {
-          error: "You don't have permission to make calls",
-          callId,
-        })
-        return
+      if (!signal) {
+        logger.error("Missing signal data in video signal message");
+        return;
       }
 
-      // Forward the peer ID to the target user
-      const targetSocket = io.sockets.sockets.get(targetUserId)
+      logger.debug(`Forwarding video signal from ${socket.user._id} to ${recipientId}`);
 
-      if (targetSocket) {
-        targetSocket.emit("peerIdExchange", {
-          peerId,
-          userId: socket.id,
-          callId,
-        })
+      // Forward the signal to the recipient with retry logic
+      if (userConnections.has(recipientId)) {
+        let delivered = false;
 
-        logger.debug(`Forwarded peer ID ${peerId} to ${targetUserId} for call ${callId}`)
+        userConnections.get(recipientId).forEach((recipientSocketId) => {
+          try {
+            io.to(recipientSocketId).emit("videoSignal", {
+              signal,
+              userId: socket.user._id,
+              from: from || {
+                userId: socket.user._id,
+                name: socket.user.nickname || "User",
+              },
+              timestamp: Date.now(),
+            });
+            delivered = true;
+          } catch (err) {
+            logger.error(`Error sending signal to socket ${recipientSocketId}: ${err.message}`);
+          }
+        });
+
+        if (!delivered) {
+          // Notify sender that delivery failed
+          socket.emit("videoError", {
+            error: "Failed to deliver signal to recipient",
+            recipientId,
+          });
+        }
       } else {
-        logger.warn(`Target user ${targetUserId} not found for peer ID exchange`)
-        socket.emit("callError", {
-          error: "User is offline or unavailable",
-          callId,
-        })
+        // Recipient is offline
+        socket.emit("videoError", {
+          error: "Recipient is offline",
+          recipientId,
+        });
       }
     } catch (error) {
-      logger.error(`Error in peerIdExchange: ${error.message}`)
-      socket.emit("callError", {
-        error: "Failed to exchange connection information",
-        details: error.message,
-      })
+      logger.error(`Error handling video signal: ${error.message}`);
+      socket.emit("videoError", { error: "Signal processing error" });
     }
-  })
+  });
+
+  // Handle video call hangup
+  socket.on("videoHangup", (data) => {
+    try {
+      const { recipientId } = data;
+
+      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
+        logger.error(`Invalid recipient ID in video hangup: ${recipientId}`);
+        return;
+      }
+
+      logger.debug(`Forwarding video hangup from ${socket.user._id} to ${recipientId}`);
+
+      if (userConnections.has(recipientId)) {
+        userConnections.get(recipientId).forEach((recipientSocketId) => {
+          io.to(recipientSocketId).emit("videoHangup", {
+            userId: socket.user._id,
+            timestamp: Date.now(),
+          });
+        });
+      }
+    } catch (error) {
+      logger.error(`Error handling video hangup: ${error.message}`);
+    }
+  });
+
+  // Handle video media control events (mute audio/video)
+  socket.on("videoMediaControl", (data) => {
+    try {
+      const { recipientId, type, muted } = data;
+
+      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
+        logger.error(`Invalid recipient ID in media control: ${recipientId}`);
+        return;
+      }
+
+      if (!type || !["audio", "video"].includes(type)) {
+        logger.error(`Invalid media control type: ${type}`);
+        return;
+      }
+
+      logger.debug(`Forwarding ${type} control (muted: ${muted}) from ${socket.user._id} to ${recipientId}`);
+
+      if (userConnections.has(recipientId)) {
+        userConnections.get(recipientId).forEach((recipientSocketId) => {
+          io.to(recipientSocketId).emit("videoMediaControl", {
+            userId: socket.user._id,
+            type,
+            muted,
+            timestamp: Date.now(),
+          });
+        });
+      }
+    } catch (error) {
+      logger.error(`Error handling video media control: ${error.message}`);
+    }
+  });
 
   // Handle call initiation
   socket.on("initiateCall", async (data) => {
     try {
-      const { targetUserId, callType = "video" } = data
+      const { recipientId, callType, callId } = data;
 
-      if (!targetUserId) {
-        logger.warn(`Invalid initiateCall data from ${socket.id}: ${JSON.stringify(data)}`)
-        return
-      }
-
-      // Check if user has permission to initiate calls
-      if (!checkSocketPermission(socket, "initiateCall")) {
-        logger.warn(`User ${socket.id} attempted to initiate call without permission`)
+      // Apply rate limiting
+      try {
+        await callLimiter.consume(socket.user._id.toString());
+      } catch (rateLimitError) {
+        logger.warn(`Rate limit exceeded for call initiation by user ${socket.user._id}`);
         socket.emit("callError", {
-          error: "You don't have permission to make calls",
-        })
-        return
+          error: "Rate limit exceeded. Please try again later.",
+        });
+        return;
       }
 
-      // Generate a unique call ID
-      const callId = `call-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`
-
-      logger.info(`Call initiation: ${socket.id} -> ${targetUserId}, type: ${callType}, callId: ${callId}`)
-
-      // Get caller information
-      const caller = {
-        id: socket.user._id,
-        name: socket.user.name,
-        avatar: socket.user.avatar,
+      // Validate recipient ID
+      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
+        socket.emit("callError", {
+          error: "Invalid recipient ID",
+        });
+        return;
       }
 
-      // Send call request to target user
-      const targetSocket = io.sockets.sockets.get(targetUserId)
+      // Check if recipient exists
+      const recipient = await User.findById(recipientId);
+      if (!recipient) {
+        socket.emit("callError", {
+          error: "Recipient not found",
+        });
+        return;
+      }
 
-      if (targetSocket) {
-        targetSocket.emit("incomingCall", {
-          callId,
-          callType,
-          userId: socket.id,
-          caller,
-          timestamp: Date.now(),
-        })
+      // Get full user object to check permissions
+      const user = await User.findById(socket.user._id);
 
-        // Send confirmation to caller
+      // Check if user can make video calls
+      if (callType === "video" && user.accountTier === "FREE") {
+        socket.emit("callError", {
+          error: "Free accounts cannot make video calls. Upgrade for video calls.",
+        });
+        return;
+      }
+
+      logger.info(`Call initiated from ${socket.user._id} to ${recipientId}`);
+
+      // Notify the recipient about the incoming call
+      if (userConnections.has(recipientId)) {
+        userConnections.get(recipientId).forEach((recipientSocketId) => {
+          io.to(recipientSocketId).emit("incomingCall", {
+            callId: callId || `call-${Date.now()}`,
+            callType,
+            userId: socket.user._id.toString(),
+            caller: {
+              userId: socket.user._id.toString(),
+              name: user.nickname || "User",
+              photo: user.photos && user.photos.length > 0 ? user.photos[0].url : null,
+            },
+            timestamp: Date.now(),
+          });
+        });
+
+        // Confirm to the caller that the call was initiated
         socket.emit("callInitiated", {
-          callId,
-          targetUserId,
-          callType,
-          timestamp: Date.now(),
-        })
-
-        logger.debug(`Sent incoming call notification to ${targetUserId} for call ${callId}`)
+          success: true,
+          recipientId,
+          callId: callId || `call-${Date.now()}`,
+        });
       } else {
-        logger.warn(`Target user ${targetUserId} not found for call initiation`)
+        // Recipient is offline
         socket.emit("callError", {
-          error: "User is offline or unavailable",
-        })
+          error: "Recipient is offline",
+          recipientId,
+        });
       }
     } catch (error) {
-      logger.error(`Error in initiateCall: ${error.message}`)
+      logger.error(`Error initiating call: ${error.message}`);
       socket.emit("callError", {
         error: "Failed to initiate call",
-        details: error.message,
-      })
+      });
     }
-  })
+  });
 
-  // Handle call answer (accept/reject)
-  socket.on("answerCall", async (data) => {
+  // Handle call answer
+  socket.on("answerCall", (data) => {
     try {
-      const { callId, accept, targetUserId } = data
+      const { callerId, accept, callId } = data;
 
-      if (!callId || typeof accept !== "boolean" || !targetUserId) {
-        logger.warn(`Invalid answerCall data from ${socket.id}: ${JSON.stringify(data)}`)
-        return
+      if (!mongoose.Types.ObjectId.isValid(callerId)) {
+        logger.error(`Invalid caller ID in call answer: ${callerId}`);
+        return;
       }
 
-      logger.info(`Call answer: ${socket.id} -> ${targetUserId}, callId: ${callId}, accept: ${accept}`)
+      logger.info(`Call ${accept ? "accepted" : "rejected"} by ${socket.user._id} from ${callerId}`);
 
-      // Forward the answer to the caller
-      const targetSocket = io.sockets.sockets.get(targetUserId)
+      // Notify the caller about the answer with retry logic
+      if (userConnections.has(callerId)) {
+        let delivered = false;
 
-      if (targetSocket) {
-        targetSocket.emit("callAnswered", {
-          userId: socket.id,
-          accept,
-          callId,
-          timestamp: Date.now(),
-        })
+        userConnections.get(callerId).forEach((callerSocketId) => {
+          try {
+            io.to(callerSocketId).emit("callAnswered", {
+              userId: socket.user._id.toString(),
+              accept,
+              callId,
+              timestamp: Date.now(),
+            });
+            delivered = true;
+          } catch (err) {
+            logger.error(`Error sending call answer to socket ${callerSocketId}: ${err.message}`);
+          }
+        });
 
-        logger.debug(`Forwarded call answer to ${targetUserId} for call ${callId}`)
+        if (!delivered) {
+          // Log that delivery failed
+          logger.error(`Failed to deliver call answer to caller ${callerId}`);
+        }
       } else {
-        logger.warn(`Target user ${targetUserId} not found for call answer`)
-        socket.emit("callError", {
-          error: "Caller is offline or unavailable",
-          callId,
-        })
+        logger.warn(`Caller ${callerId} is no longer connected`);
       }
     } catch (error) {
-      logger.error(`Error in answerCall: ${error.message}`)
-      socket.emit("callError", {
-        error: "Failed to answer call",
-        details: error.message,
-      })
+      logger.error(`Error handling call answer: ${error.message}`);
     }
-  })
+  });
+};
 
-  // Handle call hangup
-  socket.on("videoHangup", async (data) => {
-    try {
-      const { targetUserId, callId } = data
-
-      if (!targetUserId || !callId) {
-        logger.warn(`Invalid videoHangup data from ${socket.id}: ${JSON.stringify(data)}`)
-        return
-      }
-
-      logger.info(`Call hangup: ${socket.id} -> ${targetUserId}, callId: ${callId}`)
-
-      // Forward the hangup to the target user
-      const targetSocket = io.sockets.sockets.get(targetUserId)
-
-      if (targetSocket) {
-        targetSocket.emit("videoHangup", {
-          userId: socket.id,
-          timestamp: Date.now(),
-        })
-
-        logger.debug(`Forwarded hangup to ${targetUserId} for call ${callId}`)
-      } else {
-        logger.debug(`Target user ${targetUserId} not found for hangup, but continuing`)
-      }
-    } catch (error) {
-      logger.error(`Error in videoHangup: ${error.message}`)
-    }
-  })
-}
-
-export const registerCallHandlers = setupCallHandlers
+export { registerCallHandlers };
