@@ -108,7 +108,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         }
         return config
       },
-      (error) => Promise.reject(error)
+      (error) => Promise.reject(error),
     )
     return instance
   }, [token])
@@ -154,9 +154,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         }
         console.log("Incoming call received:", data)
         const callerId =
-          (data.caller && (data.caller.userId || data.caller._id)) ||
-          data.userId ||
-          (data.from && data.from.userId)
+          (data.caller && (data.caller.userId || data.caller._id)) || data.userId || (data.from && data.from.userId)
         if (!callerId) {
           console.error("Caller ID not found in incoming call data", data)
           return
@@ -167,7 +165,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         console.error("Error handling incoming call:", error)
       }
     },
-    [recipient]
+    [recipient],
   )
 
   // Setup incoming call listener
@@ -261,15 +259,26 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       console.log(`Starting video call with ${recipient.nickname}...`)
       setIsCallInitiator(true)
       setActiveCall(true)
+
+      // Generate a unique call ID
+      const callId = `call-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+
+      // Use the improved socket service to send the call initiation
       socketRef.current.emit("initiateCall", {
         recipientId: recipient._id,
         callType: "video",
         userId: user._id,
-        callId: `call-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        caller: { userId: user._id, name: user.nickname || "User" },
+        callId: callId,
+        caller: {
+          userId: user._id,
+          name: user.nickname || "User",
+        },
       })
+
+      // Send a message to indicate a call was made
       sendMessage(recipient._id, "video", "Video Call").catch((error) => {
         console.error("Failed to send video call message:", error)
+        // Continue with the call even if the message fails
       })
     } else {
       console.error("Cannot start call: recipient information is missing")
@@ -292,12 +301,22 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       console.error("Cannot accept call: No caller ID found")
       return
     }
-    socketRef.current.emit("answerCall", {
-      callerId,
-      accept: true,
-      callId: incomingCall.callId,
-      timestamp: Date.now(),
-    })
+
+    // Send the answer with retry logic
+    const sendAnswer = () => {
+      socketRef.current.emit("answerCall", {
+        callerId,
+        accept: true,
+        callId: incomingCall.callId,
+        timestamp: Date.now(),
+      })
+    }
+
+    // Try sending the answer multiple times to ensure delivery
+    sendAnswer()
+    setTimeout(sendAnswer, 500)
+    setTimeout(sendAnswer, 1500)
+
     console.log(`Accepting call from ${incomingCall.caller?.name || "caller"} with ID ${callerId}`)
     setActiveCall(true)
     setIsCallInitiator(false)
@@ -509,11 +528,11 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           requestsData.map((request) =>
             authAxios.put(`/api/users/photos/permissions/${request._id}`, {
               status: "approved",
-            })
-          )
+            }),
+          ),
         )
         const successCount = results.filter(
-          (result) => result.status === "fulfilled" && result.value.data.success
+          (result) => result.status === "fulfilled" && result.value.data.success,
         ).length
         if (successCount > 0) {
           console.log(`Approved ${successCount} photo request${successCount !== 1 ? "s" : ""}`)
@@ -768,7 +787,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                       {message.metadata?.fileUrl ? (
                         message.metadata.fileType?.startsWith("image/") ? (
                           <img
-                            src={message.metadata.fileUrl}
+                            src={message.metadata.fileUrl || "/placeholder.svg"}
                             alt={message.metadata.fileName || "Image"}
                             className="image-attachment"
                             onError={(e) => {
@@ -818,16 +837,13 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             </React.Fragment>
           ))
         )}
-        {recipient &&
-          typingUsers &&
-          recipient._id &&
-          Date.now() - typingUsers[recipient._id] < 3000 && (
-            <div className="typing-indicator">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-          )}
+        {recipient && typingUsers && recipient._id && Date.now() - typingUsers[recipient._id] < 3000 && (
+          <div className="typing-indicator">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        )}
         {messageError && (
           <div className="message-error">
             <p>{messageError}</p>
