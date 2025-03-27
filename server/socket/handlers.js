@@ -2,6 +2,7 @@ import { User } from "../models/index.js";
 import logger from "../logger.js";
 import { registerMessagingHandlers } from "./messaging.js";
 import { registerCallHandlers } from "./call.js";
+import { registerPermissionHandlers } from "./permissions.js";
 
 /**
  * Handle user disconnect
@@ -75,6 +76,8 @@ const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
 
   // Register call and video handlers
   registerCallHandlers(io, socket, userConnections, rateLimiters);
+
+  registerPermissionHandlers(io, socket, userConnections);
 
   // Emit user online status when they connect
   io.emit("userOnline", {

@@ -99,112 +99,6 @@ const sendLikeNotification = async (io, sender, recipient, likeData, userConnect
 };
 
 /**
- * Send a photo permission request notification
- * @param {Object} io - Socket.IO server instance
- * @param {Object} requester - User requesting permission
- * @param {Object} owner - Photo owner
- * @param {Object} permissionData - Permission request data
- * @param {Map} userConnections - User connections map
- */
-const sendPhotoPermissionRequestNotification = async (io, requester, owner, permissionData, userConnections) => {
-  try {
-    // Check if owner has photo request notifications enabled
-    const photoOwner = await User.findById(owner._id).select("settings");
-
-    if (photoOwner?.settings?.notifications?.photoRequests !== false) {
-      // Send socket notification if user is online
-      if (userConnections.has(owner._id.toString())) {
-        userConnections.get(owner._id.toString()).forEach((socketId) => {
-          io.to(socketId).emit("photo_permission_request", {
-            requester: {
-              _id: requester._id,
-              nickname: requester.nickname,
-              photos: requester.photos,
-            },
-            photoId: permissionData.photo,
-            permissionId: permissionData._id,
-            timestamp: new Date(),
-          });
-        });
-      }
-
-      // Attempt to store a notification in the database if the model exists
-      try {
-        const Notification = mongoose.models.Notification || (await import("../models/Notification.js")).default;
-
-        if (Notification) {
-          await Notification.create({
-            recipient: owner._id,
-            type: "photoRequest",
-            sender: requester._id,
-            content: `${requester.nickname} requested access to your private photo`,
-            reference: permissionData._id,
-          });
-        }
-      } catch (notificationError) {
-        logger.debug(`Notification saving skipped: ${notificationError.message}`);
-      }
-    }
-  } catch (error) {
-    logger.error(`Error sending photo permission request notification: ${error.message}`);
-  }
-};
-
-/**
- * Send a photo permission response notification
- * @param {Object} io - Socket.IO server instance
- * @param {Object} owner - Photo owner
- * @param {Object} requester - User who requested permission
- * @param {Object} permissionData - Permission response data
- * @param {Map} userConnections - User connections map
- */
-const sendPhotoPermissionResponseNotification = async (io, owner, requester, permissionData, userConnections) => {
-  try {
-    // Check if requester has photo response notifications enabled
-    const photoRequester = await User.findById(requester._id).select("settings");
-
-    if (photoRequester?.settings?.notifications?.photoRequests !== false) {
-      // Send socket notification if user is online
-      if (userConnections.has(requester._id.toString())) {
-        userConnections.get(requester._id.toString()).forEach((socketId) => {
-          io.to(socketId).emit("photo_permission_response", {
-            owner: {
-              _id: owner._id,
-              nickname: owner.nickname,
-              photos: owner.photos,
-            },
-            photoId: permissionData.photo,
-            permissionId: permissionData._id,
-            status: permissionData.status,
-            timestamp: new Date(),
-          });
-        });
-      }
-
-      // Attempt to store a notification in the database if the model exists
-      try {
-        const Notification = mongoose.models.Notification || (await import("../models/Notification.js")).default;
-
-        if (Notification) {
-          const action = permissionData.status === "approved" ? "approved" : "rejected";
-          await Notification.create({
-            recipient: requester._id,
-            type: "photoResponse",
-            sender: owner._id,
-            content: `${owner.nickname} ${action} your photo request`,
-            reference: permissionData._id,
-          });
-        }
-      } catch (notificationError) {
-        logger.debug(`Notification saving skipped: ${notificationError.message}`);
-      }
-    }
-  } catch (error) {
-    logger.error(`Error sending photo permission response notification: ${error.message}`);
-  }
-};
-
-/**
  * Register messaging-related socket handlers
  * @param {Object} io - Socket.IO server instance
  * @param {Object} socket - Socket connection
@@ -339,6 +233,4 @@ export {
   registerMessagingHandlers,
   sendMessageNotification,
   sendLikeNotification,
-  sendPhotoPermissionRequestNotification,
-  sendPhotoPermissionResponseNotification,
 };

@@ -1,3 +1,4 @@
+// client/src/services/MessageClient.jsx
 /**
  * Messaging client that handles all chat-related socket operations
  */
@@ -43,12 +44,17 @@ class MessageClient {
           timestamp: new Date(),
         };
 
-        this.socketClient.pendingMessages.push({
-          event: "sendMessage",
-          data: { recipientId, content, type, metadata, tempMessageId: tempMessage.id },
-        });
+        // Queue message if socket is not connected (logic might need adjustment based on socketClient implementation)
+         if (this.socketClient.pendingMessages) {
+            this.socketClient.pendingMessages.push({
+              event: "sendMessage",
+              data: { recipientId, content, type, metadata, tempMessageId: tempMessage.id },
+            });
+         } else {
+            console.warn("SocketClient does not support pending messages queue.");
+         }
 
-        resolve(tempMessage);
+        resolve(tempMessage); // Resolve with temporary message immediately
         return;
       }
 
@@ -83,25 +89,25 @@ class MessageClient {
         tempMessageId,
       });
 
-      // Set a timeout
+      // Set a timeout for confirmation
       setTimeout(() => {
         this.socketClient.off("messageSent", handleMessageSent);
         this.socketClient.off("messageError", handleMessageError);
-
-        // Return a temporary message if no response
-        resolve({
-          _id: tempMessageId,
-          sender: this.userId,
-          recipient: recipientId,
-          content,
-          type,
-          metadata,
-          createdAt: new Date().toISOString(),
-          read: false,
-          status: "pending",
-          tempMessageId,
-        });
-      }, 10000);
+        // If no confirmation after timeout, resolve with a pending state message
+        // This assumes the message might still arrive later, UI should handle 'pending'
+         resolve({
+           _id: tempMessageId, // Use temp ID if real ID not received
+           sender: this.userId,
+           recipient: recipientId,
+           content,
+           type,
+           metadata,
+           createdAt: new Date().toISOString(),
+           read: false,
+           status: "pending", // Indicate it might not have been confirmed
+           tempMessageId,
+         });
+      }, 10000); // 10-second timeout
     });
   }
 
@@ -110,7 +116,9 @@ class MessageClient {
    * @param {string} recipientId - Recipient user ID
    */
   sendTyping(recipientId) {
-    this.socketClient.emit("typing", { recipientId });
+     if (this.isConnected()) {
+        this.socketClient.emit("typing", { recipientId });
+     }
   }
 
   /**
@@ -135,7 +143,7 @@ class MessageClient {
    * Send a like notification
    * @param {string} recipientId - User ID to like
    * @param {Object} likeData - Additional like data
-   * @returns {Promise} - Resolves when like is sent
+   * @returns {Promise} - Resolves when like is sent or rejects on error
    */
   sendLike(recipientId, likeData = {}) {
     return new Promise((resolve, reject) => {
@@ -153,93 +161,37 @@ class MessageClient {
       if (success) {
         resolve();
       } else {
-        reject(new Error("Failed to send like"));
+        // Check if emit returned false due to buffer full or other immediate issue
+        reject(new Error("Failed to send like event immediately"));
       }
+      // Note: This doesn't guarantee server processing, only that emit was called.
+      // For guaranteed delivery, server ACKs would be needed.
     });
   }
 
-  /**
-   * Request permission to view a private photo
-   * @param {string} ownerId - Photo owner ID
-   * @param {string} photoId - Photo ID
-   * @returns {Promise} - Resolves when request is sent
-   */
-  requestPhotoPermission(ownerId, photoId) {
-    return new Promise((resolve, reject) => {
-      if (!this.isConnected()) {
-        reject(new Error("Socket not connected"));
-        return;
-      }
+   /**
+    * Register a handler for new likes
+    * @param {Function} callback - Like handler
+    * @returns {Function} - Unsubscribe function
+    */
+   onNewLike(callback) {
+     // Ensure the event name matches the server emission ('new_like' vs 'newLike')
+     return this.socketClient.on("newLike", callback); // Assuming server emits 'newLike' now
+   }
 
-      const success = this.socketClient.emit("requestPhotoPermission", {
-        ownerId,
-        photoId,
-        timestamp: Date.now()
-      });
-
-      if (success) {
-        resolve();
-      } else {
-        reject(new Error("Failed to send photo permission request"));
-      }
-    });
-  }
-
-  /**
-   * Respond to a photo permission request
-   * @param {string} requesterId - User who requested permission
-   * @param {string} photoId - Photo ID
-   * @param {boolean} approved - Whether permission is granted
-   * @returns {Promise} - Resolves when response is sent
-   */
-  respondToPhotoRequest(requesterId, photoId, approved) {
-    return new Promise((resolve, reject) => {
-      if (!this.isConnected()) {
-        reject(new Error("Socket not connected"));
-        return;
-      }
-
-      const success = this.socketClient.emit("respondToPhotoRequest", {
-        requesterId,
-        photoId,
-        status: approved ? "approved" : "rejected",
-        timestamp: Date.now()
-      });
-
-      if (success) {
-        resolve();
-      } else {
-        reject(new Error("Failed to send photo permission response"));
-      }
-    });
-  }
-
-  /**
-   * Register a handler for new likes
-   * @param {Function} callback - Like handler
-   * @returns {Function} - Unsubscribe function
-   */
-  onNewLike(callback) {
-    return this.socketClient.on("new_like", callback);
-  }
-
-  /**
-   * Register a handler for photo permission requests
-   * @param {Function} callback - Request handler
-   * @returns {Function} - Unsubscribe function
-   */
-  onPhotoPermissionRequest(callback) {
-    return this.socketClient.on("photo_permission_request", callback);
-  }
-
-  /**
-   * Register a handler for photo permission responses
-   * @param {Function} callback - Response handler
-   * @returns {Function} - Unsubscribe function
-   */
-  onPhotoPermissionResponse(callback) {
-    return this.socketClient.on("photo_permission_response", callback);
-  }
+  // --- REMOVED PHOTO PERMISSION METHODS ---
+  // requestPhotoPermission removed
+  // respondToPhotoRequest removed
+  // onPhotoPermissionRequest removed
+  // onPhotoPermissionResponse removed
 }
 
+// Ensure socketClient is imported if not already globally available
+// import socketClient from './socketClient.jsx'; // Assuming path
+
+// Create and export an instance (if this is how it's used)
+// const messageClientInstance = new MessageClient(socketClient);
+// export default messageClientInstance;
+
+// Or just export the class
 export default MessageClient;

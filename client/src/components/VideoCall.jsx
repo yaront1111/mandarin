@@ -14,13 +14,12 @@ import { toast } from "react-toastify";
 import { useAuth } from "../context";
 import CallSounds from "./CallSounds";
 
-const PEER_ID_CLEANUP_TIMEOUT = 30000;
 const CALL_SETUP_DELAY = 1000;
 const PEER_CONNECT_TIMEOUT = 20000;
 const CONNECTION_PROGRESS_CLEAR_TIMEOUT = 5000;
 const HANGUP_DELAY = 2000;
 const RECONNECT_DELAY = 3000;
-const GLOBAL_TIMEOUT = 45000;
+const GLOBAL_TIMEOUT = 45045; // slightly over 45s to allow some buffer
 const ICE_SERVER_CONFIG = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
@@ -75,6 +74,7 @@ const VideoCall = ({
   socket,
   onError,
 }) => {
+  // State variables
   const [stream, setStream] = useState(null);
   const [remoteName, setRemoteName] = useState(remoteUserName || "User");
   const [connectionStatus, setConnectionStatus] = useState("initializing");
@@ -86,13 +86,18 @@ const VideoCall = ({
   const [isRemoteVideoOff, setIsRemoteVideoOff] = useState(false);
   const [remotePeerId, setRemotePeerId] = useState(null);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
+
+  // Sound state flags
   const [playSounds, setPlaySounds] = useState({
     ringtone: isInitiator,
     callConnect: false,
     callEnd: false,
   });
+
+  // Flag to prevent duplicate hangup processing
   const [userInitiated, setUserInitiated] = useState(false);
 
+  // Refs
   const { user } = useAuth();
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -107,14 +112,45 @@ const VideoCall = ({
   const reconnectTimerRef = useRef(null);
   const globalTimeoutRef = useRef(null);
   const initializedRef = useRef(false);
+  const soundTimeoutRef = useRef(null);
 
-  // Reset callEnd flag after it plays (e.g., after 3 seconds)
+  // Web Audio API refs (for potential future use)
+  const audioContextRef = useRef(null);
+  const callEndSoundPlayedRef = useRef(false);
+
+  // Initialize Web Audio API to unlock audio on user interaction
+  useEffect(() => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current =
+          new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const unlockAudioContext = () => {
+        if (audioContextRef.current && audioContextRef.current.state === "suspended") {
+          audioContextRef.current.resume();
+        }
+      };
+      document.addEventListener("click", unlockAudioContext);
+      document.addEventListener("touchstart", unlockAudioContext);
+      return () => {
+        document.removeEventListener("click", unlockAudioContext);
+        document.removeEventListener("touchstart", unlockAudioContext);
+      };
+    } catch (err) {
+      console.warn("Web Audio API initialization failed:", err);
+    }
+  }, []);
+
+  // Reset callEnd sound flag after playing
   useEffect(() => {
     if (playSounds.callEnd) {
-      const timer = setTimeout(() => {
+      if (soundTimeoutRef.current) clearTimeout(soundTimeoutRef.current);
+      soundTimeoutRef.current = setTimeout(() => {
         setPlaySounds(prev => ({ ...prev, callEnd: false }));
       }, 3000);
-      return () => clearTimeout(timer);
+      return () => {
+        if (soundTimeoutRef.current) clearTimeout(soundTimeoutRef.current);
+      };
     }
   }, [playSounds.callEnd]);
 
@@ -130,119 +166,147 @@ const VideoCall = ({
       onError && onError(new Error("Socket connection required for video calls"));
       return;
     }
-
     globalTimeoutRef.current = setTimeout(() => {
       if (connectionStatus !== "connected") {
         setConnectionStatus("error");
-        onError && onError(new Error("Call setup timed out. Please try again later."));
+        onError &&
+          onError(new Error("Call setup timed out. Please try again later."));
         if (callRef.current) {
-          try { callRef.current.close(); } catch (e) {}
+          try {
+            callRef.current.close();
+          } catch (e) {}
           callRef.current = null;
         }
       }
     }, GLOBAL_TIMEOUT);
-
     startCall();
+    // Reset call end sound flag when starting a call
+    callEndSoundPlayedRef.current = false;
     initializedRef.current = true;
-
     callTimerRef.current = setInterval(() => {
       setCallDuration(prev => prev + 1);
     }, 1000);
-
+    const unlockAudio = () => {
+      // For further handling if needed
+    };
+    document.addEventListener("click", unlockAudio);
+    document.addEventListener("touchstart", unlockAudio);
     return () => {
       endCall();
       if (callTimerRef.current) clearInterval(callTimerRef.current);
       if (peerConnectTimeoutRef.current) clearTimeout(peerConnectTimeoutRef.current);
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       if (globalTimeoutRef.current) clearTimeout(globalTimeoutRef.current);
+      if (soundTimeoutRef.current) clearTimeout(soundTimeoutRef.current);
+      document.removeEventListener("click", unlockAudio);
+      document.removeEventListener("touchstart", unlockAudio);
     };
   }, []);
 
-  const handleMediaControl = useCallback((data) => {
-    if (data.userId === remoteUserId) {
-      if (data.type === "audio") setIsRemoteAudioMuted(data.muted);
-      else if (data.type === "video") setIsRemoteVideoOff(data.muted);
-    }
-  }, [remoteUserId]);
-
-  const handleHangupSocket = useCallback((data) => {
-    if (hangupProcessedRef.current) return;
-    if (data.userId === remoteUserId) {
-      hangupProcessedRef.current = true;
-      setPlaySounds({ ringtone: false, callConnect: false, callEnd: false });
-      toast.info(`${remoteName} ended the call`);
-      if (connectionInProgressRef.current) {
-        setTimeout(() => { onClose && onClose(); }, HANGUP_DELAY);
-      } else {
-        onClose && onClose();
+  const handleMediaControl = useCallback(
+    (data) => {
+      if (data.userId === remoteUserId) {
+        if (data.type === "audio") setIsRemoteAudioMuted(data.muted);
+        else if (data.type === "video") setIsRemoteVideoOff(data.muted);
       }
-    }
-  }, [remoteUserId, remoteName, onClose]);
+    },
+    [remoteUserId]
+  );
 
-  const handlePeerIdReceived = useCallback((data) => {
-    if (peerConnectTimeoutRef.current) {
-      clearTimeout(peerConnectTimeoutRef.current);
-      peerConnectTimeoutRef.current = null;
-    }
-    if (remotePeerId) return;
-    const fromUserId = data.from?.userId || data.userId;
-    if (fromUserId !== remoteUserId) return;
-    const remoteId = data.peerId;
-    if (!remoteId) return;
-    setRemotePeerId(remoteId);
-    hangupProcessedRef.current = false;
+  const handleHangupSocket = useCallback(
+    (data) => {
+      if (hangupProcessedRef.current) return;
+      if (data.userId === remoteUserId) {
+        hangupProcessedRef.current = true;
+        setPlaySounds({ ringtone: false, callConnect: false, callEnd: true });
+        toast.info(`${remoteName} ended the call`);
+        setTimeout(() => {
+          onClose && onClose();
+        }, HANGUP_DELAY);
+      }
+    },
+    [remoteUserId, remoteName, onClose]
+  );
 
-    if (isInitiator) {
-      setPlaySounds({ ringtone: false, callConnect: true, callEnd: false });
-      setTimeout(() => {
-        if (peerRef.current && peerRef.current.disconnected) {
-          peerRef.current.reconnect();
-        }
-        if (callRef.current) return;
-        if (!peerRef.current) return;
-        if (!streamRef.current) {
-          onError && onError(new Error("Local stream not available"));
-          return;
-        }
-        try {
-          const call = peerRef.current.call(remoteId, streamRef.current);
-          if (!call) {
-            onError && onError(new Error("Failed to create peer connection"));
+  const handlePeerIdReceived = useCallback(
+    (data) => {
+      if (peerConnectTimeoutRef.current) {
+        clearTimeout(peerConnectTimeoutRef.current);
+        peerConnectTimeoutRef.current = null;
+      }
+      if (remotePeerId) return;
+      const fromUserId = data.from?.userId || data.userId;
+      if (fromUserId !== remoteUserId) return;
+      const remoteId = data.peerId;
+      if (!remoteId) return;
+      setRemotePeerId(remoteId);
+      hangupProcessedRef.current = false;
+      if (isInitiator) {
+        setPlaySounds({ ringtone: true, callConnect: false, callEnd: false });
+        setTimeout(() => {
+          if (peerRef.current && peerRef.current.disconnected) {
+            peerRef.current.reconnect();
+          }
+          if (callRef.current) return;
+          if (!peerRef.current) return;
+          if (!streamRef.current) {
+            onError && onError(new Error("Local stream not available"));
             return;
           }
-          callRef.current = call;
-          setupCallHandlers(call);
-          if (peerConnectTimeoutRef.current) clearTimeout(peerConnectTimeoutRef.current);
-          peerConnectTimeoutRef.current = setTimeout(() => {
-            if (connectionStatus !== "connected") {
-              if (callRef.current) {
-                callRef.current.close();
-                callRef.current = null;
-              }
-              if (connectionAttempts < 3) {
-                setConnectionAttempts(c => c + 1);
-                setTimeout(() => { handlePeerIdReceived(data); }, 1000);
-              } else {
-                setConnectionStatus("error");
-                onError && onError(new Error("Failed to establish connection after multiple attempts"));
-              }
+          try {
+            const call = peerRef.current.call(remoteId, streamRef.current);
+            if (!call) {
+              onError && onError(new Error("Failed to create peer connection"));
+              return;
             }
-          }, PEER_CONNECT_TIMEOUT);
-        } catch (err) {
-          onError && onError(err);
-        }
-      }, CALL_SETUP_DELAY);
-    } else {
-      setPlaySounds({ ringtone: false, callConnect: false, callEnd: false });
-      if (peerConnectTimeoutRef.current) clearTimeout(peerConnectTimeoutRef.current);
-      peerConnectTimeoutRef.current = setTimeout(() => {
-        if (connectionStatus !== "connected") {
-          setConnectionStatus("error");
-          onError && onError(new Error("Timed out waiting for incoming call"));
-        }
-      }, PEER_CONNECT_TIMEOUT);
-    }
-  }, [isInitiator, onError, remoteUserId, remotePeerId, connectionStatus, connectionAttempts]);
+            callRef.current = call;
+            setupCallHandlers(call);
+            if (peerConnectTimeoutRef.current) clearTimeout(peerConnectTimeoutRef.current);
+            peerConnectTimeoutRef.current = setTimeout(() => {
+              if (connectionStatus !== "connected") {
+                if (callRef.current) {
+                  callRef.current.close();
+                  callRef.current = null;
+                }
+                if (connectionAttempts < 3) {
+                  setConnectionAttempts((c) => c + 1);
+                  setTimeout(() => {
+                    handlePeerIdReceived(data);
+                  }, 1000);
+                } else {
+                  setConnectionStatus("error");
+                  onError &&
+                    onError(
+                      new Error("Failed to establish connection after multiple attempts")
+                    );
+                }
+              }
+            }, PEER_CONNECT_TIMEOUT);
+          } catch (err) {
+            onError && onError(err);
+          }
+        }, CALL_SETUP_DELAY);
+      } else {
+        setPlaySounds({ ringtone: true, callConnect: false, callEnd: false });
+        if (peerConnectTimeoutRef.current) clearTimeout(peerConnectTimeoutRef.current);
+        peerConnectTimeoutRef.current = setTimeout(() => {
+          if (connectionStatus !== "connected") {
+            setConnectionStatus("error");
+            onError &&
+              onError(new Error("Timed out waiting for incoming call"));
+          }
+        }, PEER_CONNECT_TIMEOUT);
+      }
+    },
+    [
+      isInitiator,
+      onError,
+      remoteUserId,
+      remotePeerId,
+      connectionStatus,
+      connectionAttempts,
+    ]
+  );
 
   useEffect(() => {
     if (!socket) return;
@@ -291,6 +355,8 @@ const VideoCall = ({
           throw audioError;
         }
       }
+      // Reset the call end sound flag for new calls
+      callEndSoundPlayedRef.current = false;
       const peerId = `${user._id}-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
       const peerInstance = new Peer(peerId, {
         debug: 2,
@@ -304,7 +370,6 @@ const VideoCall = ({
         secure: window.location.protocol === "https:",
       });
       peerRef.current = peerInstance;
-
       peerInstance.on("open", (id) => {
         setConnectionStatus("connecting");
         if (socket) {
@@ -318,30 +383,30 @@ const VideoCall = ({
           onError && onError(new Error("Socket connection not available for signaling"));
         }
       });
-
       peerInstance.on("connect_error", (error) => {
         connectionInProgressRef.current = false;
         setConnectionStatus("error");
         onError && onError(new Error(`Connection error: ${error.message}`));
       });
-
       peerInstance.on("error", (err) => {
         toast.error(`Connection error: ${err.type}`);
         setConnectionStatus("error");
         onError && onError(err);
       });
-
       peerInstance.on("disconnected", () => {
-        const wasConnected = connectionStatus === "connected";
-        if (wasConnected && !hangupProcessedRef.current && peerRef.current) {
+        if (connectionStatus === "connected" && !hangupProcessedRef.current && peerRef.current) {
           setTimeout(() => {
-            try { peerRef.current.reconnect(); } catch (e) { setConnectionStatus("error"); }
+            try {
+              peerRef.current.reconnect();
+            } catch (e) {
+              setConnectionStatus("error");
+            }
           }, 1000);
         }
       });
-
       peerInstance.on("reconnect", (reconnectId) => {
         if (callRef.current && callRef.current.open) {
+          // Already connected
         } else if (remotePeerId && isInitiator) {
           try {
             const call = peerRef.current.call(remotePeerId, streamRef.current);
@@ -352,13 +417,11 @@ const VideoCall = ({
           } catch (err) {}
         }
       });
-
       peerInstance.on("close", () => {
         if (!hangupProcessedRef.current) {
           setConnectionStatus("disconnected");
         }
       });
-
       peerInstance.on("call", (call) => {
         if (callRef.current) return;
         if (peerConnectTimeoutRef.current) {
@@ -376,7 +439,9 @@ const VideoCall = ({
       setConnectionStatus("error");
       onError && onError(err);
     } finally {
-      setTimeout(() => { connectionInProgressRef.current = false; }, CONNECTION_PROGRESS_CLEAR_TIMEOUT);
+      setTimeout(() => {
+        connectionInProgressRef.current = false;
+      }, CONNECTION_PROGRESS_CLEAR_TIMEOUT);
     }
   };
 
@@ -394,23 +459,32 @@ const VideoCall = ({
       }
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.play().catch(() => {});
+        const playPromise = remoteVideoRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(() => {
+            const resumeVideo = () => {
+              remoteVideoRef.current.play().catch(() => {});
+              document.removeEventListener('click', resumeVideo);
+            };
+            document.addEventListener('click', resumeVideo, { once: true });
+          });
+        }
         setTimeout(() => {
           if (remoteStream.active) {
             setPlaySounds(prev => ({ ...prev, ringtone: false, callConnect: true }));
           }
-        }, 1000);
+        }, 500);
       }
       setConnectionStatus("connected");
       toast.success(`Connected to ${remoteName}`);
     });
-
     call.on("close", () => {
       setConnectionStatus("disconnected");
       connectionInProgressRef.current = false;
-      setPlaySounds({ ringtone: false, callConnect: false, callEnd: false });
+      if (!hangupProcessedRef.current) {
+        setPlaySounds({ ringtone: false, callConnect: false, callEnd: true });
+      }
     });
-
     call.on("error", (err) => {
       setConnectionStatus("error");
       connectionInProgressRef.current = false;
@@ -418,6 +492,7 @@ const VideoCall = ({
     });
   };
 
+  // Updated endCall without synthetic oscillator sounds
   const endCall = () => {
     connectionInProgressRef.current = false;
     setPlaySounds({ ringtone: false, callConnect: false, callEnd: false });
@@ -434,7 +509,9 @@ const VideoCall = ({
       globalTimeoutRef.current = null;
     }
     if (callRef.current) {
-      try { callRef.current.close(); } catch (err) {}
+      try {
+        callRef.current.close();
+      } catch (err) {}
       callRef.current = null;
     }
     if (streamRef.current) {
@@ -442,7 +519,9 @@ const VideoCall = ({
       streamRef.current = null;
     }
     if (peerRef.current) {
-      try { peerRef.current.destroy(); } catch (err) {}
+      try {
+        peerRef.current.destroy();
+      } catch (err) {}
       peerRef.current = null;
     }
     setConnectionStatus("disconnected");
@@ -452,9 +531,11 @@ const VideoCall = ({
     }
   };
 
+  // Prevent duplicate hangup processing
   const handleHangup = () => {
+    if (userInitiated) return;
     setUserInitiated(true);
-    // Set the callEnd flag so the call-end sound is played
+    // Remove synthetic oscillator sound here—rely solely on CallSounds.
     setPlaySounds({ ringtone: false, callConnect: false, callEnd: true });
     if (socket && remoteUserId) {
       try {
@@ -465,11 +546,10 @@ const VideoCall = ({
         });
       } catch (err) {}
     }
-    // Delay unmounting/cleanup to allow callEnd sound to play
     setTimeout(() => {
       endCall();
       onClose && onClose();
-    }, 500); // Adjust delay as needed
+    }, HANGUP_DELAY);
   };
 
   const toggleAudioMute = () => {
@@ -513,27 +593,33 @@ const VideoCall = ({
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       if (containerRef.current && containerRef.current.requestFullscreen) {
-        containerRef.current.requestFullscreen().then(() => {
-          setIsFullscreen(true);
-        }).catch(() => {
-          toast.error("Failed to enter fullscreen mode");
-        });
+        containerRef.current
+          .requestFullscreen()
+          .then(() => {
+            setIsFullscreen(true);
+          })
+          .catch(() => {
+            toast.error("Failed to enter fullscreen mode");
+          });
       } else {
         toast.warning("Fullscreen not supported in your browser");
       }
     } else {
       if (document.exitFullscreen) {
-        document.exitFullscreen().then(() => {
-          setIsFullscreen(false);
-        }).catch(() => {
-          toast.error("Failed to exit fullscreen mode");
-        });
+        document
+          .exitFullscreen()
+          .then(() => {
+            setIsFullscreen(false);
+          })
+          .catch(() => {
+            toast.error("Failed to exit fullscreen mode");
+          });
       }
     }
   };
 
   const retryConnection = () => {
-    setConnectionAttempts(prev => prev + 1);
+    setConnectionAttempts((prev) => prev + 1);
     if (callRef.current) {
       callRef.current.close();
       callRef.current = null;
@@ -614,7 +700,7 @@ const VideoCall = ({
             peerRef.current.reconnect();
           }
           if (isInitiator && streamRef.current && remotePeerId && connectionAttempts < 3) {
-            setConnectionAttempts(prev => prev + 1);
+            setConnectionAttempts((prev) => prev + 1);
             setConnectionStatus("connecting");
             const call = peerRef.current.call(remotePeerId, streamRef.current);
             if (call) {
@@ -629,9 +715,15 @@ const VideoCall = ({
 
   return (
     <div className="video-call-container" ref={containerRef}>
-      {playSounds.ringtone && <CallSounds isPlaying={true} sound="ringtone" loop={true} />}
-      {playSounds.callConnect && <CallSounds isPlaying={true} sound="callConnect" loop={false} />}
-      {playSounds.callEnd && <CallSounds isPlaying={true} sound="callEnd" loop={false} />}
+      {playSounds.ringtone && (
+        <CallSounds isPlaying={true} sound="ringtone" loop={true} volume={1.0} />
+      )}
+      {playSounds.callConnect && (
+        <CallSounds isPlaying={true} sound="callConnect" loop={false} volume={1.0} />
+      )}
+      {playSounds.callEnd && (
+        <CallSounds isPlaying={true} sound="callEnd" loop={false} volume={1.0} />
+      )}
       <div className="video-call-header">
         <div className="call-status">
           {connectionStatus === "initializing" && "Initializing..."}

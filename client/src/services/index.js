@@ -1,11 +1,12 @@
-// client/src/services/index.js - Refactored
+// client/src/services/index.js
 import apiService from './apiService.jsx';
 import socketService from './socketService.jsx';
-import socketClient from './socketClient.jsx'; // Add direct access to socketClient
+import socketClient from './socketClient.jsx';
 import storiesService from './storiesService.jsx';
 import notificationService from './notificationService.jsx';
 import settingsService from './settingsService.jsx';
 import subscriptionService from './subscriptionService.jsx';
+import permissionClient from './PermissionClient.jsx'; // <-- Import new client
 
 // Standard services
 export {
@@ -14,7 +15,8 @@ export {
   storiesService,
   notificationService,
   settingsService,
-  subscriptionService
+  subscriptionService,
+  permissionClient // <-- Export new client
 };
 
 // Socket-specific exports (optional)

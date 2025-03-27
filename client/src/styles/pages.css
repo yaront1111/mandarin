@@ -527,7 +527,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 11px 10px;
   background: linear-gradient(135deg, var(--primary, #ff3366) 0%, #ff5b84 100%);
   color: white;
   border-top-left-radius: 20px;
