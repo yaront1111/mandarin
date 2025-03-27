@@ -14,13 +14,13 @@ import { toast } from "react-toastify";
 import { useAuth } from "../context";
 import CallSounds from "./CallSounds";
 
-// Constants for timeouts/delays (in milliseconds)
 const PEER_ID_CLEANUP_TIMEOUT = 30000;
 const CALL_SETUP_DELAY = 1000;
-const PEER_CONNECT_TIMEOUT = 30000;
+const PEER_CONNECT_TIMEOUT = 20000;
 const CONNECTION_PROGRESS_CLEAR_TIMEOUT = 5000;
 const HANGUP_DELAY = 2000;
 const RECONNECT_DELAY = 3000;
+const GLOBAL_TIMEOUT = 45000;
 const ICE_SERVER_CONFIG = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
@@ -29,46 +29,38 @@ const ICE_SERVER_CONFIG = {
     { urls: "stun:stun2.l.google.com:19302" },
     { urls: "stun:stun3.l.google.com:19302" },
     { urls: "stun:stun4.l.google.com:19302" },
-    // Add TURN servers for better connectivity through firewalls
+    { urls: "stun:stun.stunprotocol.org:3478" },
     {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
+      urls: [
+        "turn:openrelay.metered.ca:80",
+        "turn:openrelay.metered.ca:443",
+        "turn:openrelay.metered.ca:80?transport=tcp",
+        "turn:openrelay.metered.ca:443?transport=tcp",
+      ],
+      username: "openrelayproject",
+      credential: "openrelayproject",
     },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    }
-  ]
+  ],
 };
 
-// Utility function to toggle audio or video tracks
 const toggleTracks = (stream, trackType, enabled) => {
   if (!stream) return;
   const tracks =
     trackType === "audio" ? stream.getAudioTracks() : stream.getVideoTracks();
   tracks.forEach((track) => {
-    console.log(`[ToggleTracks] ${trackType} track (${track.kind}) current enabled: ${track.enabled} => setting to ${enabled}`);
     track.enabled = enabled;
   });
 };
 
-// Utility function to stop all tracks of a media stream
 const stopMediaTracks = (stream) => {
   if (!stream) return;
-  console.log("[stopMediaTracks] Stopping all media tracks");
   stream.getTracks().forEach((track) => {
     try {
-      console.log(`[stopMediaTracks] Stopping track: ${track.kind}`);
       track.stop();
-    } catch (error) {
-      console.error("[stopMediaTracks] Error stopping track:", error);
-    }
+    } catch (error) {}
   });
 };
 
-// Utility function to format call duration
 const formatDuration = (seconds) => {
   const minutes = Math.floor(seconds / 60);
   const secs = seconds % 60;
@@ -95,9 +87,11 @@ const VideoCall = ({
   const [remotePeerId, setRemotePeerId] = useState(null);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
   const [playSounds, setPlaySounds] = useState({
-    ringtone: isInitiator, // play ringtone if initiating call
-    callConnect: false
+    ringtone: isInitiator,
+    callConnect: false,
+    callEnd: false,
   });
+  const [userInitiated, setUserInitiated] = useState(false);
 
   const { user } = useAuth();
   const localVideoRef = useRef(null);
@@ -111,207 +105,154 @@ const VideoCall = ({
   const hangupProcessedRef = useRef(false);
   const peerConnectTimeoutRef = useRef(null);
   const reconnectTimerRef = useRef(null);
-  // Guard against duplicate initialization within the same session
+  const globalTimeoutRef = useRef(null);
   const initializedRef = useRef(false);
 
-  // Debug function to log to console
-  const debug = (message, ...args) => {
-    console.log(`[VideoCall] ${message}`, ...args);
-  };
+  // Reset callEnd flag after it plays (e.g., after 3 seconds)
+  useEffect(() => {
+    if (playSounds.callEnd) {
+      const timer = setTimeout(() => {
+        setPlaySounds(prev => ({ ...prev, callEnd: false }));
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [playSounds.callEnd]);
 
   useEffect(() => {
-    debug("Component mounted");
-    if (initializedRef.current) {
-      debug("Already initialized, skipping startCall");
-      return;
-    }
+    if (initializedRef.current) return;
     if (!user || !user._id || !remoteUserId) {
-      const errMsg = "Missing required user information for video call";
-      debug(errMsg);
       setConnectionStatus("error");
-      onError && onError(new Error(errMsg));
+      onError && onError(new Error("Missing required user information for video call"));
       return;
     }
     if (!socket) {
-      const errMsg = "Socket connection required for video calls";
-      debug(errMsg);
       setConnectionStatus("error");
-      onError && onError(new Error(errMsg));
+      onError && onError(new Error("Socket connection required for video calls"));
       return;
     }
+
+    globalTimeoutRef.current = setTimeout(() => {
+      if (connectionStatus !== "connected") {
+        setConnectionStatus("error");
+        onError && onError(new Error("Call setup timed out. Please try again later."));
+        if (callRef.current) {
+          try { callRef.current.close(); } catch (e) {}
+          callRef.current = null;
+        }
+      }
+    }, GLOBAL_TIMEOUT);
 
     startCall();
     initializedRef.current = true;
 
-    // Set up call duration timer
     callTimerRef.current = setInterval(() => {
-      setCallDuration((prev) => prev + 1);
+      setCallDuration(prev => prev + 1);
     }, 1000);
 
     return () => {
-      debug("Component unmounting: cleaning up");
       endCall();
       if (callTimerRef.current) clearInterval(callTimerRef.current);
       if (peerConnectTimeoutRef.current) clearTimeout(peerConnectTimeoutRef.current);
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (globalTimeoutRef.current) clearTimeout(globalTimeoutRef.current);
     };
   }, []);
 
-  const handleMediaControl = useCallback(
-    (data) => {
-      debug("Media control event received:", data);
-      if (data.userId === remoteUserId) {
-        if (data.type === "audio") setIsRemoteAudioMuted(data.muted);
-        else if (data.type === "video") setIsRemoteVideoOff(data.muted);
+  const handleMediaControl = useCallback((data) => {
+    if (data.userId === remoteUserId) {
+      if (data.type === "audio") setIsRemoteAudioMuted(data.muted);
+      else if (data.type === "video") setIsRemoteVideoOff(data.muted);
+    }
+  }, [remoteUserId]);
+
+  const handleHangupSocket = useCallback((data) => {
+    if (hangupProcessedRef.current) return;
+    if (data.userId === remoteUserId) {
+      hangupProcessedRef.current = true;
+      setPlaySounds({ ringtone: false, callConnect: false, callEnd: false });
+      toast.info(`${remoteName} ended the call`);
+      if (connectionInProgressRef.current) {
+        setTimeout(() => { onClose && onClose(); }, HANGUP_DELAY);
+      } else {
+        onClose && onClose();
       }
-    },
-    [remoteUserId]
-  );
-
-  const handleHangupSocket = useCallback(
-    (data) => {
-      debug("Hangup event received:", data);
-      // If we've already processed a hangup for this call, ignore duplicate events
-      if (hangupProcessedRef.current) {
-        debug("Ignoring duplicate hangup event");
-        return;
-      }
-
-      if (data.userId === remoteUserId) {
-        hangupProcessedRef.current = true;
-
-        // Stop ringtone if it's playing
-        setPlaySounds({ringtone: false, callConnect: false});
-
-        toast.info(`${remoteName} ended the call`);
-        if (connectionInProgressRef.current) {
-          debug("Connection in progress, delaying hangup cleanup...");
-          setTimeout(() => {
-            debug("Delayed hangup processing complete, closing call");
-            onClose && onClose();
-          }, HANGUP_DELAY);
-        } else {
-          debug("No connection in progress, closing call immediately");
-          onClose && onClose();
-        }
-      }
-    },
-    [remoteUserId, remoteName, onClose]
-  );
+    }
+  }, [remoteUserId, remoteName, onClose]);
 
   const handlePeerIdReceived = useCallback((data) => {
-    debug("Received peerIdExchange data:", data);
-    // If remotePeerId is already set, ignore duplicate events.
-    if (remotePeerId) {
-      debug("Remote peer ID already set, ignoring duplicate:", remotePeerId);
-      return;
+    if (peerConnectTimeoutRef.current) {
+      clearTimeout(peerConnectTimeoutRef.current);
+      peerConnectTimeoutRef.current = null;
     }
-
-    // Check if this peerIdExchange is for our call (from the remote user we're calling)
+    if (remotePeerId) return;
     const fromUserId = data.from?.userId || data.userId;
-    if (fromUserId !== remoteUserId) {
-      debug(`Ignoring peerIdExchange from ${fromUserId}, expecting ${remoteUserId}`);
-      return;
-    }
-
+    if (fromUserId !== remoteUserId) return;
     const remoteId = data.peerId;
-    if (!remoteId) {
-      debug("Invalid peerIdExchange data: missing peerId");
-      return;
-    }
-
-    debug("Remote peer ID received:", remoteId);
+    if (!remoteId) return;
     setRemotePeerId(remoteId);
     hangupProcessedRef.current = false;
 
     if (isInitiator) {
-      debug(`Initiator: calling remote peer in ${CALL_SETUP_DELAY}ms`);
-
-      // Stop ringtone when receiving peer ID (other user has accepted)
-      setPlaySounds({ringtone: false, callConnect: true});
-
+      setPlaySounds({ ringtone: false, callConnect: true, callEnd: false });
       setTimeout(() => {
         if (peerRef.current && peerRef.current.disconnected) {
-          debug("Peer disconnected, attempting to reconnect...");
           peerRef.current.reconnect();
         }
-        if (callRef.current) {
-          debug("Call already exists, skipping call initiation");
-          return;
-        }
-
-        if (!peerRef.current) {
-          debug("PeerJS instance doesn't exist, can't initiate call");
-          return;
-        }
-
-        debug("Initiator: making call to remote ID:", remoteId);
+        if (callRef.current) return;
+        if (!peerRef.current) return;
         if (!streamRef.current) {
-          debug("No local stream available, can't initiate call");
           onError && onError(new Error("Local stream not available"));
           return;
         }
-
         try {
           const call = peerRef.current.call(remoteId, streamRef.current);
           if (!call) {
-            debug("Failed to create call object");
             onError && onError(new Error("Failed to create peer connection"));
             return;
           }
           callRef.current = call;
           setupCallHandlers(call);
-
-          // Set a timeout for call connection
           if (peerConnectTimeoutRef.current) clearTimeout(peerConnectTimeoutRef.current);
           peerConnectTimeoutRef.current = setTimeout(() => {
             if (connectionStatus !== "connected") {
-              debug("Call connection timed out, retrying...");
               if (callRef.current) {
                 callRef.current.close();
                 callRef.current = null;
               }
-
-              // Try again if we haven't made too many attempts
               if (connectionAttempts < 3) {
                 setConnectionAttempts(c => c + 1);
-                handlePeerIdReceived(data);
+                setTimeout(() => { handlePeerIdReceived(data); }, 1000);
               } else {
                 setConnectionStatus("error");
                 onError && onError(new Error("Failed to establish connection after multiple attempts"));
               }
             }
           }, PEER_CONNECT_TIMEOUT);
-
         } catch (err) {
-          debug("Error making call:", err);
           onError && onError(err);
         }
       }, CALL_SETUP_DELAY);
     } else {
-      debug("Non-initiator: waiting for incoming call from remote ID:", remoteId);
-
-      // For non-initiator, stop playing ringtone now that peer ID is exchanged
-      setPlaySounds({ringtone: false, callConnect: false});
+      setPlaySounds({ ringtone: false, callConnect: false, callEnd: false });
+      if (peerConnectTimeoutRef.current) clearTimeout(peerConnectTimeoutRef.current);
+      peerConnectTimeoutRef.current = setTimeout(() => {
+        if (connectionStatus !== "connected") {
+          setConnectionStatus("error");
+          onError && onError(new Error("Timed out waiting for incoming call"));
+        }
+      }, PEER_CONNECT_TIMEOUT);
     }
   }, [isInitiator, onError, remoteUserId, remotePeerId, connectionStatus, connectionAttempts]);
 
   useEffect(() => {
     if (!socket) return;
-    debug("Setting up socket listeners");
-
-    // Unregistering previous handlers to avoid duplicates
     socket.off("videoMediaControl");
     socket.off("videoHangup");
     socket.off("peerIdExchange");
-
-    // Register new handlers
     socket.on("videoMediaControl", handleMediaControl);
     socket.on("videoHangup", handleHangupSocket);
     socket.on("peerIdExchange", handlePeerIdReceived);
-
     return () => {
-      debug("Removing socket listeners");
       socket.off("videoMediaControl", handleMediaControl);
       socket.off("videoHangup", handleHangupSocket);
       socket.off("peerIdExchange", handlePeerIdReceived);
@@ -320,48 +261,26 @@ const VideoCall = ({
 
   const startCall = async () => {
     try {
-      debug("Starting call");
       if (!socket) {
-        const errMsg = "Socket connection required for video calls";
-        debug(errMsg);
         setConnectionStatus("error");
-        onError && onError(new Error(errMsg));
+        onError && onError(new Error("Socket connection required for video calls"));
         return;
       }
-
       connectionInProgressRef.current = true;
-
-      if (peerRef.current) {
-        debug("PeerJS instance already exists, skipping new initialization");
-        return;
-      }
-
-      debug("Requesting user media...");
+      if (peerRef.current) return;
       try {
         const mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            frameRate: { ideal: 24 }
-          },
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } },
           audio: true,
         });
-
-        debug("User media acquired");
         streamRef.current = mediaStream;
         setStream(mediaStream);
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = mediaStream;
         }
       } catch (mediaError) {
-        debug("Failed to get user media:", mediaError);
-        // Try without video if video failed
         try {
-          debug("Trying to get audio only...");
-          const audioOnlyStream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: false
-          });
+          const audioOnlyStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
           streamRef.current = audioOnlyStream;
           setStream(audioOnlyStream);
           setIsVideoOff(true);
@@ -369,160 +288,130 @@ const VideoCall = ({
             localVideoRef.current.srcObject = audioOnlyStream;
           }
         } catch (audioError) {
-          debug("Failed to get audio media:", audioError);
           throw audioError;
         }
       }
-
-      const peerId = `${user._id}-${Date.now()}`;
-      debug("Creating PeerJS instance with ID:", peerId);
-
+      const peerId = `${user._id}-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
       const peerInstance = new Peer(peerId, {
         debug: 2,
         config: {
           iceServers: ICE_SERVER_CONFIG.iceServers,
-          sdpSemantics: 'unified-plan',
-          iceTransportPolicy: 'all'
-        }
+          sdpSemantics: "unified-plan",
+        },
+        host: window.location.hostname,
+        port: 9000,
+        path: "/peerjs",
+        secure: window.location.protocol === "https:",
       });
-
       peerRef.current = peerInstance;
 
       peerInstance.on("open", (id) => {
-        debug("PeerJS open event fired. ID:", id);
         setConnectionStatus("connecting");
-
         if (socket) {
-          debug("Emitting peerIdExchange with ID:", id);
           socket.emit("peerIdExchange", {
             recipientId: remoteUserId,
             peerId: id,
-            from: {
-              userId: user._id,
-              name: user.nickname || "User",
-            },
+            from: { userId: user._id, name: user.nickname || "User" },
           });
-
-          // Set timeout to clean up the peerIdExchange listener
-          setTimeout(() => {
-            try {
-              debug("Removing peerIdExchange listener after timeout");
-              // We don't need to remove the listener here as we now manage it in the useEffect
-            } catch (err) {
-              debug("Error removing peerIdExchange listener:", err);
-            }
-          }, PEER_ID_CLEANUP_TIMEOUT);
         } else {
-          debug("Socket connection not available for signaling");
           setConnectionStatus("error");
           onError && onError(new Error("Socket connection not available for signaling"));
         }
       });
 
-      peerInstance.on("call", (call) => {
-        debug("Incoming call received from PeerJS");
-        if (callRef.current) {
-          debug("Already have an active call, ignoring new incoming call");
-          return;
-        }
-
-        callRef.current = call;
-        hangupProcessedRef.current = false;
-
-        debug("Answering incoming call...");
-        call.answer(streamRef.current);
-        setupCallHandlers(call);
-
-        // Let's play the call connection sound for the receiver as well
-        setPlaySounds({ringtone: false, callConnect: true});
+      peerInstance.on("connect_error", (error) => {
+        connectionInProgressRef.current = false;
+        setConnectionStatus("error");
+        onError && onError(new Error(`Connection error: ${error.message}`));
       });
 
       peerInstance.on("error", (err) => {
-        debug("PeerJS error:", err);
         toast.error(`Connection error: ${err.type}`);
         setConnectionStatus("error");
         onError && onError(err);
       });
 
       peerInstance.on("disconnected", () => {
-        debug("PeerJS disconnected");
-        // Try to reconnect automatically
-        if (peerRef.current && !hangupProcessedRef.current) {
-          debug("Attempting to reconnect peer...");
-          peerRef.current.reconnect();
+        const wasConnected = connectionStatus === "connected";
+        if (wasConnected && !hangupProcessedRef.current && peerRef.current) {
+          setTimeout(() => {
+            try { peerRef.current.reconnect(); } catch (e) { setConnectionStatus("error"); }
+          }, 1000);
+        }
+      });
+
+      peerInstance.on("reconnect", (reconnectId) => {
+        if (callRef.current && callRef.current.open) {
+        } else if (remotePeerId && isInitiator) {
+          try {
+            const call = peerRef.current.call(remotePeerId, streamRef.current);
+            if (call) {
+              callRef.current = call;
+              setupCallHandlers(call);
+            }
+          } catch (err) {}
         }
       });
 
       peerInstance.on("close", () => {
-        debug("PeerJS connection closed");
         if (!hangupProcessedRef.current) {
           setConnectionStatus("disconnected");
         }
       });
+
+      peerInstance.on("call", (call) => {
+        if (callRef.current) return;
+        if (peerConnectTimeoutRef.current) {
+          clearTimeout(peerConnectTimeoutRef.current);
+          peerConnectTimeoutRef.current = null;
+        }
+        callRef.current = call;
+        hangupProcessedRef.current = false;
+        call.answer(streamRef.current);
+        setupCallHandlers(call);
+        setPlaySounds({ ringtone: false, callConnect: true, callEnd: false });
+      });
     } catch (err) {
-      debug("Error starting video call:", err);
       toast.error(err.message || "Couldn't access camera or microphone");
       setConnectionStatus("error");
       onError && onError(err);
     } finally {
-      setTimeout(() => {
-        connectionInProgressRef.current = false;
-      }, CONNECTION_PROGRESS_CLEAR_TIMEOUT);
+      setTimeout(() => { connectionInProgressRef.current = false; }, CONNECTION_PROGRESS_CLEAR_TIMEOUT);
     }
   };
 
   const setupCallHandlers = (call) => {
-    if (!call) {
-      debug("Cannot set up handlers for null call");
-      return;
-    }
-    debug("Setting up call handlers for call:", call);
-
+    if (!call) return;
     call.on("stream", (remoteStream) => {
-      debug("'stream' event fired with remote stream:", remoteStream);
       connectionInProgressRef.current = false;
-
-      // Clear peer connect timeout
       if (peerConnectTimeoutRef.current) {
         clearTimeout(peerConnectTimeoutRef.current);
         peerConnectTimeoutRef.current = null;
       }
-
+      if (globalTimeoutRef.current) {
+        clearTimeout(globalTimeoutRef.current);
+        globalTimeoutRef.current = null;
+      }
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
-
-        // Ensure video is playing
-        remoteVideoRef.current.play().catch(err => {
-          debug("Error playing remote video:", err);
-        });
-
+        remoteVideoRef.current.play().catch(() => {});
         setTimeout(() => {
-          if (!remoteStream.active) {
-            debug("Remote stream is not active");
-          } else {
-            debug("Remote stream is active");
-
-            // Play connection sound after stream is confirmed active
-            setPlaySounds(prev => ({...prev, ringtone: false, callConnect: true}));
+          if (remoteStream.active) {
+            setPlaySounds(prev => ({ ...prev, ringtone: false, callConnect: true }));
           }
         }, 1000);
       }
-
       setConnectionStatus("connected");
       toast.success(`Connected to ${remoteName}`);
     });
 
     call.on("close", () => {
-      debug("Call closed by peer");
       setConnectionStatus("disconnected");
       connectionInProgressRef.current = false;
-
-      // Stop playing sounds
-      setPlaySounds({ringtone: false, callConnect: false});
+      setPlaySounds({ ringtone: false, callConnect: false, callEnd: false });
     });
 
     call.on("error", (err) => {
-      debug("Call error:", err);
       setConnectionStatus("error");
       connectionInProgressRef.current = false;
       onError && onError(err);
@@ -530,63 +419,33 @@ const VideoCall = ({
   };
 
   const endCall = () => {
-    debug("Ending call and cleaning up resources");
     connectionInProgressRef.current = false;
-
-    // Stop playing all sounds
-    setPlaySounds({ringtone: false, callConnect: false});
-
-    // Clear timeouts
+    setPlaySounds({ ringtone: false, callConnect: false, callEnd: false });
     if (peerConnectTimeoutRef.current) {
       clearTimeout(peerConnectTimeoutRef.current);
       peerConnectTimeoutRef.current = null;
     }
-
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
-
+    if (globalTimeoutRef.current) {
+      clearTimeout(globalTimeoutRef.current);
+      globalTimeoutRef.current = null;
+    }
     if (callRef.current) {
-      try {
-        debug("Closing call");
-        callRef.current.close();
-      } catch (err) {
-        debug("Error closing call:", err);
-      }
+      try { callRef.current.close(); } catch (err) {}
       callRef.current = null;
     }
-
     if (streamRef.current) {
       stopMediaTracks(streamRef.current);
       streamRef.current = null;
     }
-
     if (peerRef.current) {
-      try {
-        debug("Destroying peer");
-        peerRef.current.destroy();
-      } catch (err) {
-        debug("Error destroying peer:", err);
-      }
+      try { peerRef.current.destroy(); } catch (err) {}
       peerRef.current = null;
     }
-
-    if (socket && remoteUserId && !hangupProcessedRef.current) {
-      try {
-        debug("Emitting videoHangup signal");
-        socket.emit("videoHangup", {
-          recipientId: remoteUserId,
-          userId: user._id,
-          timestamp: Date.now(),
-        });
-      } catch (err) {
-        debug("Error sending hangup signal:", err);
-      }
-    }
-
     setConnectionStatus("disconnected");
-
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current);
       callTimerRef.current = null;
@@ -594,10 +453,23 @@ const VideoCall = ({
   };
 
   const handleHangup = () => {
-    debug("Hangup button clicked");
-    hangupProcessedRef.current = true; // Mark as processed to avoid duplicate processing
-    endCall();
-    onClose && onClose();
+    setUserInitiated(true);
+    // Set the callEnd flag so the call-end sound is played
+    setPlaySounds({ ringtone: false, callConnect: false, callEnd: true });
+    if (socket && remoteUserId) {
+      try {
+        socket.emit("videoHangup", {
+          recipientId: remoteUserId,
+          userId: user._id,
+          timestamp: Date.now(),
+        });
+      } catch (err) {}
+    }
+    // Delay unmounting/cleanup to allow callEnd sound to play
+    setTimeout(() => {
+      endCall();
+      onClose && onClose();
+    }, 500); // Adjust delay as needed
   };
 
   const toggleAudioMute = () => {
@@ -605,7 +477,6 @@ const VideoCall = ({
       try {
         toggleTracks(streamRef.current, "audio", isAudioMuted);
         setIsAudioMuted(!isAudioMuted);
-        debug("Toggling audio mute. New state:", !isAudioMuted);
         if (socket) {
           socket.emit("videoMediaControl", {
             recipientId: remoteUserId,
@@ -615,7 +486,6 @@ const VideoCall = ({
           });
         }
       } catch (err) {
-        debug("Error toggling audio mute:", err);
         toast.error("Failed to change audio state");
       }
     }
@@ -626,7 +496,6 @@ const VideoCall = ({
       try {
         toggleTracks(streamRef.current, "video", isVideoOff);
         setIsVideoOff(!isVideoOff);
-        debug("Toggling video. New state:", !isVideoOff);
         if (socket) {
           socket.emit("videoMediaControl", {
             recipientId: remoteUserId,
@@ -636,7 +505,6 @@ const VideoCall = ({
           });
         }
       } catch (err) {
-        debug("Error toggling video:", err);
         toast.error("Failed to change video state");
       }
     }
@@ -645,78 +513,90 @@ const VideoCall = ({
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       if (containerRef.current && containerRef.current.requestFullscreen) {
-        containerRef.current
-          .requestFullscreen()
-          .then(() => {
-            debug("Entered fullscreen");
-            setIsFullscreen(true);
-          })
-          .catch((err) => {
-            debug("Fullscreen error:", err);
-            toast.error("Failed to enter fullscreen mode");
-          });
+        containerRef.current.requestFullscreen().then(() => {
+          setIsFullscreen(true);
+        }).catch(() => {
+          toast.error("Failed to enter fullscreen mode");
+        });
       } else {
         toast.warning("Fullscreen not supported in your browser");
       }
     } else {
       if (document.exitFullscreen) {
-        document
-          .exitFullscreen()
-          .then(() => {
-            debug("Exited fullscreen");
-            setIsFullscreen(false);
-          })
-          .catch((err) => {
-            debug("Exit fullscreen error:", err);
-            toast.error("Failed to exit fullscreen mode");
-          });
+        document.exitFullscreen().then(() => {
+          setIsFullscreen(false);
+        }).catch(() => {
+          toast.error("Failed to exit fullscreen mode");
+        });
       }
     }
   };
 
   const retryConnection = () => {
-    debug("Manually retrying connection");
     setConnectionAttempts(prev => prev + 1);
-
-    // Close existing call if any
     if (callRef.current) {
       callRef.current.close();
       callRef.current = null;
     }
-
-    // Reconnect peer if disconnected
     if (peerRef.current && peerRef.current.disconnected) {
       peerRef.current.reconnect();
     }
-
-    // If initiator and we have remote peer ID, try calling again
+    if (connectionAttempts >= 2) {
+      if (peerRef.current) {
+        try {
+          peerRef.current.destroy();
+        } catch (e) {}
+        peerRef.current = null;
+      }
+      const fallbackPeerId = `${user._id}-fallback-${Date.now()}`;
+      const fallbackPeer = new Peer(fallbackPeerId, {
+        debug: 3,
+        config: {
+          iceServers: ICE_SERVER_CONFIG.iceServers,
+          iceTransportPolicy: "relay",
+          iceCandidatePoolSize: 15,
+        },
+        secure: window.location.protocol === "https:",
+        host: window.location.hostname,
+        port: 9000,
+        path: "/peerjs",
+      });
+      peerRef.current = fallbackPeer;
+      fallbackPeer.on("open", (id) => {
+        setConnectionStatus("connecting");
+        socket.emit("peerIdExchange", {
+          recipientId: remoteUserId,
+          peerId: id,
+          from: { userId: user._id, name: user.nickname || "User" },
+          isFallback: true,
+        });
+      });
+      fallbackPeer.on("error", (err) => {
+        setConnectionStatus("error");
+        onError && onError(err);
+      });
+      fallbackPeer.on("call", (call) => {
+        callRef.current = call;
+        call.answer(streamRef.current);
+        setupCallHandlers(call);
+      });
+      return;
+    }
     if (isInitiator && remotePeerId && streamRef.current && peerRef.current) {
-      debug("Retrying call to remote peer:", remotePeerId);
       setConnectionStatus("connecting");
-
       setTimeout(() => {
         try {
           const call = peerRef.current.call(remotePeerId, streamRef.current);
-          if (!call) {
-            debug("Failed to create call on retry");
-            return;
-          }
+          if (!call) return;
           callRef.current = call;
           setupCallHandlers(call);
-        } catch (err) {
-          debug("Error during retry:", err);
-        }
+        } catch (err) {}
       }, 1000);
-    } else {
-      debug("Cannot retry: missing required data", {
-        isInitiator, remotePeerId, hasStream: !!streamRef.current, hasPeer: !!peerRef.current
-      });
     }
   };
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      debug("Fullscreen change event. Fullscreen active:", !!document.fullscreenElement);
       setIsFullscreen(!!document.fullscreenElement);
     };
     document.addEventListener("fullscreenchange", handleFullscreenChange);
@@ -727,51 +607,31 @@ const VideoCall = ({
 
   useEffect(() => {
     if (connectionStatus === "error" && remotePeerId && peerRef.current) {
-      debug("Attempting to reconnect after error...");
-
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-      }
-
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = setTimeout(() => {
         try {
           if (peerRef.current && peerRef.current.disconnected) {
-            debug("Peer is disconnected, attempting reconnect...");
             peerRef.current.reconnect();
           }
-
           if (isInitiator && streamRef.current && remotePeerId && connectionAttempts < 3) {
-            debug("Initiator retrying call to:", remotePeerId);
             setConnectionAttempts(prev => prev + 1);
             setConnectionStatus("connecting");
-
             const call = peerRef.current.call(remotePeerId, streamRef.current);
             if (call) {
               callRef.current = call;
               setupCallHandlers(call);
             }
           }
-        } catch (err) {
-          debug("Error during reconnection attempt:", err);
-        }
+        } catch (err) {}
       }, RECONNECT_DELAY);
     }
   }, [connectionStatus, remotePeerId, isInitiator, connectionAttempts]);
 
   return (
     <div className="video-call-container" ref={containerRef}>
-      {/* Call sounds component */}
-      <CallSounds
-        isPlaying={playSounds.ringtone}
-        sound="ringtone"
-        loop={true}
-      />
-      <CallSounds
-        isPlaying={playSounds.callConnect}
-        sound="callConnect"
-        loop={false}
-      />
-
+      {playSounds.ringtone && <CallSounds isPlaying={true} sound="ringtone" loop={true} />}
+      {playSounds.callConnect && <CallSounds isPlaying={true} sound="callConnect" loop={false} />}
+      {playSounds.callEnd && <CallSounds isPlaying={true} sound="callEnd" loop={false} />}
       <div className="video-call-header">
         <div className="call-status">
           {connectionStatus === "initializing" && "Initializing..."}
@@ -782,7 +642,6 @@ const VideoCall = ({
         </div>
         <div className="call-timer">{formatDuration(callDuration)}</div>
       </div>
-
       <div className="videos-container">
         <div className="remote-video-container">
           {isRemoteVideoOff && (
@@ -796,27 +655,14 @@ const VideoCall = ({
               <FaMicrophoneSlash />
             </div>
           )}
-          <video
-            ref={remoteVideoRef}
-            className="remote-video"
-            autoPlay
-            playsInline
-          />
+          <video ref={remoteVideoRef} className="remote-video" autoPlay playsInline />
           <div className="remote-user-name">{remoteName}</div>
         </div>
-
         <div className="local-video-container">
-          <video
-            ref={localVideoRef}
-            className="local-video"
-            autoPlay
-            playsInline
-            muted
-          />
+          <video ref={localVideoRef} className="local-video" autoPlay playsInline muted />
           <div className="local-user-name">{user?.nickname || "You"}</div>
         </div>
       </div>
-
       <div className="call-controls">
         <button
           className={`control-btn ${isAudioMuted ? "muted" : ""}`}
@@ -825,7 +671,6 @@ const VideoCall = ({
         >
           {isAudioMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
         </button>
-
         <button
           className={`control-btn ${isVideoOff ? "muted" : ""}`}
           onClick={toggleVideo}
@@ -833,15 +678,9 @@ const VideoCall = ({
         >
           {isVideoOff ? <FaVideoSlash /> : <FaVideo />}
         </button>
-
-        <button
-          className="control-btn hangup-btn"
-          onClick={handleHangup}
-          title="End Call"
-        >
+        <button className="control-btn hangup-btn" onClick={handleHangup} title="End Call">
           <FaPhoneSlash />
         </button>
-
         <button
           className={`control-btn ${isFullscreen ? "active" : ""}`}
           onClick={toggleFullscreen}
@@ -850,7 +689,6 @@ const VideoCall = ({
           {isFullscreen ? <FaCompress /> : <FaExpandAlt />}
         </button>
       </div>
-
       <div className="connection-status">
         {connectionStatus === "initializing" && (
           <div className="connecting-spinner">
@@ -858,14 +696,12 @@ const VideoCall = ({
             <span>Initializing your camera and microphone...</span>
           </div>
         )}
-
         {connectionStatus === "connecting" && (
           <div className="connecting-spinner">
             <div className="spinner"></div>
             <span>Connecting to {remoteName}...</span>
           </div>
         )}
-
         {connectionStatus === "error" && (
           <div className="connection-error">
             <span>Connection failed. Please try again.</span>

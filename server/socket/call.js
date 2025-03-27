@@ -32,23 +32,44 @@ const registerCallHandlers = (io, socket, userConnections, rateLimiters) => {
       // Forward the signal to the recipient with retry logic
       if (userConnections.has(recipientId)) {
         let delivered = false;
+        let deliveryAttempts = 0;
+        const maxDeliveryAttempts = 3;
 
-        userConnections.get(recipientId).forEach((recipientSocketId) => {
-          try {
-            io.to(recipientSocketId).emit("videoSignal", {
-              signal,
-              userId: socket.user._id,
-              from: from || {
+        const attemptDelivery = (socketIds) => {
+          deliveryAttempts++;
+
+          let currentDeliverySuccess = false;
+          socketIds.forEach((recipientSocketId) => {
+            try {
+              io.to(recipientSocketId).emit("videoSignal", {
+                signal,
                 userId: socket.user._id,
-                name: socket.user.nickname || "User",
-              },
-              timestamp: Date.now(),
-            });
-            delivered = true;
-          } catch (err) {
-            logger.error(`Error sending signal to socket ${recipientSocketId}: ${err.message}`);
+                from: from || {
+                  userId: socket.user._id,
+                  name: socket.user.nickname || "User",
+                },
+                timestamp: Date.now(),
+              });
+              delivered = true;
+              currentDeliverySuccess = true;
+            } catch (err) {
+              logger.error(`Error sending signal to socket ${recipientSocketId}: ${err.message}`);
+            }
+          });
+
+          // If delivery failed and we haven't reached max attempts, try again
+          if (!currentDeliverySuccess && deliveryAttempts < maxDeliveryAttempts) {
+            setTimeout(() => {
+              // Get fresh socket IDs in case they've changed
+              const currentSocketIds = userConnections.get(recipientId);
+              if (currentSocketIds && currentSocketIds.size > 0) {
+                attemptDelivery(currentSocketIds);
+              }
+            }, 1000); // Wait 1 second before retry
           }
-        });
+        };
+
+        attemptDelivery(userConnections.get(recipientId));
 
         if (!delivered) {
           // Notify sender that delivery failed
@@ -70,6 +91,90 @@ const registerCallHandlers = (io, socket, userConnections, rateLimiters) => {
     }
   });
 
+  // Handle peer ID exchange with guaranteed delivery
+  socket.on("peerIdExchange", (data) => {
+    try {
+      const { recipientId, peerId, from, isFallback } = data;
+
+      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
+        logger.error(`Invalid recipient ID in peerIdExchange: ${recipientId}`);
+        return;
+      }
+
+      if (!peerId) {
+        logger.error(`Missing peerId in peerIdExchange request`);
+        return;
+      }
+
+      logger.debug(`Processing peerIdExchange from ${socket.user._id} to ${recipientId} with ID ${peerId}`);
+
+      // Make sure we have proper from data
+      const fromData = from || {
+        userId: socket.user._id,
+        name: socket.user.nickname || "User"
+      };
+
+      // Forward the peer ID to the recipient with retry logic
+      if (userConnections.has(recipientId)) {
+        let delivered = false;
+        let deliveryAttempts = 0;
+        const maxDeliveryAttempts = 5; // More retries for critical peerId exchange
+
+        const attemptDelivery = (socketIds) => {
+          deliveryAttempts++;
+
+          let currentDeliverySuccess = false;
+          socketIds.forEach((recipientSocketId) => {
+            try {
+              io.to(recipientSocketId).emit("peerIdExchange", {
+                peerId,
+                userId: socket.user._id,
+                from: fromData,
+                isFallback: isFallback || false,
+                timestamp: Date.now()
+              });
+              delivered = true;
+              currentDeliverySuccess = true;
+              logger.debug(`Successfully delivered peerIdExchange to socket ${recipientSocketId}`);
+            } catch (err) {
+              logger.error(`Error sending peerIdExchange to socket ${recipientSocketId}: ${err.message}`);
+            }
+          });
+
+          // If delivery failed and we haven't reached max attempts, try again
+          if (!currentDeliverySuccess && deliveryAttempts < maxDeliveryAttempts) {
+            logger.debug(`peerIdExchange delivery attempt ${deliveryAttempts} failed, retrying in 800ms`);
+            setTimeout(() => {
+              // Get fresh socket IDs in case they've changed
+              const currentSocketIds = userConnections.get(recipientId);
+              if (currentSocketIds && currentSocketIds.size > 0) {
+                attemptDelivery(currentSocketIds);
+              }
+            }, 800); // Wait 800ms before retry
+          } else if (!currentDeliverySuccess) {
+            logger.error(`Failed to deliver peerIdExchange after ${maxDeliveryAttempts} attempts`);
+            socket.emit("videoError", {
+              error: "Failed to deliver peer ID to recipient after multiple attempts",
+              recipientId
+            });
+          }
+        };
+
+        attemptDelivery(userConnections.get(recipientId));
+      } else {
+        // Recipient is offline
+        logger.warn(`Recipient ${recipientId} is offline for peerIdExchange`);
+        socket.emit("videoError", {
+          error: "Recipient is offline",
+          recipientId,
+        });
+      }
+    } catch (error) {
+      logger.error(`Error handling peerIdExchange: ${error.message}`);
+      socket.emit("videoError", { error: "Peer ID exchange error" });
+    }
+  });
+
   // Handle video call hangup
   socket.on("videoHangup", (data) => {
     try {
@@ -82,13 +187,42 @@ const registerCallHandlers = (io, socket, userConnections, rateLimiters) => {
 
       logger.debug(`Forwarding video hangup from ${socket.user._id} to ${recipientId}`);
 
+      // Use guaranteed delivery for hangup as well
       if (userConnections.has(recipientId)) {
-        userConnections.get(recipientId).forEach((recipientSocketId) => {
-          io.to(recipientSocketId).emit("videoHangup", {
-            userId: socket.user._id,
-            timestamp: Date.now(),
+        let delivered = false;
+        let deliveryAttempts = 0;
+        const maxDeliveryAttempts = 3;
+
+        const attemptDelivery = (socketIds) => {
+          deliveryAttempts++;
+
+          let currentDeliverySuccess = false;
+          socketIds.forEach((recipientSocketId) => {
+            try {
+              io.to(recipientSocketId).emit("videoHangup", {
+                userId: socket.user._id,
+                timestamp: Date.now(),
+              });
+              delivered = true;
+              currentDeliverySuccess = true;
+            } catch (err) {
+              logger.error(`Error sending hangup to socket ${recipientSocketId}: ${err.message}`);
+            }
           });
-        });
+
+          // If delivery failed and we haven't reached max attempts, try again
+          if (!currentDeliverySuccess && deliveryAttempts < maxDeliveryAttempts) {
+            setTimeout(() => {
+              // Get fresh socket IDs in case they've changed
+              const currentSocketIds = userConnections.get(recipientId);
+              if (currentSocketIds && currentSocketIds.size > 0) {
+                attemptDelivery(currentSocketIds);
+              }
+            }, 1000); // Wait 1 second before retry
+          }
+        };
+
+        attemptDelivery(userConnections.get(recipientId));
       }
     } catch (error) {
       logger.error(`Error handling video hangup: ${error.message}`);
@@ -173,28 +307,66 @@ const registerCallHandlers = (io, socket, userConnections, rateLimiters) => {
 
       logger.info(`Call initiated from ${socket.user._id} to ${recipientId}`);
 
-      // Notify the recipient about the incoming call
+      // Notify the recipient about the incoming call with guaranteed delivery
       if (userConnections.has(recipientId)) {
-        userConnections.get(recipientId).forEach((recipientSocketId) => {
-          io.to(recipientSocketId).emit("incomingCall", {
-            callId: callId || `call-${Date.now()}`,
-            callType,
-            userId: socket.user._id.toString(),
-            caller: {
-              userId: socket.user._id.toString(),
-              name: user.nickname || "User",
-              photo: user.photos && user.photos.length > 0 ? user.photos[0].url : null,
-            },
-            timestamp: Date.now(),
-          });
-        });
+        let delivered = false;
+        let deliveryAttempts = 0;
+        const maxDeliveryAttempts = 3;
 
-        // Confirm to the caller that the call was initiated
-        socket.emit("callInitiated", {
-          success: true,
-          recipientId,
+        const callPayload = {
           callId: callId || `call-${Date.now()}`,
-        });
+          callType,
+          userId: socket.user._id.toString(),
+          caller: {
+            userId: socket.user._id.toString(),
+            name: user.nickname || "User",
+            photo: user.photos && user.photos.length > 0 ? user.photos[0].url : null,
+          },
+          timestamp: Date.now(),
+        };
+
+        const attemptDelivery = (socketIds) => {
+          deliveryAttempts++;
+
+          let currentDeliverySuccess = false;
+          socketIds.forEach((recipientSocketId) => {
+            try {
+              io.to(recipientSocketId).emit("incomingCall", callPayload);
+              delivered = true;
+              currentDeliverySuccess = true;
+            } catch (err) {
+              logger.error(`Error sending incomingCall to socket ${recipientSocketId}: ${err.message}`);
+            }
+          });
+
+          // If delivery failed and we haven't reached max attempts, try again
+          if (!currentDeliverySuccess && deliveryAttempts < maxDeliveryAttempts) {
+            setTimeout(() => {
+              // Get fresh socket IDs in case they've changed
+              const currentSocketIds = userConnections.get(recipientId);
+              if (currentSocketIds && currentSocketIds.size > 0) {
+                attemptDelivery(currentSocketIds);
+              }
+            }, 1000); // Wait 1 second before retry
+          }
+        };
+
+        attemptDelivery(userConnections.get(recipientId));
+
+        if (delivered) {
+          // Confirm to the caller that the call was initiated
+          socket.emit("callInitiated", {
+            success: true,
+            recipientId,
+            callId: callPayload.callId,
+          });
+        } else {
+          // Recipient couldn't be reached
+          socket.emit("callError", {
+            error: "Failed to reach recipient",
+            recipientId,
+          });
+        }
       } else {
         // Recipient is offline
         socket.emit("callError", {
@@ -222,27 +394,50 @@ const registerCallHandlers = (io, socket, userConnections, rateLimiters) => {
 
       logger.info(`Call ${accept ? "accepted" : "rejected"} by ${socket.user._id} from ${callerId}`);
 
-      // Notify the caller about the answer with retry logic
+      // Notify the caller about the answer with guaranteed delivery
       if (userConnections.has(callerId)) {
         let delivered = false;
+        let deliveryAttempts = 0;
+        const maxDeliveryAttempts = 5; // More attempts for critical call answer
 
-        userConnections.get(callerId).forEach((callerSocketId) => {
-          try {
-            io.to(callerSocketId).emit("callAnswered", {
-              userId: socket.user._id.toString(),
-              accept,
-              callId,
-              timestamp: Date.now(),
-            });
-            delivered = true;
-          } catch (err) {
-            logger.error(`Error sending call answer to socket ${callerSocketId}: ${err.message}`);
+        const answerPayload = {
+          userId: socket.user._id.toString(),
+          accept,
+          callId,
+          timestamp: Date.now(),
+        };
+
+        const attemptDelivery = (socketIds) => {
+          deliveryAttempts++;
+
+          let currentDeliverySuccess = false;
+          socketIds.forEach((callerSocketId) => {
+            try {
+              io.to(callerSocketId).emit("callAnswered", answerPayload);
+              delivered = true;
+              currentDeliverySuccess = true;
+            } catch (err) {
+              logger.error(`Error sending call answer to socket ${callerSocketId}: ${err.message}`);
+            }
+          });
+
+          // If delivery failed and we haven't reached max attempts, try again
+          if (!currentDeliverySuccess && deliveryAttempts < maxDeliveryAttempts) {
+            setTimeout(() => {
+              // Get fresh socket IDs in case they've changed
+              const currentSocketIds = userConnections.get(callerId);
+              if (currentSocketIds && currentSocketIds.size > 0) {
+                attemptDelivery(currentSocketIds);
+              }
+            }, 800); // Wait 800ms before retry
           }
-        });
+        };
+
+        attemptDelivery(userConnections.get(callerId));
 
         if (!delivered) {
           // Log that delivery failed
-          logger.error(`Failed to deliver call answer to caller ${callerId}`);
+          logger.error(`Failed to deliver call answer to caller ${callerId} after ${maxDeliveryAttempts} attempts`);
         }
       } else {
         logger.warn(`Caller ${callerId} is no longer connected`);
