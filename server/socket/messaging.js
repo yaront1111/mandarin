@@ -17,10 +17,9 @@ const sendMessageNotification = async (io, sender, recipient, message) => {
     if (recipientUser?.settings?.notifications?.messages !== false) {
       // Send socket notification if user is online
       if (recipientUser?.socketId) {
-        io.to(recipientUser.socketId).emit("new_message", {
-          sender,
-          message,
-          timestamp: new Date(),
+        io.to(recipientUser.socketId).emit("messageReceived", {
+          ...message,
+          senderName: sender.nickname || sender.username || "User"
         });
       }
 
@@ -64,7 +63,7 @@ const sendLikeNotification = async (io, sender, recipient, likeData, userConnect
       // Send socket notification if user is online
       if (userConnections.has(recipient._id.toString())) {
         userConnections.get(recipient._id.toString()).forEach((socketId) => {
-          io.to(socketId).emit("new_like", {
+          io.to(socketId).emit("newLike", {
             sender: {
               _id: sender._id,
               nickname: sender.nickname,
@@ -113,6 +112,8 @@ const registerMessagingHandlers = (io, socket, userConnections, rateLimiters) =>
     try {
       const { recipientId, type, content, metadata, tempMessageId } = data;
 
+      logger.debug(`Socket message received: ${type} from ${socket.user._id} to ${recipientId}`);
+
       // Apply rate limiting
       try {
         await messageLimiter.consume(socket.user._id.toString());
@@ -127,6 +128,7 @@ const registerMessagingHandlers = (io, socket, userConnections, rateLimiters) =>
 
       // Validate recipient ID
       if (!mongoose.Types.ObjectId.isValid(recipientId)) {
+        logger.error(`Invalid recipient ID format: ${recipientId}`);
         socket.emit("messageError", {
           error: "Invalid recipient ID",
           tempMessageId,
@@ -137,6 +139,7 @@ const registerMessagingHandlers = (io, socket, userConnections, rateLimiters) =>
       // Check if recipient exists
       const recipient = await User.findById(recipientId);
       if (!recipient) {
+        logger.error(`Recipient not found: ${recipientId}`);
         socket.emit("messageError", {
           error: "Recipient not found",
           tempMessageId,
@@ -148,7 +151,11 @@ const registerMessagingHandlers = (io, socket, userConnections, rateLimiters) =>
       const user = await User.findById(socket.user._id);
 
       // Check if user can send this type of message
-      if (type !== "wink" && !user.canSendMessages()) {
+      // First, safely check if the method exists, then call it if it does
+      if (type !== "wink" &&
+          (user.accountTier === "FREE" ||
+           (typeof user.canSendMessages === 'function' && !user.canSendMessages()))) {
+        logger.warn(`Free user ${socket.user._id} attempted to send non-wink message`);
         socket.emit("messageError", {
           error: "Free accounts can only send winks. Upgrade to send messages.",
           tempMessageId,
@@ -168,6 +175,7 @@ const registerMessagingHandlers = (io, socket, userConnections, rateLimiters) =>
       });
 
       await message.save();
+      logger.info(`Message saved to database: ${message._id}`);
 
       // Format message for response
       const messageResponse = {
@@ -184,22 +192,29 @@ const registerMessagingHandlers = (io, socket, userConnections, rateLimiters) =>
 
       // Send message to sender for confirmation
       socket.emit("messageSent", messageResponse);
+      logger.debug(`Message sent confirmation emitted: ${message._id} (tempId: ${tempMessageId})`);
 
       // Send message to recipient if they're online
       if (userConnections.has(recipientId)) {
-        userConnections.get(recipientId).forEach((recipientSocketId) => {
+        const connectedSockets = userConnections.get(recipientId);
+        logger.debug(`Recipient ${recipientId} has ${connectedSockets.size} active connections`);
+
+        connectedSockets.forEach((recipientSocketId) => {
           io.to(recipientSocketId).emit("messageReceived", messageResponse);
+          logger.debug(`Message forwarded to recipient socket: ${recipientSocketId}`);
         });
+      } else {
+        logger.debug(`Recipient ${recipientId} is not currently connected`);
       }
 
       // Send message notification
       sendMessageNotification(io, socket.user, recipient, messageResponse);
 
-      logger.info(`Message sent from ${socket.user._id} to ${recipientId}`);
+      logger.info(`Message sent successfully from ${socket.user._id} to ${recipientId}`);
     } catch (error) {
-      logger.error(`Error sending message: ${error.message}`);
+      logger.error(`Error sending message: ${error.message}`, error);
       socket.emit("messageError", {
-        error: "Failed to send message",
+        error: "Failed to send message: " + (error.message || "Unknown error"),
         tempMessageId: data?.tempMessageId,
       });
     }
@@ -215,6 +230,7 @@ const registerMessagingHandlers = (io, socket, userConnections, rateLimiters) =>
         return;
       }
       if (!mongoose.Types.ObjectId.isValid(recipientId)) return;
+
       if (userConnections.has(recipientId)) {
         userConnections.get(recipientId).forEach((recipientSocketId) => {
           io.to(recipientSocketId).emit("userTyping", {
@@ -225,6 +241,40 @@ const registerMessagingHandlers = (io, socket, userConnections, rateLimiters) =>
       }
     } catch (error) {
       logger.error(`Error handling typing indicator: ${error.message}`);
+    }
+  });
+
+  // Mark messages as read handler
+  socket.on("messageRead", async (data) => {
+    try {
+      const { messageIds, sender } = data;
+
+      if (!Array.isArray(messageIds) || messageIds.length === 0) {
+        return;
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(sender)) {
+        return;
+      }
+
+      // Update messages in database
+      await Message.updateMany(
+        { _id: { $in: messageIds }, sender, recipient: socket.user._id },
+        { $set: { read: true, readAt: new Date() } }
+      );
+
+      // Notify sender if they're online
+      if (userConnections.has(sender)) {
+        userConnections.get(sender).forEach((senderSocketId) => {
+          io.to(senderSocketId).emit("messagesRead", {
+            reader: socket.user._id,
+            messageIds,
+            timestamp: Date.now(),
+          });
+        });
+      }
+    } catch (error) {
+      logger.error(`Error handling read receipts: ${error.message}`);
     }
   });
 };

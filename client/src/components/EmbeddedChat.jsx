@@ -241,6 +241,17 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     }
   }, [isUploading])
 
+  // Add debug logging to help troubleshoot message sender/receiver issues
+  useEffect(() => {
+    if (user && recipient) {
+      console.log("Current user ID:", user._id);
+      console.log("Recipient ID:", recipient._id);
+      if (Array.isArray(messagesData) && messagesData.length > 0) {
+        console.log("Sample message sender:", messagesData[0].sender);
+      }
+    }
+  }, [user, recipient, messagesData]);
+
   // ------------------ Video Call Integration ------------------
 
   // Initiate video call handler
@@ -397,6 +408,8 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const handleTyping = (e) => {
     setNewMessage(e.target.value)
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+
+    // Only send typing events if input has content and we have recipient
     typingTimeoutRef.current = setTimeout(() => {
       if (e.target.value.trim() && recipient && sendTyping) {
         sendTyping(recipient._id)
@@ -500,7 +513,6 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   }
 
   // ------------------ Approve Photo Requests ------------------
-  // Restore the handleApproveAllRequests function from your original code
   const handleApproveAllRequests = async () => {
     setIsApprovingRequests(true)
     try {
@@ -729,99 +741,108 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           Object.entries(groupMessagesByDate()).map(([date, msgs]) => (
             <React.Fragment key={date}>
               <div className="message-date">{date}</div>
-              {msgs.map((message) => (
-                <div
-                  key={message._id}
-                  className={`message ${message.sender === user?._id ? "sent" : "received"} ${
-                    message.type === "system" ? "system-message" : ""
-                  }`}
-                >
-                  {message.type === "text" && (
-                    <>
-                      <p className="message-content">{message.content}</p>
-                      <span className="message-time">
-                        {formatMessageTime(message.createdAt)}
-                        {message.sender === user?._id &&
-                          (message.read ? (
-                            <FaCheckDouble className="read-indicator" />
-                          ) : (
-                            <FaCheck className="read-indicator" />
-                          ))}
-                      </span>
-                    </>
-                  )}
-                  {message.type === "wink" && (
-                    <div className="wink-message">
-                      <p className="message-content">😉</p>
-                      <span className="message-label">Wink</span>
-                    </div>
-                  )}
-                  {message.type === "video" && (
-                    <div className="video-call-message">
-                      <FaVideo className="video-icon" />
-                      <p className="message-content">Video Call</p>
-                      <span className="message-time">{formatMessageTime(message.createdAt)}</span>
-                    </div>
-                  )}
-                  {message.type === "file" && (
-                    <div className="file-message">
-                      {message.metadata?.fileUrl ? (
-                        message.metadata.fileType?.startsWith("image/") ? (
-                          <img
-                            src={message.metadata.fileUrl}
-                            alt={message.metadata.fileName || "Image"}
-                            className="image-attachment"
-                            onError={(e) => {
-                              e.target.onerror = null
-                              e.target.src = "/placeholder.svg"
-                            }}
-                          />
-                        ) : (
-                          <div className="file-attachment">
-                            {message.metadata.fileType?.startsWith("video/") ? (
-                              <FaFileVideo className="file-icon" />
-                            ) : message.metadata.fileType?.startsWith("audio/") ? (
-                              <FaFileAudio className="file-icon" />
-                            ) : message.metadata.fileType === "application/pdf" ? (
-                              <FaFilePdf className="file-icon" />
+              {msgs.map((message) => {
+                // Make sure we're comparing strings with strings or IDs with IDs
+                const isSentByCurrentUser = user && message.sender &&
+                  (message.sender === user._id ||
+                   (typeof message.sender === 'object' && message.sender._id === user._id));
+
+                return (
+                  <div
+                    key={message._id}
+                    className={`message ${isSentByCurrentUser ? "sent" : "received"} ${
+                      message.type === "system" ? "system-message" : ""
+                    }`}
+                  >
+                    {message.type === "text" && (
+                      <>
+                        <p className="message-content">{message.content}</p>
+                        <span className="message-time">
+                          {formatMessageTime(message.createdAt)}
+                          {isSentByCurrentUser &&
+                            (message.read ? (
+                              <FaCheckDouble className="read-indicator" />
                             ) : (
-                              <FaFileAlt className="file-icon" />
-                            )}
-                            <span className="file-name">{message.metadata.fileName || "File"}</span>
-                            <span className="file-size">
-                              {message.metadata.fileSize ? `(${Math.round(message.metadata.fileSize / 1024)} KB)` : ""}
-                            </span>
-                            <a
-                              href={message.metadata.fileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="download-link"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              Download
-                            </a>
-                          </div>
-                        )
-                      ) : (
-                        <p className="message-content">Attachment unavailable</p>
-                      )}
-                    </div>
-                  )}
-                  {message.type === "system" && (
-                    <div className="system-message-content">
-                      <p>{message.content}</p>
-                      <span className="message-time">{formatMessageTime(message.createdAt)}</span>
-                    </div>
-                  )}
-                </div>
-              ))}
+                              <FaCheck className="read-indicator" />
+                            ))}
+                        </span>
+                      </>
+                    )}
+                    {message.type === "wink" && (
+                      <div className="wink-message">
+                        <p className="message-content">😉</p>
+                        <span className="message-label">Wink</span>
+                      </div>
+                    )}
+                    {message.type === "video" && (
+                      <div className="video-call-message">
+                        <FaVideo className="video-icon" />
+                        <p className="message-content">Video Call</p>
+                        <span className="message-time">{formatMessageTime(message.createdAt)}</span>
+                      </div>
+                    )}
+                    {message.type === "file" && (
+                      <div className="file-message">
+                        {message.metadata?.fileUrl ? (
+                          message.metadata.fileType?.startsWith("image/") ? (
+                            <img
+                              src={message.metadata.fileUrl}
+                              alt={message.metadata.fileName || "Image"}
+                              className="image-attachment"
+                              onError={(e) => {
+                                e.target.onerror = null
+                                e.target.src = "/placeholder.svg"
+                              }}
+                            />
+                          ) : (
+                            <div className="file-attachment">
+                              {message.metadata.fileType?.startsWith("video/") ? (
+                                <FaFileVideo className="file-icon" />
+                              ) : message.metadata.fileType?.startsWith("audio/") ? (
+                                <FaFileAudio className="file-icon" />
+                              ) : message.metadata.fileType === "application/pdf" ? (
+                                <FaFilePdf className="file-icon" />
+                              ) : (
+                                <FaFileAlt className="file-icon" />
+                              )}
+                              <span className="file-name">{message.metadata.fileName || "File"}</span>
+                              <span className="file-size">
+                                {message.metadata.fileSize ? `(${Math.round(message.metadata.fileSize / 1024)} KB)` : ""}
+                              </span>
+                              <a
+                                href={message.metadata.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="download-link"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Download
+                              </a>
+                            </div>
+                          )
+                        ) : (
+                          <p className="message-content">Attachment unavailable</p>
+                        )}
+                      </div>
+                    )}
+                    {message.type === "system" && (
+                      <div className="system-message-content">
+                        <p>{message.content}</p>
+                        <span className="message-time">{formatMessageTime(message.createdAt)}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </React.Fragment>
           ))
         )}
         {recipient &&
           typingUsers &&
           recipient._id &&
-          Date.now() - typingUsers[recipient._id] < 3000 && (
+          typingUsers[recipient._id] &&
+          Date.now() - typingUsers[recipient._id] < 3000 &&
+          recipient._id !== user?._id && (
             <div className="typing-indicator">
               <span></span>
               <span></span>

@@ -1,4 +1,4 @@
-// client/src/services/socketService.jsx - Refactored
+// client/src/services/socketService.jsx - Production version with fixes
 import socketClient from "./socketClient.jsx"
 
 class SocketService {
@@ -6,8 +6,11 @@ class SocketService {
     this.socket = socketClient
     this.initialized = false
     this.showConnectionToasts = true
-    this.debugMode = import.meta.env.MODE !== "production"
+    this.debugMode = process.env.NODE_ENV !== "production"
     this.eventListeners = new Map() // Keep track of all event listeners
+    this.pendingMessages = []
+    this.userId = null
+    this.connectionState = 'disconnected'
   }
 
   /**
@@ -18,53 +21,65 @@ class SocketService {
    * @returns {Object} - The socket object.
    */
   init(userId, token, options = {}) {
-    if (this.initialized) {
-      this._log("Socket service already initialized")
+    if (this.initialized && this.socket.isConnected() && this.userId === userId) {
+      this._log("Socket service already initialized and connected")
       return this.socket
     }
 
-    this._log("Initializing socket service")
+    this._log(`Initializing socket service for user: ${userId}`)
+    this.userId = userId
+
     this.socket.init(userId, token, options)
     this.initialized = true
+    this.connectionState = 'connecting'
 
-    // Attach event emitter to window for app-wide events
-    window.socketService = this
+    // Add connection state listeners
+    this.socket.on("connect", () => {
+      this._log("Socket connection established")
+      this.connectionState = 'connected'
+      this._processPendingMessages()
 
-    // Add reconnection listener to reset services that depend on socket
-    this.on("connect", () => {
-      this._log("Socket reconnected, dispatching reconnect event")
+      // Dispatch reconnect event for other components
       window.dispatchEvent(new CustomEvent("socketReconnected"))
+    })
+
+    this.socket.on("disconnect", (reason) => {
+      this._log(`Socket disconnected: ${reason}`)
+      this.connectionState = 'disconnected'
+    })
+
+    this.socket.on("connect_error", (error) => {
+      this._log(`Socket connection error: ${error}`)
+      this.connectionState = 'error'
     })
 
     return this.socket
   }
-
-  // ----------------------
-  // Core Connection Methods
-  // ----------------------
 
   /**
    * Check if socket is connected and valid
    * @returns {boolean} Whether socket is connected and ready to use
    */
   isConnected() {
-    return this.socket.isConnected()
+    return this.socket && this.socket.isConnected()
   }
 
   /**
-   * Force reconnection: disconnect and reinitialize.
+   * Force reconnection: disconnect and reinitialize
    */
   reconnect() {
     this._log("Forcing socket reconnection")
+    this.connectionState = 'reconnecting'
     return this.socket.reconnect()
   }
 
   /**
-   * Disconnect the socket and clean up all listeners and intervals.
+   * Disconnect the socket and clean up all listeners and intervals
    */
   disconnect() {
     this._log("Disconnecting socket")
     this.initialized = false
+    this.connectionState = 'disconnected'
 
     // Keep track of listeners to restore on reconnection
     this.savedListeners = Array.from(this.eventListeners.entries())
@@ -73,12 +88,14 @@ class SocketService {
   }
 
   /**
-   * Register an event listener.
-   * @param {string} event - Event name.
-   * @param {Function} callback - Callback function.
-   * @returns {Function} - Unsubscribe function.
+   * Register an event listener with better tracking
+   * @param {string} event - Event name
+   * @param {Function} callback - Callback function
+   * @returns {Function} - Unsubscribe function
    */
   on(event, callback) {
+    this._log(`Registering listener for event: ${event}`)
+
     // Keep track of this listener for potential reconnection scenarios
     if (!this.eventListeners.has(event)) {
       this.eventListeners.set(event, new Set())
@@ -100,11 +117,12 @@ class SocketService {
   }
 
   /**
-   * Remove an event listener.
-   * @param {string} event - Event name.
-   * @param {Function} callback - Callback function.
+   * Remove an event listener
+   * @param {string} event - Event name
+   * @param {Function} callback - Callback function
    */
   off(event, callback) {
+    this._log(`Removing listener for event: ${event}`)
     this.socket.off(event, callback)
 
     // Also remove from our tracking
@@ -120,37 +138,54 @@ class SocketService {
   }
 
   /**
-   * Emit an event to the server.
-   * @param {string} event - Event name.
-   * @param {object} data - Event data.
-   * @returns {boolean} - True if emitted or queued.
+   * Emit an event to the server with better error handling
+   * @param {string} event - Event name
+   * @param {object} data - Event data
+   * @returns {boolean} - True if emitted or queued
    */
   emit(event, data = {}) {
-    return this.socket.emit(event, data)
+    if (!this.socket) {
+      this._log(`Socket not initialized, cannot emit '${event}'`)
+      return false
+    }
+
+    if (!this.isConnected()) {
+      this._log(`Socket not connected, queueing '${event}'`)
+      this.pendingMessages.push({ event, data })
+      return true
+    }
+
+    try {
+      this._log(`Emitting event: ${event} with data:`, data)
+      this.socket.emit(event, data)
+      return true
+    } catch (error) {
+      this._log(`Error emitting '${event}':`, error)
+      return false
+    }
   }
-
-  // ----------------------
-  // Messaging Methods
-  // ----------------------
-
   /**
-   * Send a message to a user.
-   * @param {string} recipientId - Recipient user ID.
-   * @param {string} content - Message content.
-   * @param {string} type - Message type.
-   * @param {object} metadata - Additional metadata.
-   * @returns {Promise<object>} - Resolves with the message data.
+   * Send a message to a user with improved error handling
+   * @param {string} recipientId - Recipient user ID
+   * @param {string} type - Message type ('text', 'wink', etc.)
+   * @param {string} content - Message content
+   * @param {object} metadata - Additional metadata
+   * @returns {Promise<object>} - Resolves with the message data
    */
-  async sendMessage(recipientId, content, type = "text", metadata = {}) {
+  async sendMessage(recipientId, type = "text", content, metadata = {}) {
+    this._log(`Attempting to send ${type} message to ${recipientId}`)
+
     return new Promise((resolve, reject) => {
       const tempMessageId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+      const timeoutRef = { current: null }
+      let handlersCleaned = false
 
-      // If not connected, queue the message and return a temporary
+      // If not connected, queue the message and return a temporary message object
       if (!this.isConnected()) {
-        this._log("Socket not connected, queueing message")
+        this._log(`Socket not connected, returning pending message with id ${tempMessageId}`)
         const tempMessage = {
           _id: tempMessageId,
-          sender: this.socket.userId,
+          sender: this.userId,
           recipient: recipientId,
           type,
           content,
@@ -158,25 +193,43 @@ class SocketService {
           createdAt: new Date().toISOString(),
           read: false,
           pending: true,
+          status: "pending",
           tempMessageId,
         }
 
         return resolve(tempMessage)
       }
 
+      // Debug log to track message sending
+      this._log(`Preparing socket message: ${recipientId}, type: ${type}, tempId: ${tempMessageId}`)
+
+      // Clean up handlers and timeouts
+      const cleanupHandlers = () => {
+        if (handlersCleaned) return
+        handlersCleaned = true
+
+        this.socket.off("messageSent", handleMessageSent)
+        this.socket.off("messageError", handleMessageError)
+
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current)
+          timeoutRef.current = null
+        }
+      }
+
       // Set up one-time event handlers for response
       const handleMessageSent = (data) => {
         if (data.tempMessageId === tempMessageId) {
-          this.socket.off("messageSent", handleMessageSent)
-          this.socket.off("messageError", handleMessageError)
+          this._log(`Message confirmed sent: ${tempMessageId}`)
+          cleanupHandlers()
           resolve(data)
         }
       }
 
       const handleMessageError = (error) => {
         if (error.tempMessageId === tempMessageId) {
-          this.socket.off("messageSent", handleMessageSent)
-          this.socket.off("messageError", handleMessageError)
+          this._log(`Message error for ${tempMessageId}: ${error.error || "Unknown error"}`)
+          cleanupHandlers()
           reject(new Error(error.error || "Failed to send message"))
         }
       }
@@ -186,7 +239,8 @@ class SocketService {
       this.socket.on("messageError", handleMessageError)
 
       // Emit the message
-      this.socket.emit("sendMessage", {
+      this._log(`Emitting sendMessage with tempId: ${tempMessageId}`)
+      const emissionSuccess = this.socket.emit("sendMessage", {
         recipientId,
         type,
         content,
@@ -194,15 +248,14 @@ class SocketService {
         tempMessageId,
       })
 
-      // Set a timeout for response
-      setTimeout(() => {
-        this.socket.off("messageSent", handleMessageSent)
-        this.socket.off("messageError", handleMessageError)
+      if (!emissionSuccess) {
+        this._log(`Message emission failed immediately for ${tempMessageId}`)
+        cleanupHandlers()
 
-        // If timed out, return a temporary message
+        // Return a pending message so UI can show something
         resolve({
           _id: tempMessageId,
-          sender: this.socket.userId,
+          sender: this.userId,
           recipient: recipientId,
           content,
           type,
@@ -210,115 +263,75 @@ class SocketService {
           createdAt: new Date().toISOString(),
           read: false,
           status: "pending",
+          pending: true,
           tempMessageId,
         })
-      }, 10000)
+        return
+      }
+
+      // Set a timeout for response to prevent hanging promises
+      timeoutRef.current = setTimeout(() => {
+        if (handlersCleaned) return
+
+        this._log(`Message timeout reached for ${tempMessageId}`)
+        cleanupHandlers()
+
+        // If timed out, return a temporary message with pending status
+        resolve({
+          _id: tempMessageId,
+          sender: this.userId,
+          recipient: recipientId,
+          content,
+          type,
+          metadata,
+          createdAt: new Date().toISOString(),
+          read: false,
+          status: "pending",
+          pending: true,
+          tempMessageId,
+        })
+      }, 10000) // 10 second timeout
     })
   }
-
   /**
    * Send typing indicator
    * @param {string} recipientId - Recipient user ID
    */
   sendTyping(recipientId) {
-    this.socket.emit("typing", { recipientId })
-  }
-
-  // ----------------------
-  // Video/Call Methods
-  // ----------------------
-
-  /**
-   * Send WebRTC signaling data
-   * @param {string} recipientId - Recipient user ID
-   * @param {Object} signal - WebRTC signal data
-   * @param {Object} from - Sender details
-   * @returns {boolean} - Success status
-   */
-  sendVideoSignal(recipientId, signal, from = null) {
-    this._log(`Sending video signal to ${recipientId}`)
-
-    // Retry logic for important signaling messages
-    const maxRetries = 3
-    let retryCount = 0
-
-    const attemptSend = () => {
-      const success = this.socket.emit("videoSignal", {
-        recipientId,
-        signal,
-        from: from || {
-          userId: this.socket.userId,
-        },
-        timestamp: Date.now(),
-      })
-
-      if (!success && retryCount < maxRetries) {
-        retryCount++
-        this._log(`Retrying video signal send (${retryCount}/${maxRetries})`)
-        setTimeout(attemptSend, 1000)
-      }
-
-      return success
+    // Don't log or handle errors for typing indicators - these are low priority
+    if (this.isConnected()) {
+      this.socket.emit("typing", { recipientId })
     }
-
-    return attemptSend()
   }
 
   /**
-   * Notify hangup to remote peer
-   * @param {string} recipientId - Recipient user ID
-   * @returns {boolean} - Success status
+   * Process any pending messages after connection is established
+   * @private
    */
-  sendVideoHangup(recipientId) {
-    this._log(`Sending hangup signal to ${recipientId}`)
+  _processPendingMessages() {
+    if (this.pendingMessages.length === 0) return
 
-    // Retry logic for important signaling messages
-    const maxRetries = 3
-    let retryCount = 0
+    this._log(`Processing ${this.pendingMessages.length} pending messages`)
 
-    const attemptSend = () => {
-      const success = this.socket.emit("videoHangup", {
-        recipientId,
-        userId: this.socket.userId,
-        timestamp: Date.now(),
-      })
+    const messages = [...this.pendingMessages]
+    this.pendingMessages = []
 
-      if (!success && retryCount < maxRetries) {
-        retryCount++
-        this._log(`Retrying hangup signal send (${retryCount}/${maxRetries})`)
-        setTimeout(attemptSend, 1000)
-      }
-
-      return success
-    }
-
-    return attemptSend()
-  }
-
-  /**
-   * Send media control event (mute/unmute)
-   * @param {string} recipientId - Recipient user ID
-   * @param {string} type - Control type (audio/video)
-   * @param {boolean} muted - Muted state
-   * @returns {boolean} - Success status
-   */
-  sendMediaControl(recipientId, type, muted) {
-    return this.socket.emit("videoMediaControl", {
-      recipientId,
-      type,
-      muted,
-      userId: this.socket.userId,
+    messages.forEach(msg => {
+      this.emit(msg.event, msg.data)
     })
   }
 
   /**
-   * Initiate a video call with a user.
-   * @param {string} recipientId - Recipient user ID.
-   * @returns {Promise<object>} - Resolves with call data.
+   * Initiate a video call with a user
+   * @param {string} recipientId - Recipient user ID
+   * @returns {Promise<object>} - Resolves with call data
    */
   initiateVideoCall(recipientId) {
+    this._log(`Initiating video call to ${recipientId}`)
+
     return new Promise((resolve, reject) => {
       if (!this.isConnected()) {
+        this._log(`Socket not connected, cannot initiate call`)
         return reject(new Error("Socket not connected"))
       }
 
@@ -326,23 +339,23 @@ class SocketService {
         callId: `call-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         recipientId,
         callType: "video",
-        userId: this.socket.userId,
+        userId: this.userId,
         caller: {
-          userId: this.socket.userId,
+          userId: this.userId,
           name: localStorage.getItem("userNickname") || "User",
         },
         timestamp: Date.now(),
       }
 
-      this._log("Initiating call with data:", callData)
-
       const handleCallInitiated = (response) => {
+        this._log(`Call initiated successfully: ${response.callId || 'unknown'}`)
         this.socket.off("callInitiated", handleCallInitiated)
         this.socket.off("callError", handleCallError)
         resolve(response)
       }
 
       const handleCallError = (error) => {
+        this._log(`Call initiation error: ${error.message || 'unknown'}`)
         this.socket.off("callInitiated", handleCallInitiated)
         this.socket.off("callError", handleCallError)
         reject(new Error(error.message || "Failed to initiate call"))
@@ -357,6 +370,7 @@ class SocketService {
 
       // Set a timeout
       setTimeout(() => {
+        this._log(`Call initiation timeout reached`)
         this.socket.off("callInitiated", handleCallInitiated)
         this.socket.off("callError", handleCallError)
         resolve({ success: true, callId: callData.callId })
@@ -371,187 +385,67 @@ class SocketService {
    * @param {string} callId - Call ID
    * @returns {boolean} - Success status
    */
-  answerCall(callerId, accept, callId) {
+  answerVideoCall(callerId, accept, callId) {
     this._log(`Answering call from ${callerId} with accept=${accept}`)
 
-    // Retry logic for important signaling messages
-    const maxRetries = 3
-    let retryCount = 0
+    if (!this.isConnected()) {
+      this._log(`Cannot answer call: Socket not connected`)
+      return false
+    }
 
-    const attemptSend = () => {
+    // Send response with retry logic for reliability
+    let attempts = 0
+    const maxAttempts = 3
+
+    const attemptAnswer = () => {
+      attempts++
       const success = this.socket.emit("answerCall", {
         callerId,
         accept,
         callId,
-        userId: this.socket.userId,
+        userId: this.userId,
         timestamp: Date.now(),
       })
 
-      if (!success && retryCount < maxRetries) {
-        retryCount++
-        this._log(`Retrying call answer send (${retryCount}/${maxRetries})`)
-        setTimeout(attemptSend, 1000)
+      if (!success && attempts < maxAttempts) {
+        this._log(`Retrying call answer (attempt ${attempts})`)
+        setTimeout(attemptAnswer, 1000)
       }
 
       return success
     }
 
-    return attemptSend()
+    return attemptAnswer()
   }
 
-  // ----------------------
-  // User Status Methods
-  // ----------------------
-
   /**
-   * Get connection status and details.
-   * @returns {object} - Connection status object.
+   * Get connection status and details
+   * @returns {object} - Connection status object
    */
   getStatus() {
     return {
       connected: this.isConnected(),
       initialized: this.initialized,
-      userId: this.socket.userId,
+      userId: this.userId,
+      state: this.connectionState
     }
   }
 
-  // ----------------------
-  // Configuration Methods
-  // ----------------------
-
   /**
-   * Enable or disable connection toast notifications.
-   * @param {boolean} enable - True to enable toasts.
+   * Enable or disable connection toast notifications
+   * @param {boolean} enable - True to enable toasts
    */
   setShowConnectionToasts(enable) {
     this.showConnectionToasts = enable
   }
 
   /**
-   * Enable or disable debug mode.
-   * @param {boolean} enable - True to enable debug logging.
+   * Enable or disable debug mode
+   * @param {boolean} enable - True to enable debug logging
    */
   setDebugMode(enable) {
     this.debugMode = enable
   }
-
-  // ----------------------
-  // Photo Permission Methods
-  // ----------------------
-
-  /**
-   * Request access to a private photo
-   * @param {string} photoId - ID of the photo
-   * @param {string} ownerId - ID of the photo owner
-   * @returns {Promise<object>} Result of the request
-   */
-  requestPhotoAccess(photoId, ownerId) {
-    return new Promise((resolve, reject) => {
-      if (!this.isConnected()) {
-        return reject(new Error("Socket not connected"));
-      }
-
-      const requestId = `req-${photoId}-${this.socket.userId}`;
-
-      const handleSuccess = (response) => {
-        if (response.requestId === requestId) {
-          cleanup();
-          resolve(response);
-        }
-      };
-
-      const handleError = (error) => {
-        if (error.requestId === requestId) {
-          cleanup();
-          reject(new Error(error.error || "Permission request failed"));
-        }
-      };
-
-      const cleanup = () => {
-        this.socket.off("photoPermissionRequested", handleSuccess);
-        this.socket.off("photoPermissionError", handleError);
-      };
-
-      // Listen for response events
-      this.socket.on("photoPermissionRequested", handleSuccess);
-      this.socket.on("photoPermissionError", handleError);
-
-      // Emit the request
-      const success = this.socket.emit("requestPhotoPermission", { photoId, ownerId });
-
-      if (!success) {
-        cleanup();
-        reject(new Error("Failed to send permission request"));
-      }
-
-      // Timeout for the request
-      setTimeout(() => {
-        cleanup();
-        reject(new Error("Permission request timed out"));
-      }, 10000);
-    });
-  }
-
-  /**
-   * Respond to a photo permission request
-   * @param {string} permissionId - ID of the permission request
-   * @param {string} status - 'approved' or 'rejected'
-   * @returns {Promise<object>} Result of the response
-   */
-  respondToPhotoPermission(permissionId, status) {
-    return new Promise((resolve, reject) => {
-      if (!this.isConnected()) {
-        return reject(new Error("Socket not connected"));
-      }
-
-      if (!["approved", "rejected"].includes(status)) {
-        return reject(new Error("Invalid status. Must be 'approved' or 'rejected'."));
-      }
-
-      const requestId = `res-${permissionId}-${this.socket.userId}`;
-
-      const handleSuccess = (response) => {
-        if (response.requestId === requestId) {
-          cleanup();
-          resolve(response);
-        }
-      };
-
-      const handleError = (error) => {
-        if (error.requestId === requestId) {
-          cleanup();
-          reject(new Error(error.error || "Permission response failed"));
-        }
-      };
-
-      const cleanup = () => {
-        this.socket.off("photoPermissionResponded", handleSuccess);
-        this.socket.off("photoPermissionError", handleError);
-      };
-
-      // Listen for response events
-      this.socket.on("photoPermissionResponded", handleSuccess);
-      this.socket.on("photoPermissionError", handleError);
-
-      // Emit the response
-      const success = this.socket.emit("respondToPhotoPermission", { permissionId, status });
-
-      if (!success) {
-        cleanup();
-        reject(new Error("Failed to send permission response"));
-      }
-
-      // Timeout for the request
-      setTimeout(() => {
-        cleanup();
-        reject(new Error("Permission response timed out"));
-      }, 10000);
-    });
-  }
-
-  // ----------------------
-  // Utilities
-  // ----------------------
 
   /**
    * Log messages if in debug mode

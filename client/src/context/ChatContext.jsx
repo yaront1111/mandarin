@@ -25,15 +25,12 @@ export const ChatProvider = ({ children }) => {
   const [activeConversation, setActiveConversation] = useState(null)
   const [requestsData, setRequestsData] = useState([])
   const [pendingPhotoRequests, setPendingPhotoRequests] = useState(0)
+  const [isApprovingRequests, setIsApprovingRequests] = useState(false)
 
   // Refs to store event handlers for cleanup
-  const eventHandlersRef = useRef({
-    newMessage: null,
-    userTyping: null,
-    userOnline: null,
-    userOffline: null,
-    messagesRead: null,
-  })
+  const eventHandlersRef = useRef({})
+  const reconnectAttemptRef = useRef(0)
+  const socketInitializedRef = useRef(false)
 
   // Define authAxios early so it's available in all inner functions.
   const authAxios = useMemo(() => {
@@ -58,7 +55,7 @@ export const ChatProvider = ({ children }) => {
     setError(null)
   }, [])
 
-  // Initialize socket connection
+  // Initialize socket connection with connection status tracking
   useEffect(() => {
     if (isAuthenticated && user && user._id) {
       // Validate user ID format before initializing socket
@@ -66,25 +63,65 @@ export const ChatProvider = ({ children }) => {
         console.error(`Cannot initialize socket: Invalid user ID format: ${user._id}`)
         return
       }
+
       const storedToken = sessionStorage.getItem("token") || localStorage.getItem("token")
       if (storedToken) {
+        console.log(`Initializing socket for user ${user._id}`)
         socketService.init(user._id, storedToken)
-        setSocketConnected(socketService.isConnected())
+        socketInitializedRef.current = true
+
+        // Listen for connection state changes
+        const connectionStatusCheck = setInterval(() => {
+          const isConnected = socketService.isConnected()
+          setSocketConnected(isConnected)
+
+          // If we lose connection, try to reconnect after a delay
+          if (!isConnected && socketInitializedRef.current && reconnectAttemptRef.current < 3) {
+            reconnectAttemptRef.current++
+            console.log(`Reconnection attempt ${reconnectAttemptRef.current}`)
+            setTimeout(() => {
+              socketService.reconnect()
+            }, 3000)
+          }
+        }, 5000) // Check every 5 seconds
+
+        return () => {
+          clearInterval(connectionStatusCheck)
+        }
       }
     }
   }, [isAuthenticated, user])
 
   // Setup socket event listeners
   useEffect(() => {
-    if (!isAuthenticated || !user) return
+    if (!isAuthenticated || !user || !socketInitializedRef.current) return
 
-    const handleNewMessage = (message) => {
+    const cleanupEventHandlers = () => {
+      Object.entries(eventHandlersRef.current).forEach(([event, handler]) => {
+        if (handler) {
+          socketService.off(event, handler)
+        }
+      })
+      // Clear the stored handlers
+      eventHandlersRef.current = {}
+    }
+
+    // Clean up any existing handlers first
+    cleanupEventHandlers()
+
+    // Setup new handlers
+    const handleMessageReceived = (message) => {
+      console.log("Received message:", message)
       if (!message || !message.sender || !message.recipient) {
         console.error("Invalid message object:", message)
         return
       }
       setMessages((prev) => {
-        if (prev.some((m) => m._id === message._id)) return prev
+        // Check for duplicates by ID or by tempMessageId
+        if (prev.some((m) => m._id === message._id) ||
+            (message.tempMessageId && prev.some(m => m.tempMessageId === message.tempMessageId))) {
+          return prev
+        }
         const updated = [...prev, message].sort(
           (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
         )
@@ -159,25 +196,44 @@ export const ChatProvider = ({ children }) => {
       }
     }
 
-    eventHandlersRef.current.newMessage = socketService.on("newMessage", handleNewMessage)
+    // Register all event handlers
+    eventHandlersRef.current.messageReceived = socketService.on("messageReceived", handleMessageReceived)
     eventHandlersRef.current.userTyping = socketService.on("userTyping", handleUserTyping)
     eventHandlersRef.current.userOnline = socketService.on("userOnline", handleUserOnline)
     eventHandlersRef.current.userOffline = socketService.on("userOffline", handleUserOffline)
     eventHandlersRef.current.messagesRead = socketService.on("messagesRead", handleMessagesRead)
 
-    return () => {
-      if (eventHandlersRef.current.newMessage)
-        socketService.off("newMessage", eventHandlersRef.current.newMessage)
-      if (eventHandlersRef.current.userTyping)
-        socketService.off("userTyping", eventHandlersRef.current.userTyping)
-      if (eventHandlersRef.current.userOnline)
-        socketService.off("userOnline", eventHandlersRef.current.userOnline)
-      if (eventHandlersRef.current.userOffline)
-        socketService.off("userOffline", eventHandlersRef.current.userOffline)
-      if (eventHandlersRef.current.messagesRead)
-        socketService.off("messagesRead", eventHandlersRef.current.messagesRead)
-    }
+    // Handle socket connection state changes
+    eventHandlersRef.current.connect = socketService.on("connect", () => {
+      setSocketConnected(true)
+      reconnectAttemptRef.current = 0
+      console.log("Socket connected successfully")
+    })
+
+    eventHandlersRef.current.disconnect = socketService.on("disconnect", () => {
+      setSocketConnected(false)
+      console.log("Socket disconnected")
+    })
+
+    // Clean up on unmount or dependency change
+    return cleanupEventHandlers
   }, [isAuthenticated, user])
+
+  // Effect to handle reconnection after the page becomes visible again
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && socketInitializedRef.current && !socketService.isConnected()) {
+        console.log("Page became visible, checking socket connection")
+        socketService.reconnect()
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [])
 
   const updateConversationsList = useCallback(
     (message) => {
@@ -404,21 +460,30 @@ export const ChatProvider = ({ children }) => {
           throw new Error("File URL is required for file messages")
         }
 
+        // First, try socket-based messaging
         let socketResponse = null
         try {
+          console.log(`Attempting to send message via socket: type=${type}, recipient=${recipientId}`)
           socketResponse = await socketService.sendMessage(recipientId, type, content, enhancedMetadata)
+          console.log("Socket message response:", socketResponse)
         } catch (socketError) {
           console.warn("Socket message failed, falling back to API:", socketError)
         }
+
+        // If socket message was successful and not pending, use that response
         if (socketResponse && !socketResponse.pending) {
+          console.log("Socket message sent successfully")
           setMessages((prev) => {
+            // Check for duplicates by message ID or clientMessageId
             if (
               prev.some(
                 (m) =>
-                  m.metadata?.clientMessageId === clientMessageId || m._id === socketResponse._id
+                  m.metadata?.clientMessageId === clientMessageId ||
+                  m._id === socketResponse._id ||
+                  (socketResponse.tempMessageId && m.tempMessageId === socketResponse.tempMessageId)
               )
-            )
-              return prev
+            ) return prev;
+
             return [...prev, socketResponse].sort(
               (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
             )
@@ -427,22 +492,28 @@ export const ChatProvider = ({ children }) => {
           return socketResponse
         }
 
+        // If socket message failed or is pending, fall back to API
+        console.log("Falling back to API for message sending")
         const apiResponse = await apiService.post("/messages", {
           recipient: recipientId,
           type,
           content,
           metadata: enhancedMetadata,
         })
+
         if (apiResponse.success) {
           const newMsg = apiResponse.data
           setMessages((prev) => {
+            // Check for duplicates by message ID or clientMessageId or tempMessageId
             if (
               prev.some(
                 (m) =>
-                  m.metadata?.clientMessageId === clientMessageId || m._id === newMsg._id
+                  m.metadata?.clientMessageId === clientMessageId ||
+                  m._id === newMsg._id ||
+                  (socketResponse?.tempMessageId && m.tempMessageId === socketResponse.tempMessageId)
               )
-            )
-              return prev
+            ) return prev;
+
             return [...prev, newMsg].sort(
               (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
             )
@@ -515,7 +586,7 @@ export const ChatProvider = ({ children }) => {
       setMessages((prev) =>
         prev.map((msg) => (messageIds.includes(msg._id) ? { ...msg, read: true } : msg))
       )
-      socketService.socket?.emit("messageRead", {
+      socketService.emit("messageRead", {
         reader: user._id,
         sender: senderId,
         messageIds,
@@ -623,7 +694,7 @@ export const ChatProvider = ({ children }) => {
   )
 
   const answerVideoCall = useCallback(
-    (callerId, answer) => {
+    (callerId, accept) => {
       if (!user || !callerId) {
         setError("Cannot answer call: Missing user or caller")
         return null
@@ -634,7 +705,7 @@ export const ChatProvider = ({ children }) => {
         toast.error(errMsg)
         return null
       }
-      return socketService.answerVideoCall(callerId, answer)
+      return socketService.answerVideoCall(callerId, accept)
     },
     [user]
   )
@@ -666,7 +737,10 @@ export const ChatProvider = ({ children }) => {
     answerVideoCall,
     getTotalUnreadCount,
     clearError,
-    handleApproveAllRequests, // now available in context
+    handleApproveAllRequests,
+    isApprovingRequests,
+    requestsData,
+    pendingPhotoRequests
   }
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
