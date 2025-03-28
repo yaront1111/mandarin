@@ -1,22 +1,16 @@
-import React, { useState, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
-import PropTypes from "prop-types";
-import {
-  FaHeart,
-  FaComment,
-  FaUser,
-  FaMapMarkerAlt,
-  FaUserCircle,
-  FaUsers,
-  FaClock
-} from "react-icons/fa";
+"use client"
+
+import React, { useState, useCallback, useMemo } from "react"
+import { useNavigate } from "react-router-dom"
+import PropTypes from "prop-types"
+import { FaHeart, FaComment, FaUser, FaMapMarkerAlt, FaClock } from "react-icons/fa"
 
 // Constants
 const TAG_TYPES = {
-  LOOKING_FOR: 'lookingFor',
-  INTO: 'into',
-  INTEREST: 'interest'
-};
+  LOOKING_FOR: "lookingFor",
+  INTO: "into",
+  INTEREST: "interest",
+}
 
 /**
  * UserCard Component - Displays user information in grid or list view
@@ -30,146 +24,165 @@ const UserCard = ({
   onClick,
   showExtendedDetails = true,
   unreadMessageCount = 0,
-  hasUnreadMessages = false
+  hasUnreadMessages = false,
 }) => {
   // Component state
-  const [imageError, setImageError] = useState(false);
-  const [showAllTags, setShowAllTags] = useState(false);
-  const [showMoreSections, setShowMoreSections] = useState(false);
+  const [imageError, setImageError] = useState(false)
+  const [showAllTags, setShowAllTags] = useState(false)
+  const [showMoreSections, setShowMoreSections] = useState(false)
 
   // Navigation
-  const navigate = useNavigate();
+  const navigate = useNavigate()
 
   // Helper functions
   const normalizePhotoUrl = useCallback((url) => {
-    if (!url) return null;
-    if (url.startsWith("http://") || url.startsWith("https://")) return url;
-    return url.startsWith("/") ? url : `/${url}`;
-  }, []);
+    if (!url) return null
+    if (url.startsWith("http://") || url.startsWith("https://")) return url
+
+    // Fix for avatar URLs - use full API URL
+    if (url.startsWith("/api/")) {
+      return `${process.env.REACT_APP_API_URL || "http://localhost:5000"}${url.substring(4)}`
+    }
+
+    return url.startsWith("/") ? url : `/${url}`
+  }, [])
 
   const getTagClass = useCallback((type) => {
-    switch(type) {
-      case TAG_TYPES.LOOKING_FOR: return 'looking-for-tag';
-      case TAG_TYPES.INTO: return 'into-tag';
-      case TAG_TYPES.INTEREST: return 'interest-tag';
-      default: return 'interest-tag';
+    switch (type) {
+      case TAG_TYPES.LOOKING_FOR:
+        return "looking-for-tag"
+      case TAG_TYPES.INTO:
+        return "into-tag"
+      case TAG_TYPES.INTEREST:
+        return "interest-tag"
+      default:
+        return "interest-tag"
     }
-  }, []);
+  }, [])
 
   // Event handlers
   const handleCardClick = useCallback(() => {
     if (onClick) {
-      onClick();
+      onClick()
     } else {
-      navigate(`/user/${user._id}`);
+      navigate(`/user/${user._id}`)
     }
-  }, [onClick, navigate, user?._id]);
+  }, [onClick, navigate, user?._id])
 
-  const handleLikeClick = useCallback((e) => {
-    e.stopPropagation();
-    if (onLike) {
-      onLike(user._id, user.nickname);
-    }
-  }, [onLike, user?._id, user?.nickname]);
+  const handleLikeClick = useCallback(
+    (e) => {
+      e.stopPropagation()
+      if (onLike) {
+        console.log(`Like button clicked for user ${user._id}, current isLiked: ${isLiked}`)
+        // Pass the current like state to the parent component
+        onLike(user._id, user.nickname)
+      }
+    },
+    [onLike, user?._id, user?.nickname, isLiked],
+  )
 
-  const handleMessageClick = useCallback((e) => {
-    e.stopPropagation();
-    if (onMessage) {
-      onMessage(e, user);
-    }
-  }, [onMessage, user]);
+  const handleMessageClick = useCallback(
+    (e) => {
+      e.stopPropagation()
+      if (onMessage) {
+        onMessage(e, user)
+      }
+    },
+    [onMessage, user],
+  )
 
   const toggleShowAllTags = useCallback((e) => {
-    e?.stopPropagation();
-    setShowAllTags(prev => !prev);
-  }, []);
+    e?.stopPropagation()
+    setShowAllTags((prev) => !prev)
+  }, [])
 
   const toggleShowMoreSections = useCallback((e) => {
-    e?.stopPropagation();
-    setShowMoreSections(prev => !prev);
-  }, []);
+    e?.stopPropagation()
+    setShowMoreSections((prev) => !prev)
+  }, [])
 
   // Memoized data calculations
   const profilePhotoUrl = useMemo(() => {
-    if (!user?.photos?.length) return null;
-    return normalizePhotoUrl(user.photos[0]?.url);
-  }, [user?.photos, normalizePhotoUrl]);
+    if (!user?.photos?.length) return null
+    return normalizePhotoUrl(user.photos[0]?.url)
+  }, [user?.photos, normalizePhotoUrl])
 
   const subtitle = useMemo(() => {
-    if (!user?.details) return "";
-    const { age, gender, location } = user.details;
-    const parts = [];
-    if (age) parts.push(age);
-    if (gender) parts.push(gender);
-    if (location) parts.push(location);
-    return parts.join(" • ");
-  }, [user?.details]);
+    if (!user?.details) return ""
+    const { age, gender, location } = user.details
+    const parts = []
+    if (age) parts.push(age)
+    if (gender) parts.push(gender)
+    if (location) parts.push(location)
+    return parts.join(" • ")
+  }, [user?.details])
 
   const extendedDetails = useMemo(() => {
-    if (!user?.details) return {
-      status: null,
-      identity: null
-    };
+    if (!user?.details)
+      return {
+        status: null,
+        identity: null,
+      }
 
     const details = {
       status: null,
-      identity: null
-    };
+      identity: null,
+    }
 
-    const { maritalStatus, iAm } = user.details;
+    const { maritalStatus, iAm } = user.details
 
     if (maritalStatus) {
-      details.status = maritalStatus;
+      details.status = maritalStatus
     }
 
     if (iAm) {
-      details.identity = iAm;
+      details.identity = iAm
     }
 
-    return details;
-  }, [user?.details]);
+    return details
+  }, [user?.details])
 
   const tags = useMemo(() => {
-    if (!user?.details) return [];
+    if (!user?.details) return []
 
     const allTags = {
       lookingFor: [],
       into: [],
-      interests: []
-    };
+      interests: [],
+    }
 
-    const { lookingFor = [], intoTags = [], interests = [] } = user.details;
+    const { lookingFor = [], intoTags = [], interests = [] } = user.details
 
-    lookingFor.forEach(item => allTags.lookingFor.push(item));
-    intoTags.forEach(item => allTags.into.push(item));
-    interests.forEach(item => allTags.interests.push(item));
+    lookingFor.forEach((item) => allTags.lookingFor.push(item))
+    intoTags.forEach((item) => allTags.into.push(item))
+    interests.forEach((item) => allTags.interests.push(item))
 
-    return allTags;
-  }, [user?.details]);
+    return allTags
+  }, [user?.details])
 
   // Last active formatting
   const lastActiveText = useMemo(() => {
     // If user is currently online, show "Active now" regardless of lastActive timestamp
-    if (user?.isOnline) return "Active now";
+    if (user?.isOnline) return "Active now"
 
-    if (!user?.lastActive) return "Never active";
+    if (!user?.lastActive) return "Never active"
 
     // Create a simple last active text (could be expanded with proper date formatting)
-    const lastActive = new Date(user.lastActive);
-    const now = new Date();
-    const diffHours = Math.floor((now - lastActive) / (1000 * 60 * 60));
+    const lastActive = new Date(user.lastActive)
+    const now = new Date()
+    const diffHours = Math.floor((now - lastActive) / (1000 * 60 * 60))
 
-    if (diffHours < 1) return "Active just now";
-    if (diffHours < 24) return `Active ${diffHours}h ago`;
+    if (diffHours < 1) return "Active just now"
+    if (diffHours < 24) return `Active ${diffHours}h ago`
 
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `Active ${diffDays}d ago`;
+    const diffDays = Math.floor(diffHours / 24)
+    if (diffDays < 7) return `Active ${diffDays}d ago`
 
-    return `Active ${lastActive.toLocaleDateString()}`;
-  }, [user?.lastActive, user?.isOnline]);
+    return `Active ${lastActive.toLocaleDateString()}`
+  }, [user?.lastActive, user?.isOnline])
 
   // Validation
-  if (!user) return null;
+  if (!user) return null
 
   // Common action buttons for both grid and list view
   const renderActionButtons = () => (
@@ -178,6 +191,10 @@ const UserCard = ({
         className={`card-action-button like ${isLiked ? "active" : ""}`}
         onClick={handleLikeClick}
         aria-label={`${isLiked ? "Unlike" : "Like"} ${user.nickname}`}
+        style={{
+          color: isLiked ? "#ff4757" : "#aaa",
+          background: isLiked ? "rgba(255, 71, 87, 0.1)" : "transparent",
+        }}
       >
         <FaHeart />
       </button>
@@ -189,7 +206,7 @@ const UserCard = ({
         <FaComment />
       </button>
     </>
-  );
+  )
 
   // Common photo rendering for both views
   const renderUserPhoto = (containerClass, imageClass = "") => (
@@ -217,7 +234,7 @@ const UserCard = ({
       )}
       {user.isOnline && <div className="online-indicator"></div>}
     </div>
-  );
+  )
 
   // Rendering based on view mode
   if (viewMode === "grid") {
@@ -233,14 +250,12 @@ const UserCard = ({
               {user.nickname}
               {user.details?.age && <span>, {user.details.age}</span>}
             </h3>
-            {hasUnreadMessages && (
-              <span className="unread-badge">{unreadMessageCount}</span>
-            )}
+            {hasUnreadMessages && <span className="unread-badge">{unreadMessageCount}</span>}
           </div>
 
           {/* Last Active Status */}
           <p className="user-card-last-active">
-            <FaClock style={{ marginRight: '4px', fontSize: '0.8em', opacity: 0.7 }} />
+            <FaClock style={{ marginRight: "4px", fontSize: "0.8em", opacity: 0.7 }} />
             {lastActiveText}
           </p>
 
@@ -256,9 +271,7 @@ const UserCard = ({
                 <div className="tag-category">
                   <h4 className="tag-category-title">Status</h4>
                   <div className="user-interests">
-                    <span className="interest-tag status-tag">
-                      {extendedDetails.status}
-                    </span>
+                    <span className="interest-tag status-tag">{extendedDetails.status}</span>
                   </div>
                 </div>
               )}
@@ -267,11 +280,17 @@ const UserCard = ({
                 <div className="tag-category">
                   <h4 className="tag-category-title">I am</h4>
                   <div className="user-interests">
-                    <span className={`interest-tag identity-tag ${
-                      extendedDetails.identity.toLowerCase().includes('woman') ? 'identity-woman' :
-                      extendedDetails.identity.toLowerCase().includes('man') ? 'identity-man' :
-                      extendedDetails.identity.toLowerCase().includes('couple') ? 'identity-couple' : ''
-                    }`}>
+                    <span
+                      className={`interest-tag identity-tag ${
+                        extendedDetails.identity.toLowerCase().includes("woman")
+                          ? "identity-woman"
+                          : extendedDetails.identity.toLowerCase().includes("man")
+                            ? "identity-man"
+                            : extendedDetails.identity.toLowerCase().includes("couple")
+                              ? "identity-couple"
+                              : ""
+                      }`}
+                    >
                       {extendedDetails.identity}
                     </span>
                   </div>
@@ -305,10 +324,7 @@ const UserCard = ({
               {/* Show More/Less Toggle for additional sections */}
               {(tags.lookingFor.length > 0 || tags.into.length > 0) && (
                 <div className="tags-toggle">
-                  <span
-                    className="tags-toggle-btn"
-                    onClick={toggleShowMoreSections}
-                  >
+                  <span className="tags-toggle-btn" onClick={toggleShowMoreSections}>
                     {showMoreSections ? "Show less" : "Show more"}
                   </span>
                 </div>
@@ -354,28 +370,24 @@ const UserCard = ({
                   )}
 
                   {/* Global More/Less Toggle for all tags */}
-                  {showMoreSections && (tags.lookingFor.length > 3 || tags.into.length > 3 || tags.interests.length > 3) && (
-                    <div className="tags-toggle">
-                      <span
-                        className="tags-toggle-btn"
-                        onClick={toggleShowAllTags}
-                      >
-                        {showAllTags ? "Show less tags" : "Show all tags"}
-                      </span>
-                    </div>
-                  )}
+                  {showMoreSections &&
+                    (tags.lookingFor.length > 3 || tags.into.length > 3 || tags.interests.length > 3) && (
+                      <div className="tags-toggle">
+                        <span className="tags-toggle-btn" onClick={toggleShowAllTags}>
+                          {showAllTags ? "Show less tags" : "Show all tags"}
+                        </span>
+                      </div>
+                    )}
                 </>
               )}
             </div>
           )}
 
           {/* Action Buttons */}
-          <div className="user-actions">
-            {renderActionButtons()}
-          </div>
+          <div className="user-actions">{renderActionButtons()}</div>
         </div>
       </div>
-    );
+    )
   }
 
   // List View Rendering
@@ -391,14 +403,12 @@ const UserCard = ({
             {user.nickname}
             {user.details?.age && <span>, {user.details.age}</span>}
           </h3>
-          {hasUnreadMessages && (
-            <span className="unread-badge">{unreadMessageCount}</span>
-          )}
+          {hasUnreadMessages && <span className="unread-badge">{unreadMessageCount}</span>}
         </div>
 
         {/* Last Active Status */}
         <p className="user-list-last-active">
-          <FaClock style={{ marginRight: '4px', fontSize: '0.8em', opacity: 0.7 }} />
+          <FaClock style={{ marginRight: "4px", fontSize: "0.8em", opacity: 0.7 }} />
           {lastActiveText}
         </p>
 
@@ -414,9 +424,7 @@ const UserCard = ({
               <div className="tag-category">
                 <h4 className="tag-category-title">Status</h4>
                 <div className="user-interests">
-                  <span className="interest-tag status-tag">
-                    {extendedDetails.status}
-                  </span>
+                  <span className="interest-tag status-tag">{extendedDetails.status}</span>
                 </div>
               </div>
             )}
@@ -425,11 +433,17 @@ const UserCard = ({
               <div className="tag-category">
                 <h4 className="tag-category-title">I am</h4>
                 <div className="user-interests">
-                  <span className={`interest-tag identity-tag ${
-                    extendedDetails.identity.toLowerCase().includes('woman') ? 'identity-woman' :
-                    extendedDetails.identity.toLowerCase().includes('man') ? 'identity-man' :
-                    extendedDetails.identity.toLowerCase().includes('couple') ? 'identity-couple' : ''
-                  }`}>
+                  <span
+                    className={`interest-tag identity-tag ${
+                      extendedDetails.identity.toLowerCase().includes("woman")
+                        ? "identity-woman"
+                        : extendedDetails.identity.toLowerCase().includes("man")
+                          ? "identity-man"
+                          : extendedDetails.identity.toLowerCase().includes("couple")
+                            ? "identity-couple"
+                            : ""
+                    }`}
+                  >
                     {extendedDetails.identity}
                   </span>
                 </div>
@@ -463,10 +477,7 @@ const UserCard = ({
             {/* Show More/Less Toggle for additional sections */}
             {(tags.lookingFor.length > 0 || tags.into.length > 0) && (
               <div className="tags-toggle">
-                <span
-                  className="tags-toggle-btn"
-                  onClick={toggleShowMoreSections}
-                >
+                <span className="tags-toggle-btn" onClick={toggleShowMoreSections}>
                   {showMoreSections ? "Show less" : "Show more"}
                 </span>
               </div>
@@ -514,10 +525,7 @@ const UserCard = ({
                 {/* Global More/Less Toggle for all tags */}
                 {(tags.lookingFor.length > 2 || tags.into.length > 2 || tags.interests.length > 2) && (
                   <div className="tags-toggle">
-                    <span
-                      className="tags-toggle-btn"
-                      onClick={toggleShowAllTags}
-                    >
+                    <span className="tags-toggle-btn" onClick={toggleShowAllTags}>
                       {showAllTags ? "Show less tags" : "Show all tags"}
                     </span>
                   </div>
@@ -529,12 +537,10 @@ const UserCard = ({
       </div>
 
       {/* Action Buttons - List View */}
-      <div className="user-list-actions">
-        {renderActionButtons()}
-      </div>
+      <div className="user-list-actions">{renderActionButtons()}</div>
     </div>
-  );
-};
+  )
+}
 
 // PropTypes for better type checking
 UserCard.propTypes = {
@@ -545,8 +551,8 @@ UserCard.propTypes = {
     lastActive: PropTypes.string,
     photos: PropTypes.arrayOf(
       PropTypes.shape({
-        url: PropTypes.string
-      })
+        url: PropTypes.string,
+      }),
     ),
     details: PropTypes.shape({
       age: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
@@ -556,8 +562,8 @@ UserCard.propTypes = {
       iAm: PropTypes.string,
       lookingFor: PropTypes.arrayOf(PropTypes.string),
       intoTags: PropTypes.arrayOf(PropTypes.string),
-      interests: PropTypes.arrayOf(PropTypes.string)
-    })
+      interests: PropTypes.arrayOf(PropTypes.string),
+    }),
   }).isRequired,
   isLiked: PropTypes.bool,
   onLike: PropTypes.func,
@@ -566,7 +572,7 @@ UserCard.propTypes = {
   onClick: PropTypes.func,
   showExtendedDetails: PropTypes.bool,
   unreadMessageCount: PropTypes.number,
-  hasUnreadMessages: PropTypes.bool
-};
+  hasUnreadMessages: PropTypes.bool,
+}
 
-export default React.memo(UserCard);
+export default React.memo(UserCard)

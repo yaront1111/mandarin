@@ -162,19 +162,16 @@ export const UserProvider = ({ children }) => {
   // Get all users liked by current user - OPTIMIZED VERSION
   const getLikedUsers = useCallback(
     async (forceRefresh = false) => {
-      // Remove the early return based on likesLoadedRef to allow refreshing
-      if (!user || !user._id) return
-
-      // Only set loading if we're not already loading
-      if (!state.likesLoading) {
+      // Only set loading if we're not already loading and this is a forced refresh
+      if (!state.likesLoading && forceRefresh) {
         dispatch({ type: "SET_LIKES_LOADING", payload: true })
       }
 
       try {
         // Make sure we have a valid user before making the request
-        if (!user._id || typeof user._id !== "string") {
+        if (!user || !user._id || typeof user._id !== "string") {
           console.warn("Current user ID is missing or invalid", user)
-          dispatch({ type: "SET_LIKED_USERS", payload: [] })
+          dispatch({ type: "SET_LIKES_LOADING", payload: false })
           return
         }
 
@@ -182,19 +179,22 @@ export const UserProvider = ({ children }) => {
         const isValidId = /^[0-9a-fA-F]{24}$/.test(user._id)
         if (!isValidId) {
           console.warn(`Invalid user ID format: ${user._id}`)
-          dispatch({ type: "SET_LIKED_USERS", payload: [] })
+          dispatch({ type: "SET_LIKES_LOADING", payload: false })
           return
         }
 
+        console.log("Fetching liked users from server with forceRefresh:", forceRefresh)
         const response = await apiService.get(
           "/users/likes",
           {},
           {
             headers: forceRefresh ? { "x-no-cache": "true" } : {}, // Add cache-busting header when forcing refresh
+            useCache: !forceRefresh, // Explicitly bypass cache when forcing refresh
           },
         )
 
         if (response.success) {
+          console.log("Liked users response:", response.data)
           dispatch({ type: "SET_LIKED_USERS", payload: response.data || [] })
           // Mark likes as loaded
           likesLoadedRef.current = true
@@ -211,7 +211,7 @@ export const UserProvider = ({ children }) => {
         dispatch({ type: "SET_LIKES_LOADING", payload: false })
       }
     },
-    [user, state.likesLoading],
+    [user],
   )
 
   // Load likes when user is authenticated
@@ -417,7 +417,15 @@ export const UserProvider = ({ children }) => {
   const isUserLiked = useCallback(
     (userId) => {
       if (!state.likedUsers || !Array.isArray(state.likedUsers)) return false
-      return state.likedUsers.some((like) => like && like.recipient === userId)
+
+      // Ensure we're comparing strings
+      const userIdStr = typeof userId === "object" ? userId.toString() : userId
+
+      return state.likedUsers.some((like) => {
+        if (!like) return false
+        const recipientId = typeof like.recipient === "object" ? like.recipient.toString() : like.recipient
+        return recipientId === userIdStr
+      })
     },
     [state.likedUsers],
   )
@@ -445,7 +453,10 @@ export const UserProvider = ({ children }) => {
           })
         }
 
+        console.log(`Sending like request for user ${userId}`)
         const response = await apiService.post(`/users/${userId}/like`)
+        console.log(`Like response:`, response)
+
         if (response.success) {
           // Show success notification with heart icon
           toast.success(
@@ -461,17 +472,26 @@ export const UserProvider = ({ children }) => {
           }
 
           // Refresh likes to ensure consistency with server
-          setTimeout(() => getLikedUsers(true), 500)
+          // Use a timeout to allow the server to process the like
+          setTimeout(() => {
+            console.log("Refreshing likes after successful like")
+            getLikedUsers(true)
+          }, 500)
 
           return true
         } else {
-          // Revert optimistic update on error
-          dispatch({ type: "REMOVE_LIKED_USER", payload: userId })
+          // Don't revert optimistic update if the error is "Already liked"
+          // as this means the user is already liked, which is the desired state
+          if (response.error !== "Already liked") {
+            dispatch({ type: "REMOVE_LIKED_USER", payload: userId })
+          }
 
-          // Handle case where response is {success: false} with no error message
-          const errorMsg = response.error || "You've already liked this user"
-          toast.error(errorMsg)
-          return false
+          // Only show error toast if it's not "Already liked"
+          if (response.error !== "Already liked") {
+            toast.error(response.error || "Failed to like user")
+          }
+
+          return response.error === "Already liked"
         }
       } catch (err) {
         // Revert optimistic update on error
@@ -500,12 +520,19 @@ export const UserProvider = ({ children }) => {
         // Optimistic update - remove from liked users immediately
         dispatch({ type: "REMOVE_LIKED_USER", payload: userId })
 
+        console.log(`Sending unlike request for user ${userId}`)
         const response = await apiService.delete(`/users/${userId}/like`)
+        console.log(`Unlike response:`, response)
+
         if (response.success) {
           toast.info(`You unliked ${userName || "this user"}`)
 
           // Refresh likes to ensure consistency with server
-          setTimeout(() => getLikedUsers(true), 500)
+          // Use a timeout to allow the server to process the unlike
+          setTimeout(() => {
+            console.log("Refreshing likes after successful unlike")
+            getLikedUsers(true)
+          }, 500)
 
           return true
         } else {
@@ -558,6 +585,7 @@ export const UserProvider = ({ children }) => {
         isUserLiked,
         likeUser,
         unlikeUser,
+        getLikedUsers, // Add this line to expose the function
       }}
     >
       {children}
