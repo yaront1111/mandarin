@@ -7,17 +7,20 @@ class SocketService {
     this.initialized = false
     this.showConnectionToasts = true
     this.debugMode = import.meta.env.MODE !== "production"
+    this.eventListeners = new Map() // Keep track of all event listeners
   }
 
   /**
    * Initialize socket connection with a given userId and token.
    * @param {string} userId - User ID.
    * @param {string} token - Authentication token.
+   * @param {Object} options - Additional options.
+   * @returns {Object} - The socket object.
    */
   init(userId, token, options = {}) {
     if (this.initialized) {
       this._log("Socket service already initialized")
-      return
+      return this.socket
     }
 
     this._log("Initializing socket service")
@@ -27,11 +30,13 @@ class SocketService {
     // Attach event emitter to window for app-wide events
     window.socketService = this
 
-    // Add this to your socket event registration section
-    this.socket.on("peerIdExchange", (data) => {
-      console.log("Received peer ID exchange:", data)
-      // The event will be re-emitted to components that are listening
+    // Add reconnection listener to reset services that depend on socket
+    this.on("connect", () => {
+      this._log("Socket reconnected, dispatching reconnect event")
+      window.dispatchEvent(new CustomEvent("socketReconnected"))
     })
+
+    return this.socket
   }
 
   // ----------------------
@@ -60,6 +65,10 @@ class SocketService {
   disconnect() {
     this._log("Disconnecting socket")
     this.initialized = false
+
+    // Keep track of listeners to restore on reconnection
+    this.savedListeners = Array.from(this.eventListeners.entries())
+
     return this.socket.disconnect()
   }
 
@@ -70,7 +79,24 @@ class SocketService {
    * @returns {Function} - Unsubscribe function.
    */
   on(event, callback) {
-    return this.socket.on(event, callback)
+    // Keep track of this listener for potential reconnection scenarios
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, new Set())
+    }
+    this.eventListeners.get(event).add(callback)
+
+    const unsubscribe = this.socket.on(event, callback)
+
+    // Return enhanced unsubscribe function that also removes from our tracking
+    return () => {
+      if (this.eventListeners.has(event)) {
+        this.eventListeners.get(event).delete(callback)
+        if (this.eventListeners.get(event).size === 0) {
+          this.eventListeners.delete(event)
+        }
+      }
+      unsubscribe()
+    }
   }
 
   /**
@@ -80,6 +106,17 @@ class SocketService {
    */
   off(event, callback) {
     this.socket.off(event, callback)
+
+    // Also remove from our tracking
+    if (this.eventListeners.has(event) && callback) {
+      this.eventListeners.get(event).delete(callback)
+      if (this.eventListeners.get(event).size === 0) {
+        this.eventListeners.delete(event)
+      }
+    } else if (this.eventListeners.has(event) && !callback) {
+      // If no callback provided, remove all listeners for this event
+      this.eventListeners.delete(event)
+    }
   }
 
   /**
@@ -396,6 +433,120 @@ class SocketService {
    */
   setDebugMode(enable) {
     this.debugMode = enable
+  }
+
+  // ----------------------
+  // Photo Permission Methods
+  // ----------------------
+
+  /**
+   * Request access to a private photo
+   * @param {string} photoId - ID of the photo
+   * @param {string} ownerId - ID of the photo owner
+   * @returns {Promise<object>} Result of the request
+   */
+  requestPhotoAccess(photoId, ownerId) {
+    return new Promise((resolve, reject) => {
+      if (!this.isConnected()) {
+        return reject(new Error("Socket not connected"));
+      }
+
+      const requestId = `req-${photoId}-${this.socket.userId}`;
+
+      const handleSuccess = (response) => {
+        if (response.requestId === requestId) {
+          cleanup();
+          resolve(response);
+        }
+      };
+
+      const handleError = (error) => {
+        if (error.requestId === requestId) {
+          cleanup();
+          reject(new Error(error.error || "Permission request failed"));
+        }
+      };
+
+      const cleanup = () => {
+        this.socket.off("photoPermissionRequested", handleSuccess);
+        this.socket.off("photoPermissionError", handleError);
+      };
+
+      // Listen for response events
+      this.socket.on("photoPermissionRequested", handleSuccess);
+      this.socket.on("photoPermissionError", handleError);
+
+      // Emit the request
+      const success = this.socket.emit("requestPhotoPermission", { photoId, ownerId });
+
+      if (!success) {
+        cleanup();
+        reject(new Error("Failed to send permission request"));
+      }
+
+      // Timeout for the request
+      setTimeout(() => {
+        cleanup();
+        reject(new Error("Permission request timed out"));
+      }, 10000);
+    });
+  }
+
+  /**
+   * Respond to a photo permission request
+   * @param {string} permissionId - ID of the permission request
+   * @param {string} status - 'approved' or 'rejected'
+   * @returns {Promise<object>} Result of the response
+   */
+  respondToPhotoPermission(permissionId, status) {
+    return new Promise((resolve, reject) => {
+      if (!this.isConnected()) {
+        return reject(new Error("Socket not connected"));
+      }
+
+      if (!["approved", "rejected"].includes(status)) {
+        return reject(new Error("Invalid status. Must be 'approved' or 'rejected'."));
+      }
+
+      const requestId = `res-${permissionId}-${this.socket.userId}`;
+
+      const handleSuccess = (response) => {
+        if (response.requestId === requestId) {
+          cleanup();
+          resolve(response);
+        }
+      };
+
+      const handleError = (error) => {
+        if (error.requestId === requestId) {
+          cleanup();
+          reject(new Error(error.error || "Permission response failed"));
+        }
+      };
+
+      const cleanup = () => {
+        this.socket.off("photoPermissionResponded", handleSuccess);
+        this.socket.off("photoPermissionError", handleError);
+      };
+
+      // Listen for response events
+      this.socket.on("photoPermissionResponded", handleSuccess);
+      this.socket.on("photoPermissionError", handleError);
+
+      // Emit the response
+      const success = this.socket.emit("respondToPhotoPermission", { permissionId, status });
+
+      if (!success) {
+        cleanup();
+        reject(new Error("Failed to send permission response"));
+      }
+
+      // Timeout for the request
+      setTimeout(() => {
+        cleanup();
+        reject(new Error("Permission response timed out"));
+      }, 10000);
+    });
   }
 
   // ----------------------

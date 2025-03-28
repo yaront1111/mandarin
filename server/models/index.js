@@ -4,6 +4,7 @@ import Message from './Message.js';
 import Story from './Story.js';
 import PhotoPermission from './PhotoPermission.js';
 import Like from './Like.js';
+export { default as Notification } from "./Notification.js";
 
 // Export individual models
 export {

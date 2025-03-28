@@ -1,4 +1,4 @@
-// middleware/auth.js - Enhanced with ES modules, improved error handling and security
+// middleware/auth.js - Enhanced with ES modules, improved error handling, security and socket support
 import jwt from "jsonwebtoken"
 import { User } from "../models/index.js"
 import config from "../config.js"
@@ -12,6 +12,25 @@ import logger from "../logger.js"
  */
 const generateToken = (payload, expiresIn = config.JWT_EXPIRE) => {
   return jwt.sign(payload, config.JWT_SECRET, { expiresIn })
+}
+
+/**
+ * Generate a socket-specific token with shorter expiration
+ * @param {Object} payload - Data to encode in the token
+ * @returns {string} Socket JWT token
+ */
+const generateSocketToken = (payload) => {
+  // Socket tokens should have a shorter lifespan, but not too short
+  // This is a balance between security and usability
+  const socketPayload = {
+    ...payload,
+    purpose: 'socket', // Mark this as a socket token for easier identification
+    iat: Math.floor(Date.now() / 1000)
+  };
+
+  return jwt.sign(socketPayload, config.JWT_SECRET, {
+    expiresIn: config.SOCKET_TOKEN_EXPIRE || '24h'
+  });
 }
 
 /**
@@ -29,16 +48,132 @@ const verifyToken = (token) => {
 }
 
 /**
- * Verify socket token (used by socket connections)
+ * Verify socket token with enhanced error handling
  * @param {string} token - JWT token to verify
- * @returns {Object|null} Decoded token payload or null if invalid
+ * @returns {Object} Object containing success status and data or error
  */
 const verifySocketToken = (token) => {
   try {
-    return jwt.verify(token, config.JWT_SECRET)
+    if (!token) {
+      return {
+        success: false,
+        error: 'No token provided',
+        code: 'NO_TOKEN'
+      };
+    }
+
+    const decoded = jwt.verify(token, config.JWT_SECRET);
+
+    return {
+      success: true,
+      data: decoded
+    };
   } catch (error) {
-    logger.debug(`Socket token verification failed: ${error.message}`)
-    return null
+    // Handle specific JWT errors with appropriate responses
+    if (error.name === 'TokenExpiredError') {
+      logger.debug(`Socket token expired: ${error.message}`);
+      return {
+        success: false,
+        error: 'Your session has expired',
+        code: 'TOKEN_EXPIRED'
+      };
+    } else if (error.name === 'JsonWebTokenError') {
+      logger.debug(`Invalid socket token: ${error.message}`);
+      return {
+        success: false,
+        error: 'Invalid authentication token',
+        code: 'INVALID_TOKEN'
+      };
+    } else {
+      logger.error(`Socket token verification error: ${error.message}`);
+      return {
+        success: false,
+        error: 'Authentication error',
+        code: 'AUTH_ERROR'
+      };
+    }
+  }
+}
+
+/**
+ * Authenticate socket connection
+ * @param {Object} socket - Socket.io socket object
+ * @param {Object} data - Authentication data from client
+ * @returns {Promise<Object>} Auth result with user if successful
+ */
+const authenticateSocket = async (socket, data) => {
+  try {
+    // Check for token in data or headers
+    const token = data?.token || socket.handshake.auth?.token ||
+                  socket.handshake.headers?.authorization?.split(' ')[1] || null;
+
+    if (!token) {
+      logger.debug(`Socket auth failed: No token provided`);
+      return {
+        success: false,
+        error: 'Authentication required',
+        code: 'NO_TOKEN'
+      };
+    }
+
+    // Verify the token
+    const verification = verifySocketToken(token);
+    if (!verification.success) {
+      return verification; // Just return the error result
+    }
+
+    const decoded = verification.data;
+    let userId = decoded.id || decoded.userId || (decoded.user && decoded.user._id);
+
+    if (!userId) {
+      logger.debug(`Socket auth failed: No user ID in token`);
+      return {
+        success: false,
+        error: 'Invalid token format',
+        code: 'INVALID_TOKEN_FORMAT'
+      };
+    }
+
+    // Find the user
+    const user = await User.findById(userId).select('+version');
+
+    if (!user) {
+      logger.debug(`Socket auth failed: User not found - ID: ${userId}`);
+      return {
+        success: false,
+        error: 'User not found',
+        code: 'USER_NOT_FOUND'
+      };
+    }
+
+    // Check token version if available (for token invalidation)
+    if (user.version && decoded.version && user.version !== decoded.version) {
+      logger.debug(`Socket token version mismatch: ${decoded.version} vs ${user.version}`);
+      return {
+        success: false,
+        error: 'Session is no longer valid',
+        code: 'TOKEN_REVOKED'
+      };
+    }
+
+    // Auth success
+    return {
+      success: true,
+      user: {
+        _id: user._id.toString(),
+        id: user._id.toString(),
+        email: user.email,
+        nickname: user.nickname || user.name,
+        role: user.role
+      }
+    };
+  } catch (error) {
+    logger.error(`Socket authentication error: ${error.message}`, { stack: error.stack });
+    return {
+      success: false,
+      error: 'Authentication error',
+      code: 'AUTH_ERROR'
+    };
   }
 }
 
@@ -146,7 +281,6 @@ const protect = async (req, res, next) => {
   }
 }
 
-// Add a new middleware to enhance the protect middleware with better ID handling
 /**
  * Enhanced protection middleware that ensures consistent user ID handling
  * @param {Object} req - Express request object
@@ -271,11 +405,13 @@ const optionalAuth = async (req, res, next) => {
   }
 }
 
-// Export the new middleware
+// Export all functions
 export {
   generateToken,
+  generateSocketToken,
   verifyToken,
   verifySocketToken,
+  authenticateSocket,
   protect,
   enhancedProtect,
   restrictTo,

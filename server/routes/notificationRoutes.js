@@ -125,7 +125,139 @@ router.put(
     }
   })
 );
+/**
+ * @route   POST /api/notifications/create-test
+ * @desc    Create a test notification for development
+ * @access  Private
+ */
+router.post(
+  "/create-test",
+  protect,
+  asyncHandler(async (req, res) => {
+    try {
+      const { type = "system" } = req.body;
 
+      // Validate type is allowed
+      if (!["message", "like", "match", "photoRequest", "photoResponse", "story", "system"].includes(type)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid notification type"
+        });
+      }
+
+      // Create a new notification
+      const notification = new Notification({
+        recipient: req.user._id,
+        type: type,
+        sender: req.user._id, // self-reference for test
+        content: `Test ${type} notification created at ${new Date().toLocaleTimeString()}`,
+        read: false,
+        createdAt: new Date()
+      });
+
+      await notification.save();
+      logger.info(`Created test notification (${type}) for user ${req.user._id}`);
+
+      // If socket server is available, emit the notification
+      if (req.app.io) {
+        const userConnections = req.app.io.userConnectionsMap;
+        const userId = req.user._id.toString();
+
+        if (userConnections && userConnections.has(userId)) {
+          const notificationPayload = {
+            _id: notification._id,
+            type: notification.type,
+            title: `Test ${type} Notification`,
+            message: notification.content,
+            sender: {
+              _id: req.user._id,
+              nickname: req.user.nickname || "Test User"
+            },
+            read: false,
+            createdAt: notification.createdAt
+          };
+
+          userConnections.get(userId).forEach(socketId => {
+            req.app.io.to(socketId).emit("notification", notificationPayload);
+          });
+
+          logger.info(`Emitted test notification to ${userConnections.get(userId).size} socket(s)`);
+        }
+      }
+
+      res.status(201).json({
+        success: true,
+        data: notification
+      });
+    } catch (err) {
+      logger.error(`Error creating test notification: ${err.message}`);
+      res.status(500).json({
+        success: false,
+        error: "Server error while creating test notification",
+        details: err.message
+      });
+    }
+  })
+);
+
+/**
+ * @route   GET /api/notifications/debug
+ * @desc    Get debug info about notifications
+ * @access  Private
+ */
+router.get(
+  "/debug",
+  protect,
+  asyncHandler(async (req, res) => {
+    try {
+      // Check overall notification counts
+      const totalNotifications = await Notification.countDocuments();
+      const userNotifications = await Notification.countDocuments({ recipient: req.user._id });
+
+      // Get notification model info
+      const modelInfo = Notification.schema.obj;
+      const modelName = Notification.modelName;
+
+      // Sample notification if any exist
+      let sampleNotification = null;
+      if (userNotifications > 0) {
+        sampleNotification = await Notification.findOne({ recipient: req.user._id }).lean();
+      }
+
+      // Socket info
+      const socketInfo = {
+        ioAvailable: !!req.app.io,
+        userConnections: req.app.io ?
+          (req.app.io.userConnectionsMap?.has(req.user._id.toString()) ?
+            req.app.io.userConnectionsMap.get(req.user._id.toString()).size : 0) :
+          'No socket available'
+      };
+
+      res.status(200).json({
+        success: true,
+        debug: {
+          totalNotifications,
+          userNotifications,
+          modelInfo,
+          modelName,
+          sampleNotification,
+          socketInfo,
+          user: {
+            id: req.user._id,
+            hasSettings: !!req.user.settings
+          }
+        }
+      });
+    } catch (err) {
+      logger.error(`Error getting notification debug info: ${err.message}`);
+      res.status(500).json({
+        success: false,
+        error: "Server error while getting notification debug info",
+        details: err.message
+      });
+    }
+  })
+);
 /**
  * @route   PUT /api/notifications/read-all
  * @desc    Mark all notifications as read for the current user

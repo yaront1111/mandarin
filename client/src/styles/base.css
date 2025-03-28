@@ -411,6 +411,9 @@ img {
 
 .rounded-full {
   border-radius: 9999px;
+  text-align: center;
+  padding-top: 5px;
+  padding-bottom: 5px;
 }
 
 .overflow-hidden {
