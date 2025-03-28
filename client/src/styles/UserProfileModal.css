@@ -486,20 +486,6 @@
   margin: 0;
 }
 
-.interests-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-}
-
-.interest-tag {
-  display: inline-block;
-  padding: 5px 12px;
-  border-radius: 20px;
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
 .show-more-interests {
   background: none;
   border: none;

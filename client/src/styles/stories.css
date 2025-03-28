@@ -1246,10 +1246,6 @@
     font-size: 22px;
   }
 
-  .stories-user-avatar {
-    width: 30px;
-    height: 30px;
-  }
 
   .stories-username {
     font-size: 13px;
@@ -1438,4 +1434,14 @@
 
 .dark .stories-progress-bar {
   background-color: rgba(255, 255, 255, 0.2);
+}
+
+.story-thumbnail-avatar { /* Renamed from .story-avatar */
+  width: 100%;
+  height: 100%;
+  border-radius: 50% !important;
+  object-fit: cover;
+  border: 2px solid white;
+  background-color: var(--light, #f2f2f2);
+  overflow: hidden;
 }

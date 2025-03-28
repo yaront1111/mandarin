@@ -21,6 +21,45 @@ if (process.env.REDIS_URL) {
 }
 
 /**
+ * Validates users who are marked as online but have no active connections
+ * @param {Object} io - Socket.IO server instance
+ * @param {Map} userConnections - Map of user connections
+ */
+const validateOnlineUsers = async (io, userConnections) => {
+  try {
+    // Find all users currently marked as online in database
+    const onlineUsers = await User.find({ isOnline: true }).select('_id lastActive');
+
+    let updatedCount = 0;
+    const now = Date.now();
+
+    // Check each online user
+    for (const user of onlineUsers) {
+      const userId = user._id.toString();
+
+      // If user has no socket connections OR hasn't been active recently
+      if (!userConnections.has(userId) || (now - user.lastActive > 10 * 60 * 1000)) {
+        // Update them to offline
+        await User.findByIdAndUpdate(userId, {
+          isOnline: false,
+          lastActive: now
+        });
+
+        // Notify other users
+        io.emit("userOffline", { userId, timestamp: now });
+        updatedCount++;
+      }
+    }
+
+    if (updatedCount > 0) {
+      logger.info(`Fixed ${updatedCount} users who were incorrectly marked as online`);
+    }
+  } catch (error) {
+    logger.error(`Error validating online users: ${error.message}`);
+  }
+};
+
+/**
  * Initialize Socket.IO server with all handlers and middleware
  * @param {Object} server - HTTP server instance
  * @returns {Object} - Socket.IO server instance
@@ -159,6 +198,10 @@ const initSocketServer = async (server) => {
     }
   });
 
+  // Run the online user validation immediately at server startup
+  logger.info("Running initial online status validation...");
+  await validateOnlineUsers(io, userConnections);
+
   // Periodic cleanup for inactive connections
   setInterval(() => {
     const now = Date.now();
@@ -184,6 +227,12 @@ const initSocketServer = async (server) => {
         .catch((err) => logger.error(`Error during cleanup for user ${userId}: ${err.message}`));
     }
   }, 5 * 60 * 1000);
+
+  // Periodic validation of online status (every 15 minutes)
+  setInterval(() => {
+    logger.info("Running periodic online status validation...");
+    validateOnlineUsers(io, userConnections);
+  }, 15 * 60 * 1000); // Every 15 minutes
 
   return io;
 };

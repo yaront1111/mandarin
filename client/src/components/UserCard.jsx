@@ -1,219 +1,572 @@
-// client/src/components/UserCard.jsx
-"use client";
-
-import { useState, useCallback, useRef, memo } from "react"; // Added memo
+import React, { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { HeartIcon, ChatBubbleLeftIcon, UserIcon, MapPinIcon } from "@heroicons/react/24/outline"; // Changed MapMarkerAltIcon
-import { HeartIcon as HeartIconSolid } from "@heroicons/react/24/solid";
-import { normalizePhotoUrl } from "../utils/index.js";
+import PropTypes from "prop-types";
+import {
+  FaHeart,
+  FaComment,
+  FaUser,
+  FaMapMarkerAlt,
+  FaUserCircle,
+  FaUsers,
+  FaClock
+} from "react-icons/fa";
+
+// Constants
+const TAG_TYPES = {
+  LOOKING_FOR: 'lookingFor',
+  INTO: 'into',
+  INTEREST: 'interest'
+};
 
 /**
- * UserCard component - receives liked status as a prop.
+ * UserCard Component - Displays user information in grid or list view
  */
-const UserCard = memo(({ user, isLiked, onLike, viewMode = "grid", onMessage, onClick }) => {
-  // Note: Removed internal call to useUser().isUserLiked
-  const navigate = useNavigate();
-  const [imageLoaded, setImageLoaded] = useState(false);
+const UserCard = ({
+  user,
+  isLiked = false,
+  onLike,
+  viewMode = "grid",
+  onMessage,
+  onClick,
+  showExtendedDetails = true,
+  unreadMessageCount = 0,
+  hasUnreadMessages = false
+}) => {
+  // Component state
   const [imageError, setImageError] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
+  const [showAllTags, setShowAllTags] = useState(false);
+  const [showMoreSections, setShowMoreSections] = useState(false);
 
-  if (!user) return null;
+  // Navigation
+  const navigate = useNavigate();
 
-  // Use a stable ref for the photo URL getter function
-  const getProfilePhotoUrlRef = useRef(() => normalizePhotoUrl(user?.photos?.[0]?.url));
-  useEffect(() => {
-      getProfilePhotoUrlRef.current = () => normalizePhotoUrl(user?.photos?.[0]?.url);
-  }, [user?.photos]);
-  const getProfilePhotoUrl = getProfilePhotoUrlRef.current;
+  // Helper functions
+  const normalizePhotoUrl = useCallback((url) => {
+    if (!url) return null;
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
+    return url.startsWith("/") ? url : `/${url}`;
+  }, []);
 
+  const getTagClass = useCallback((type) => {
+    switch(type) {
+      case TAG_TYPES.LOOKING_FOR: return 'looking-for-tag';
+      case TAG_TYPES.INTO: return 'into-tag';
+      case TAG_TYPES.INTEREST: return 'interest-tag';
+      default: return 'interest-tag';
+    }
+  }, []);
 
-  const handleCardClick = () => {
-    // Use the onClick prop if provided (for modal opening)
-    // otherwise navigate to the full profile page
+  // Event handlers
+  const handleCardClick = useCallback(() => {
     if (onClick) {
       onClick();
     } else {
       navigate(`/user/${user._id}`);
     }
-  };
+  }, [onClick, navigate, user?._id]);
 
-  // Use the onLike prop passed from Dashboard
-  const handleLikeClick = (e) => {
-    e.stopPropagation(); // Prevent card click navigation/modal opening
+  const handleLikeClick = useCallback((e) => {
+    e.stopPropagation();
     if (onLike) {
-      onLike(user._id, user.nickname); // Call the handler passed from parent
+      onLike(user._id, user.nickname);
     }
-  };
+  }, [onLike, user?._id, user?.nickname]);
 
-  // Use the onMessage prop passed from Dashboard
-  const handleMessageClick = (e) => {
+  const handleMessageClick = useCallback((e) => {
     e.stopPropagation();
     if (onMessage) {
-      onMessage(e, user); // Pass event and user if needed by handler in Dashboard
+      onMessage(e, user);
     }
-  };
+  }, [onMessage, user]);
 
-  const handleImageLoad = () => setImageLoaded(true);
-  const handleImageError = () => { setImageError(true); setImageLoaded(true); };
+  const toggleShowAllTags = useCallback((e) => {
+    e?.stopPropagation();
+    setShowAllTags(prev => !prev);
+  }, []);
 
-  // Helper to format subtitle
-  const getSubtitle = () => {
+  const toggleShowMoreSections = useCallback((e) => {
+    e?.stopPropagation();
+    setShowMoreSections(prev => !prev);
+  }, []);
+
+  // Memoized data calculations
+  const profilePhotoUrl = useMemo(() => {
+    if (!user?.photos?.length) return null;
+    return normalizePhotoUrl(user.photos[0]?.url);
+  }, [user?.photos, normalizePhotoUrl]);
+
+  const subtitle = useMemo(() => {
+    if (!user?.details) return "";
+    const { age, gender, location } = user.details;
     const parts = [];
-    if (user.details?.age) parts.push(`${user.details.age}`);
-    if (user.details?.location) parts.push(user.details.location);
-    // Removed "I am a..." as it might make the card too busy
+    if (age) parts.push(age);
+    if (gender) parts.push(gender);
+    if (location) parts.push(location);
     return parts.join(" • ");
-  };
+  }, [user?.details]);
 
-  const renderPlaceholder = () => (
-     <div className="absolute inset-0 bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-       <UserIcon className="h-12 w-12 text-gray-300 dark:text-gray-500" />
-     </div>
+  const extendedDetails = useMemo(() => {
+    if (!user?.details) return {
+      status: null,
+      identity: null
+    };
+
+    const details = {
+      status: null,
+      identity: null
+    };
+
+    const { maritalStatus, iAm } = user.details;
+
+    if (maritalStatus) {
+      details.status = maritalStatus;
+    }
+
+    if (iAm) {
+      details.identity = iAm;
+    }
+
+    return details;
+  }, [user?.details]);
+
+  const tags = useMemo(() => {
+    if (!user?.details) return [];
+
+    const allTags = {
+      lookingFor: [],
+      into: [],
+      interests: []
+    };
+
+    const { lookingFor = [], intoTags = [], interests = [] } = user.details;
+
+    lookingFor.forEach(item => allTags.lookingFor.push(item));
+    intoTags.forEach(item => allTags.into.push(item));
+    interests.forEach(item => allTags.interests.push(item));
+
+    return allTags;
+  }, [user?.details]);
+
+  // Last active formatting
+  const lastActiveText = useMemo(() => {
+    // If user is currently online, show "Active now" regardless of lastActive timestamp
+    if (user?.isOnline) return "Active now";
+
+    if (!user?.lastActive) return "Never active";
+
+    // Create a simple last active text (could be expanded with proper date formatting)
+    const lastActive = new Date(user.lastActive);
+    const now = new Date();
+    const diffHours = Math.floor((now - lastActive) / (1000 * 60 * 60));
+
+    if (diffHours < 1) return "Active just now";
+    if (diffHours < 24) return `Active ${diffHours}h ago`;
+
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `Active ${diffDays}d ago`;
+
+    return `Active ${lastActive.toLocaleDateString()}`;
+  }, [user?.lastActive, user?.isOnline]);
+
+  // Validation
+  if (!user) return null;
+
+  // Common action buttons for both grid and list view
+  const renderActionButtons = () => (
+    <>
+      <button
+        className={`card-action-button like ${isLiked ? "active" : ""}`}
+        onClick={handleLikeClick}
+        aria-label={`${isLiked ? "Unlike" : "Like"} ${user.nickname}`}
+      >
+        <FaHeart />
+      </button>
+      <button
+        className="card-action-button message"
+        onClick={handleMessageClick}
+        aria-label={`Message ${user.nickname}`}
+      >
+        <FaComment />
+      </button>
+    </>
   );
 
-  // --- GRID VIEW ---
+  // Common photo rendering for both views
+  const renderUserPhoto = (containerClass, imageClass = "") => (
+    <div className={containerClass}>
+      {user.photos?.length > 0 ? (
+        <>
+          <img
+            src={profilePhotoUrl || "/placeholder.svg"}
+            alt={user.nickname}
+            onError={() => setImageError(true)}
+            style={{ display: imageError ? "none" : "block" }}
+            className={imageClass}
+            loading="lazy"
+          />
+          {imageError && (
+            <div className="avatar-placeholder">
+              <FaUser />
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="avatar-placeholder">
+          <FaUser />
+        </div>
+      )}
+      {user.isOnline && <div className="online-indicator"></div>}
+    </div>
+  );
+
+  // Rendering based on view mode
   if (viewMode === "grid") {
     return (
-      <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all duration-300 ease-in-out transform hover:-translate-y-1 h-full overflow-hidden border border-gray-200 dark:border-gray-700 flex flex-col cursor-pointer" // Added flex flex-col and cursor
-        onClick={handleCardClick}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        role="link" // Indicate it's interactive like a link
-        tabIndex={0} // Make it focusable
-        aria-label={`View profile for ${user.nickname || 'User'}`}
-      >
-        <div className="aspect-w-1 aspect-h-1 relative">
-          {!imageLoaded && !imageError && renderPlaceholder()}
-          {imageError ? (
-             <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-700">
-               <UserIcon className="h-16 w-16 text-gray-400 dark:text-gray-500" />
-             </div>
-          ) : (
-            <img
-              src={getProfilePhotoUrl() || "/placeholder.svg"}
-              alt={`${user.nickname || "User"}'s profile`}
-              className={`w-full h-full object-cover transition-all duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-              style={{ transform: isHovered ? "scale(1.05)" : "scale(1)" }}
-              onLoad={handleImageLoad}
-              onError={handleImageError}
-              loading="lazy" // Add lazy loading
-            />
-          )}
-          {/* Gradient overlay */}
-          <div className={`absolute inset-0 bg-gradient-to-t from-black/60 to-transparent transition-opacity duration-300 ${isHovered ? 'opacity-80' : 'opacity-0'}`} />
-          {/* Online indicator */}
-          {user.isOnline && ( <div className="absolute top-2 right-2 z-10"><span className="flex h-3 w-3"><span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span></span></div> )}
-        </div>
+      <div className="user-card" onClick={handleCardClick}>
+        {/* User Photo */}
+        {renderUserPhoto("user-card-photo")}
 
-        <div className="p-4 flex flex-col flex-grow"> {/* Added flex-grow */}
-          <div className="flex justify-between items-start mb-1">
-             <h3 className="font-medium text-gray-900 dark:text-white text-lg truncate">
-               {user.nickname || "User"}
-               {user.details?.age ? `, ${user.details.age}` : ""}
-             </h3>
+        {/* User Info */}
+        <div className="user-card-info">
+          <div className="d-flex justify-content-between align-items-center mb-1">
+            <h3 className="user-card-name">
+              {user.nickname}
+              {user.details?.age && <span>, {user.details.age}</span>}
+            </h3>
+            {hasUnreadMessages && (
+              <span className="unread-badge">{unreadMessageCount}</span>
+            )}
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center mb-2 truncate">
-             {user.details?.location && <MapPinIcon className="h-4 w-4 mr-1 inline-block flex-shrink-0" />}
-             {getSubtitle()}
+
+          {/* Last Active Status */}
+          <p className="user-card-last-active">
+            <FaClock style={{ marginRight: '4px', fontSize: '0.8em', opacity: 0.7 }} />
+            {lastActiveText}
           </p>
 
-           {/* Interests (Optional - can make card crowded) */}
-           {user.details?.interests?.length > 0 && (
-             <div className="mt-1 flex flex-wrap gap-1 mb-3">
-               {user.details.interests.slice(0, 2).map((interest) => (
-                 <span key={interest} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                   {interest}
-                 </span>
-               ))}
-               {user.details.interests.length > 2 && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-600 dark:bg-gray-700 dark:text-gray-300">+{user.details.interests.length - 2}</span>}
-             </div>
-           )}
+          <p className="location">
+            <FaMapMarkerAlt className="location-icon" />
+            {user.details?.location || "Unknown location"}
+          </p>
 
-          {/* Action Buttons - Pushed to bottom */}
-          <div className="mt-auto flex space-x-2 pt-3"> {/* mt-auto pushes to bottom */}
-            <button
-              onClick={handleLikeClick}
-              className={`flex-1 flex items-center justify-center py-2 px-3 rounded-lg transition-colors duration-200 ${
-                isLiked // Use the isLiked prop here
-                  ? "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400"
-                  : "bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900/40 dark:hover:text-red-400"
-              }`}
-              aria-label={isLiked ? "Unlike" : "Like"}
-            >
-              {isLiked ? <HeartIconSolid className="h-5 w-5" /> : <HeartIcon className="h-5 w-5" />}
-            </button>
-            <button
-              onClick={handleMessageClick}
-              className="flex-1 flex items-center justify-center py-2 px-3 rounded-lg bg-gray-100 hover:bg-blue-100 text-gray-500 hover:text-blue-600 transition-colors duration-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-blue-900/40 dark:hover:text-blue-400"
-              aria-label="Message"
-            >
-              <ChatBubbleLeftIcon className="h-5 w-5" />
-            </button>
+          {/* Extended Details Section */}
+          {showExtendedDetails && (extendedDetails.status || extendedDetails.identity) && (
+            <div className="user-tags-container">
+              {extendedDetails.status && (
+                <div className="tag-category">
+                  <h4 className="tag-category-title">Status</h4>
+                  <div className="user-interests">
+                    <span className="interest-tag status-tag">
+                      {extendedDetails.status}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {extendedDetails.identity && (
+                <div className="tag-category">
+                  <h4 className="tag-category-title">I am</h4>
+                  <div className="user-interests">
+                    <span className={`interest-tag identity-tag ${
+                      extendedDetails.identity.toLowerCase().includes('woman') ? 'identity-woman' :
+                      extendedDetails.identity.toLowerCase().includes('man') ? 'identity-man' :
+                      extendedDetails.identity.toLowerCase().includes('couple') ? 'identity-couple' : ''
+                    }`}>
+                      {extendedDetails.identity}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* User Tags */}
+          {showExtendedDetails && (
+            <div className="user-tags-container">
+              {/* Interests always visible */}
+              {tags.interests.length > 0 && (
+                <div className="tag-category">
+                  <h4 className="tag-category-title">Interests</h4>
+                  <div className="user-interests">
+                    {(showAllTags ? tags.interests : tags.interests.slice(0, 3)).map((tag, idx) => (
+                      <span key={`interest-${idx}`} className="interest-tag">
+                        {tag}
+                      </span>
+                    ))}
+                    {tags.interests.length > 3 && !showAllTags && (
+                      <span className="interest-more" onClick={toggleShowAllTags}>
+                        +{tags.interests.length - 3}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Show More/Less Toggle for additional sections */}
+              {(tags.lookingFor.length > 0 || tags.into.length > 0) && (
+                <div className="tags-toggle">
+                  <span
+                    className="tags-toggle-btn"
+                    onClick={toggleShowMoreSections}
+                  >
+                    {showMoreSections ? "Show less" : "Show more"}
+                  </span>
+                </div>
+              )}
+
+              {/* Looking For and Into sections - only visible when showMoreSections is true */}
+              {showMoreSections && (
+                <>
+                  {tags.lookingFor.length > 0 && (
+                    <div className="tag-category">
+                      <h4 className="tag-category-title">Looking for</h4>
+                      <div className="user-interests">
+                        {(showAllTags ? tags.lookingFor : tags.lookingFor.slice(0, 3)).map((tag, idx) => (
+                          <span key={`lookingFor-${idx}`} className="interest-tag looking-for-tag">
+                            {tag}
+                          </span>
+                        ))}
+                        {tags.lookingFor.length > 3 && !showAllTags && (
+                          <span className="interest-more" onClick={toggleShowAllTags}>
+                            +{tags.lookingFor.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {tags.into.length > 0 && (
+                    <div className="tag-category">
+                      <h4 className="tag-category-title">Into</h4>
+                      <div className="user-interests">
+                        {(showAllTags ? tags.into : tags.into.slice(0, 3)).map((tag, idx) => (
+                          <span key={`into-${idx}`} className="interest-tag into-tag">
+                            {tag}
+                          </span>
+                        ))}
+                        {tags.into.length > 3 && !showAllTags && (
+                          <span className="interest-more" onClick={toggleShowAllTags}>
+                            +{tags.into.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Global More/Less Toggle for all tags */}
+                  {showMoreSections && (tags.lookingFor.length > 3 || tags.into.length > 3 || tags.interests.length > 3) && (
+                    <div className="tags-toggle">
+                      <span
+                        className="tags-toggle-btn"
+                        onClick={toggleShowAllTags}
+                      >
+                        {showAllTags ? "Show less tags" : "Show all tags"}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="user-actions">
+            {renderActionButtons()}
           </div>
         </div>
       </div>
     );
   }
 
-  // --- LIST VIEW ---
-  // (Assuming List View structure is similar, just apply the isLiked prop logic)
+  // List View Rendering
   return (
-     <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden cursor-pointer transition-all duration-300 transform hover:-translate-y-1 flex flex-row" // Use flex-row for list
-        onClick={handleCardClick}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        role="link" tabIndex={0} aria-label={`View profile for ${user.nickname || 'User'}`}
-     >
-        {/* Image container fixed width */}
-        <div className="relative w-32 h-32 flex-shrink-0"> {/* Adjust size as needed */}
-            {!imageLoaded && !imageError && renderPlaceholder()}
-            {imageError ? (
-                <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-700"><UserIcon className="h-10 w-10 text-gray-400 dark:text-gray-500" /></div>
-            ) : (
-                <img src={getProfilePhotoUrl() || "/placeholder.svg"} alt={`${user.nickname}'s profile`} className={`w-full h-full object-cover transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`} onLoad={handleImageLoad} onError={handleImageError} loading="lazy"/>
+    <div className="user-list-item" onClick={handleCardClick}>
+      {/* User Photo - List View */}
+      {renderUserPhoto("user-list-photo-container", "user-list-photo")}
+
+      {/* User Info - List View */}
+      <div className="user-list-info">
+        <div className="user-list-header">
+          <h3 className="user-list-name">
+            {user.nickname}
+            {user.details?.age && <span>, {user.details.age}</span>}
+          </h3>
+          {hasUnreadMessages && (
+            <span className="unread-badge">{unreadMessageCount}</span>
+          )}
+        </div>
+
+        {/* Last Active Status */}
+        <p className="user-list-last-active">
+          <FaClock style={{ marginRight: '4px', fontSize: '0.8em', opacity: 0.7 }} />
+          {lastActiveText}
+        </p>
+
+        <p className="location">
+          <FaMapMarkerAlt className="location-icon" />
+          {user.details?.location || "Unknown location"}
+        </p>
+
+        {/* Extended Details Section - List View */}
+        {showExtendedDetails && (extendedDetails.status || extendedDetails.identity) && (
+          <div className="user-tags-container list-view">
+            {extendedDetails.status && (
+              <div className="tag-category">
+                <h4 className="tag-category-title">Status</h4>
+                <div className="user-interests">
+                  <span className="interest-tag status-tag">
+                    {extendedDetails.status}
+                  </span>
+                </div>
+              </div>
             )}
-            {user.isOnline && ( <div className="absolute top-1 right-1 z-10"><span className="flex h-2.5 w-2.5"><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span></span></div> )}
-        </div>
 
-        <div className="p-3 flex-1 flex flex-col justify-between">
-            <div>
-                <h3 className="font-medium text-gray-900 dark:text-white text-base truncate">
-                    {user.nickname || "User"}{user.details?.age ? `, ${user.details.age}` : ""}
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center mb-1 truncate">
-                    {user.details?.location && <MapPinIcon className="h-3 w-3 mr-1 inline-block flex-shrink-0" />}
-                    {getSubtitle()}
-                </p>
-                {/* Optional: Interests or Bio snippet */}
-                {user.details?.bio && <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-1 mb-2">{user.details.bio}</p>}
-            </div>
+            {extendedDetails.identity && (
+              <div className="tag-category">
+                <h4 className="tag-category-title">I am</h4>
+                <div className="user-interests">
+                  <span className={`interest-tag identity-tag ${
+                    extendedDetails.identity.toLowerCase().includes('woman') ? 'identity-woman' :
+                    extendedDetails.identity.toLowerCase().includes('man') ? 'identity-man' :
+                    extendedDetails.identity.toLowerCase().includes('couple') ? 'identity-couple' : ''
+                  }`}>
+                    {extendedDetails.identity}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-            {/* Action Buttons */}
-            <div className="flex space-x-2 mt-1">
-                <button
-                    onClick={handleLikeClick}
-                    className={`flex-1 flex items-center justify-center py-1.5 px-2 rounded-md text-xs transition-colors duration-200 ${
-                        isLiked // Use prop
-                        ? "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400"
-                        : "bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900/30 dark:hover:text-red-400"
-                    }`} aria-label={isLiked ? "Unlike" : "Like"}
-                 >
-                    {isLiked ? <HeartIconSolid className="h-4 w-4" /> : <HeartIcon className="h-4 w-4" />}
-                 </button>
-                 <button
-                    onClick={handleMessageClick}
-                    className="flex-1 flex items-center justify-center py-1.5 px-2 rounded-md text-xs bg-gray-100 hover:bg-blue-50 text-gray-500 hover:text-blue-600 transition-colors duration-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-blue-900/30 dark:hover:text-blue-400"
-                    aria-label="Message"
-                 >
-                    <ChatBubbleLeftIcon className="h-4 w-4" />
-                 </button>
-            </div>
-        </div>
-     </div>
-   );
+        {/* User Tags - List View */}
+        {showExtendedDetails && (
+          <div className="user-tags-container list-view">
+            {/* Interests are always visible */}
+            {tags.interests.length > 0 && (
+              <div className="tag-category">
+                <h4 className="tag-category-title">Interests</h4>
+                <div className="user-interests">
+                  {(showAllTags ? tags.interests : tags.interests.slice(0, 2)).map((tag, idx) => (
+                    <span key={`interest-${idx}`} className="interest-tag">
+                      {tag}
+                    </span>
+                  ))}
+                  {tags.interests.length > 2 && !showAllTags && (
+                    <span className="interest-more" onClick={toggleShowAllTags}>
+                      +{tags.interests.length - 2}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
-});
+            {/* Show More/Less Toggle for additional sections */}
+            {(tags.lookingFor.length > 0 || tags.into.length > 0) && (
+              <div className="tags-toggle">
+                <span
+                  className="tags-toggle-btn"
+                  onClick={toggleShowMoreSections}
+                >
+                  {showMoreSections ? "Show less" : "Show more"}
+                </span>
+              </div>
+            )}
 
-export default UserCard;
+            {/* Looking For and Into sections - only visible when showMoreSections is true */}
+            {showMoreSections && (
+              <>
+                {tags.lookingFor.length > 0 && (
+                  <div className="tag-category">
+                    <h4 className="tag-category-title">Looking for</h4>
+                    <div className="user-interests">
+                      {(showAllTags ? tags.lookingFor : tags.lookingFor.slice(0, 2)).map((tag, idx) => (
+                        <span key={`lookingFor-${idx}`} className="interest-tag looking-for-tag">
+                          {tag}
+                        </span>
+                      ))}
+                      {tags.lookingFor.length > 2 && !showAllTags && (
+                        <span className="interest-more" onClick={toggleShowAllTags}>
+                          +{tags.lookingFor.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {tags.into.length > 0 && (
+                  <div className="tag-category">
+                    <h4 className="tag-category-title">Into</h4>
+                    <div className="user-interests">
+                      {(showAllTags ? tags.into : tags.into.slice(0, 2)).map((tag, idx) => (
+                        <span key={`into-${idx}`} className="interest-tag into-tag">
+                          {tag}
+                        </span>
+                      ))}
+                      {tags.into.length > 2 && !showAllTags && (
+                        <span className="interest-more" onClick={toggleShowAllTags}>
+                          +{tags.into.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Global More/Less Toggle for all tags */}
+                {(tags.lookingFor.length > 2 || tags.into.length > 2 || tags.interests.length > 2) && (
+                  <div className="tags-toggle">
+                    <span
+                      className="tags-toggle-btn"
+                      onClick={toggleShowAllTags}
+                    >
+                      {showAllTags ? "Show less tags" : "Show all tags"}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Action Buttons - List View */}
+      <div className="user-list-actions">
+        {renderActionButtons()}
+      </div>
+    </div>
+  );
+};
+
+// PropTypes for better type checking
+UserCard.propTypes = {
+  user: PropTypes.shape({
+    _id: PropTypes.string.isRequired,
+    nickname: PropTypes.string.isRequired,
+    isOnline: PropTypes.bool,
+    lastActive: PropTypes.string,
+    photos: PropTypes.arrayOf(
+      PropTypes.shape({
+        url: PropTypes.string
+      })
+    ),
+    details: PropTypes.shape({
+      age: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+      gender: PropTypes.string,
+      location: PropTypes.string,
+      maritalStatus: PropTypes.string,
+      iAm: PropTypes.string,
+      lookingFor: PropTypes.arrayOf(PropTypes.string),
+      intoTags: PropTypes.arrayOf(PropTypes.string),
+      interests: PropTypes.arrayOf(PropTypes.string)
+    })
+  }).isRequired,
+  isLiked: PropTypes.bool,
+  onLike: PropTypes.func,
+  viewMode: PropTypes.oneOf(["grid", "list"]),
+  onMessage: PropTypes.func,
+  onClick: PropTypes.func,
+  showExtendedDetails: PropTypes.bool,
+  unreadMessageCount: PropTypes.number,
+  hasUnreadMessages: PropTypes.bool
+};
+
+export default React.memo(UserCard);

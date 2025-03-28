@@ -170,7 +170,6 @@ const StoryCreator = ({ onClose, onSubmit }) => {
         onClose?.()
       } else {
         setError(response?.message || "Failed to create story")
-        toast.error(response?.message || "Failed to create story")
         // Don't close on error
       }
     } catch (error) {

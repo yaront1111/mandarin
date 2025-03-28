@@ -97,10 +97,6 @@ export const createStory = async (formData, onProgress) => {
     // This is a media upload
     const response = await apiService.upload(BASE_URL, formData, onProgress)
 
-    // Validate the response
-    if (!response.success && !response.data) {
-      throw new Error(response.message || "Failed to create story")
-    }
 
     // Handle new and old API response formats
     return {
@@ -112,7 +108,6 @@ export const createStory = async (formData, onProgress) => {
     console.error("Error creating story:", error)
     return {
       success: false,
-      message: error.message || "Failed to create story",
     }
   } finally {
     // Remove from pending requests after a short delay

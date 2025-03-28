@@ -1,36 +1,39 @@
-"use client"; //
+"use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"; //
-import { useNavigate } from "react-router-dom"; //
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  FaSearch, //
-  FaHeart, //
-  FaUserCircle, //
-  FaMapMarkerAlt, //
-  FaComments, //
-  FaThLarge, //
-  FaList, //
-  FaFilter, //
-  FaPlus, //
-  FaSpinner, //
-} from "react-icons/fa"; //
-import { toast } from "react-toastify"; //
-// Ensure contexts provide the necessary functions (like likeUser, unlikeUser, isUserLiked from UserContext)
-import { useAuth, useUser, useChat, useStories } from "../context"; //
-import EmbeddedChat from "../components/EmbeddedChat"; //
-import { Navbar } from "../components/LayoutComponents"; //
-import StoriesCarousel from "../components/Stories/StoriesCarousel"; //
-import StoriesViewer from "../components/Stories/StoriesViewer"; //
-import StoryCreator from "../components/Stories/StoryCreator"; //
-import UserProfileModal from "../components/UserProfileModal"; //
+  FaSearch,
+  FaThLarge,
+  FaList,
+  FaFilter,
+  FaPlus,
+  FaSpinner,
+} from "react-icons/fa";
+import { toast } from "react-toastify";
+import { useAuth, useUser, useChat, useStories } from "../context";
+import EmbeddedChat from "../components/EmbeddedChat";
+import { Navbar } from "../components/LayoutComponents";
+import StoriesCarousel from "../components/Stories/StoriesCarousel";
+import StoriesViewer from "../components/Stories/StoriesViewer";
+import StoryCreator from "../components/Stories/StoryCreator";
+import UserProfileModal from "../components/UserProfileModal";
+import UserCard from "../components/UserCard"; // Import the enhanced UserCard component
 
-const Dashboard = () => { //
-  const navigate = useNavigate(); //
-  const { user } = useAuth(); //
-  // Use the context hooks that provide like/unlike functionality
-  const { users, getUsers, loading, likeUser, unlikeUser, isUserLiked } = useUser(); //
-  const { unreadMessages } = useChat(); //
-  const { createStory } = useStories(); //
+const Dashboard = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const {
+    users,
+    getUsers,
+    loading,
+    likeUser,
+    unlikeUser,
+    isUserLiked,
+    likesLoading // Added from optimized UserContext
+  } = useUser();
+  const { unreadMessages } = useChat();
+  const { createStory } = useStories();
 
   // Infinite scrolling states
   const [page, setPage] = useState(1);
@@ -39,37 +42,40 @@ const Dashboard = () => { //
   const observer = useRef();
   const lastUserElementRef = useRef(null);
 
-  const [activeTab, setActiveTab] = useState("discover"); //
-  const [showFilters, setShowFilters] = useState(false); //
-  const [filterValues, setFilterValues] = useState({ //
-    ageMin: 18, //
-    ageMax: 99, //
-    distance: 100, //
-    online: false, //
-    verified: false, //
-    withPhotos: false, //
-    interests: [], //
+  const [activeTab, setActiveTab] = useState("discover");
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterValues, setFilterValues] = useState({
+    ageMin: 18,
+    ageMax: 99,
+    distance: 100,
+    online: false,
+    verified: false,
+    withPhotos: false,
+    interests: [],
   });
 
   // Chat, story, and profile modal state
-  const [chatUser, setChatUser] = useState(null); //
-  const [showChat, setShowChat] = useState(false); //
-  const [viewMode, setViewMode] = useState("grid"); // "grid" or "list" //
-  const [imageLoadErrors, setImageLoadErrors] = useState({}); //
-  const [showStoryCreator, setShowStoryCreator] = useState(false); //
-  const [viewingStoryId, setViewingStoryId] = useState(null); //
-  const [creatingStory, setCreatingStory] = useState(false); //
-  const [selectedUserId, setSelectedUserId] = useState(null); //
-  const [showUserProfileModal, setShowUserProfileModal] = useState(false); //
+  const [chatUser, setChatUser] = useState(null);
+  const [showChat, setShowChat] = useState(false);
+  const [viewMode, setViewMode] = useState("grid"); // "grid" or "list"
+  const [imageLoadErrors, setImageLoadErrors] = useState({});
+  const [showStoryCreator, setShowStoryCreator] = useState(false);
+  const [viewingStoryId, setViewingStoryId] = useState(null);
+  const [creatingStory, setCreatingStory] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [showUserProfileModal, setShowUserProfileModal] = useState(false);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
   // Reset image error for a specific user
-  const handleImageError = useCallback((userId) => { //
-    setImageLoadErrors((prev) => ({ ...prev, [userId]: true })); //
-  }, []); //
+  const handleImageError = useCallback((userId) => {
+    setImageLoadErrors((prev) => ({ ...prev, [userId]: true }));
+  }, []);
 
   // Load initial users
-  useEffect(() => { //
-    loadUsers(1); //
+  useEffect(() => {
+    loadUsers(1).then(() => {
+      setInitialLoadComplete(true);
+    });
   }, [filterValues]); // Reload when filters change
 
   // Function to load users with pagination
@@ -84,9 +90,11 @@ const Dashboard = () => { //
       const result = await getUsers(pageNum, 20);
       setHasMore(result.hasMore);
       setPage(pageNum);
+      return result;
     } catch (error) {
       console.error("Error loading users:", error);
       toast.error("Failed to load users. Please try again.");
+      return null;
     } finally {
       setLoadingMore(false);
     }
@@ -132,156 +140,172 @@ const Dashboard = () => { //
 
   // Periodic refresh when tab is visible
   useEffect(() => {
-    const refreshInterval = setInterval(() => { //
-      if (document.visibilityState === "visible") { //
+    const refreshInterval = setInterval(() => {
+      if (document.visibilityState === "visible") {
         loadUsers(1); // Reset to first page on refresh
       }
-    }, 300000); // Refresh every 5 minutes instead of every minute to prevent excessive API calls
+    }, 300000); // Refresh every 5 minutes
 
-    const handleVisibilityChange = () => { //
-      if (document.visibilityState === "visible") { //
-        loadUsers(1); // Reset to first page on becoming visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadUsers(1);
       }
     };
 
-    document.addEventListener("visibilitychange", handleVisibilityChange); //
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    return () => { //
-      clearInterval(refreshInterval); //
-      document.removeEventListener("visibilitychange", handleVisibilityChange); //
+    return () => {
+      clearInterval(refreshInterval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       // Close open chat when unmounting
-      setShowChat(false); //
-      setChatUser(null); //
+      setShowChat(false);
+      setChatUser(null);
     };
-  }, [loadUsers]); //
+  }, [loadUsers]);
 
   // Filter and sort users efficiently.
-  const filteredUsers = useMemo(() => { //
-    return users.filter((u) => { //
-      if (u._id === user?._id) return false; //
-      const userAge = u.details?.age || 25; //
-      if (userAge < filterValues.ageMin || userAge > filterValues.ageMax) return false; //
-      if (filterValues.online && !u.isOnline) return false; //
-      if (filterValues.withPhotos && (!u.photos || u.photos.length === 0)) return false; //
-      if (filterValues.interests.length > 0) { //
-        const userInterests = u.details?.interests || []; //
-        const hasMatch = filterValues.interests.some((i) => userInterests.includes(i)); //
-        if (!hasMatch) return false; //
+  const filteredUsers = useMemo(() => {
+    return users.filter((u) => {
+      if (u._id === user?._id) return false;
+      const userAge = u.details?.age || 25;
+      if (userAge < filterValues.ageMin || userAge > filterValues.ageMax) return false;
+      if (filterValues.online && !u.isOnline) return false;
+      if (filterValues.withPhotos && (!u.photos || u.photos.length === 0)) return false;
+      if (filterValues.interests.length > 0) {
+        const userInterests = u.details?.interests || [];
+        const hasMatch = filterValues.interests.some((i) => userInterests.includes(i));
+        if (!hasMatch) return false;
       }
-      return true; //
+      return true;
     });
-  }, [users, user, filterValues]); //
+  }, [users, user, filterValues]);
 
-  const sortedUsers = useMemo(() => { //
-    return [...filteredUsers].sort((a, b) => { //
-      if (a.isOnline && !b.isOnline) return -1; //
-      if (!a.isOnline && b.isOnline) return 1; //
-      return new Date(b.lastActive) - new Date(a.lastActive); //
+  // FIX: Deduplicate and sort users to prevent key errors
+  const sortedUsers = useMemo(() => {
+    // First create a map to deduplicate users by ID
+    const uniqueUsersMap = new Map();
+
+    // Add each user to the map with _id as key (overwrites duplicates)
+    filteredUsers.forEach(user => {
+      if (user && user._id) {
+        uniqueUsersMap.set(user._id, user);
+      }
     });
-  }, [filteredUsers]); //
 
-  const availableInterests = [ //
-    "Dating", //
-    "Casual", //
-    "Friendship", //
-    "Long-term", //
-    "Travel", //
-    "Outdoors", //
-    "Movies", //
-    "Music", //
-    "Fitness", //
-    "Food", //
-    "Art", //
+    // Convert the map values back to an array
+    const uniqueUsers = Array.from(uniqueUsersMap.values());
+
+    // Sort the unique users
+    return uniqueUsers.sort((a, b) => {
+      if (a.isOnline && !b.isOnline) return -1;
+      if (!a.isOnline && b.isOnline) return 1;
+      return new Date(b.lastActive) - new Date(a.lastActive);
+    });
+  }, [filteredUsers]);
+
+  const availableInterests = [
+    "Dating",
+    "Casual",
+    "Friendship",
+    "Long-term",
+    "Travel",
+    "Outdoors",
+    "Movies",
+    "Music",
+    "Fitness",
+    "Food",
+    "Art",
   ];
 
-  const toggleInterest = (interest) => { //
-    setFilterValues((prev) => { //
-      if (prev.interests.includes(interest)) { //
-        return { ...prev, interests: prev.interests.filter((i) => i !== interest) }; //
+  const toggleInterest = (interest) => {
+    setFilterValues((prev) => {
+      if (prev.interests.includes(interest)) {
+        return { ...prev, interests: prev.interests.filter((i) => i !== interest) };
       }
-      return { ...prev, interests: [...prev.interests, interest] }; //
+      return { ...prev, interests: [...prev.interests, interest] };
     });
   };
 
   // Open the user profile modal.
-  const handleUserCardClick = (userId) => { //
-    setSelectedUserId(userId); //
-    setShowUserProfileModal(true); //
+  const handleUserCardClick = (userId) => {
+    setSelectedUserId(userId);
+    setShowUserProfileModal(true);
   };
 
   // Open chat with a user.
-  const handleMessageUser = (e, user) => { //
-    e.stopPropagation(); // Prevent card click //
-    setChatUser(user); //
-    setShowChat(true); //
+  const handleMessageUser = (e, user) => {
+    e.stopPropagation(); // Prevent card click
+    setChatUser(user);
+    setShowChat(true);
   };
 
-  const closeChat = () => { //
-    setShowChat(false); //
-    setChatUser(null); //
+  const closeChat = () => {
+    setShowChat(false);
+    setChatUser(null);
   };
 
   // Handle story creation ensuring no duplicate submissions.
-  const handleCreateStory = (storyData) => { //
-    if (!createStory || creatingStory) { //
-      toast.info(creatingStory ? "Story creation in progress, please wait..." : "Story creation is not available right now"); //
-      return; //
+  const handleCreateStory = (storyData) => {
+    if (!createStory || creatingStory) {
+      toast.info(creatingStory ? "Story creation in progress, please wait..." : "Story creation is not available right now");
+      return;
     }
-    setCreatingStory(true); //
-    createStory(storyData) //
-      .then((response) => { //
-        if (response.success) { //
-          toast.success("Your story has been created!"); //
-          setShowStoryCreator(false); //
+    setCreatingStory(true);
+    createStory(storyData)
+      .then((response) => {
+        if (response.success) {
+          toast.success("Your story has been created!");
+          setShowStoryCreator(false);
         } else {
-          throw new Error(response.message || "Failed to create story"); //
+          toast.error(response.error || "Failed to create story");
         }
       })
-      .catch((error) => { //
-        toast.error("Failed to create story: " + (error.message || "Unknown error")); //
+      .catch((error) => {
+        toast.error("An error occurred while creating your story");
+        console.error("Story creation error:", error);
       })
-      .finally(() => { //
-        setCreatingStory(false); //
+      .finally(() => {
+        setCreatingStory(false);
       });
   };
 
   // Reset image errors when filter values change.
-  useEffect(() => { //
-    setImageLoadErrors({}); //
-  }, [filterValues]); //
+  useEffect(() => {
+    setImageLoadErrors({});
+  }, [filterValues]);
 
   // Check for unread messages from a given user.
-  const hasUnreadMessagesFrom = useCallback( //
-    (userId) => //
-      Array.isArray(unreadMessages) && //
-      unreadMessages.some((msg) => msg.sender === userId), //
-    [unreadMessages] //
+  const hasUnreadMessagesFrom = useCallback(
+    (userId) =>
+      Array.isArray(unreadMessages) &&
+      unreadMessages.some((msg) => msg.sender === userId),
+    [unreadMessages]
   );
 
-  const countUnreadMessages = useCallback( //
-    (userId) => //
-      Array.isArray(unreadMessages) //
-        ? unreadMessages.filter((msg) => msg.sender === userId).length //
-        : 0, //
-    [unreadMessages] //
+  const countUnreadMessages = useCallback(
+    (userId) =>
+      Array.isArray(unreadMessages)
+        ? unreadMessages.filter((msg) => msg.sender === userId).length
+        : 0,
+    [unreadMessages]
   );
 
   // Reset filter values.
-  const resetFilters = useCallback(() => { //
-    setFilterValues({ //
-      ageMin: 18, //
-      ageMax: 99, //
-      distance: 100, //
-      online: false, //
-      verified: false, //
-      withPhotos: false, //
-      interests: [], //
+  const resetFilters = useCallback(() => {
+    setFilterValues({
+      ageMin: 18,
+      ageMax: 99,
+      distance: 100,
+      online: false,
+      verified: false,
+      withPhotos: false,
+      interests: [],
     });
 
     // Reset pagination
     setPage(1);
     setHasMore(true);
-  }, []); //
+  }, []);
 
   // Handle scroll event for mobile
   useEffect(() => {
@@ -301,18 +325,17 @@ const Dashboard = () => { //
     return () => window.removeEventListener('scroll', handleScroll);
   }, [hasMore, loadingMore, loading, loadMoreUsers]);
 
-  // --- Like/Unlike Handler ---
-  // This function now correctly calls the likeUser/unlikeUser from the UserContext
-  // Make sure the UserContext itself has the updated logic (not overly optimistic)
-  const handleLikeUser = (e, matchedUser) => { //
-    e.stopPropagation(); // Prevent card click when liking //
+  // Like/Unlike Handler - Works with the optimized UserContext
+  const handleLikeUser = useCallback((userId, userName) => {
     // Check if liked using the context function
-    isUserLiked(matchedUser._id) //
+    isUserLiked(userId)
       // Call unlike or like from the context
-      ? unlikeUser(matchedUser._id, matchedUser.nickname) //
-      : likeUser(matchedUser._id, matchedUser.nickname); //
-  };
-  // --- End Like/Unlike Handler ---
+      ? unlikeUser(userId, userName)
+      : likeUser(userId, userName);
+  }, [isUserLiked, unlikeUser, likeUser]);
+
+  // Determine if we're in a loading state
+  const isLoading = (loading || likesLoading) && page === 1 && !initialLoadComplete;
 
   return (
     <div className="modern-dashboard">
@@ -337,9 +360,9 @@ const Dashboard = () => { //
               </button>
             </div>
             <StoriesCarousel
-              onStoryClick={(storyId) => { //
-                if (!viewingStoryId) { //
-                  setViewingStoryId(storyId); //
+              onStoryClick={(storyId) => {
+                if (!viewingStoryId) {
+                  setViewingStoryId(storyId);
                 }
               }}
             />
@@ -398,10 +421,10 @@ const Dashboard = () => { //
                       min="18"
                       max="99"
                       value={filterValues.ageMin}
-                      onChange={(e) => //
-                        setFilterValues({ //
-                          ...filterValues, //
-                          ageMin: Number.parseInt(e.target.value), //
+                      onChange={(e) =>
+                        setFilterValues({
+                          ...filterValues,
+                          ageMin: Number.parseInt(e.target.value),
                         })}
                       className="range-input"
                       aria-label="Minimum age"
@@ -411,10 +434,10 @@ const Dashboard = () => { //
                       min="18"
                       max="99"
                       value={filterValues.ageMax}
-                      onChange={(e) => //
-                        setFilterValues({ //
-                          ...filterValues, //
-                          ageMax: Number.parseInt(e.target.value), //
+                      onChange={(e) =>
+                        setFilterValues({
+                          ...filterValues,
+                          ageMax: Number.parseInt(e.target.value),
                         })}
                       className="range-input"
                       aria-label="Maximum age"
@@ -436,10 +459,10 @@ const Dashboard = () => { //
                       min="5"
                       max="100"
                       value={filterValues.distance}
-                      onChange={(e) => //
-                        setFilterValues({ //
-                          ...filterValues, //
-                          distance: Number.parseInt(e.target.value), //
+                      onChange={(e) =>
+                        setFilterValues({
+                          ...filterValues,
+                          distance: Number.parseInt(e.target.value),
                         })}
                       className="range-input"
                       aria-label="Maximum distance"
@@ -456,10 +479,10 @@ const Dashboard = () => { //
                     <input
                       type="checkbox"
                       checked={filterValues.online}
-                      onChange={() => //
-                        setFilterValues({ //
-                          ...filterValues, //
-                          online: !filterValues.online, //
+                      onChange={() =>
+                        setFilterValues({
+                          ...filterValues,
+                          online: !filterValues.online,
                         })}
                       aria-label="Show only online users"
                     />
@@ -469,10 +492,10 @@ const Dashboard = () => { //
                     <input
                       type="checkbox"
                       checked={filterValues.verified}
-                      onChange={() => //
-                        setFilterValues({ //
-                          ...filterValues, //
-                          verified: !filterValues.verified, //
+                      onChange={() =>
+                        setFilterValues({
+                          ...filterValues,
+                          verified: !filterValues.verified,
                         })}
                       aria-label="Show only verified profiles"
                     />
@@ -482,10 +505,10 @@ const Dashboard = () => { //
                     <input
                       type="checkbox"
                       checked={filterValues.withPhotos}
-                      onChange={() => //
-                        setFilterValues({ //
-                          ...filterValues, //
-                          withPhotos: !filterValues.withPhotos, //
+                      onChange={() =>
+                        setFilterValues({
+                          ...filterValues,
+                          withPhotos: !filterValues.withPhotos,
                         })}
                       aria-label="Show only profiles with photos"
                     />
@@ -501,8 +524,8 @@ const Dashboard = () => { //
                   {availableInterests.map((interest) => (
                     <button
                       key={interest}
-                      className={`filter-tag ${ //
-                        filterValues.interests.includes(interest) ? "active" : "" //
+                      className={`filter-tag ${
+                        filterValues.interests.includes(interest) ? "active" : ""
                       }`}
                       onClick={() => toggleInterest(interest)}
                       aria-pressed={filterValues.interests.includes(interest)}
@@ -533,14 +556,14 @@ const Dashboard = () => { //
             </div>
           )}
 
-          {/* Users Grid/List Display */}
+          {/* Users Grid/List Display using enhanced UserCard component */}
           <div className={`users-${viewMode} mt-4 animate-fade-in`}>
-            {loading && page === 1 ? ( //
+            {isLoading ? (
               <div className="loading-container">
                 <div className="spinner spinner-dark"></div>
                 <p className="loading-text">Loading users...</p>
               </div>
-            ) : sortedUsers.length > 0 ? ( //
+            ) : sortedUsers.length > 0 ? (
               <>
                 {sortedUsers.map((matchedUser, index) => {
                   // Apply ref to the last element for infinite scroll detection
@@ -549,101 +572,20 @@ const Dashboard = () => { //
                   return (
                     <div
                       key={matchedUser._id}
-                      className="user-card"
-                      onClick={() => handleUserCardClick(matchedUser._id)}
+                      className="user-card-wrapper relative"
                       ref={isLastElement ? lastUserElementRef : null}
                     >
-                      <div className="user-card-photo">
-                        {matchedUser.photos && matchedUser.photos.length > 0 ? ( //
-                          <>
-                            <img
-                              src={matchedUser.photos[0].url || "/placeholder.svg"}
-                              alt={matchedUser.nickname}
-                              onError={() => handleImageError(matchedUser._id)}
-                              // Conditionally render img or placeholder based on error state
-                              style={{ //
-                                display: imageLoadErrors[matchedUser._id] //
-                                  ? "none" //
-                                  : "block", //
-                              }}
-                            />
-                            {imageLoadErrors[matchedUser._id] && ( //
-                              <div className="avatar-placeholder">
-                                <FaUserCircle />
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <div className="avatar-placeholder">
-                            <FaUserCircle />
-                          </div>
-                        )}
-                        {matchedUser.isOnline && ( //
-                          <div className="online-indicator"></div>
-                        )}
-                      </div>
-                      <div className="user-card-info">
-                        <div className="d-flex justify-content-between align-items-center">
-                          <h3>
-                            {matchedUser.nickname}, {matchedUser.details?.age || "?"}
-                          </h3>
-                          {hasUnreadMessagesFrom(matchedUser._id) && ( //
-                            <span className="unread-badge">
-                              {countUnreadMessages(matchedUser._id)}
-                            </span>
-                          )}
-                        </div>
-                        <p className="location">
-                          <FaMapMarkerAlt className="location-icon" />
-                          {matchedUser.details?.location || "Unknown location"}
-                        </p>
-                        {/* Display Interests */}
-                        {matchedUser.details?.interests && //
-                          matchedUser.details.interests.length > 0 && ( //
-                            <div className="user-interests">
-                              {matchedUser.details.interests.slice(0, 3).map( //
-                                (interest, idx) => ( //
-                                  <span key={idx} className="interest-tag">
-                                    {interest}
-                                  </span>
-                                ) //
-                              )}
-                              {matchedUser.details.interests.length > 3 && ( //
-                                <span className="interest-more">
-                                  +{matchedUser.details.interests.length - 3}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        {/* User Actions: Like and Message */}
-                        <div className="user-actions">
-                          <button
-                            // --- Like Button ClassName ---
-                            // This now correctly reflects the liked state from the context
-                            className={`card-action-button like ${ //
-                              isUserLiked(matchedUser._id) ? "active" : "" //
-                            }`}
-                            // --- Like Button onClick ---
-                            // Calls the handler which uses context functions
-                            onClick={(e) => handleLikeUser(e, matchedUser)} //
-                            aria-label={`${ //
-                              isUserLiked(matchedUser._id) ? "Unlike" : "Like" //
-                            } ${matchedUser.nickname}`}
-                          >
-                            <FaHeart />
-                          </button>
-                          <button
-                            className="card-action-button message"
-                            onClick={(e) => { //
-                              e.stopPropagation(); // Prevent card click //
-                              if (!showChat) handleMessageUser(e, matchedUser); // Only open if not already shown //
-                            }}
-                            aria-label={`Message ${matchedUser.nickname}`}
-                          >
-                            <FaComments />
-                          </button>
-                        </div>
-                      </div>
+                      <UserCard
+                        user={matchedUser}
+                        isLiked={isUserLiked(matchedUser._id)}
+                        onLike={handleLikeUser}
+                        viewMode={viewMode}
+                        onMessage={(e) => handleMessageUser(e, matchedUser)}
+                        onClick={() => handleUserCardClick(matchedUser._id)}
+                        showExtendedDetails={true}
+                        hasUnreadMessages={hasUnreadMessagesFrom(matchedUser._id)}
+                        unreadMessageCount={countUnreadMessages(matchedUser._id)}
+                      />
                     </div>
                   );
                 })}
@@ -678,7 +620,7 @@ const Dashboard = () => { //
       </main>
 
       {/* Embedded Chat Modal */}
-      {showChat && chatUser && ( //
+      {showChat && chatUser && (
         <>
           {/* Overlay to close chat */}
           <div className="chat-overlay" onClick={closeChat}></div>
@@ -687,29 +629,33 @@ const Dashboard = () => { //
       )}
 
       {/* Story Creator Modal */}
-      {showStoryCreator && ( //
-        <StoryCreator //
-          onClose={() => setShowStoryCreator(false)} //
-          onSubmit={handleCreateStory} //
+      {showStoryCreator && (
+        <StoryCreator
+          onClose={() => setShowStoryCreator(false)}
+          onSubmit={handleCreateStory}
         />
       )}
 
       {/* Stories Viewer Modal */}
-      {viewingStoryId && ( //
-        <StoriesViewer storyId={viewingStoryId} onClose={() => setViewingStoryId(null)} /> //
+      {viewingStoryId && (
+        <StoriesViewer storyId={viewingStoryId} onClose={() => setViewingStoryId(null)} />
       )}
 
       {/* User Profile Modal */}
-      {showUserProfileModal && ( //
-        <UserProfileModal //
-          userId={selectedUserId} //
-          isOpen={showUserProfileModal} //
-          onClose={() => setShowUserProfileModal(false)} //
+      {showUserProfileModal && (
+        <UserProfileModal
+          userId={selectedUserId}
+          isOpen={showUserProfileModal}
+          onClose={() => setShowUserProfileModal(false)}
         />
       )}
 
-      {/* Add optional CSS for infinite scroll loading */}
-      <style jsx>{`
+      {/* Add CSS for infinite scroll loading and badge positioning */}
+      <style jsx="true">{`
+        .user-card-wrapper {
+          position: relative;
+        }
+        
         .loading-more-container {
           display: flex;
           flex-direction: column;
@@ -729,9 +675,21 @@ const Dashboard = () => { //
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
+        
+        .users-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 1.5rem;
+        }
+        
+        .users-list {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
       `}</style>
     </div>
   );
 };
 
-export default Dashboard; //
+export default Dashboard;

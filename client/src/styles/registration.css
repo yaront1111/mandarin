@@ -286,7 +286,6 @@ input[type="date"].form-control {
 }
 
 .interest-tag {
-  padding: var(--space-xs) var(--space-md);
   background-color: var(--bg-light);
   border: 1px solid var(--border-color);
   border-radius: 20px;
@@ -529,10 +528,6 @@ input[type="date"].form-control {
     gap: var(--space-xxs);
   }
 
-  .interest-tag {
-    padding: 4px 10px;
-    font-size: var(--font-size-xs);
-  }
 
   .btn {
     padding: var(--space-xs) var(--space-md);

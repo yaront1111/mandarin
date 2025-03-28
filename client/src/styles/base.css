@@ -241,7 +241,8 @@ h3 {
   font-size: var(--font-size-xl);
 }
 h4 {
-  font-size: var(--font-size-lg);
+  font-size: 15px;
+  margin-bottom: 5px;
 }
 h5 {
   font-size: var(--font-size-md);
