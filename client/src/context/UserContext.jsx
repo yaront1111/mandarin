@@ -1,5 +1,7 @@
+"use client"
+
 // UserContext.jsx - with optimized like handling
-import { createContext, useReducer, useContext, useEffect, useCallback, useRef, useState } from "react"
+import { createContext, useReducer, useContext, useEffect, useCallback, useRef } from "react"
 import { toast } from "react-toastify"
 import { FaHeart } from "react-icons/fa"
 import apiService from "../services/apiService"
@@ -81,12 +83,12 @@ const userReducer = (state, action) => {
     case "ADD_LIKED_USER":
       return {
         ...state,
-        likedUsers: [...state.likedUsers, action.payload]
+        likedUsers: [...state.likedUsers, action.payload],
       }
     case "REMOVE_LIKED_USER":
       return {
         ...state,
-        likedUsers: state.likedUsers.filter(like => like.recipient !== action.payload)
+        likedUsers: state.likedUsers.filter((like) => like.recipient !== action.payload),
       }
     case "SET_LIKES_LOADING":
       return { ...state, likesLoading: action.payload }
@@ -140,12 +142,12 @@ export const UserProvider = ({ children }) => {
         // If it's the first page, replace users array, otherwise append
         dispatch({
           type: page === 1 ? "GET_USERS" : "APPEND_USERS",
-          payload: data.data
+          payload: data.data,
         })
         return {
           users: data.data,
           hasMore: data.hasMore || data.pagination?.hasNext || data.data.length === limit,
-          totalPages: data.pagination?.totalPages || Math.ceil(data.totalCount / limit) || 1
+          totalPages: data.pagination?.totalPages || Math.ceil(data.totalCount / limit) || 1,
         }
       } else {
         throw new Error(data.error || "Failed to fetch users")
@@ -158,57 +160,83 @@ export const UserProvider = ({ children }) => {
   }, [])
 
   // Get all users liked by current user - OPTIMIZED VERSION
-  const getLikedUsers = useCallback(async () => {
-    if (!user || !user._id || likesLoadedRef.current) return;
+  const getLikedUsers = useCallback(
+    async (forceRefresh = false) => {
+      // Remove the early return based on likesLoadedRef to allow refreshing
+      if (!user || !user._id) return
 
-    dispatch({ type: "SET_LIKES_LOADING", payload: true });
-    try {
-      // Make sure we have a valid user before making the request
-      if (!user._id || typeof user._id !== "string") {
-        console.warn("Current user ID is missing or invalid", user);
-        dispatch({ type: "SET_LIKED_USERS", payload: [] });
-        return;
+      // Only set loading if we're not already loading
+      if (!state.likesLoading) {
+        dispatch({ type: "SET_LIKES_LOADING", payload: true })
       }
 
-      // Validate if user._id is a valid MongoDB ObjectId
-      const isValidId = /^[0-9a-fA-F]{24}$/.test(user._id);
-      if (!isValidId) {
-        console.warn(`Invalid user ID format: ${user._id}`);
-        dispatch({ type: "SET_LIKED_USERS", payload: [] });
-        return;
-      }
+      try {
+        // Make sure we have a valid user before making the request
+        if (!user._id || typeof user._id !== "string") {
+          console.warn("Current user ID is missing or invalid", user)
+          dispatch({ type: "SET_LIKED_USERS", payload: [] })
+          return
+        }
 
-      const response = await apiService.get("/users/likes");
-      if (response.success) {
-        dispatch({ type: "SET_LIKED_USERS", payload: response.data || [] });
-        // Mark likes as loaded so we don't keep fetching on every render
-        likesLoadedRef.current = true;
-      } else {
-        console.error("Error in getLikedUsers:", response.error);
+        // Validate if user._id is a valid MongoDB ObjectId
+        const isValidId = /^[0-9a-fA-F]{24}$/.test(user._id)
+        if (!isValidId) {
+          console.warn(`Invalid user ID format: ${user._id}`)
+          dispatch({ type: "SET_LIKED_USERS", payload: [] })
+          return
+        }
+
+        const response = await apiService.get(
+          "/users/likes",
+          {},
+          {
+            headers: forceRefresh ? { "x-no-cache": "true" } : {}, // Add cache-busting header when forcing refresh
+          },
+        )
+
+        if (response.success) {
+          dispatch({ type: "SET_LIKED_USERS", payload: response.data || [] })
+          // Mark likes as loaded
+          likesLoadedRef.current = true
+        } else {
+          console.error("Error in getLikedUsers:", response.error)
+          // Set empty array on error to prevent undefined errors
+          dispatch({ type: "SET_LIKED_USERS", payload: [] })
+        }
+      } catch (err) {
+        console.error("Error fetching liked users:", err)
         // Set empty array on error to prevent undefined errors
-        dispatch({ type: "SET_LIKED_USERS", payload: [] });
+        dispatch({ type: "SET_LIKED_USERS", payload: [] })
+      } finally {
+        dispatch({ type: "SET_LIKES_LOADING", payload: false })
       }
-    } catch (err) {
-      console.error("Error fetching liked users:", err);
-      // Set empty array on error to prevent undefined errors
-      dispatch({ type: "SET_LIKED_USERS", payload: [] });
-    } finally {
-      dispatch({ type: "SET_LIKES_LOADING", payload: false });
-    }
-  }, [user]);
+    },
+    [user, state.likesLoading],
+  )
 
   // Load likes when user is authenticated
   useEffect(() => {
     if (isAuthenticated && user && user._id) {
-      // Reset the loaded flag when user changes
-      likesLoadedRef.current = false;
-      getLikedUsers();
+      // Always fetch likes when the component mounts or user changes
+      getLikedUsers(true) // Force refresh on mount/user change
+
+      // Set up periodic refresh of likes data
+      const refreshInterval = setInterval(
+        () => {
+          if (document.visibilityState === "visible") {
+            getLikedUsers(true)
+          }
+        },
+        5 * 60 * 1000,
+      ) // Refresh every 5 minutes when tab is visible
+
+      return () => clearInterval(refreshInterval)
     } else {
       // Reset likes if user logs out
-      dispatch({ type: "SET_LIKED_USERS", payload: [] });
-      likesLoadedRef.current = false;
+      dispatch({ type: "SET_LIKED_USERS", payload: [] })
+      likesLoadedRef.current = false
     }
-  }, [isAuthenticated, user, getLikedUsers]);
+  }, [isAuthenticated, user, getLikedUsers])
 
   // Debounced getUsers: cancels previous timeout and calls getUsers after 500ms delay.
   const debouncedGetUsers = useCallback(() => {
@@ -413,8 +441,8 @@ export const UserProvider = ({ children }) => {
             payload: {
               recipient: userId,
               createdAt: new Date().toISOString(),
-            }
-          });
+            },
+          })
         }
 
         const response = await apiService.post(`/users/${userId}/like`)
@@ -432,10 +460,13 @@ export const UserProvider = ({ children }) => {
             toast.info(`You have ${response.likesRemaining} likes remaining today`)
           }
 
+          // Refresh likes to ensure consistency with server
+          setTimeout(() => getLikedUsers(true), 500)
+
           return true
         } else {
           // Revert optimistic update on error
-          dispatch({ type: "REMOVE_LIKED_USER", payload: userId });
+          dispatch({ type: "REMOVE_LIKED_USER", payload: userId })
 
           // Handle case where response is {success: false} with no error message
           const errorMsg = response.error || "You've already liked this user"
@@ -444,14 +475,14 @@ export const UserProvider = ({ children }) => {
         }
       } catch (err) {
         // Revert optimistic update on error
-        dispatch({ type: "REMOVE_LIKED_USER", payload: userId });
+        dispatch({ type: "REMOVE_LIKED_USER", payload: userId })
 
         const errorMsg = err.error || err.message || "Failed to like user"
         toast.error(errorMsg)
         return false
       }
     },
-    [user, isUserLiked],
+    [user, isUserLiked, getLikedUsers],
   )
 
   // Unlike a user - OPTIMIZED VERSION
@@ -467,11 +498,15 @@ export const UserProvider = ({ children }) => {
         }
 
         // Optimistic update - remove from liked users immediately
-        dispatch({ type: "REMOVE_LIKED_USER", payload: userId });
+        dispatch({ type: "REMOVE_LIKED_USER", payload: userId })
 
         const response = await apiService.delete(`/users/${userId}/like`)
         if (response.success) {
           toast.info(`You unliked ${userName || "this user"}`)
+
+          // Refresh likes to ensure consistency with server
+          setTimeout(() => getLikedUsers(true), 500)
+
           return true
         } else {
           // Revert optimistic update if failed
@@ -481,15 +516,15 @@ export const UserProvider = ({ children }) => {
               payload: {
                 recipient: userId,
                 createdAt: new Date().toISOString(),
-              }
-            });
+              },
+            })
           }
 
           throw new Error(response.error || "Failed to unlike user")
         }
       } catch (err) {
         // Revert optimistic update
-        getLikedUsers();
+        getLikedUsers(true)
 
         const errorMsg = err.error || err.message || "Failed to unlike user"
         toast.error(errorMsg)

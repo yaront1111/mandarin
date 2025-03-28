@@ -12,8 +12,8 @@ import {
   FaTimes,
   FaExclamationTriangle,
 } from "react-icons/fa"
+import NotificationsComponent from "./NotificationsComponent"
 import { ThemeToggle } from "./theme-toggle.tsx"
-import NotificationsComponent from "./NotificationsComponent" // Import the NotificationsComponent
 
 // Modern Navbar Component
 export const Navbar = () => {
@@ -31,7 +31,6 @@ export const Navbar = () => {
   const {
     unreadCount,
     addTestNotification,
-    markAllAsRead,
   } = useNotifications()
 
   const { isAuthenticated, logout, user } = useAuth()
@@ -104,13 +103,6 @@ export const Navbar = () => {
     setShowNotifications(false)
   }
 
-  // Handle marking all notifications as read
-  const handleMarkAllAsRead = (e) => {
-    e.stopPropagation()
-    markAllAsRead()
-    toast.success("All notifications marked as read")
-  }
-
   return (
     <header className="modern-header">
       <div className="container d-flex justify-content-between align-items-center">
@@ -128,7 +120,7 @@ export const Navbar = () => {
               <span>Discover</span>
             </button>
             <button
-              className={`tab-button ${window.location.pathname === "/matches" ? "active" : ""}`}
+              className={`tab-button ${window.location.pathname === "/massages" ? "active" : ""}`}
               onClick={() => navigate("/matches")}
             >
               <FaHeart className="tab-icon" />
@@ -143,7 +135,7 @@ export const Navbar = () => {
           {isAuthenticated ? (
             <>
               <div style={{ position: "relative", marginLeft: "10px" }}>
-                {/* Using notification-specific class to avoid conflicts */}
+                {/* Notification bell button */}
                 <button
                   ref={notificationButtonRef}
                   onClick={toggleNotificationDropdown}
@@ -156,15 +148,15 @@ export const Navbar = () => {
                   )}
                 </button>
 
+                {/* Notification dropdown with NotificationsComponent */}
                 {showNotifications && (
                   <div ref={notificationDropdownRef} className="notification-dropdown">
-                    {/* Replace old notification content with the NotificationsComponent */}
                     <NotificationsComponent
                       isDropdown={true}
                       maxHeight={400}
                       onClose={handleCloseNotifications}
                       className="notification-dropdown-content"
-                      customFilters={['all', 'unread']} /* Only show 'all' and 'unread' filters */
+                      customFilters={['all', 'unread']}
                     />
                   </div>
                 )}
@@ -256,6 +248,23 @@ export const Navbar = () => {
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
 
+        .notification-badge {
+          position: absolute;
+          top: -5px;
+          right: -5px;
+          background-color: var(--danger-color, #dc3545);
+          color: white;
+          border-radius: 50%;
+          font-size: 10px;
+          width: 20px;
+          height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: bold;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
         .notification-dropdown {
           z-index: 1050;
           display: block;
@@ -272,22 +281,12 @@ export const Navbar = () => {
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
           border: 1px solid var(--border-color);
         }
-        
-        .notification-badge {
-          position: absolute;
-          top: -5px;
-          right: -5px;
-          background-color: var(--danger-color, #dc3545);
-          color: white;
-          border-radius: 50%;
-          font-size: 10px;
-          width: 20px;
-          height: 20px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: bold;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+
+        .notification-dropdown-content {
+          width: 100%; 
+          height: 100%;
+          border-radius: 8px;
+          overflow: hidden;
         }
 
         @keyframes notification-pulse {
@@ -309,13 +308,6 @@ export const Navbar = () => {
 
         .notification-pulse {
           animation: notification-pulse 1s cubic-bezier(0.66, 0, 0, 1) 2;
-        }
-
-        /* Additional styles for NotificationsComponent integration */
-        .notification-dropdown-content {
-          width: 100%;
-          border-radius: 8px;
-          overflow: hidden;
         }
       `}</style>
     </header>
