@@ -11,11 +11,9 @@ import {
   FaHeart,
   FaTimes,
   FaExclamationTriangle,
-  FaEnvelope,
-  FaCamera,
-  FaImage,
 } from "react-icons/fa"
 import { ThemeToggle } from "./theme-toggle.tsx"
+import NotificationsComponent from "./NotificationsComponent" // Import the NotificationsComponent
 
 // Modern Navbar Component
 export const Navbar = () => {
@@ -31,13 +29,9 @@ export const Navbar = () => {
 
   // Get global notification state from context
   const {
-    notifications,
     unreadCount,
-    isLoading: loadingNotifications,
     addTestNotification,
-    markAsRead,
     markAllAsRead,
-    handleNotificationClick,
   } = useNotifications()
 
   const { isAuthenticated, logout, user } = useAuth()
@@ -105,132 +99,12 @@ export const Navbar = () => {
     addTestNotification()
   }
 
-  // Format notification time in a human-readable way
-  const formatNotificationTime = (timestamp) => {
-    if (!timestamp) return "Just now"
-
-    const now = new Date()
-    const notificationTime = new Date(timestamp)
-    const diffMs = now - notificationTime
-    const diffSec = Math.floor(diffMs / 1000)
-    const diffMin = Math.floor(diffSec / 60)
-    const diffHour = Math.floor(diffMin / 60)
-    const diffDay = Math.floor(diffHour / 24)
-
-    if (diffSec < 60) return "Just now"
-    if (diffMin < 60) return `${diffMin}m ago`
-    if (diffHour < 24) return `${diffHour}h ago`
-    if (diffDay < 7) return `${diffDay}d ago`
-
-    return notificationTime.toLocaleDateString()
+  // Handle closing the notification dropdown
+  const handleCloseNotifications = () => {
+    setShowNotifications(false)
   }
 
-  // Get appropriate action text based on notification type
-  const getNotificationAction = (notification) => {
-    switch (notification.type) {
-      case "message":
-        return "sent you a message"
-      case "like":
-        return "liked your profile"
-      case "photoRequest":
-        return "requested access to your photo"
-      case "photoResponse":
-        const status = notification.data?.status || ""
-        return status === "approved" ? "approved your photo request" : "declined your photo request"
-      case "story":
-        return "shared a new story"
-      case "comment":
-        return "commented on your post"
-      default:
-        return "sent a notification"
-    }
-  }
-
-  // Render notifications list with validation
-  const renderNotifications = () => {
-    if (loadingNotifications) {
-      return (
-        <div className="notification-loading">
-          <div className="spinner"></div>
-          <p>Loading notifications...</p>
-        </div>
-      )
-    }
-
-    // Filter out invalid notifications before rendering
-    const validNotifications = notifications.filter((notification) => {
-      // Check if notification has required fields
-      const hasMessage = notification.message || notification.title || notification.content
-      const hasId = notification._id || notification.id
-
-      // Only return notifications that have at least basic required fields
-      return hasId && hasMessage
-    })
-
-    if (!validNotifications || validNotifications.length === 0) {
-      return (
-        <div className="notification-empty">
-          <FaBell size={32} />
-          <p>No notifications yet</p>
-          <button onClick={handleAddTestNotification} className="btn btn-sm btn-primary mt-3">
-            Add Test Notification
-          </button>
-        </div>
-      )
-    }
-
-    return validNotifications.map((notification) => {
-      // Extract notification message from available fields
-      const notificationMessage =
-        notification.message || notification.title || notification.content || "New notification"
-
-      // Extract sender nickname from various possible locations
-      const senderNickname =
-        notification.sender?.nickname ||
-        notification.data?.sender?.nickname ||
-        notification.data?.requester?.nickname ||
-        notification.data?.owner?.nickname ||
-        notification.data?.user?.nickname ||
-        "Someone"
-
-      // Format the notification time
-      const notificationTime = formatNotificationTime(notification.createdAt)
-
-      // Choose icon based on notification type
-      let NotificationIcon = FaBell
-      if (notification.type === "message") NotificationIcon = FaEnvelope
-      if (notification.type === "like") NotificationIcon = FaHeart
-      if (notification.type === "photoRequest" || notification.type === "photoResponse") NotificationIcon = FaCamera
-      if (notification.type === "story") NotificationIcon = FaImage
-
-      // Determine if this is a new notification (less than 1 minute old)
-      const isNew = notification.createdAt && new Date().getTime() - new Date(notification.createdAt).getTime() < 60000
-
-      return (
-        <div
-          key={notification._id || notification.id || Date.now()}
-          className={`notification-item ${!notification.read ? "unread" : ""} ${isNew ? "new-notification" : ""}`}
-          onClick={() => handleNotificationClick(notification)}
-        >
-          <div className="notification-icon">
-            <NotificationIcon />
-          </div>
-          <div className="notification-content">
-            <div className="notification-title">
-              <span className="notification-sender">{senderNickname}</span> {getNotificationAction(notification)}
-            </div>
-            <div className="notification-message">{notificationMessage}</div>
-            <div className="notification-time">
-              {notificationTime}
-              {!notification.read && <span className="notification-time-dot"></span>}
-              {!notification.read && <span>Unread</span>}
-            </div>
-          </div>
-        </div>
-      )
-    })
-  }
-
+  // Handle marking all notifications as read
   const handleMarkAllAsRead = (e) => {
     e.stopPropagation()
     markAllAsRead()
@@ -284,15 +158,14 @@ export const Navbar = () => {
 
                 {showNotifications && (
                   <div ref={notificationDropdownRef} className="notification-dropdown">
-                    <div className="notification-header">
-                      <span>Notifications</span>
-                      {unreadCount > 0 && (
-                        <span className="notification-header-action" onClick={handleMarkAllAsRead}>
-                          Mark all as read
-                        </span>
-                      )}
-                    </div>
-                    <div className="notification-list">{renderNotifications()}</div>
+                    {/* Replace old notification content with the NotificationsComponent */}
+                    <NotificationsComponent
+                      isDropdown={true}
+                      maxHeight={400}
+                      onClose={handleCloseNotifications}
+                      className="notification-dropdown-content"
+                      customFilters={['all', 'unread']} /* Only show 'all' and 'unread' filters */
+                    />
                   </div>
                 )}
               </div>
@@ -393,59 +266,28 @@ export const Navbar = () => {
           top: 100%;
           width: 320px;
           max-height: 400px;
-          overflow-y: auto;
+          overflow: hidden;
+          background-color: var(--bg-color);
+          border-radius: 8px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+          border: 1px solid var(--border-color);
         }
         
-        .notification-empty {
-          padding: 20px;
-          text-align: center;
-          color: var(--text-light);
-        }
-        
-        .notification-list {
-          max-height: 300px;
-          overflow-y: auto;
-        }
-
-        .notification-item {
-          padding: 12px 16px;
-          border-bottom: 1px solid var(--border-color);
-          display: flex;
-          align-items: flex-start;
-          cursor: pointer;
-          transition: background-color 0.2s ease;
-        }
-
-        .notification-item:hover {
-          background-color: var(--bg-light);
-        }
-
-        .notification-item.unread {
-          background-color: var(--bg-unread);
-        }
-
-        .mt-3 {
-          margin-top: 12px;
-        }
-
-        .btn-sm {
-          padding: 4px 12px;
-          font-size: 0.875rem;
-        }
-
-        .spinner {
-          display: inline-block;
-          width: 24px;
-          height: 24px;
-          border: 2px solid rgba(0, 0, 0, 0.1);
+        .notification-badge {
+          position: absolute;
+          top: -5px;
+          right: -5px;
+          background-color: var(--danger-color, #dc3545);
+          color: white;
           border-radius: 50%;
-          border-top-color: var(--primary);
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
+          font-size: 10px;
+          width: 20px;
+          height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: bold;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
 
         @keyframes notification-pulse {
@@ -467,6 +309,13 @@ export const Navbar = () => {
 
         .notification-pulse {
           animation: notification-pulse 1s cubic-bezier(0.66, 0, 0, 1) 2;
+        }
+
+        /* Additional styles for NotificationsComponent integration */
+        .notification-dropdown-content {
+          width: 100%;
+          border-radius: 8px;
+          overflow: hidden;
         }
       `}</style>
     </header>

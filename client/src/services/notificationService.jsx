@@ -5,6 +5,16 @@ import socketService from "./socketService.jsx";
 import { useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 
+/**
+ * Enhanced Notification Service
+ *
+ * Features:
+ * - Automatic bundling of notifications from the same sender within an hour
+ * - Simplified socket event listeners
+ * - Better error handling and logging
+ * - Consistent API for adding, updating, and reading notifications
+ * - Support for all notification types
+ */
 class NotificationService {
   constructor() {
     this.notifications = [];
@@ -17,9 +27,15 @@ class NotificationService {
     this.socketReconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectTimer = null;
+
+    // Notification grouping timeframe (in milliseconds)
+    this.bundleTimeframe = 60 * 60 * 1000; // 1 hour
   }
 
-  // Method to set the navigate function
+  /**
+   * Set the navigation function for routing after notification clicks
+   * @param {Function} navigateFunc - React Router's navigate function
+   */
   setNavigate(navigateFunc) {
     if (typeof navigateFunc === 'function') {
       this.navigate = navigateFunc;
@@ -29,7 +45,10 @@ class NotificationService {
     }
   }
 
-  // --- Initialize ---
+  /**
+   * Initialize the notification service with user settings
+   * @param {Object} userSettings - User notification preferences
+   */
   initialize(userSettings) {
     if (this.initialized) {
       console.log("NotificationService already initialized");
@@ -38,13 +57,15 @@ class NotificationService {
 
     this.userSettings = userSettings || {
       notifications: {
-        messages: true, calls: true, stories: true,
-        likes: true, comments: true, photoRequests: true,
+        messages: true,
+        calls: true,
+        stories: true,
+        likes: true,
+        comments: true,
+        photoRequests: true,
       },
     };
 
-    // We won't attempt socket reconnection here - just initialize available services
-    // Socket connection will be handled by the auth provider
     if (socketService.isConnected()) {
       this.registerSocketListeners();
     }
@@ -54,7 +75,10 @@ class NotificationService {
     console.log("NotificationService initialized successfully");
   }
 
-  // Check socket connection status and register listeners if connected
+  /**
+   * Check socket connection status and register listeners if connected
+   * @returns {boolean} - Connection status
+   */
   checkSocketConnection() {
     if (socketService.isConnected()) {
       console.log("Socket is connected, registering notification listeners");
@@ -66,7 +90,9 @@ class NotificationService {
     }
   }
 
-  // --- Clean up socket listeners ---
+  /**
+   * Clean up socket listeners
+   */
   cleanup() {
     if (this.socketListeners.length > 0) {
       console.log(`Cleaning up ${this.socketListeners.length} socket listeners`);
@@ -79,7 +105,9 @@ class NotificationService {
     }
   }
 
-  // --- Register Listeners (ensure event names match server) ---
+  /**
+   * Register socket event listeners for different notification types
+   */
   registerSocketListeners() {
     if (!socketService.isConnected()) {
       console.warn("NotificationService: Socket not connected. Cannot register listeners.");
@@ -89,186 +117,208 @@ class NotificationService {
     // Clean up old listeners
     this.cleanup();
 
-    // Define all notification event types we want to listen for
-    const notificationEvents = [
-      "newMessage",
-      "incomingCall",
-      "newStory",
-      "newLike",
-      "notification",
-      "newComment",
-      "photoPermissionRequestReceived",
-      "photoPermissionResponseReceived"
+    // Define all notification types in one place for easier management
+    const notificationTypes = [
+      { event: "newMessage", type: "message", handler: this._handleMessageNotification.bind(this) },
+      { event: "incomingCall", type: "call", handler: this._handleCallNotification.bind(this) },
+      { event: "newStory", type: "story", handler: this._handleStoryNotification.bind(this) },
+      { event: "newLike", type: "like", handler: this._handleLikeNotification.bind(this) },
+      { event: "newComment", type: "comment", handler: this._handleCommentNotification.bind(this) },
+      { event: "photoPermissionRequestReceived", type: "photoRequest", handler: this._handlePhotoRequestNotification.bind(this) },
+      { event: "photoPermissionResponseReceived", type: "photoResponse", handler: this._handlePhotoResponseNotification.bind(this) },
+      { event: "notification", type: "generic", handler: this._handleGenericNotification.bind(this) },
     ];
 
-    console.log(`Registering socket listeners for ${notificationEvents.length} notification types`);
+    // Register all listeners at once
+    notificationTypes.forEach(({ event, handler }) => {
+      const removeListener = socketService.on(event, handler);
+      this.socketListeners.push(removeListener);
+    });
 
-    // --- Register Message Notifications ---
-    const messageListener = (data) => {
-      if (this.shouldShowNotification("messages") && data) {
-        this.addNotification({
-          _id: data._id || `msg-${Date.now()}`,
-          type: "message",
-          title: `New message from ${data.sender?.nickname || "Someone"}`,
-          message: data.content,
-          time: "Just now",
-          read: false,
-          sender: data.sender,
-          data: data,
-          createdAt: data.createdAt || new Date().toISOString(),
-        });
-      }
-    };
-
-    const removeMessageListener = socketService.on("newMessage", messageListener);
-    this.socketListeners.push(removeMessageListener);
-
-    // --- Register Call Notifications ---
-    const callListener = (data) => {
-      if (this.shouldShowNotification("calls") && data) {
-        this.addNotification({
-          _id: data.callId || `call-${Date.now()}`,
-          type: "call",
-          title: `Incoming call from ${data.caller?.name || "Someone"}`,
-          message: "Click to answer",
-          time: "Just now",
-          read: false,
-          sender: {
-            _id: data.caller?.userId,
-            nickname: data.caller?.name || "Caller"
-          },
-          data: data,
-          createdAt: new Date().toISOString(),
-        });
-      }
-    };
-
-    const removeCallListener = socketService.on("incomingCall", callListener);
-    this.socketListeners.push(removeCallListener);
-
-    // --- Register Story Notifications ---
-    const storyListener = (data) => {
-      if (this.shouldShowNotification("stories") && data) {
-        this.addNotification({
-          _id: data._id || `story-${Date.now()}`,
-          type: "story",
-          title: `${data.user?.nickname || "Someone"} shared a new story`,
-          message: "Click to view",
-          time: "Just now",
-          read: false,
-          sender: data.user,
-          data: data,
-          createdAt: data.createdAt || new Date().toISOString(),
-        });
-      }
-    };
-
-    const removeStoryListener = socketService.on("newStory", storyListener);
-    this.socketListeners.push(removeStoryListener);
-
-    // --- Register Like Notifications ---
-    const likeListener = (data) => {
-      if (this.shouldShowNotification("likes") && data) {
-        this.addNotification({
-          _id: data.likeId || `like-${Date.now()}`,
-          type: "like",
-          title: `${data.sender?.nickname || "Someone"} liked you`,
-          message: data.isMatch ? "You have a new match!" : "Click to view profile",
-          time: "Just now",
-          read: false,
-          sender: data.sender,
-          data: data,
-          isMatch: data.isMatch,
-          createdAt: data.timestamp ? new Date(data.timestamp).toISOString() : new Date().toISOString(),
-        });
-      }
-    };
-
-    const removeLikeListener = socketService.on("newLike", likeListener);
-    this.socketListeners.push(removeLikeListener);
-
-    // --- Register Photo Permission Request Notifications ---
-    const photoRequestListener = (data) => {
-      if (this.shouldShowNotification("photoRequests") && data) {
-        const requesterNickname = data.sender?.nickname || "Someone";
-        this.addNotification({
-          _id: data.permissionId || `permReq-${Date.now()}`,
-          type: "photoRequest",
-          title: `${requesterNickname} requested photo access`,
-          message: "Click to review",
-          time: "Just now",
-          read: false,
-          sender: data.sender,
-          data: data,
-          createdAt: data.timestamp ? new Date(data.timestamp).toISOString() : new Date().toISOString(),
-        });
-      }
-    };
-
-    const removePhotoRequestListener = socketService.on("photoPermissionRequestReceived", photoRequestListener);
-    this.socketListeners.push(removePhotoRequestListener);
-
-    // --- Register Photo Permission Response Notifications ---
-    const photoResponseListener = (data) => {
-      if (this.shouldShowNotification("photoRequests") && data) {
-        const ownerNickname = data.sender?.nickname || "Someone";
-        const action = data.status === "approved" ? "approved" : "rejected";
-        this.addNotification({
-          _id: data.permissionId || `permRes-${Date.now()}`,
-          type: "photoResponse",
-          title: `${ownerNickname} ${action} your request`,
-          message: data.status === "approved" ? "You can now view their photo." : "Request declined.",
-          time: "Just now",
-          read: false,
-          sender: data.sender,
-          data: data,
-          createdAt: data.timestamp ? new Date(data.timestamp).toISOString() : new Date().toISOString(),
-        });
-
-        // Dispatch an event for components that need to update their UI
-        window.dispatchEvent(new CustomEvent('permissionStatusUpdated', {
-          detail: { photoId: data.photoId, status: data.status }
-        }));
-      }
-    };
-
-    const removePhotoResponseListener = socketService.on("photoPermissionResponseReceived", photoResponseListener);
-    this.socketListeners.push(removePhotoResponseListener);
-
-    // --- Register Comment Notifications ---
-    const commentListener = (data) => {
-      if (this.shouldShowNotification("comments") && data) {
-        this.addNotification({
-          _id: data._id || `comment-${Date.now()}`,
-          type: "comment",
-          title: `${data.user?.nickname || "Someone"} commented on your post`,
-          message: data.content || "Click to view",
-          time: "Just now",
-          read: false,
-          sender: data.user,
-          data: data,
-          createdAt: data.createdAt || new Date().toISOString(),
-        });
-      }
-    };
-
-    const removeCommentListener = socketService.on("newComment", commentListener);
-    this.socketListeners.push(removeCommentListener);
-
-    // --- Register Generic Notification Listener ---
-    const genericListener = (data) => {
-      if (data?.type && this.shouldShowNotification(data.type)) {
-        this.addNotification(data);
-      }
-    };
-
-    const removeGenericListener = socketService.on("notification", genericListener);
-    this.socketListeners.push(removeGenericListener);
-
-    console.log("Socket notification listeners registered successfully");
+    console.log(`Registered ${notificationTypes.length} socket notification listeners`);
   }
 
-  // --- Helper methods ---
+  /**
+   * Handle message notifications
+   * @param {Object} data - Message data
+   */
+  _handleMessageNotification(data) {
+    if (this.shouldShowNotification("messages") && data) {
+      const notification = {
+        _id: data._id || `msg-${Date.now()}`,
+        type: "message",
+        title: `New message from ${data.sender?.nickname || "Someone"}`,
+        message: data.content,
+        time: "Just now",
+        read: false,
+        sender: data.sender,
+        data: data,
+        createdAt: data.createdAt || new Date().toISOString(),
+      };
+
+      this.addBundledNotification(notification);
+    }
+  }
+
+  /**
+   * Handle call notifications
+   * @param {Object} data - Call data
+   */
+  _handleCallNotification(data) {
+    if (this.shouldShowNotification("calls") && data) {
+      const notification = {
+        _id: data.callId || `call-${Date.now()}`,
+        type: "call",
+        title: `Incoming call from ${data.caller?.name || "Someone"}`,
+        message: "Click to answer",
+        time: "Just now",
+        read: false,
+        sender: {
+          _id: data.caller?.userId,
+          nickname: data.caller?.name || "Caller"
+        },
+        data: data,
+        createdAt: new Date().toISOString(),
+      };
+
+      this.addBundledNotification(notification);
+    }
+  }
+
+  /**
+   * Handle story notifications
+   * @param {Object} data - Story data
+   */
+  _handleStoryNotification(data) {
+    if (this.shouldShowNotification("stories") && data) {
+      const notification = {
+        _id: data._id || `story-${Date.now()}`,
+        type: "story",
+        title: `${data.user?.nickname || "Someone"} shared a new story`,
+        message: "Click to view",
+        time: "Just now",
+        read: false,
+        sender: data.user,
+        data: data,
+        createdAt: data.createdAt || new Date().toISOString(),
+      };
+
+      this.addBundledNotification(notification);
+    }
+  }
+
+  /**
+   * Handle like notifications
+   * @param {Object} data - Like data
+   */
+  _handleLikeNotification(data) {
+    if (this.shouldShowNotification("likes") && data) {
+      const notification = {
+        _id: data.likeId || `like-${Date.now()}`,
+        type: "like",
+        title: `${data.sender?.nickname || "Someone"} liked you`,
+        message: data.isMatch ? "You have a new match!" : "Click to view profile",
+        time: "Just now",
+        read: false,
+        sender: data.sender,
+        data: data,
+        isMatch: data.isMatch,
+        createdAt: data.timestamp ? new Date(data.timestamp).toISOString() : new Date().toISOString(),
+      };
+
+      this.addBundledNotification(notification);
+    }
+  }
+
+  /**
+   * Handle comment notifications
+   * @param {Object} data - Comment data
+   */
+  _handleCommentNotification(data) {
+    if (this.shouldShowNotification("comments") && data) {
+      const notification = {
+        _id: data._id || `comment-${Date.now()}`,
+        type: "comment",
+        title: `${data.user?.nickname || "Someone"} commented on your post`,
+        message: data.content || "Click to view",
+        time: "Just now",
+        read: false,
+        sender: data.user,
+        data: data,
+        createdAt: data.createdAt || new Date().toISOString(),
+      };
+
+      this.addBundledNotification(notification);
+    }
+  }
+
+  /**
+   * Handle photo request notifications
+   * @param {Object} data - Photo request data
+   */
+  _handlePhotoRequestNotification(data) {
+    if (this.shouldShowNotification("photoRequests") && data) {
+      const requesterNickname = data.sender?.nickname || "Someone";
+      const notification = {
+        _id: data.permissionId || `permReq-${Date.now()}`,
+        type: "photoRequest",
+        title: `${requesterNickname} requested photo access`,
+        message: "Click to review",
+        time: "Just now",
+        read: false,
+        sender: data.sender,
+        data: data,
+        createdAt: data.timestamp ? new Date(data.timestamp).toISOString() : new Date().toISOString(),
+      };
+
+      this.addBundledNotification(notification);
+    }
+  }
+
+  /**
+   * Handle photo response notifications
+   * @param {Object} data - Photo response data
+   */
+  _handlePhotoResponseNotification(data) {
+    if (this.shouldShowNotification("photoRequests") && data) {
+      const ownerNickname = data.sender?.nickname || "Someone";
+      const action = data.status === "approved" ? "approved" : "rejected";
+      const notification = {
+        _id: data.permissionId || `permRes-${Date.now()}`,
+        type: "photoResponse",
+        title: `${ownerNickname} ${action} your request`,
+        message: data.status === "approved" ? "You can now view their photo." : "Request declined.",
+        time: "Just now",
+        read: false,
+        sender: data.sender,
+        data: data,
+        createdAt: data.timestamp ? new Date(data.timestamp).toISOString() : new Date().toISOString(),
+      };
+
+      this.addBundledNotification(notification);
+
+      // Dispatch an event for components that need to update their UI
+      window.dispatchEvent(new CustomEvent('permissionStatusUpdated', {
+        detail: { photoId: data.photoId, status: data.status }
+      }));
+    }
+  }
+
+  /**
+   * Handle generic notifications
+   * @param {Object} data - Generic notification data
+   */
+  _handleGenericNotification(data) {
+    if (data?.type && this.shouldShowNotification(data.type)) {
+      this.addBundledNotification(data);
+    }
+  }
+
+  /**
+   * Check if a notification should be shown based on user settings
+   * @param {string} notificationType - Type of notification
+   * @returns {boolean} - Whether to show the notification
+   */
   shouldShowNotification(notificationType) {
     if (!this.initialized || !this.userSettings) return true;
 
@@ -280,6 +330,11 @@ class NotificationService {
     return this.userSettings.notifications?.[notificationType] !== false;
   }
 
+  /**
+   * Validate a notification object
+   * @param {Object} notification - Notification to validate
+   * @returns {boolean} - Whether notification is valid
+   */
   isValidNotification(notification) {
     if (!notification) return false;
     const hasId = notification._id || notification.id;
@@ -288,6 +343,11 @@ class NotificationService {
     return Boolean(hasId && hasMessage && hasType);
   }
 
+  /**
+   * Sanitize a notification to ensure it has all required fields
+   * @param {Object} notification - Notification to sanitize
+   * @returns {Object|null} - Sanitized notification or null
+   */
   sanitizeNotification(notification) {
     if (!notification) return null;
     const sanitized = { ...notification };
@@ -301,23 +361,72 @@ class NotificationService {
     return sanitized;
   }
 
-  addNotification(notification) {
+  /**
+   * Add a notification with bundling logic
+   * @param {Object} notification - Notification to add
+   * @returns {Object} - Added notification
+   */
+  addBundledNotification(notification) {
     const sanitizedNotification = this.sanitizeNotification(notification);
     if (!sanitizedNotification || !this.isValidNotification(sanitizedNotification)) {
       console.warn("Skipping invalid notification:", notification);
       return;
     }
 
-    // Check for duplicates by ID
-    const existingIndex = this.notifications.findIndex(n =>
-      (n._id && n._id === sanitizedNotification._id) ||
-      (n.id && n.id === sanitizedNotification.id)
-    );
+    // Try to find a similar notification from the same sender within the bundling timeframe
+    const now = new Date();
+    const notificationDate = new Date(sanitizedNotification.createdAt);
+    const senderId = sanitizedNotification.sender?._id ||
+                    sanitizedNotification.sender?.id ||
+                    sanitizedNotification.data?.sender?._id;
 
-    if (existingIndex !== -1) {
-      console.log(`Notification already exists with ID: ${sanitizedNotification._id || sanitizedNotification.id}`);
-      return;
+    if (senderId) {
+      // Find notifications from the same sender and of the same type within the bundling timeframe
+      const similarNotificationIndex = this.notifications.findIndex(n => {
+        const nSenderId = n.sender?._id || n.sender?.id || n.data?.sender?._id;
+
+        // If there's no sender ID match, it's not a similar notification
+        if (nSenderId !== senderId) return false;
+
+        // Check if it's the same type
+        if (n.type !== sanitizedNotification.type) return false;
+
+        // Check if it's within the bundling timeframe
+        const nDate = new Date(n.createdAt);
+        return (now - nDate < this.bundleTimeframe);
+      });
+
+      if (similarNotificationIndex !== -1) {
+        // Update the existing notification with new content
+        const existingNotification = this.notifications[similarNotificationIndex];
+        const count = existingNotification.count || 1;
+
+        // Update the notification
+        this.notifications[similarNotificationIndex] = {
+          ...existingNotification,
+          count: count + 1,
+          message: this._getBundledMessage(sanitizedNotification.type, count + 1, existingNotification.sender?.nickname),
+          updatedAt: now.toISOString(),
+          read: false // Mark as unread since there's new activity
+        };
+
+        // If it was previously read, increment the unread count
+        if (existingNotification.read) {
+          this.unreadCount++;
+        }
+
+        // Notify listeners
+        this.notifyListeners();
+
+        // Show toast for the bundled notification
+        this.showToast(this.notifications[similarNotificationIndex]);
+
+        return this.notifications[similarNotificationIndex];
+      }
     }
+
+    // If no similar notification found, add as a new notification
+    sanitizedNotification.count = 1;
 
     // Add to beginning of array
     this.notifications.unshift(sanitizedNotification);
@@ -341,6 +450,36 @@ class NotificationService {
     return sanitizedNotification;
   }
 
+  /**
+   * Generate a bundled message for multiple notifications of the same type
+   * @param {string} type - Notification type
+   * @param {number} count - Number of notifications
+   * @param {string} nickname - Sender nickname
+   * @returns {string} - Bundled message
+   */
+  _getBundledMessage(type, count, nickname) {
+    switch (type) {
+      case "message":
+        return `${count} new messages from ${nickname || "this user"}`;
+      case "like":
+        return `${nickname || "Someone"} and ${count - 1} others liked you`;
+      case "comment":
+        return `${count} new comments on your post`;
+      case "photoRequest":
+        return `${count} photo access requests`;
+      case "photoResponse":
+        return `${count} responses to your photo requests`;
+      case "story":
+        return `${nickname || "Someone"} shared ${count} new stories`;
+      default:
+        return `${count} new notifications`;
+    }
+  }
+
+  /**
+   * Display a toast notification
+   * @param {Object} notification - Notification to show
+   */
   showToast(notification) {
     try {
       // Skip toast for certain notification types if needed
@@ -355,6 +494,8 @@ class NotificationService {
 
       const title = notification.title || notification.message || "New Notification";
       const message = (notification.message && notification.message !== title) ? notification.message : "";
+      const count = notification.count > 1 ? `(${notification.count})` : "";
+      const displayTitle = count ? `${title} ${count}` : title;
 
       // Use different toast types based on notification type
       let toastMethod = toast.info;
@@ -368,7 +509,7 @@ class NotificationService {
 
       toastMethod(
         <div className="notification-content">
-          <div className="notification-title">{title}</div>
+          <div className="notification-title">{displayTitle}</div>
           {message && <div className="notification-message">{message}</div>}
         </div>,
         toastOptions
@@ -378,7 +519,19 @@ class NotificationService {
     }
   }
 
-  // --- Handle Notification Click ---
+  /**
+   * Add a notification
+   * @param {Object} notification - Notification to add
+   * @returns {Object} - Added notification
+   */
+  addNotification(notification) {
+    return this.addBundledNotification(notification);
+  }
+
+  /**
+   * Handle click on a notification
+   * @param {Object} notification - Clicked notification
+   */
   handleNotificationClick(notification) {
     if (!notification) return;
     console.log("Handling click for notification:", notification);
@@ -470,7 +623,10 @@ class NotificationService {
     }
   }
 
-  // --- Mark Notifications as Read ---
+  /**
+   * Mark a notification as read
+   * @param {string} notificationId - ID of the notification to mark
+   */
   markAsRead(notificationId) {
     if (!notificationId) return;
 
@@ -497,6 +653,9 @@ class NotificationService {
     }
   }
 
+  /**
+   * Mark all notifications as read
+   */
   markAllAsRead() {
     if (this.unreadCount === 0) return;
 
@@ -518,7 +677,11 @@ class NotificationService {
     }
   }
 
-  // --- Get Notifications from Server ---
+  /**
+   * Fetch notifications from the server
+   * @param {Object} options - Query options
+   * @returns {Array} - Notifications
+   */
   async getNotifications(options = {}) {
     if (!this.initialized) {
       console.warn("Trying to fetch notifications before initialization");
@@ -534,11 +697,14 @@ class NotificationService {
           .map(n => this.sanitizeNotification(n))
           .filter(n => this.isValidNotification(n));
 
-        this.notifications = validNotifications;
-        this.unreadCount = validNotifications.filter(n => !n.read).length;
+        // Apply bundling to server notifications before setting state
+        const bundledNotifications = this._bundleServerNotifications(validNotifications);
+
+        this.notifications = bundledNotifications;
+        this.unreadCount = bundledNotifications.filter(n => !n.read).length;
         this.notifyListeners();
 
-        console.log(`Loaded ${validNotifications.length} notifications from server`);
+        console.log(`Loaded ${bundledNotifications.length} notifications from server`);
         return this.notifications;
       }
 
@@ -556,13 +722,96 @@ class NotificationService {
     }
   }
 
-  // --- Update Settings, Add Listener, Notify Listeners ---
+  /**
+   * Bundle notifications from the server
+   * @param {Array} notifications - Notifications to bundle
+   * @returns {Array} - Bundled notifications
+   */
+  _bundleServerNotifications(notifications) {
+    // Group notifications by sender and type
+    const groupedNotifications = {};
+
+    notifications.forEach(notification => {
+      const senderId = notification.sender?._id ||
+                       notification.sender?.id ||
+                       notification.data?.sender?._id;
+
+      // Skip if no sender ID (we can't group these)
+      if (!senderId || !notification.type) {
+        return;
+      }
+
+      const key = `${senderId}:${notification.type}`;
+
+      // Check if we have notifications of this type from this sender in the last hour
+      const now = new Date();
+      const notificationDate = new Date(notification.createdAt);
+      const timeDiff = now - notificationDate;
+
+      // Only bundle within the timeframe
+      if (timeDiff <= this.bundleTimeframe) {
+        if (!groupedNotifications[key]) {
+          groupedNotifications[key] = [notification];
+        } else {
+          groupedNotifications[key].push(notification);
+        }
+      }
+    });
+
+    // Process the grouped notifications
+    const bundledNotifications = [];
+
+    // First add all notifications that don't fit bundling criteria
+    notifications.forEach(notification => {
+      const senderId = notification.sender?._id ||
+                       notification.sender?.id ||
+                       notification.data?.sender?._id;
+
+      if (!senderId || !notification.type) {
+        bundledNotifications.push(notification);
+      }
+    });
+
+    // Then add the bundled notifications
+    Object.values(groupedNotifications).forEach(group => {
+      if (group.length === 1) {
+        // Just one notification, no need to bundle
+        bundledNotifications.push(group[0]);
+      } else {
+        // Multiple notifications, create a bundled one
+        const newest = group.sort((a, b) =>
+          new Date(b.createdAt) - new Date(a.createdAt)
+        )[0];
+
+        bundledNotifications.push({
+          ...newest,
+          count: group.length,
+          message: this._getBundledMessage(newest.type, group.length, newest.sender?.nickname)
+        });
+      }
+    });
+
+    // Sort by most recent first
+    return bundledNotifications.sort((a, b) =>
+      new Date(b.createdAt) - new Date(a.createdAt)
+    );
+  }
+
+  /**
+   * Update notification settings
+   * @param {Object} settings - New settings
+   */
   updateSettings(settings) {
     this.userSettings = { ...this.userSettings, notifications: settings };
     console.log("Notification settings updated:", settings);
     // Optional: Persist settings via settingsService
   }
 
+  /**
+   * Add a listener function to be notified of changes
+   * @param {Function} listener - Listener callback
+   * @returns {Function} - Unsubscribe function
+   */
   addListener(listener) {
     if (typeof listener !== 'function') return () => {};
     this.listeners.push(listener);
@@ -577,6 +826,9 @@ class NotificationService {
     };
   }
 
+  /**
+   * Notify all listeners of notification changes
+   */
   notifyListeners() {
     const data = {
       notifications: [...this.notifications],
@@ -592,13 +844,17 @@ class NotificationService {
     });
   }
 
-  // --- Add Test Notification ---
+  /**
+   * Add a test notification for development/testing
+   * @returns {Object} - Created test notification
+   */
   addTestNotification() {
     const types = [
       { type: "message", title: "Test Message", message: "Hello!" },
       { type: "like", title: "Test Like", message: "Someone liked you." },
       { type: "photoRequest", title: "Test Request", message: "Wants photo access." },
-      { type: "photoResponse", title: "Test Response", message: "Request approved.", data:{status:'approved'} }
+      { type: "photoResponse", title: "Test Response", message: "Request approved.", data: {status: 'approved'} },
+      { type: "comment", title: "Test Comment", message: "Someone commented on your post." }
     ];
 
     const randomType = types[Math.floor(Math.random() * types.length)];
@@ -610,7 +866,7 @@ class NotificationService {
       createdAt: new Date().toISOString(),
     };
 
-    this.addNotification(newNotification);
+    this.addBundledNotification(newNotification);
 
     // Also try sending to server via API
     this.createTestNotificationOnServer(newNotification.type);
@@ -618,7 +874,10 @@ class NotificationService {
     return newNotification;
   }
 
-  // Create a test notification on the server
+  /**
+   * Create a test notification on the server
+   * @param {string} type - Notification type
+   */
   async createTestNotificationOnServer(type = "system") {
     try {
       const response = await apiService.post('/notifications/create-test', { type });
@@ -631,13 +890,12 @@ class NotificationService {
   }
 }
 
-// --- Export the Singleton Instance ---
+// Export singleton instance
 const notificationServiceInstance = new NotificationService();
 
 /**
  * Hook to initialize notification service navigation at the app level
- * This is used by App.jsx to ensure the navigate function is available
- * to the notification service as early as possible
+ * Used by App.jsx to ensure the navigate function is available early
  */
 export function useInitializeNotificationServiceNavigation() {
   const navigate = useNavigate();
