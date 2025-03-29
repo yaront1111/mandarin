@@ -120,8 +120,8 @@ export const Navbar = () => {
               <span>Discover</span>
             </button>
             <button
-              className={`tab-button ${window.location.pathname === "/massages" ? "active" : ""}`}
-              onClick={() => navigate("/massages")}
+              className={`tab-button ${window.location.pathname === "/messages" ? "active" : ""}`}
+              onClick={() => navigate("/messages")}
             >
               <FaEnvelopeOpen className="tab-icon" />
               <span>Massages</span>
