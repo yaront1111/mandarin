@@ -1,620 +1,868 @@
-"use client"
+// client/src/pages/Messages.jsx
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useAuth, useChat } from '../context'; // Import useAuth to get authChecked
+import { toast } from 'react-toastify';
+import { Navbar } from '../components/LayoutComponents';
+import EmbeddedChat from '../components/EmbeddedChat';
+import { FaSearch, FaSpinner, FaRegTrashAlt, FaBellSlash, FaBell, FaEllipsisV, FaChevronLeft, FaUserCircle, FaHeart, FaImage, FaFile, FaVideo } from 'react-icons/fa';
+import { formatDistanceToNowStrict } from 'date-fns';
 
-import { useState, useEffect, useRef, useCallback } from "react"
-import { toast } from "react-toastify"
-import {
-  FaPaperPlane,
-  FaPaperclip,
-  FaTimes,
-  FaSpinner,
-  FaSearch,
-  FaUserAlt,
-  FaCheckDouble,
-  FaCheck,
-  FaFileAlt,
-  FaFilePdf,
-  FaFileVideo,
-  FaFileAudio,
-  FaImage
-} from "react-icons/fa"
+// Styles (assuming you have a separate CSS file or will add styles)
+// import '../styles/MessagesPageLayout.css'; // Example: Create this CSS file for layout
 
-import { useAuth } from "../context/AuthContext"
-import { useChat } from "../context/ChatContext"
-
-// Debug logger function
-const debug = (msg, ...args) => {
-  console.log(`[Messages] ${msg}`, ...args)
-}
-
-// UserAvatar component - embedded directly
-const UserAvatar = ({ user, size = "md", onClick }) => {
-  const [imageError, setImageError] = useState(false)
-  const sizeClass = size === "sm" ? "w-8 h-8" : size === "lg" ? "w-16 h-16" : "w-12 h-12"
-
-  const handleError = () => {
-    setImageError(true)
-  }
-
-  return (
-    <div
-      className={`user-avatar ${sizeClass} ${onClick ? 'cursor-pointer' : ''}`}
-      onClick={onClick}
-    >
-      {!imageError && user?.photos && user.photos.length > 0 ? (
-        <img
-          src={user.photos[0].url || "/placeholder.svg"}
-          alt={user.nickname || "User"}
-          onError={handleError}
-          className="avatar-image"
-        />
-      ) : (
-        <div className="avatar-placeholder">
-          <FaUserAlt />
-        </div>
-      )}
-      {user?.isVerified && (
-        <span className="verified-badge" title="Verified User">✓</span>
-      )}
-    </div>
-  )
-}
-
-// MessageBubble component - embedded directly
-const MessageBubble = ({ message, isOwn }) => {
-  const formatTime = (timestamp) => {
-    if (!timestamp) return ""
-    return new Date(timestamp).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
-  // Get appropriate icon for file type
-  const getFileIcon = (fileType) => {
-    if (!fileType) return <FaFileAlt />
-    if (fileType.startsWith("image/")) return <FaImage />
-    if (fileType.startsWith("video/")) return <FaFileVideo />
-    if (fileType.startsWith("audio/")) return <FaFileAudio />
-    if (fileType === "application/pdf") return <FaFilePdf />
-    return <FaFileAlt />
-  }
-
-  return (
-    <div className={`message-bubble ${isOwn ? 'own' : 'other'}`}>
-      {message.type === "text" && (
-        <>
-          <div className="message-content text-message">
-            <p>{message.content}</p>
-          </div>
-          <div className="message-metadata">
-            <span className="message-time">{formatTime(message.createdAt)}</span>
-            {isOwn && (
-              <span className="read-status">
-                {message.read ? <FaCheckDouble className="read-icon" /> : <FaCheck className="sent-icon" />}
-              </span>
-            )}
-          </div>
-        </>
-      )}
-
-      {message.type === "file" && (
-        <div className="message-content file-message">
-          {message.metadata?.fileType?.startsWith("image/") ? (
-            <div className="image-file">
-              <img
-                src={message.metadata.fileUrl || "/placeholder.svg"}
-                alt="Image"
-                className="message-image"
-                onError={(e) => { e.target.src = "/placeholder.svg" }}
-              />
-            </div>
-          ) : (
-            <div className="generic-file">
-              <div className="file-icon">{getFileIcon(message.metadata?.fileType)}</div>
-              <div className="file-details">
-                <span className="file-name">{message.metadata?.fileName || "File"}</span>
-                <a
-                  href={message.metadata?.fileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="download-link"
-                >
-                  Download
-                </a>
-              </div>
-            </div>
-          )}
-          <div className="message-metadata">
-            <span className="message-time">{formatTime(message.createdAt)}</span>
-            {isOwn && (
-              <span className="read-status">
-                {message.read ? <FaCheckDouble className="read-icon" /> : <FaCheck className="sent-icon" />}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {message.type === "wink" && (
-        <div className="message-content wink-message">
-          <p className="wink-emoji">😉</p>
-          <div className="message-metadata">
-            <span className="message-time">{formatTime(message.createdAt)}</span>
-            {isOwn && (
-              <span className="read-status">
-                {message.read ? <FaCheckDouble className="read-icon" /> : <FaCheck className="sent-icon" />}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ConversationList component
-const ConversationList = ({ conversations, activeId, onSelect, unreadCounts }) => {
-  if (!conversations || conversations.length === 0) {
-    return (
-      <div className="no-conversations">
-        <p>No conversations yet</p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="conversations-list">
-      {conversations.map((conv) => (
-        <div
-          key={conv.user?._id || "unknown"}
-          className={`conversation-item ${activeId === conv.user?._id ? "active" : ""}`}
-          onClick={() => conv.user?._id && onSelect(conv.user._id)}
-        >
-          <div className="conversation-avatar">
-            <UserAvatar user={conv.user} size="md" />
-            {conv.user?.isOnline && <span className="online-indicator"></span>}
-          </div>
-          <div className="conversation-details">
-            <div className="conversation-header">
-              <h4 className="conversation-name">{conv.user?.nickname || "User"}</h4>
-              <span className="conversation-time">
-                {conv.lastMessage &&
-                  new Date(conv.lastMessage.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            </div>
-            <div className="conversation-preview">
-              {conv.lastMessage && (
-                <p className="last-message">
-                  {conv.lastMessage.type === "text"
-                    ? conv.lastMessage.content
-                    : conv.lastMessage.type === "file"
-                      ? "📎 Attachment"
-                      : conv.lastMessage.type === "wink"
-                        ? "😉 Wink"
-                        : "Message"}
-                </p>
-              )}
-              {unreadCounts[conv.user?._id] > 0 && <span className="unread-badge">{unreadCounts[conv.user._id]}</span>}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// Main Messages component
-const Messages = () => {
-  const { user } = useAuth()
+const MessagesPage = () => {
+  // --- FIX: Add authChecked from useAuth ---
+  const { user, authChecked } = useAuth();
+  // --- End FIX ---
+  const navigate = useNavigate();
+  const { userId: selectedUserIdFromParams } = useParams();
   const {
-    messages,
-    conversations,
-    unreadCounts,
-    typingUsers,
-    loading,
-    sending,
-    uploading,
-    error,
-    activeConversation,
-    getMessages,
+    conversations = [],
     getConversations,
+    loading,
+    error,
+    markConversationRead,
+    deleteConversation,
+    getMessages,
+    messages: currentMessages,
     sendMessage,
     sendFileMessage,
     sendTyping,
-    markMessagesAsRead,
+    typingUsers = {},
+    initiateVideoCall,
+    activeConversation,
     setActiveConversation,
-  } = useChat()
+  } = useChat();
 
-  const [messageText, setMessageText] = useState("")
-  const [selectedFile, setSelectedFile] = useState(null)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [authError, setAuthError] = useState(null)
-  const messagesEndRef = useRef(null)
-  const fileInputRef = useRef(null)
-  const typingTimeoutRef = useRef(null)
-  const conversationsLoadedRef = useRef(false)
-  const isInitialMountRef = useRef(true)
+  const [selectedConversationRecipient, setSelectedConversationRecipient] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filteredConversations, setFilteredConversations] = useState([]);
+  const [conversationMenuOpen, setConversationMenuOpen] = useState(null);
+  const [isChatPanelVisible, setIsChatPanelVisible] = useState(false);
+  const searchInputRef = useRef(null);
+  const conversationListRef = useRef(null);
 
-  // Get active conversation user
-  const activeUser = conversations.find((conv) => conv.user && conv.user._id === activeConversation)?.user
 
-  // MongoDB ObjectID validation function
-  const isValidMongoId = useCallback((id) => {
-    return id && typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id)
-  }, [])
-
-  // Check user auth status only on initial mount
+  // --- FIX: Add authChecked dependency and check ---
   useEffect(() => {
-    if (!isInitialMountRef.current) return
-
-    // Perform one-time auth check
-    if (!user) {
-      debug("No user object found")
-      setAuthError("Not authenticated")
-      return
+    // Only run if auth check is complete, user exists, and ID is valid
+    if (authChecked && user?._id && /^[0-9a-fA-F]{24}$/.test(user._id)) {
+      console.log(`MessagesPage: Auth checked & Valid user ID (${user._id}) found, calling getConversations.`);
+      getConversations(); // Call the function
+    } else if (authChecked && user) {
+        // Log if auth is checked but user ID is still invalid
+        console.warn(`MessagesPage: Auth checked, but User ID is invalid or missing: ${user._id}. Skipping getConversations.`);
+    } else if (!authChecked) {
+        console.log("MessagesPage: Waiting for auth check to complete before fetching conversations.");
     }
+    // Dependency array now includes authChecked
+  }, [getConversations, user, authChecked]);
+  // --- End FIX ---
 
-    if (!user._id) {
-      debug("User object missing _id", user)
-      setAuthError("User ID is missing")
-      return
-    }
-
-    debug("User authenticated:", user._id)
-
-    // Mark initial mount as complete
-    isInitialMountRef.current = false
-  }, [user])
-
-  // Sync effect for user ID validation - independent of API calls
+  // Select conversation based on URL parameter
   useEffect(() => {
-    if (!user || !user._id) return
+    // Ensure conversations is an array before proceeding
+     if (!Array.isArray(conversations)) return;
 
-    // Validate user ID format
-    if (!isValidMongoId(user._id)) {
-      debug(`Invalid user ID format detected: ${user._id}`)
-      setAuthError("Invalid user ID format")
-    } else {
-      // Clear auth error if ID is valid
-      setAuthError(null)
-    }
-  }, [user, isValidMongoId])
-
-  // Load conversations - with protection against duplicate calls
-  useEffect(() => {
-    // Skip if already loaded, there's an auth error, or no valid user
-    if (conversationsLoadedRef.current || authError || !user || !user._id) return
-
-    // Skip if user ID is invalid
-    if (!isValidMongoId(user._id)) {
-      debug(`Skipping API call due to invalid user ID format: ${user._id}`)
-      return
-    }
-
-    const loadConversations = async () => {
-      // Set loading flag immediately to prevent duplicate calls
-      conversationsLoadedRef.current = true
-
-      try {
-        debug("Loading conversations...", user._id)
-        await getConversations()
-        debug("Conversations loaded successfully")
-      } catch (err) {
-        debug("Failed to load conversations:", err)
-
-        // Log specific error details
-        if (err.message) debug("Error message:", err.message)
-        if (err.error) debug("Error details:", err.error)
-
-        // Clear loaded flag if error relates to auth - allow retry after fixing
-        if (err.message?.includes('Invalid user ID format') ||
-            err.error?.includes('Invalid user ID format')) {
-          conversationsLoadedRef.current = false
-          setAuthError("Invalid user ID format. Please log out and log in again.")
+    if (selectedUserIdFromParams && conversations.length > 0) {
+      const convo = conversations.find(c => c.recipient?._id === selectedUserIdFromParams);
+      if (convo) {
+        if (convo.recipient && convo.recipient._id) {
+             setSelectedConversationRecipient(convo.recipient);
+             setActiveConversation(convo.recipient._id);
+             if (convo.unreadCount > 0) {
+               markConversationRead(convo.recipient._id);
+             }
+             setIsChatPanelVisible(true);
         } else {
-          toast.error("Failed to load conversations. Please try again.")
+             console.warn("Found conversation but recipient data is invalid:", convo);
+             setSelectedConversationRecipient(null);
+             setActiveConversation(null);
+             navigate("/messages", { replace: true });
+        }
+      } else {
+        // If ID from param doesn't match any conversation, clear selection
+        // This prevents staying on a non-existent chat URL
+        setSelectedConversationRecipient(null);
+        setActiveConversation(null);
+        // Consider navigating back only if the user wasn't already on /messages
+        if (location.pathname !== "/messages") {
+            navigate("/messages", { replace: true });
         }
       }
+    } else if (!selectedUserIdFromParams) {
+       // If no parameter, check if context has an active one
+       if (activeConversation && conversations.length > 0) {
+           const activeConvo = conversations.find(c => c.recipient?._id === activeConversation);
+           if (activeConvo?.recipient?._id) {
+               setSelectedConversationRecipient(activeConvo.recipient);
+               // Ensure chat panel is visible if there's an active conversation from context
+               setIsChatPanelVisible(true);
+           } else {
+               setSelectedConversationRecipient(null);
+               setActiveConversation(null);
+           }
+       } else {
+            setSelectedConversationRecipient(null);
+            // Hide chat panel if no recipient is selected
+            // setIsChatPanelVisible(false); // Commented out: Let user control visibility explicitly?
+       }
     }
+  }, [selectedUserIdFromParams, conversations, navigate, markConversationRead, setActiveConversation, activeConversation]);
 
-    loadConversations()
-  }, [user, getConversations, isValidMongoId, authError])
 
-  // Load messages when active conversation changes
+  // Filter conversations based on search query
   useEffect(() => {
-    if (!activeConversation || !user || authError) return
+    if (!Array.isArray(conversations)) {
+      setFilteredConversations([]);
+      return;
+    }
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) {
+      setFilteredConversations(conversations);
+      return;
+    }
+    const filtered = conversations.filter(convo =>
+      convo?.recipient?.nickname?.toLowerCase().includes(query) ||
+      convo?.lastMessage?.content?.toLowerCase().includes(query)
+    );
+    setFilteredConversations(filtered);
+  }, [searchQuery, conversations]);
 
-    // Validate conversation ID before loading messages
-    if (!isValidMongoId(activeConversation)) {
-      debug(`Invalid conversation ID format: ${activeConversation}`)
-      toast.error("Invalid conversation selected")
-      return
+  // Handle selecting a conversation from the list
+  const handleSelectConversation = useCallback((recipient) => {
+    if (!recipient || !recipient._id) {
+        console.warn("Attempted to select conversation with invalid recipient:", recipient);
+        return;
     }
 
-    const loadMessages = async () => {
+    setSelectedConversationRecipient(recipient);
+    setActiveConversation(recipient._id);
+    navigate(`/messages/${recipient._id}`, { replace: true });
+
+    const conversation = conversations.find(c => c.recipient?._id === recipient._id);
+    if (conversation?.unreadCount > 0) {
+      markConversationRead(recipient._id);
+    }
+    setIsChatPanelVisible(true); // Explicitly show chat panel on selection
+    setConversationMenuOpen(null);
+  }, [conversations, navigate, markConversationRead, setActiveConversation]);
+
+  // Handle search input change
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value);
+  };
+
+  // Clear search input
+  const handleClearSearch = () => {
+    setSearchQuery("");
+    searchInputRef.current?.focus();
+  };
+
+  // Toggle conversation action menu
+  const toggleConversationMenu = (e, conversationId) => {
+    e.stopPropagation();
+    setConversationMenuOpen(prevId => (prevId === conversationId ? null : conversationId));
+  };
+
+  // Handle deleting a conversation
+  const handleDeleteConversation = async (e, recipientId) => {
+    e.stopPropagation();
+    if (!recipientId) return;
+
+    const conversationToDelete = conversations.find(c => c.recipient?._id === recipientId);
+    const conversationId = conversationToDelete?._id;
+
+    if (!conversationId) {
+      toast.error("Could not find conversation to delete.");
+      console.error("Conversation ID not found for recipient:", recipientId);
+      return;
+    }
+
+    if (window.confirm('Are you sure you want to delete this conversation?')) {
       try {
-        debug(`Loading messages for conversation: ${activeConversation}`)
-        await getMessages(activeConversation)
-
-        // Mark messages as read
-        const unreadMessages = messages
-          .filter(m => m.sender === activeConversation && !m.read)
-          .map(m => m._id)
-
-        if (unreadMessages.length > 0) {
-          debug(`Marking ${unreadMessages.length} messages as read`)
-          markMessagesAsRead(unreadMessages, activeConversation)
+        if (typeof deleteConversation !== 'function') {
+            toast.error("Delete function is not available.");
+            console.error("deleteConversation is not a function in ChatContext");
+            return;
         }
-      } catch (err) {
-        debug("Failed to load messages:", err)
-        toast.error("Failed to load messages")
+        await deleteConversation(conversationId);
+        setConversationMenuOpen(null);
+        toast.success("Conversation deleted");
+
+        // Update local state immediately
+        setFilteredConversations(prev => prev.filter(c => c._id !== conversationId));
+        // Note: Ideally, ChatContext should update the main 'conversations' state
+        // after successful deletion, triggering a re-filter automatically.
+        // Avoid direct mutation of context state here if possible.
+
+        if (selectedConversationRecipient?._id === recipientId) {
+          setSelectedConversationRecipient(null);
+          setActiveConversation(null);
+          navigate("/messages", { replace: true });
+        }
+      } catch (error) {
+        console.error("Delete conversation error:", error);
+        toast.error("Failed to delete conversation");
       }
     }
+  };
 
-    loadMessages()
-  }, [activeConversation, user, getMessages, messages, markMessagesAsRead, isValidMongoId, authError])
 
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+  // Handle muting/unmuting (Placeholder)
+  const handleToggleMute = async (e, conversationId, currentMuteStatus) => {
+    e.stopPropagation();
+    try {
+      console.log(`Toggling mute for ${conversationId}. Current: ${currentMuteStatus}`);
+      toast.info("Mute functionality not yet implemented.");
+      setConversationMenuOpen(null);
+    } catch (error) {
+      toast.error("Failed to update mute status");
+    }
+  };
 
-  // Cleanup typing timeout
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current)
+  // Format last message preview
+  const formatMessagePreview = (message) => {
+    if (!message) return "No messages yet";
+    const prefix = message.sender === user?._id ? "You: " : "";
+    switch (message.type) {
+      case "text":
+        const content = message.content || "";
+        return prefix + (content.length > 25
+          ? `${content.substring(0, 25)}...`
+          : content);
+      case "wink":
+        return prefix + "Sent a wink 😉";
+      case "file":
+        return prefix + (message.metadata?.mimeType?.startsWith("image/")
+          ? "Sent an image"
+          : "Sent a file");
+      case "video":
+         return prefix + "Video Call";
+      default:
+        return prefix + "New message";
+    }
+  };
+
+  // Get message type icon
+  const getMessageTypeIcon = (message) => {
+    if (!message || message.sender === user?._id) return null;
+    switch (message.type) {
+      case "wink":
+        return <FaHeart className="message-type-icon wink" title="Wink"/>;
+      case "file":
+        return message.metadata?.mimeType?.startsWith("image/")
+          ? <FaImage className="message-type-icon image" title="Image"/>
+          : <FaFile className="message-type-icon file" title="File"/>;
+       case "video":
+          return <FaVideo className="message-type-icon video" title="Video Call"/>;
+      default:
+        return null;
+    }
+  };
+
+  // Format timestamp relative to now
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return "";
+    try {
+      return formatDistanceToNowStrict(new Date(timestamp), { addSuffix: true });
+    } catch (e) {
+      console.warn("Error formatting timestamp:", timestamp, e);
+      return "";
+    }
+  };
+
+  // Mobile: Handle closing the chat panel
+  const handleCloseChatPanel = () => {
+      setIsChatPanelVisible(false);
+      // Navigate back to the base /messages URL when closing on mobile
+      if (window.innerWidth <= 768) {
+          navigate("/messages", { replace: true });
       }
-    }
-  }, [])
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
-
-  const handleSelectConversation = (userId) => {
-    if (!isValidMongoId(userId)) {
-      debug(`Invalid recipient ID format: ${userId}`)
-      toast.error("Invalid conversation selected")
-      return
-    }
-
-    if (userId !== activeConversation) {
-      setActiveConversation(userId)
-    }
-  }
-
-  const handleSendMessage = async (e) => {
-    e.preventDefault()
-
-    if (selectedFile) {
-      await handleSendFile()
-      return
-    }
-
-    if (!messageText.trim() || !activeConversation) return
-
-    try {
-      await sendMessage(activeConversation, "text", messageText.trim())
-      setMessageText("")
-    } catch (error) {
-      debug("Failed to send message:", error)
-      toast.error("Failed to send message")
-    }
-  }
-
-  const handleFileSelect = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    // Validate file size (5MB max)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("File is too large. Maximum size is 5MB.")
-      if (fileInputRef.current) fileInputRef.current.value = ""
-      return
-    }
-
-    setSelectedFile(file)
-  }
-
-  const handleSendFile = async () => {
-    if (!selectedFile || !activeConversation) return
-
-    try {
-      await sendFileMessage(activeConversation, selectedFile, (progress) => {
-        setUploadProgress(progress)
-      })
-
-      setSelectedFile(null)
-      setUploadProgress(0)
-      if (fileInputRef.current) fileInputRef.current.value = ""
-    } catch (error) {
-      debug("Failed to send file:", error)
-      toast.error("Failed to send file")
-    }
-  }
-
-  const handleCancelFileUpload = () => {
-    setSelectedFile(null)
-    setUploadProgress(0)
-    if (fileInputRef.current) fileInputRef.current.value = ""
-  }
-
-  const handleTyping = () => {
-    if (!activeConversation) return
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current)
-    }
-
-    sendTyping(activeConversation)
-
-    typingTimeoutRef.current = setTimeout(() => {
-      typingTimeoutRef.current = null
-    }, 3000)
-  }
-
-  const handleLogout = () => {
-    // Force a page refresh to clear any stale auth state
-    window.location.href = "/logout";
-  }
-
-  const isUserTyping = activeConversation &&
-    typingUsers[activeConversation] &&
-    Date.now() - typingUsers[activeConversation] < 3000
-
-  // If we have an auth error, show a special UI
-  if (authError) {
-    return (
-      <div className="messages-page">
-        <div className="auth-error-container">
-          <div className="error-icon">⚠️</div>
-          <h3>Authentication Error</h3>
-          <p>{authError}</p>
-          <p>This is usually caused by a temporary issue with your session.</p>
-          <div className="error-actions">
-            <button onClick={() => window.location.reload()} className="btn btn-secondary">
-              Refresh Page
-            </button>
-            <button onClick={handleLogout} className="btn btn-primary">
-              Log Out
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
+      setActiveConversation(null); // Clear active conversation context
+      setSelectedConversationRecipient(null); // Clear local selection
+  };
 
   return (
-    <div className="messages-page">
-      <div className="conversations-panel">
-        <div className="conversations-header">
-          <h2>Conversations</h2>
-        </div>
-        {loading && conversations.length === 0 ? (
-          <div className="loading-container">
-            <FaSpinner className="spinner" />
-            <p>Loading conversations...</p>
-          </div>
-        ) : conversations.length === 0 ? (
-          <div className="no-conversations">
-            <FaSearch className="search-icon" />
-            <p>No conversations yet</p>
-            <p className="hint">Start a conversation from the Discover page</p>
-          </div>
-        ) : (
-          <ConversationList
-            conversations={conversations}
-            activeId={activeConversation}
-            onSelect={handleSelectConversation}
-            unreadCounts={unreadCounts}
-          />
-        )}
-      </div>
+    <div className="messages-page-layout">
+      <Navbar />
+      <div className="messages-main-content">
+        <div className={`conversations-panel-wrapper ${isChatPanelVisible ? 'mobile-hidden' : ''}`}>
+          <div className="conversations-header">
+             <h2>Messages</h2>
+             <div className="search-container">
+               <FaSearch className="search-icon" />
+               <input
+                 type="text"
+                 placeholder="Search conversations..."
+                 value={searchQuery}
+                 onChange={handleSearchChange}
+                 ref={searchInputRef}
+                 className="search-input"
+                 aria-label="Search conversations"
+               />
+               {searchQuery && (
+                 <button className="clear-search" onClick={handleClearSearch} aria-label="Clear search">
+                   &times;
+                 </button>
+               )}
+             </div>
+           </div>
+          <div className="conversations-list" ref={conversationListRef}>
+            {loading && conversations.length === 0 ? (
+               <div className="loading-state">
+                 <FaSpinner className="fa-spin" />
+                 <p>Loading conversations...</p>
+               </div>
+             ) : error ? (
+               <div className="error-state">
+                 <p>{error || "Failed to load conversations"}</p>
+                 {/* Use a button to trigger the fetch again */}
+                 <button onClick={() => { if (user?._id && /^[0-9a-fA-F]{24}$/.test(user._id)) getConversations(); }}>Retry</button>
+               </div>
+             ) : filteredConversations.length === 0 ? (
+               <div className="empty-state">
+                 <p>{searchQuery ? "No conversations match search" : "No conversations yet"}</p>
+                 {!searchQuery && <button className="start-chat-btn" onClick={() => navigate("/dashboard")}>Find Users</button>}
+               </div>
+             ) : (
+              filteredConversations.map(conversation => {
+                if (!conversation?._id || !conversation?.recipient?._id) {
+                    console.warn("Skipping invalid conversation:", conversation);
+                    return null;
+                }
+                const recipientId = conversation.recipient._id;
+                const isSelected = selectedConversationRecipient?._id === recipientId;
+                const muted = conversation.muted || false;
 
-      <div className="messages-panel">
-        {activeConversation && activeUser ? (
-          <>
-            <div className="messages-header">
-              <div className="user-avatar">
-                <UserAvatar user={activeUser} size="md" />
-                {activeUser.isOnline && <span className="online-indicator"></span>}
-              </div>
-              <div className="user-info">
-                <h3>{activeUser.nickname || "User"}</h3>
-                {isUserTyping && <p className="typing-status">typing...</p>}
-              </div>
-            </div>
-
-            <div className="messages-container">
-              {loading ? (
-                <div className="loading-container">
-                  <FaSpinner className="spinner" />
-                  <p>Loading messages...</p>
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="empty-messages">
-                  <p>No messages yet. Start the conversation!</p>
-                </div>
-              ) : (
-                <div className="messages-list">
-                  {messages.map((message) => (
-                    <MessageBubble key={message._id} message={message} isOwn={message.sender === user?._id} />
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
-              )}
-            </div>
-
-            <div className="message-input-container">
-              {selectedFile && (
-                <div className="selected-file">
-                  <div className="file-info">
-                    <span className="file-name">{selectedFile.name}</span>
-                    <span className="file-size">({Math.round(selectedFile.size / 1024)} KB)</span>
+                return (
+                  <div
+                    key={conversation._id}
+                    className={`conversation-item ${isSelected ? 'selected' : ''} ${conversation.unreadCount > 0 ? 'unread' : ''}`}
+                    onClick={() => handleSelectConversation(conversation.recipient)}
+                    role="button"
+                    tabIndex={0}
+                    aria-selected={isSelected}
+                  >
+                    <div className="avatar-container">
+                       {conversation.recipient?.photos?.length > 0 ? (
+                         <img
+                           src={conversation.recipient.photos[0].url}
+                           alt={conversation.recipient.nickname || `User ${recipientId}`}
+                           className="avatar"
+                           onError={(e) => { e.target.onerror = null; e.target.src = "/placeholder.svg"; }}
+                         />
+                       ) : (
+                         <FaUserCircle className="avatar-placeholder" />
+                       )}
+                       {conversation.recipient?.isOnline && <span className="online-indicator" />}
+                     </div>
+                    <div className="conversation-info">
+                       <div className="conversation-info-header">
+                         <h3 className="recipient-name">{conversation.recipient.nickname || "User"}</h3>
+                         <span className="timestamp">{formatTimestamp(conversation.lastMessage?.createdAt)}</span>
+                       </div>
+                       <div className="last-message">
+                          {getMessageTypeIcon(conversation.lastMessage)}
+                         <p className="message-preview">
+                           {formatMessagePreview(conversation.lastMessage)}
+                         </p>
+                         {conversation.unreadCount > 0 && (
+                           <span className="unread-badge">{conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}</span>
+                         )}
+                       </div>
+                     </div>
+                    <div className="conversation-actions">
+                       <button
+                         className="conversation-menu-btn"
+                         onClick={(e) => toggleConversationMenu(e, recipientId)}
+                         aria-label="Conversation options"
+                       >
+                         <FaEllipsisV />
+                       </button>
+                       {conversationMenuOpen === recipientId && (
+                         // --- FIX: Ensure menu closes when clicking outside or on an action ---
+                         // Add a simple overlay or use a library for better dropdown handling
+                         // For now, clicking an action closes it.
+                         <div className="conversation-menu" onClick={(e) => e.stopPropagation()}>
+                           <button onClick={(e) => handleToggleMute(e, conversation._id, muted)}>
+                             {muted ? <FaBell /> : <FaBellSlash />} {muted ? "Unmute" : "Mute"}
+                           </button>
+                           <button className="delete-btn" onClick={(e) => handleDeleteConversation(e, recipientId)}>
+                             <FaRegTrashAlt /> Delete
+                           </button>
+                         </div>
+                         // --- End FIX ---
+                       )}
+                     </div>
                   </div>
-                  {uploading ? (
-                    <div className="upload-progress">
-                      <div className="progress-bar" style={{ width: `${uploadProgress}%` }}></div>
-                      <span>{uploadProgress}%</span>
-                    </div>
-                  ) : (
-                    <button className="cancel-file" onClick={handleCancelFileUpload}>
-                      <FaTimes />
-                    </button>
-                  )}
-                </div>
-              )}
-
-              <form onSubmit={handleSendMessage} className="message-form">
-                <button
-                  type="button"
-                  className="attachment-button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={sending || uploading}
-                >
-                  <FaPaperclip />
-                </button>
-
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                  style={{ display: "none" }}
-                  accept="image/*,application/pdf,text/plain,audio/*,video/*"
-                />
-
-                <input
-                  type="text"
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  onKeyDown={() => handleTyping()}
-                  placeholder="Type a message..."
-                  className="message-input"
-                  disabled={sending || uploading || !!selectedFile}
-                />
-
-                <button
-                  type="submit"
-                  className="send-button"
-                  disabled={(!messageText.trim() && !selectedFile) || sending || uploading}
-                >
-                  {sending || uploading ? <FaSpinner className="spinner" /> : <FaPaperPlane />}
-                </button>
-              </form>
-            </div>
-          </>
-        ) : (
-          <div className="no-conversation-selected">
-            <div className="empty-state">
-              <h3>Select a conversation</h3>
-              <p>Choose a conversation from the list to start chatting</p>
-            </div>
+                );
+              })
+            )}
           </div>
-        )}
+        </div>
+        <div className={`chat-panel-wrapper ${!isChatPanelVisible ? 'mobile-hidden' : ''}`}>
+          {selectedConversationRecipient ? (
+            <EmbeddedChat
+              key={selectedConversationRecipient._id} // Force re-mount on recipient change
+              recipient={selectedConversationRecipient}
+              isOpen={true}
+              onClose={handleCloseChatPanel} // Use the new handler for mobile close
+              embedded={false}
+            />
+          ) : (
+             <div className="no-chat-selected">
+               <FaChevronLeft className="select-arrow-icon" />
+               <h3>Select a conversation</h3>
+               <p>Choose someone from the list to start chatting.</p>
+             </div>
+           )}
+        </div>
       </div>
-    </div>
-  )
-}
+      {/* Styles */}
+      <style jsx>{`
+        .messages-page-layout {
+          display: flex;
+          flex-direction: column;
+          height: 100vh;
+          overflow: hidden;
+        }
+        .messages-main-content {
+          display: flex;
+          flex-grow: 1;
+          overflow: hidden;
+          background-color: var(--bg-light);
+        }
+        .conversations-panel-wrapper {
+          width: 320px; /* Adjust width as needed */
+          flex-shrink: 0;
+          display: flex;
+          flex-direction: column;
+          border-right: 1px solid var(--border-color);
+          background-color: var(--white);
+        }
+        .chat-panel-wrapper {
+          flex-grow: 1;
+          display: flex;
+          flex-direction: column;
+          background-color: var(--bg-card);
+          overflow: hidden; /* Important */
+        }
 
-export default Messages
+        /* Override EmbeddedChat styles */
+         .chat-panel-wrapper > :global(.embedded-chat) {
+           position: relative !important;
+           height: 100% !important;
+           width: 100% !important;
+           max-width: none !important;
+           max-height: none !important;
+           box-shadow: none !important;
+           border-radius: 0 !important;
+           border: none !important;
+           animation: none !important;
+           bottom: auto !important;
+           right: auto !important;
+           z-index: 1 !important;
+           display: flex !important; /* Ensure flex layout */
+           flex-direction: column !important; /* Stack header/content/input */
+           flex-grow: 1 !important; /* Take available space */
+           overflow: hidden; /* Prevent internal scrollbars if not needed */
+         }
+         /* Ensure inner chat container also takes full height */
+         .chat-panel-wrapper > :global(.embedded-chat > div:first-child) {
+             height: 100%;
+             display: flex;
+             flex-direction: column;
+         }
+
+        .conversations-header {
+          padding: 16px;
+          border-bottom: 1px solid var(--border-color);
+          flex-shrink: 0;
+        }
+        .conversations-header h2 {
+          font-size: 1.1rem;
+          font-weight: 600;
+          margin: 0 0 12px 0;
+        }
+        .search-container {
+          position: relative;
+        }
+        .search-icon {
+          position: absolute;
+          left: 10px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: var(--text-light);
+        }
+        .search-input {
+          width: 100%;
+          padding: 8px 12px 8px 35px;
+          border-radius: 20px;
+          border: 1px solid var(--border-color);
+          background-color: var(--bg-light);
+        }
+        .clear-search {
+          position: absolute;
+          right: 10px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          color: var(--text-light);
+          cursor: pointer;
+          font-size: 1.2rem;
+        }
+        .conversations-list {
+          flex-grow: 1;
+          overflow-y: auto;
+          padding: 8px;
+          scrollbar-width: thin;
+          scrollbar-color: var(--border-color) transparent;
+        }
+        .conversations-list::-webkit-scrollbar {
+            width: 5px;
+        }
+        .conversations-list::-webkit-scrollbar-thumb {
+            background-color: var(--border-color);
+            border-radius: 10px;
+        }
+        .conversation-item {
+          display: flex;
+          padding: 12px 8px;
+          border-radius: 8px;
+          margin-bottom: 4px;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+          position: relative;
+        }
+        .conversation-item:hover {
+          background-color: var(--bg-light);
+        }
+        .conversation-item.selected {
+          background-color: var(--primary-subtle);
+        }
+         .conversation-item.unread .recipient-name,
+         .conversation-item.unread .message-preview {
+           font-weight: 600;
+           color: var(--text-dark);
+         }
+         .conversation-item.unread .message-type-icon {
+            color: var(--text-dark);
+         }
+        .avatar-container {
+          position: relative;
+          margin-right: 12px;
+          flex-shrink: 0;
+        }
+        .avatar {
+          width: 50px;
+          height: 50px;
+          border-radius: 50%;
+          object-fit: cover;
+        }
+         .avatar-placeholder {
+           width: 50px;
+           height: 50px;
+           border-radius: 50%;
+           background-color: var(--light);
+           color: var(--text-light);
+           display: flex;
+           align-items: center;
+           justify-content: center;
+           font-size: 1.5rem;
+         }
+        .online-indicator {
+          position: absolute;
+          bottom: 2px;
+          right: 2px;
+          width: 12px;
+          height: 12px;
+          background-color: var(--success);
+          border-radius: 50%;
+          border: 2px solid var(--white);
+        }
+        .conversation-info {
+          flex-grow: 1;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+        }
+        .conversation-info-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+        }
+        .recipient-name {
+          font-weight: 500;
+          font-size: 0.9rem;
+          color: var(--text-dark);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          margin: 0;
+        }
+        .timestamp {
+          font-size: 0.7rem;
+          color: var(--text-light);
+          flex-shrink: 0;
+          margin-left: 8px;
+        }
+        .last-message {
+           display: flex;
+           align-items: center;
+           gap: 4px;
+           margin-top: 2px;
+           max-width: 100%; /* Ensure last message doesn't overflow */
+         }
+         .message-type-icon {
+            font-size: 0.8rem;
+            color: var(--text-light);
+            flex-shrink: 0;
+         }
+         .message-type-icon.wink { color: #ff6b6b; }
+         .message-type-icon.image { color: #4ecdc4; }
+         .message-type-icon.file { color: #45b7d1; }
+         .message-type-icon.video { color: #8a2be2; }
+         .message-preview {
+            font-size: 0.8rem;
+            color: var(--text-light);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            flex-grow: 1; /* Allow preview to take space */
+          }
+        .unread-badge {
+          background-color: var(--primary);
+          color: white;
+          font-size: 0.7rem;
+          font-weight: bold;
+          padding: 1px 6px;
+          border-radius: 10px;
+          margin-left: 8px;
+          flex-shrink: 0;
+        }
+        .conversation-actions {
+          position: relative;
+        }
+         .conversation-menu-btn {
+           background: none;
+           border: none;
+           color: var(--text-light);
+           cursor: pointer;
+           padding: 5px;
+           margin-left: 5px;
+           border-radius: 50%;
+           width: 30px;
+           height: 30px;
+           display: flex;
+           align-items: center;
+           justify-content: center;
+           transition: background-color 0.2s;
+         }
+         .conversation-menu-btn:hover {
+           background-color: var(--bg-light);
+         }
+         .conversation-menu {
+           position: absolute;
+           right: 0;
+           top: 35px;
+           background-color: var(--white);
+           border-radius: 8px;
+           box-shadow: var(--shadow);
+           z-index: 10;
+           overflow: hidden;
+           min-width: 120px;
+           border: 1px solid var(--border-color);
+         }
+         .conversation-menu button {
+           display: flex;
+           align-items: center;
+           gap: 8px;
+           width: 100%;
+           padding: 8px 12px;
+           text-align: left;
+           background: none;
+           border: none;
+           cursor: pointer;
+           font-size: 0.85rem;
+           color: var(--text-medium);
+         }
+         .conversation-menu button:hover {
+           background-color: var(--bg-light);
+         }
+         .conversation-menu button.delete-btn {
+           color: var(--danger);
+         }
+         .conversation-menu button.delete-btn:hover {
+            background-color: var(--danger-light);
+         }
+        .no-chat-selected {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          text-align: center;
+          color: var(--text-light);
+          background-color: var(--bg-card);
+          padding: 20px;
+        }
+        .no-chat-selected h3 {
+           margin-top: 16px;
+           font-size: 1.1rem;
+           color: var(--text-medium);
+         }
+        .select-arrow-icon {
+           font-size: 2rem;
+           color: var(--border-color);
+           margin-bottom: 16px;
+           animation: bounce-left 1.5s infinite;
+         }
+        @keyframes bounce-left {
+           0%, 100% { transform: translateX(0); }
+           50% { transform: translateX(-10px); }
+         }
+
+        .loading-state, .error-state, .empty-state {
+           display: flex;
+           flex-direction: column;
+           align-items: center;
+           justify-content: center;
+           padding: 20px;
+           color: var(--text-light);
+           height: calc(100% - 100px); /* Adjust based on header/search height */
+           text-align: center;
+         }
+         .error-state p {
+             max-width: 80%;
+         }
+         .start-chat-btn {
+            margin-top: 16px;
+            padding: 8px 16px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+          }
+
+        /* Mobile adjustments */
+         @media (max-width: 768px) {
+           .messages-main-content {
+             position: relative;
+             overflow: hidden;
+           }
+           .conversations-panel-wrapper, .chat-panel-wrapper {
+             position: absolute;
+             top: 0;
+             left: 0;
+             width: 100%;
+             height: 100%;
+             transition: transform 0.3s ease-in-out;
+             backface-visibility: hidden;
+             background-color: var(--bg-color);
+           }
+           .conversations-panel-wrapper {
+             transform: translateX(0);
+             z-index: 2;
+           }
+           .conversations-panel-wrapper.mobile-hidden {
+             transform: translateX(-100%);
+             pointer-events: none;
+           }
+           .chat-panel-wrapper {
+             transform: translateX(100%);
+             z-index: 1;
+           }
+           .chat-panel-wrapper:not(.mobile-hidden) {
+             transform: translateX(0);
+             z-index: 3;
+           }
+           /* Add mobile back button style */
+            :global(.embedded-chat .mobile-back-button) { /* Target specifically */
+              display: flex !important; /* Make it visible on mobile */
+              align-items: center;
+              justify-content: center;
+              position: absolute;
+              left: 10px;
+              top: 50%;
+              transform: translateY(-50%);
+              background: rgba(255, 255, 255, 0.15);
+              border: none;
+              font-size: 1.2rem; /* Adjusted size */
+              color: white;
+              cursor: pointer;
+              z-index: 10;
+              padding: 0;
+              width: 40px; /* Explicit size */
+              height: 40px; /* Explicit size */
+              border-radius: 50%;
+              backdrop-filter: blur(5px);
+            }
+            :global(.embedded-chat .mobile-back-button:hover) {
+                background: rgba(255, 255, 255, 0.25);
+            }
+            /* Adjust header padding for back button */
+             .chat-panel-wrapper > :global(.embedded-chat .chat-header) {
+               padding-left: 60px; /* Increased padding */
+               position: relative; /* Needed for absolute positioning of back button */
+             }
+         }
+
+        /* Dark mode adjustments */
+         .dark .conversations-panel-wrapper {
+            background-color: var(--medium);
+            border-color: var(--border-dark);
+         }
+         .dark .chat-panel-wrapper {
+            background-color: var(--dark);
+         }
+         .dark .search-input {
+           background-color: var(--dark);
+           border-color: var(--border-dark);
+           color: var(--text-dark);
+         }
+         .dark .conversation-item:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+         }
+         .dark .conversation-item.selected {
+           background-color: rgba(var(--primary-rgb), 0.15);
+         }
+         .dark .conversation-menu {
+            background-color: var(--dark);
+            border-color: var(--border-dark);
+         }
+         .dark .conversation-menu button {
+            color: var(--text-medium);
+         }
+          .dark .conversation-menu button:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+          }
+          .dark .conversation-menu button.delete-btn {
+            color: var(--danger);
+          }
+           .dark .conversation-menu button.delete-btn:hover {
+             background-color: var(--danger-light);
+           }
+          .dark .no-chat-selected {
+             background-color: var(--dark);
+             color: var(--text-light);
+          }
+          .dark .select-arrow-icon {
+             color: var(--border-dark);
+          }
+          /* Ensure EmbeddedChat in dark mode inherits background */
+           .dark .chat-panel-wrapper > :global(.embedded-chat) {
+              background-color: inherit; /* Inherit from chat-panel-wrapper */
+           }
+
+      `}</style>
+    </div>
+  );
+};
+
+export default MessagesPage;
