@@ -10,7 +10,7 @@ import {
   FaSearch,
   FaHeart,
   FaTimes,
-  FaExclamationTriangle,
+  FaExclamationTriangle, FaEnvelopeOpen,
 } from "react-icons/fa"
 import NotificationsComponent from "./NotificationsComponent"
 import { ThemeToggle } from "./theme-toggle.tsx"
@@ -121,10 +121,10 @@ export const Navbar = () => {
             </button>
             <button
               className={`tab-button ${window.location.pathname === "/massages" ? "active" : ""}`}
-              onClick={() => navigate("/matches")}
+              onClick={() => navigate("/massages")}
             >
-              <FaHeart className="tab-icon" />
-              <span>Matches</span>
+              <FaEnvelopeOpen className="tab-icon" />
+              <span>Massages</span>
             </button>
           </div>
         )}

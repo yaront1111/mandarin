@@ -4,8 +4,8 @@
 // Layout Components
 import { Navbar, Alert, PrivateRoute as LayoutPrivateRoute } from "./LayoutComponents"
 
-// User Components
-import { UserCard, UserPhotoGallery, UserPhotoViewer, UserList, UserFilter } from "./UserComponents"
+// User card
+import UserCard from "./UserCard.jsx"
 
 // Chat Components
 // Fixing the imports for Chat components
@@ -36,14 +36,9 @@ export {
   Navbar,
   Alert,
   LayoutPrivateRoute,
-  // User Components
-  UserCard,
-  UserPhotoGallery,
-  UserPhotoViewer,
-  UserList,
-  UserFilter,
   // Chat Components
   EmbeddedChat,
+  UserCard,
   // Stories Components
   StoriesCarousel,
   StoriesViewer,

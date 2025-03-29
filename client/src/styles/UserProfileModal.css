@@ -442,7 +442,6 @@
 }
 
 .online-status {
-  margin-left: auto;
   padding: 3px var(--space-sm);
   border-radius: 20px;
   font-size: 0.8rem;
@@ -451,7 +450,7 @@
 
 .online-status.online {
   background-color: var(--success-light);
-  color: var(--success);
+  color: #143c28;
 }
 
 .user-activity {

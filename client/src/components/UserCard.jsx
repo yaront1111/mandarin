@@ -69,12 +69,16 @@ const UserCard = ({
     }
   }, [onClick, navigate, user?._id])
 
+  // Fixed like click handler to properly pass user data
   const handleLikeClick = useCallback(
     (e) => {
+      // Prevent event propagation to avoid triggering parent click
       e.stopPropagation()
+      e.preventDefault()
+
       if (onLike) {
         console.log(`Like button clicked for user ${user._id}, current isLiked: ${isLiked}`)
-        // Pass the current like state to the parent component
+        // Pass the user ID and name to the parent component for like handling
         onLike(user._id, user.nickname)
       }
     },
