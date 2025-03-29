@@ -81,6 +81,12 @@ const userReducer = (state, action) => {
     case "SET_LIKED_USERS":
       return { ...state, likedUsers: action.payload }
     case "ADD_LIKED_USER":
+      // Only add if not already present to avoid duplicates
+      if (state.likedUsers.some(like =>
+          (like.recipient && like.recipient._id && like.recipient._id === action.payload.recipient) ||
+          like.recipient === action.payload.recipient)) {
+        return state;
+      }
       return {
         ...state,
         likedUsers: [...state.likedUsers, action.payload],
@@ -88,7 +94,12 @@ const userReducer = (state, action) => {
     case "REMOVE_LIKED_USER":
       return {
         ...state,
-        likedUsers: state.likedUsers.filter((like) => like.recipient !== action.payload),
+        likedUsers: state.likedUsers.filter((like) => {
+          if (typeof like.recipient === 'object' && like.recipient !== null) {
+            return like.recipient._id !== action.payload;
+          }
+          return like.recipient !== action.payload
+        }),
       }
     case "SET_LIKES_LOADING":
       return { ...state, likesLoading: action.payload }
@@ -159,7 +170,7 @@ export const UserProvider = ({ children }) => {
     }
   }, [])
 
-  // Get all users liked by current user - OPTIMIZED VERSION
+  // Get all users liked by current user - OPTIMIZED & FIXED VERSION
   const getLikedUsers = useCallback(
     async (forceRefresh = false) => {
       // Only set loading if we're not already loading and this is a forced refresh
@@ -214,7 +225,7 @@ export const UserProvider = ({ children }) => {
     [user],
   )
 
-  // Load likes when user is authenticated
+  // Ensure likes are loaded when user is authenticated
   useEffect(() => {
     if (isAuthenticated && user && user._id) {
       // Always fetch likes when the component mounts or user changes
@@ -413,153 +424,246 @@ export const UserProvider = ({ children }) => {
     dispatch({ type: "CLEAR_ERROR" })
   }, [])
 
-  // Check if a user is liked
+  /**
+   * Check if a user is liked - FIXED VERSION
+   * @param {string} userId - User ID to check.
+   * @returns {boolean} True if user is liked, false otherwise.
+   */
   const isUserLiked = useCallback(
     (userId) => {
-      if (!state.likedUsers || !Array.isArray(state.likedUsers)) return false
+      if (!state.likedUsers || !Array.isArray(state.likedUsers) || !userId) return false;
 
-      // Ensure we're comparing strings
-      const userIdStr = typeof userId === "object" ? userId.toString() : userId
+      // Normalize userId to string for consistent comparison
+      const userIdStr = typeof userId === "object" && userId !== null
+        ? userId.toString()
+        : userId;
 
+      // Robust checking for various formats
       return state.likedUsers.some((like) => {
-        if (!like) return false
-        const recipientId = typeof like.recipient === "object" ? like.recipient.toString() : like.recipient
-        return recipientId === userIdStr
-      })
-    },
-    [state.likedUsers],
-  )
+        if (!like) return false;
 
-  // Like a user - OPTIMIZED VERSION
-  const likeUser = useCallback(
-    async (userId, userName) => {
-      if (!user || !user._id) return false
-
-      try {
-        // Validate userId
-        if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
-          toast.error("Invalid user ID format")
-          return false
+        // Handle recipient as object (MongoDB document)
+        if (typeof like.recipient === 'object' && like.recipient !== null) {
+          if (like.recipient._id) {
+            return like.recipient._id.toString() === userIdStr;
+          }
+          return like.recipient.toString() === userIdStr;
         }
 
-        // Optimistic update - add to liked users immediately for better UX
+        // Handle recipient as string
+        return like.recipient === userIdStr;
+      });
+    },
+    [state.likedUsers]
+  );
+
+  /**
+   * Like a user - FIXED VERSION
+   * @param {string} userId - User ID to like.
+   * @param {string} userName - User name for toast message.
+   * @returns {Promise<boolean>} Success status.
+   */
+  const likeUser = useCallback(
+    async (userId, userName) => {
+      if (!user || !user._id) return false;
+
+      try {
+        // Validate userId format
+        if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
+          toast.error("Invalid user ID format");
+          return false;
+        }
+
+        // Skip if already liked to prevent duplicate API calls
+        if (isUserLiked(userId)) {
+          console.log(`User ${userId} is already liked, skipping API call`);
+          return true;
+        }
+
+        // Optimistic update for better UX
+        dispatch({
+          type: "ADD_LIKED_USER",
+          payload: {
+            recipient: userId,
+            createdAt: new Date().toISOString(),
+          },
+        });
+
+        console.log(`Sending like request for user ${userId}`);
+        const response = await apiService.post(
+          `/users/${userId}/like`,
+          {},
+          { headers: { "x-no-cache": "true" } } // Force no caching
+        );
+
+        if (response.success) {
+          // Force refresh likes to ensure consistent state
+          getLikedUsers(true);
+
+          // Show success notification with heart icon
+          toast.success(
+            <div className="like-toast">
+              <FaHeart className="like-icon pulse" />
+              <span>You liked {userName || "this user"}</span>
+            </div>
+          );
+
+          // If free user, update remaining likes count
+          if (response.likesRemaining !== undefined) {
+            toast.info(`You have ${response.likesRemaining} likes remaining today`);
+          }
+
+          return true;
+        } else {
+          // Handle "Already liked" case specially
+          if (response.error === "Already liked") {
+            console.log("User already liked according to server");
+            return true;
+          }
+
+          // Revert optimistic update on error
+          dispatch({ type: "REMOVE_LIKED_USER", payload: userId });
+          toast.error(response.error || "Failed to like user");
+          return false;
+        }
+      } catch (err) {
+        // Revert optimistic update on error
+        dispatch({ type: "REMOVE_LIKED_USER", payload: userId });
+        const errorMsg = err.error || err.message || "Failed to like user";
+        toast.error(errorMsg);
+        console.error("Like error:", err);
+        return false;
+      }
+    },
+    [user, isUserLiked, getLikedUsers, dispatch]
+  );
+
+  /**
+   * Unlike a user - FIXED VERSION
+   * @param {string} userId - User ID to unlike.
+   * @param {string} userName - User name for toast message.
+   * @returns {Promise<boolean>} Success status.
+   */
+  const unlikeUser = useCallback(
+    async (userId, userName) => {
+      if (!user || !user._id) return false;
+
+      try {
+        // Validate userId format
+        if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
+          toast.error("Invalid user ID format");
+          return false;
+        }
+
+        // Skip if not liked to prevent unnecessary API calls
         if (!isUserLiked(userId)) {
+          console.log(`User ${userId} is not liked, skipping API call`);
+          return true;
+        }
+
+        // Optimistic update - remove from liked users immediately
+        dispatch({ type: "REMOVE_LIKED_USER", payload: userId });
+
+        console.log(`Sending unlike request for user ${userId}`);
+        const response = await apiService.delete(
+          `/users/${userId}/like`,
+          {},
+          { headers: { "x-no-cache": "true" } } // Force no caching
+        );
+
+        if (response.success) {
+          // Force refresh likes to ensure consistent state
+          getLikedUsers(true);
+          toast.info(`You unliked ${userName || "this user"}`);
+          return true;
+        } else {
+          // Revert optimistic update if failed
           dispatch({
             type: "ADD_LIKED_USER",
             payload: {
               recipient: userId,
               createdAt: new Date().toISOString(),
             },
-          })
-        }
+          });
 
-        console.log(`Sending like request for user ${userId}`)
-        const response = await apiService.post(`/users/${userId}/like`)
-        console.log(`Like response:`, response)
-
-        if (response.success) {
-          // Show success notification with heart icon
-          toast.success(
-            <div className="like-toast">
-              <FaHeart className="like-icon pulse" />
-              <span>You liked {userName || "this user"}</span>
-            </div>,
-          )
-
-          // If free user, update remaining likes count
-          if (response.likesRemaining !== undefined) {
-            toast.info(`You have ${response.likesRemaining} likes remaining today`)
-          }
-
-          // Refresh likes to ensure consistency with server
-          // Use a timeout to allow the server to process the like
-          setTimeout(() => {
-            console.log("Refreshing likes after successful like")
-            getLikedUsers(true)
-          }, 500)
-
-          return true
-        } else {
-          // Don't revert optimistic update if the error is "Already liked"
-          // as this means the user is already liked, which is the desired state
-          if (response.error !== "Already liked") {
-            dispatch({ type: "REMOVE_LIKED_USER", payload: userId })
-          }
-
-          // Only show error toast if it's not "Already liked"
-          if (response.error !== "Already liked") {
-            toast.error(response.error || "Failed to like user")
-          }
-
-          return response.error === "Already liked"
+          throw new Error(response.error || "Failed to unlike user");
         }
       } catch (err) {
-        // Revert optimistic update on error
-        dispatch({ type: "REMOVE_LIKED_USER", payload: userId })
-
-        const errorMsg = err.error || err.message || "Failed to like user"
-        toast.error(errorMsg)
-        return false
+        // Force refresh likes to ensure consistent state
+        getLikedUsers(true);
+        const errorMsg = err.error || err.message || "Failed to unlike user";
+        toast.error(errorMsg);
+        console.error("Unlike error:", err);
+        return false;
       }
     },
-    [user, isUserLiked, getLikedUsers],
-  )
+    [user, getLikedUsers, isUserLiked, dispatch]
+  );
 
-  // Unlike a user - OPTIMIZED VERSION
-  const unlikeUser = useCallback(
-    async (userId, userName) => {
-      if (!user || !user._id) return false
-
-      try {
-        // Validate userId
-        if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
-          toast.error("Invalid user ID format")
-          return false
-        }
-
-        // Optimistic update - remove from liked users immediately
-        dispatch({ type: "REMOVE_LIKED_USER", payload: userId })
-
-        console.log(`Sending unlike request for user ${userId}`)
-        const response = await apiService.delete(`/users/${userId}/like`)
-        console.log(`Unlike response:`, response)
-
-        if (response.success) {
-          toast.info(`You unliked ${userName || "this user"}`)
-
-          // Refresh likes to ensure consistency with server
-          // Use a timeout to allow the server to process the unlike
-          setTimeout(() => {
-            console.log("Refreshing likes after successful unlike")
-            getLikedUsers(true)
-          }, 500)
-
-          return true
-        } else {
-          // Revert optimistic update if failed
-          if (isUserLiked(userId)) {
-            dispatch({
-              type: "ADD_LIKED_USER",
-              payload: {
-                recipient: userId,
-                createdAt: new Date().toISOString(),
-              },
-            })
-          }
-
-          throw new Error(response.error || "Failed to unlike user")
-        }
-      } catch (err) {
-        // Revert optimistic update
-        getLikedUsers(true)
-
-        const errorMsg = err.error || err.message || "Failed to unlike user"
-        toast.error(errorMsg)
-        return false
+  /**
+   * Send a message to a user.
+   * @param {string} userId - User ID to message.
+   * @returns {Promise<boolean>} Success status.
+   */
+  const sendMessage = useCallback(async (userId) => {
+    // This function is a placeholder since it wasn't implemented in the original
+    // but it's referenced in other components
+    try {
+      const response = await apiService.post(`/messages/start`, { recipient: userId });
+      if (response.success) {
+        return response.data;
       }
-    },
-    [user, getLikedUsers, isUserLiked],
-  )
+      throw new Error(response.error || "Failed to send message");
+    } catch (err) {
+      const errorMsg = err.error || err.message || "Failed to send message";
+      dispatch({ type: "USER_ERROR", payload: errorMsg });
+      return null;
+    }
+  }, []);
+
+  /**
+   * Block a user.
+   * @param {string} userId - User ID to block.
+   * @returns {Promise<boolean>} Success status.
+   */
+  const blockUser = useCallback(async (userId) => {
+    // This function is a placeholder since it wasn't implemented in the original
+    // but it's referenced in other components
+    try {
+      const response = await apiService.post(`/users/${userId}/block`);
+      if (response.success) {
+        toast.success("User blocked successfully");
+        return true;
+      }
+      throw new Error(response.error || "Failed to block user");
+    } catch (err) {
+      const errorMsg = err.error || err.message || "Failed to block user";
+      dispatch({ type: "USER_ERROR", payload: errorMsg });
+      return false;
+    }
+  }, []);
+
+  /**
+   * Report a user.
+   * @param {string} userId - User ID to report.
+   * @returns {Promise<boolean>} Success status.
+   */
+  const reportUser = useCallback(async (userId) => {
+    // This function is a placeholder since it wasn't implemented in the original
+    // but it's referenced in other components
+    try {
+      const response = await apiService.post(`/users/${userId}/report`);
+      if (response.success) {
+        toast.success("User reported successfully");
+        return true;
+      }
+      throw new Error(response.error || "Failed to report user");
+    } catch (err) {
+      const errorMsg = err.error || err.message || "Failed to report user";
+      dispatch({ type: "USER_ERROR", payload: errorMsg });
+      return false;
+    }
+  }, []);
 
   return (
     <UserContext.Provider
@@ -585,7 +689,10 @@ export const UserProvider = ({ children }) => {
         isUserLiked,
         likeUser,
         unlikeUser,
-        getLikedUsers, // Add this line to expose the function
+        getLikedUsers,
+        sendMessage,
+        blockUser,
+        reportUser
       }}
     >
       {children}
