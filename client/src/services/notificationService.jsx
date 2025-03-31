@@ -3,10 +3,14 @@ import apiService from "./apiService.jsx";
 import socketService from "./socketService.jsx";
 import { useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
+import logger from "../utils/logger";
 
 /**
  * Enhanced Notification Service with improved error handling and reliability
  */
+
+// Create a logger for the notification service
+const notificationLogger = logger.create("NotificationService");
 class NotificationService {
   constructor() {
     this.notifications = [];
@@ -57,7 +61,7 @@ class NotificationService {
 
           switch(type) {
             case "NEW_NOTIFICATION":
-              console.log("Received new notification from another tab");
+              notificationLogger.debug("Received new notification from another tab");
               this.addBundledNotification(data);
               window.dispatchEvent(new CustomEvent("newNotification", { detail: data }));
               break;
@@ -74,12 +78,12 @@ class NotificationService {
           }
         };
 
-        console.log("Notification sync channel initialized");
+        notificationLogger.info("Notification sync channel initialized");
       } else {
-        console.log("BroadcastChannel not supported, cross-tab sync disabled");
+        notificationLogger.warn("BroadcastChannel not supported, cross-tab sync disabled");
       }
     } catch (error) {
-      console.error("Error setting up notification sync channel:", error);
+      notificationLogger.error("Error setting up notification sync channel:", error);
       this.notificationSyncChannel = null;
     }
   }
@@ -91,9 +95,9 @@ class NotificationService {
   setNavigate(navigateFunc) {
     if (typeof navigateFunc === 'function') {
       this.navigate = navigateFunc;
-      console.log("Navigate function set successfully in NotificationService");
+      notificationLogger.debug("Navigate function set successfully in NotificationService");
     } else {
-      console.warn("Attempted to set invalid navigate function in NotificationService");
+      notificationLogger.warn("Attempted to set invalid navigate function in NotificationService");
     }
   }
 
@@ -103,18 +107,18 @@ class NotificationService {
    */
   initialize(userSettings) {
     if (this.initialized) {
-      console.log("NotificationService already initialized");
+      notificationLogger.debug("NotificationService already initialized");
       // Even if already initialized, update settings if provided
       if (userSettings && userSettings.notifications) {
-        console.log("Updating settings of already initialized service:", userSettings);
+        notificationLogger.debug("Updating settings of already initialized service:", userSettings);
         this.userSettings = userSettings;
       }
       return;
     }
 
     // Log the incoming settings for debugging
-    console.log("Initializing NotificationService with settings:", userSettings);
-    console.log("Messages notification setting specifically:", 
+    notificationLogger.info("Initializing NotificationService with settings:", userSettings);
+    notificationLogger.debug("Messages notification setting specifically:", 
       userSettings?.notifications?.messages,
       "typeof:", typeof userSettings?.notifications?.messages);
 
@@ -152,11 +156,11 @@ class NotificationService {
 
     // Get initial notifications (with error handling)
     this.getNotifications().catch(err => {
-      console.error("Failed to fetch initial notifications:", err);
+      notificationLogger.error("Failed to fetch initial notifications:", err);
     });
 
-    console.log("NotificationService initialized successfully with settings:", this.userSettings);
-    console.log("Final messages notification setting:", this.userSettings.notifications.messages);
+    notificationLogger.info("NotificationService initialized successfully with settings:", this.userSettings);
+    notificationLogger.debug("Final messages notification setting:", this.userSettings.notifications.messages);
 
     // Set up visibility change handler to refresh when tab becomes visible
     document.addEventListener('visibilitychange', this._handleVisibilityChange.bind(this));
@@ -176,17 +180,17 @@ class NotificationService {
     this.reconnectTimer = setInterval(() => {
       if (!socketService.isConnected() && this.initialized) {
         if (this.socketReconnectAttempts < this.maxReconnectAttempts) {
-          console.log(`Attempting to reconnect socket for notifications (attempt ${this.socketReconnectAttempts + 1}/${this.maxReconnectAttempts})`);
+          notificationLogger.info(`Attempting to reconnect socket for notifications (attempt ${this.socketReconnectAttempts + 1}/${this.maxReconnectAttempts})`);
           this.socketReconnectAttempts++;
           this.checkSocketConnection();
         } else if (this.socketReconnectAttempts === this.maxReconnectAttempts) {
-          console.warn("Max socket reconnection attempts reached for notifications");
+          notificationLogger.warn("Max socket reconnection attempts reached for notifications");
           this.socketReconnectAttempts++;
 
           // After max attempts, try less frequently (once every 2 minutes)
           clearInterval(this.reconnectTimer);
           this.reconnectTimer = setInterval(() => {
-            console.log("Periodic socket reconnection attempt for notifications");
+            notificationLogger.info("Periodic socket reconnection attempt for notifications");
             this.checkSocketConnection();
           }, 120000); // 2 minutes
         }

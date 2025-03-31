@@ -1,5 +1,11 @@
-// src/utils/apiDebugger.js
+/**
+ * API Debugger utility for diagnosing API and authentication issues
+ */
 import axios from 'axios';
+import { logger } from './logger';
+import { getToken, parseToken, isTokenExpired } from './tokenStorage';
+
+const log = logger.create('ApiDebugger');
 
 /**
  * API Debugger to help diagnose authentication and API issues
@@ -7,7 +13,7 @@ import axios from 'axios';
 class ApiDebugger {
   constructor() {
     this.isActive = true;
-    console.log('API Debugger initialized');
+    log.info('API Debugger initialized');
     this._setupInterceptors();
   }
 
@@ -18,21 +24,25 @@ class ApiDebugger {
     // Request interceptor
     axios.interceptors.request.use((config) => {
       if (!this.isActive) return config;
-
-      console.group(`📤 API Request: ${config.method.toUpperCase()} ${config.url}`);
-      console.log('Headers:', this._sanitizeHeaders(config.headers));
-
+      
+      log.debug(`📤 API Request: ${config.method.toUpperCase()} ${config.url}`);
+      
+      // Use logger's group functionality for detailed logging
+      const details = {
+        headers: this._sanitizeHeaders(config.headers),
+        authPresent: !!config.headers.Authorization
+      };
+      
       if (config.data) {
-        console.log('Request Data:', this._sanitizeData(config.data));
+        details.data = this._sanitizeData(config.data);
       }
-
-      console.log('Auth Token Present:', !!config.headers.Authorization);
-      console.groupEnd();
-
+      
+      log.debug('Request details:', details);
+      
       return config;
     }, (error) => {
       if (this.isActive) {
-        console.error('Request Error:', error);
+        log.error('Request Error:', error);
       }
       return Promise.reject(error);
     });
@@ -41,29 +51,27 @@ class ApiDebugger {
     axios.interceptors.response.use((response) => {
       if (!this.isActive) return response;
 
-      console.group(`📥 API Response: ${response.config.method.toUpperCase()} ${response.config.url}`);
-      console.log('Status:', response.status);
-      console.log('Data:', response.data);
-      console.groupEnd();
+      log.debug(`📥 API Response: ${response.config.method.toUpperCase()} ${response.config.url}`, {
+        status: response.status,
+        data: response.data
+      });
 
       return response;
     }, (error) => {
       if (this.isActive) {
-        console.group('❌ API Error');
-        console.error('Error:', error.message);
-
+        const errorInfo = {
+          message: error.message
+        };
+        
         if (error.response) {
-          console.log('Status:', error.response.status);
-          console.log('Data:', error.response.data);
-          console.log('Headers:', this._sanitizeHeaders(error.response.headers));
+          errorInfo.status = error.response.status;
+          errorInfo.data = error.response.data;
+          errorInfo.headers = this._sanitizeHeaders(error.response.headers);
         } else if (error.request) {
-          console.log('Request was made but no response received');
-          console.log('Request:', error.request);
-        } else {
-          console.log('Error setting up request:', error.message);
+          errorInfo.request = 'Request was made but no response received';
         }
-
-        console.groupEnd();
+        
+        log.error('❌ API Error:', errorInfo);
       }
       return Promise.reject(error);
     });
@@ -71,6 +79,8 @@ class ApiDebugger {
 
   /**
    * Sanitize headers for display (hide sensitive info)
+   * @param {Object} headers - Request/response headers
+   * @returns {Object} Sanitized headers
    */
   _sanitizeHeaders(headers) {
     const sanitized = { ...headers };
@@ -82,6 +92,8 @@ class ApiDebugger {
 
   /**
    * Sanitize request data (hide passwords)
+   * @param {Object} data - Request data
+   * @returns {Object} Sanitized data
    */
   _sanitizeData(data) {
     if (typeof data !== 'object' || data === null) return data;
@@ -95,13 +107,15 @@ class ApiDebugger {
 
   /**
    * Test API connection with current auth
+   * @param {string} endpoint - API endpoint to test
+   * @returns {Promise<Object>} Connection test result
    */
   async testConnection(endpoint = '/api/auth/test-connection') {
-    console.log('Testing API connection...');
+    log.info('Testing API connection...');
 
     // Get the token
-    const token = sessionStorage.getItem('token');
-    console.log('Token available:', !!token);
+    const token = getToken();
+    log.debug('Token available:', !!token);
 
     // Make a test request
     try {
@@ -109,28 +123,38 @@ class ApiDebugger {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
 
-      console.log('✅ Connection test successful:', response.data);
-      return { success: true, data: response.data };
+      log.info('✅ Connection test successful');
+      log.debug('Connection response:', response.data);
+      
+      return { 
+        success: true, 
+        data: response.data,
+        ping: response.data.timestamp ? new Date() - new Date(response.data.timestamp) : null
+      };
     } catch (error) {
-      console.error('❌ Connection test failed:', error.message);
+      log.error('❌ Connection test failed:', error.message);
+      
       return {
         success: false,
         error: error.message,
         response: error.response?.data || null,
-        status: error.response?.status
+        status: error.response?.status,
+        isNetworkError: !error.response
       };
     }
   }
 
   /**
    * Test authentication with current token
+   * @param {string} endpoint - Auth endpoint to test
+   * @returns {Promise<Object>} Authentication test result
    */
   async testAuth(endpoint = '/api/auth/me') {
-    console.log('Testing authentication...');
+    log.info('Testing authentication...');
 
-    const token = sessionStorage.getItem('token');
+    const token = getToken();
     if (!token) {
-      console.warn('No token available for auth test');
+      log.warn('No token available for auth test');
       return { success: false, error: 'No token available' };
     }
 
@@ -139,10 +163,13 @@ class ApiDebugger {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      console.log('✅ Authentication test successful:', response.data);
+      log.info('✅ Authentication test successful');
+      log.debug('Auth response:', response.data);
+      
       return { success: true, data: response.data };
     } catch (error) {
-      console.error('❌ Authentication test failed:', error.message);
+      log.error('❌ Authentication test failed:', error.message);
+      
       return {
         success: false,
         error: error.message,
@@ -154,53 +181,57 @@ class ApiDebugger {
 
   /**
    * Check token validity
+   * @returns {Object} Token validity status
    */
   checkToken() {
-    const token = sessionStorage.getItem('token');
+    const token = getToken();
     if (!token) {
-      console.warn('No token found in sessionStorage');
+      log.warn('No token found in storage');
       return { valid: false, reason: 'No token found' };
     }
 
     try {
-      // Parse token parts
-      const parts = token.split('.');
-      if (parts.length !== 3) {
-        return { valid: false, reason: 'Invalid token format' };
+      // Parse token payload
+      const payload = parseToken(token);
+      if (!payload) {
+        return { valid: false, reason: 'Invalid token format or content' };
       }
-
-      // Decode payload
-      const payload = JSON.parse(atob(parts[1]));
-      console.log('Token payload:', payload);
+      
+      log.debug('Token payload:', payload);
 
       // Check expiration
-      const now = Math.floor(Date.now() / 1000);
-      if (payload.exp && payload.exp < now) {
+      if (isTokenExpired(token)) {
+        const now = Math.floor(Date.now() / 1000);
         return {
           valid: false,
           reason: 'Token expired',
           expiry: new Date(payload.exp * 1000).toLocaleString(),
-          now: new Date(now * 1000).toLocaleString()
+          now: new Date(now * 1000).toLocaleString(),
+          expiresIn: Math.max(0, (payload.exp * 1000) - Date.now())
         };
       }
 
       return {
         valid: true,
         userId: payload.id || payload.sub,
-        expiry: payload.exp ? new Date(payload.exp * 1000).toLocaleString() : 'No expiry'
+        expiry: payload.exp ? new Date(payload.exp * 1000).toLocaleString() : 'No expiry',
+        expiresIn: payload.exp ? (payload.exp * 1000) - Date.now() : null,
+        roles: payload.roles || [],
+        scope: payload.scope || null
       };
     } catch (error) {
-      console.error('Error parsing token:', error);
-      return { valid: false, reason: 'Invalid token content', error: error.message };
+      log.error('Error checking token:', error);
+      return { valid: false, reason: 'Token validation error', error: error.message };
     }
   }
 
   /**
    * Enable or disable debugger
+   * @param {boolean} active - Whether to enable the debugger
    */
   setActive(active) {
     this.isActive = active;
-    console.log(`API Debugger ${active ? 'enabled' : 'disabled'}`);
+    log.info(`API Debugger ${active ? 'enabled' : 'disabled'}`);
   }
 }
 

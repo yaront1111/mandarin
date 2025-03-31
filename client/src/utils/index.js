@@ -30,7 +30,7 @@ export const normalizePhotoUrl = (url) => {
   let result;
   
   // If it's the default avatar or placeholder, use absolute URL
-  if (url === '/default-avatar1.png' || url === '/placeholder.svg') {
+  if (url === '/default-avatar.png' || url === '/placeholder.svg') {
     result = `${window.location.origin}${url}`;
   }
   // If it's already a full URL, return it

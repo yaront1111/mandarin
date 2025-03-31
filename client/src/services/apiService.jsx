@@ -1,50 +1,13 @@
 import axios from "axios"
 import { toast } from "react-toastify"
-import { getToken, setToken, removeToken, isTokenExpired } from "../utils/tokenStorage"
+import { getToken, setToken, removeToken, isTokenExpired, parseToken } from "../utils/tokenStorage"
+import logger from "../utils/logger"
 
-/**
- * Logger utility with configurable log levels
- */
-class Logger {
-  constructor(name) {
-    this.name = name
-    // Use import.meta.env.MODE instead of process.env.NODE_ENV
-    this.logLevel = import.meta.env.MODE === "production" ? "error" : "debug"
-    this.levels = { debug: 1, info: 2, warn: 3, error: 4 }
-  }
-
-  shouldLog(level) {
-    return this.levels[level] >= this.levels[this.logLevel]
-  }
-
-  prefix(level) {
-    return `[${this.name}][${level.toUpperCase()}]`
-  }
-
-  debug(...args) {
-    if (this.shouldLog("debug")) {
-      console.debug(this.prefix("debug"), ...args)
-    }
-  }
-
-  info(...args) {
-    if (this.shouldLog("info")) {
-      console.info(this.prefix("info"), ...args)
-    }
-  }
-
-  warn(...args) {
-    if (this.shouldLog("warn")) {
-      console.warn(this.prefix("warn"), ...args)
-    }
-  }
-
-  error(...args) {
-    if (this.shouldLog("error")) {
-      console.error(this.prefix("error"), ...args)
-    }
-  }
-}
+// Create loggers for different components
+const apiLogger = logger.create("ApiService")
+const cacheLogger = logger.create("ResponseCache")
+const networkLogger = logger.create("NetworkMonitor")
+const queueLogger = logger.create("RequestQueue")
 
 /**
  * Cache implementation for API responses
@@ -54,7 +17,6 @@ class ResponseCache {
     this.cache = new Map()
     this.maxSize = maxSize // Maximum number of cached responses
     this.ttl = ttl // Time-to-live in milliseconds
-    this.logger = new Logger("ResponseCache")
   }
 
   generateKey(url, params) {
@@ -71,10 +33,10 @@ class ResponseCache {
       // Remove oldest entry (first in Map)
       const oldestKey = this.cache.keys().next().value
       this.cache.delete(oldestKey)
-      this.logger.debug(`Cache full, removing oldest entry: ${oldestKey}`)
+      cacheLogger.debug(`Cache full, removing oldest entry: ${oldestKey}`)
     }
     this.cache.set(key, { data, expiresAt })
-    this.logger.debug(`Cached response for: ${key}`)
+    cacheLogger.debug(`Cached response for: ${key}`)
     return data
   }
 
@@ -82,15 +44,15 @@ class ResponseCache {
     const key = this.generateKey(url, params)
     const cached = this.cache.get(key)
     if (!cached) {
-      this.logger.debug(`Cache miss for: ${key}`)
+      cacheLogger.debug(`Cache miss for: ${key}`)
       return null
     }
     if (cached.expiresAt < Date.now()) {
-      this.logger.debug(`Cache expired for: ${key}`)
+      cacheLogger.debug(`Cache expired for: ${key}`)
       this.cache.delete(key)
       return null
     }
-    this.logger.debug(`Cache hit for: ${key}`)
+    cacheLogger.debug(`Cache hit for: ${key}`)
     return cached.data
   }
 
@@ -98,17 +60,17 @@ class ResponseCache {
     const key = params ? this.generateKey(url, params) : null
     if (key) {
       this.cache.delete(key)
-      this.logger.debug(`Invalidated cache for: ${key}`)
+      cacheLogger.debug(`Invalidated cache for: ${key}`)
     } else if (url) {
       for (const existingKey of this.cache.keys()) {
         if (existingKey.startsWith(`${url}:`)) {
           this.cache.delete(existingKey)
-          this.logger.debug(`Invalidated cache for: ${existingKey}`)
+          cacheLogger.debug(`Invalidated cache for: ${existingKey}`)
         }
       }
     } else {
       this.cache.clear()
-      this.logger.debug("Invalidated entire cache")
+      cacheLogger.debug("Invalidated entire cache")
     }
   }
 }
@@ -120,20 +82,19 @@ class NetworkMonitor {
   constructor(onStatusChange) {
     this.isOnline = navigator.onLine
     this.onStatusChange = onStatusChange
-    this.logger = new Logger("NetworkMonitor")
     window.addEventListener("online", this.handleOnline.bind(this))
     window.addEventListener("offline", this.handleOffline.bind(this))
-    this.logger.info(`Network monitor initialized. Online: ${this.isOnline}`)
+    networkLogger.info(`Network monitor initialized. Online: ${this.isOnline}`)
   }
 
   handleOnline() {
-    this.logger.info("Network connection restored")
+    networkLogger.info("Network connection restored")
     this.isOnline = true
     if (this.onStatusChange) this.onStatusChange(true)
   }
 
   handleOffline() {
-    this.logger.warn("Network connection lost")
+    networkLogger.warn("Network connection lost")
     this.isOnline = false
     if (this.onStatusChange) this.onStatusChange(false)
   }
@@ -153,7 +114,6 @@ class RequestQueue {
     this.apiInstance = apiInstance
     this.isProcessing = false
     this.maxRetries = 3
-    this.logger = new Logger("RequestQueue")
     this.loadFromStorage()
   }
 
@@ -163,7 +123,7 @@ class RequestQueue {
       timestamp: Date.now(),
       retries: 0,
     })
-    this.logger.debug(`Added request to queue: ${request.method} ${request.url}`)
+    queueLogger.debug(`Added request to queue: ${request.method} ${request.url}`)
     this.saveToStorage()
     return this.queue.length
   }
@@ -173,10 +133,10 @@ class RequestQueue {
       const savedQueue = localStorage.getItem("api_request_queue")
       if (savedQueue) {
         this.queue = JSON.parse(savedQueue)
-        this.logger.info(`Loaded ${this.queue.length} requests from storage`)
+        queueLogger.info(`Loaded ${this.queue.length} requests from storage`)
       }
     } catch (err) {
-      this.logger.error("Failed to load queue from storage:", err)
+      queueLogger.error("Failed to load queue from storage:", err)
       this.queue = []
     }
   }
@@ -185,19 +145,19 @@ class RequestQueue {
     try {
       localStorage.setItem("api_request_queue", JSON.stringify(this.queue))
     } catch (err) {
-      this.logger.error("Failed to save queue to storage:", err)
+      queueLogger.error("Failed to save queue to storage:", err)
     }
   }
 
   async processQueue() {
     if (this.isProcessing || this.queue.length === 0) return
     this.isProcessing = true
-    this.logger.info(`Processing queue with ${this.queue.length} requests`)
+    queueLogger.info(`Processing queue with ${this.queue.length} requests`)
     const completedIndices = []
     for (let i = 0; i < this.queue.length; i++) {
       const request = this.queue[i]
       try {
-        this.logger.debug(`Processing queued request: ${request.method} ${request.url}`)
+        queueLogger.debug(`Processing queued request: ${request.method} ${request.url}`)
         await this.apiInstance.request({
           url: request.url,
           method: request.method,
@@ -206,15 +166,15 @@ class RequestQueue {
           headers: request.headers,
         })
         completedIndices.push(i)
-        this.logger.debug(`Successfully processed queued request: ${request.method} ${request.url}`)
+        queueLogger.debug(`Successfully processed queued request: ${request.method} ${request.url}`)
       } catch (err) {
         request.retries++
-        this.logger.warn(
+        queueLogger.warn(
           `Failed to process queued request (attempt ${request.retries}): ${request.method} ${request.url}`,
         )
         if (request.retries >= this.maxRetries) {
           completedIndices.push(i)
-          this.logger.error(
+          queueLogger.error(
             `Giving up on queued request after ${this.maxRetries} attempts: ${request.method} ${request.url}`,
           )
         }
@@ -225,7 +185,7 @@ class RequestQueue {
     }
     this.saveToStorage()
     this.isProcessing = false
-    this.logger.info(
+    queueLogger.info(
       `Queue processing complete. ${completedIndices.length} requests processed, ${this.queue.length} remaining`,
     )
   }
@@ -236,11 +196,10 @@ class RequestQueue {
  */
 class ApiService {
   constructor() {
-    this.logger = new Logger("ApiService")
     this.baseURL =
       import.meta.env.VITE_API_URL ||
       (window.location.hostname.includes("localhost") ? "http://localhost:5000/api" : "/api")
-    this.logger.info(`Initializing with baseURL: ${this.baseURL}`)
+    apiLogger.info(`Initializing with baseURL: ${this.baseURL}`)
 
     // Create axios instance
     this.api = axios.create({
@@ -285,10 +244,10 @@ class ApiService {
 
   _handleNetworkStatusChange(isOnline) {
     if (isOnline) {
-      this.logger.info("Network connection restored. Processing request queue...")
+      apiLogger.info("Network connection restored. Processing request queue...")
       setTimeout(() => this.requestQueue.processQueue(), 1000)
     } else {
-      this.logger.warn("Network offline. Requests will be queued.")
+      apiLogger.warn("Network offline. Requests will be queued.")
     }
     if (typeof window !== "undefined" && window.dispatchEvent) {
       window.dispatchEvent(new CustomEvent("apiConnectionStatusChange", { detail: { isOnline } }))
@@ -314,17 +273,17 @@ class ApiService {
     if (token && isTokenExpired(token) && !config.url.includes("/auth/refresh-token") && !config._isRefreshRequest) {
       if (!config._tokenRefreshRetry) {
         config._tokenRefreshRetry = true
-        this.logger.debug(`Token expired before request. Queueing request: ${config.method} ${config.url}`)
+        apiLogger.debug(`Token expired before request. Queueing request: ${config.method} ${config.url}`)
         this.requestsToRetry.push(config)
         this.refreshToken().catch((err) => {
-          this.logger.warn("Token refresh failed in request handler:", err.message)
+          apiLogger.warn("Token refresh failed in request handler:", err.message)
         })
         const source = axios.CancelToken.source()
         config.cancelToken = source.token
         setTimeout(() => source.cancel("Token expired. Request will be retried."), 0)
       }
     }
-    this.logger.debug(
+    apiLogger.debug(
       `Request: ${config.method.toUpperCase()} ${config.url}`,
       config.params ? `Params: ${JSON.stringify(config.params)}` : "",
     )
@@ -332,7 +291,7 @@ class ApiService {
   }
 
   _handleRequestError(error) {
-    this.logger.error("Request error:", error.message)
+    apiLogger.error("Request error:", error.message)
     this.metrics.failedRequests++
     return Promise.reject(error)
   }
@@ -346,7 +305,7 @@ class ApiService {
     if (response.config.requestId) {
       this.pendingRequests.delete(response.config.requestId)
     }
-    this.logger.debug(
+    apiLogger.debug(
       `Response success: ${response.config.method.toUpperCase()} ${response.config.url} (${requestTime}ms)`,
     )
     if (response.config.method.toLowerCase() === "get" && !response.config.headers["x-no-cache"]) {
@@ -357,7 +316,7 @@ class ApiService {
 
   _handleResponseError(error) {
     if (axios.isCancel(error)) {
-      this.logger.debug(`Request canceled: ${error.message}`)
+      apiLogger.debug(`Request canceled: ${error.message}`)
       return Promise.reject({ success: false, error: "Request canceled", isCanceled: true })
     }
     if (error.config?.requestId) {
@@ -379,7 +338,7 @@ class ApiService {
   async _processHttpError(error) {
     const originalRequest = error.config
     const status = error.response.status
-    this.logger.error(
+    apiLogger.error(
       `Response error: ${originalRequest.method.toUpperCase()} ${originalRequest.url}`,
       `Status: ${status}`,
       error.response.data,
@@ -404,27 +363,27 @@ class ApiService {
     const originalRequest = error.config
     originalRequest._retry = true
     if (originalRequest.url.includes("/auth/refresh-token")) {
-      this.logger.warn("Refresh token request failed")
+      apiLogger.warn("Refresh token request failed")
       this._handleLogout("Session expired. Please log in again.")
       return Promise.reject({ success: false, error: "Authentication failed", status: 401 })
     }
-    this.logger.debug("Received 401 error. Attempting token refresh...")
+    apiLogger.debug("Received 401 error. Attempting token refresh...")
     try {
       const newToken = await this.refreshToken()
       if (newToken) {
-        this.logger.debug("Token refreshed successfully. Retrying original request.")
+        apiLogger.debug("Token refreshed successfully. Retrying original request.")
         originalRequest.headers.Authorization = `Bearer ${newToken}`
         originalRequest.headers["x-auth-token"] = newToken
         return this.api(originalRequest)
       } else {
-        this.logger.warn("Token refresh returned null")
+        apiLogger.warn("Token refresh returned null")
         if (this._getStoredToken()) {
           this._handleLogout("Session expired. Please log in again.")
         }
         throw new Error("Failed to refresh token")
       }
     } catch (refreshError) {
-      this.logger.error("Token refresh failed:", refreshError)
+      apiLogger.error("Token refresh failed:", refreshError)
       if (this._getStoredToken()) {
         this._handleLogout("Session expired. Please log in again.")
       }
@@ -488,9 +447,9 @@ class ApiService {
     if (token) {
       this.setAuthToken(token)
       if (isTokenExpired(token)) {
-        console.log("Token expired, attempting to refresh")
+        apiLogger.info("Token expired, attempting to refresh")
         this.refreshToken().catch((err) => {
-          console.warn("Token refresh failed on initialization:", err)
+          apiLogger.warn("Token refresh failed on initialization:", err)
         })
       }
       return token
@@ -504,13 +463,13 @@ class ApiService {
       this.api.defaults.headers.common["x-auth-token"] = token
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`
       axios.defaults.headers.common["x-auth-token"] = token
-      console.log("Auth token set in all API instances")
+      apiLogger.debug("Auth token set in all API instances")
     } else {
       delete this.api.defaults.headers.common["Authorization"]
       delete this.api.defaults.headers.common["x-auth-token"]
       delete axios.defaults.headers.common["Authorization"]
       delete axios.defaults.headers.common["x-auth-token"]
-      console.log("Auth token removed from all API instances")
+      apiLogger.debug("Auth token removed from all API instances")
     }
   }
 
@@ -520,10 +479,10 @@ class ApiService {
     }
     this.refreshTokenPromise = (async () => {
       try {
-        console.log("Refreshing authentication token...")
+        apiLogger.info("Refreshing authentication token...")
         const currentToken = this._getStoredToken()
         if (!currentToken) {
-          console.warn("No token available for refresh")
+          apiLogger.warn("No token available for refresh")
           return null
         }
         const response = await axios.post(
@@ -537,7 +496,7 @@ class ApiService {
           const token = response.data.token
           this._storeToken(token, localStorage.getItem("token") !== null)
           this.setAuthToken(token)
-          console.log("Token refreshed successfully")
+          apiLogger.info("Token refreshed successfully")
           this._retryQueuedRequests(token)
           try {
             const payload = JSON.parse(atob(token.split(".")[1]))
@@ -545,19 +504,19 @@ class ApiService {
               const expiresIn = payload.exp * 1000 - Date.now() - 60000
               if (expiresIn > 0) {
                 this.tokenRefreshTimer = setTimeout(() => this.refreshToken(), expiresIn)
-                console.log(`Scheduled next token refresh in ${Math.round(expiresIn / 1000)} seconds`)
+                apiLogger.debug(`Scheduled next token refresh in ${Math.round(expiresIn / 1000)} seconds`)
               }
             }
           } catch (e) {
-            console.error("Error scheduling token refresh:", e)
+            apiLogger.error("Error scheduling token refresh:", e)
           }
           return token
         } else {
-          console.warn("Invalid refresh token response:", response.data)
+          apiLogger.warn("Invalid refresh token response:", response.data)
           throw new Error("Invalid refresh token response")
         }
       } catch (error) {
-        console.error("Token refresh failed:", error)
+        apiLogger.error("Token refresh failed:", error)
         if (error.response && (error.response.status === 401 || error.response.status === 403)) {
           this._removeToken()
           this.setAuthToken(null)
@@ -579,12 +538,12 @@ class ApiService {
   _retryQueuedRequests(token) {
     const requestsToRetry = [...this.requestsToRetry]
     this.requestsToRetry = []
-    console.log(`Retrying ${requestsToRetry.length} queued requests with new token`)
+    apiLogger.info(`Retrying ${requestsToRetry.length} queued requests with new token`)
     requestsToRetry.forEach((config) => {
       config.headers.Authorization = `Bearer ${token}`
       config.headers["x-auth-token"] = token
       this.api(config).catch((err) => {
-        console.error(`Error retrying queued request: ${config.method} ${config.url}`, err)
+        apiLogger.error(`Error retrying queued request: ${config.method} ${config.url}`, err)
       })
     })
   }
@@ -626,7 +585,7 @@ class ApiService {
         const potentialId = idMatch[1]
         // If it looks like a MongoDB ID but isn't valid, reject early
         if (potentialId.length === 24 && !this.isValidObjectId(potentialId)) {
-          console.error(`Invalid ObjectId in request: ${potentialId}`)
+          apiLogger.error(`Invalid ObjectId in request: ${potentialId}`)
           return {
             success: false,
             error: "Invalid ID format",
@@ -643,7 +602,7 @@ class ApiService {
       })
       return this._processResponse(response)
     } catch (error) {
-      console.error(`GET request failed: ${url}`, error)
+      apiLogger.error(`GET request failed: ${url}`, error)
       throw error
     }
   }
@@ -660,7 +619,7 @@ class ApiService {
       })
       return this._processResponse(response)
     } catch (error) {
-      console.error(`POST request failed: ${url}`, error)
+      apiLogger.error(`POST request failed: ${url}`, error)
       throw error
     }
   }
@@ -677,7 +636,7 @@ class ApiService {
       })
       return this._processResponse(response)
     } catch (error) {
-      console.error(`PUT request failed: ${url}`, error)
+      apiLogger.error(`PUT request failed: ${url}`, error)
       throw error
     }
   }
@@ -694,7 +653,7 @@ class ApiService {
       })
       return this._processResponse(response)
     } catch (error) {
-      console.error(`DELETE request failed: ${url}`, error)
+      apiLogger.error(`DELETE request failed: ${url}`, error)
       throw error
     }
   }
@@ -715,7 +674,7 @@ class ApiService {
       })
       return response
     } catch (error) {
-      console.error(`Upload failed: ${url}`, error)
+      apiLogger.error(`Upload failed: ${url}`, error)
       throw error
     }
   }
@@ -737,7 +696,7 @@ class ApiService {
       })
       return response
     } catch (error) {
-      console.error(`Download failed: ${url}`, error)
+      apiLogger.error(`Download failed: ${url}`, error)
       throw error
     }
   }
@@ -765,7 +724,7 @@ class ApiService {
   cancelAllRequests(reason = "Request canceled by user") {
     const pendingCount = this.pendingRequests.size
     if (pendingCount > 0) {
-      console.log(`Canceling ${pendingCount} pending requests: ${reason}`)
+      apiLogger.info(`Canceling ${pendingCount} pending requests: ${reason}`)
       for (const [requestId, requestData] of this.pendingRequests.entries()) {
         const source = axios.CancelToken.source()
         source.cancel(reason)
@@ -847,7 +806,7 @@ class ApiService {
         await this.post("/auth/logout")
       }
     } catch (error) {
-      console.warn("Logout request failed:", error)
+      apiLogger.warn("Logout request failed:", error)
     } finally {
       this._removeToken()
       this.setAuthToken(null)

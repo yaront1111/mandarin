@@ -205,6 +205,7 @@ const UserCard = ({
             size="large"
             status={user.isOnline ? "online" : null}
             showFallback={true}
+            statusPosition="top-right"
           />
         </div>
 
@@ -366,6 +367,7 @@ const UserCard = ({
           size="medium"
           status={user.isOnline ? "online" : null}
           showFallback={true}
+          statusPosition="top-right"
         />
       </div>
 

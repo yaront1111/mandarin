@@ -1,70 +1,132 @@
-/* Base styles, variables, and reset */
+/* 
+ * base.css - Modern Design System
+ * Core variables, resets, and base styles
+ */
+
 :root {
-  /* Color Palette */
-  --primary-color: #ff6b6b;
-  --primary-hover: #ff5252;
-  --secondary-color: #4ecdc4;
-  --accent-color: #ffe66d;
-  --text-color: #2d3436;
-  --text-light: #636e72;
-  --bg-color: #ffffff;
-  --danger-rgb: #ff6b6b;
-  --bg-light: #f9f9f9;
-  --bg-dark: #2d3436;
-  --border-color: #dfe6e9;
-  --success-color: #55efc4;
-  --warning-color: #ffeaa7;
-  --error-color: #ff7675;
-  --border-radius: 8px;
-  --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --transition: all 0.3s ease;
-
-  /* Enhanced color palette */
-  --primary: #ff3366;
-  --primary-light: #ff6b99;
-  --primary-dark: #cc2952;
-  --primary-subtle: rgba(255, 51, 102, 0.08);
-  --secondary: #3a86ff;
-  --secondary-light: #6aa2ff;
-  --secondary-dark: #2868cc;
-  --accent: #8a2be2;
-  --accent-light: #a85aff;
-  --success: #33d685;
-  --success-light: #a5f2d5;
-  --warning: #ffd166;
-  --warning-light: #fff0cc;
-  --danger: #ef476f;
-  --danger-light: #ffd3df;
-
-  /* Neutrals */
+  /* ===================
+     COLOR PALETTE - EXTENDED
+     =================== */
+  
+  /* Primary Colors - Expanded Scale */
+  --primary-50: #fff0f4;
+  --primary-100: #ffe0e9;
+  --primary-200: #ffbfd0;
+  --primary-300: #ff99b7;
+  --primary-400: #ff6699;
+  --primary-500: #ff3366; /* Base primary */
+  --primary-600: #e62a59;
+  --primary-700: #cc244f;
+  --primary-800: #b31e44;
+  --primary-900: #99193a;
+  --primary-rgb: 255, 51, 102;
+  
+  /* Secondary Colors - Expanded Scale */
+  --secondary-50: #edf5ff;
+  --secondary-100: #dbebff;
+  --secondary-200: #b7d7ff;
+  --secondary-300: #93c3ff;
+  --secondary-400: #6aa2ff;
+  --secondary-500: #3a86ff; /* Base secondary */
+  --secondary-600: #2868cc;
+  --secondary-700: #1d4999;
+  --secondary-800: #153366;
+  --secondary-900: #0d1e33;
+  --secondary-rgb: 58, 134, 255;
+  
+  /* Success Colors */
+  --success-50: #e6fbf2;
+  --success-100: #c7f6e3;
+  --success-200: #a5f2d5;
+  --success-300: #6be9bb;
+  --success-400: #45e0a1;
+  --success-500: #33d685; /* Base success */
+  --success-600: #27a86a;
+  --success-700: #1c7a50;
+  --success-800: #155c3c;
+  --success-900: #0e3f28;
+  --success-rgb: 51, 214, 133;
+  
+  /* Warning Colors */
+  --warning-50: #fff9e6;
+  --warning-100: #fff0cc;
+  --warning-200: #ffe499;
+  --warning-300: #ffd966;
+  --warning-400: #ffcf33;
+  --warning-500: #ffd166; /* Base warning */
+  --warning-600: #e6b84c;
+  --warning-700: #997a33;
+  --warning-800: #665226;
+  --warning-900: #332919;
+  --warning-rgb: 255, 209, 102;
+  
+  /* Danger Colors */
+  --danger-50: #feecf1;
+  --danger-100: #fdd3df;
+  --danger-200: #fba6bf;
+  --danger-300: #f979a0;
+  --danger-400: #f64d80;
+  --danger-500: #ef476f; /* Base danger */
+  --danger-600: #d63c5e;
+  --danger-700: #a62f4b;
+  --danger-800: #772337;
+  --danger-900: #471624;
+  --danger-rgb: 239, 71, 111;
+  
+  /* Neutral Colors */
+  --neutral-50: #f9fafb;
+  --neutral-100: #f3f4f6;
+  --neutral-200: #e5e7eb;
+  --neutral-300: #d1d5db;
+  --neutral-400: #9ca3af;
+  --neutral-500: #6b7280;
+  --neutral-600: #4b5563;
+  --neutral-700: #374151;
+  --neutral-800: #1f2937;
+  --neutral-900: #111827;
+  
+  /* Semantic Colors (Keep for compatibility) */
+  --primary: var(--primary-500);
+  --primary-light: var(--primary-300);
+  --primary-dark: var(--primary-700);
+  --primary-subtle: rgba(var(--primary-rgb), 0.08);
+  
+  --secondary: var(--secondary-500);
+  --secondary-light: var(--secondary-300);
+  --secondary-dark: var(--secondary-700);
+  
+  --success: var(--success-500);
+  --success-light: var(--success-200);
+  
+  --warning: var(--warning-500);
+  --warning-light: var(--warning-200);
+  
+  --danger: var(--danger-500);
+  --danger-light: var(--danger-200);
+  
+  /* UI Colors */
   --dark: #222831;
   --medium: #393e46;
   --light: #f2f2f2;
   --white: #ffffff;
   --background: #f8f9fa;
-
-  /* Text */
+  
+  /* Text Colors */
   --text-dark: #1a1a1a;
   --text-medium: #4f4f4f;
   --text-light: #7e7e7e;
   --text-subtle: #9e9e9e;
+  
+  /* Notification-specific colors */
+  --color-heart: #ff4b4b;
+  --color-comment: #4b7bff;
+  --color-story: #ff9f4b;
+  --color-call: #4bff7b;
+  --bg-unread: rgba(0, 123, 255, 0.05);
 
-  /* UI Elements */
-  --border-color: #e0e0e0;
-  --border-color-focus: #aabcff;
-
-  /* Shadows & Effects */
-  --card-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
-  --hover-shadow: 0 10px 24px rgba(0, 0, 0, 0.1);
-  --active-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-
-  /* "Glass" styling */
-  --glass-bg: rgba(255, 255, 255, 0.4);
-  --glass-bg-dark: rgba(24, 24, 24, 0.4);
-  --glass-blur: blur(10px);
-  --glass-border: rgba(255, 255, 255, 0.2);
-
-  /* Spacing */
+  /* ===================
+     SPACING SYSTEM 
+     =================== */
   --space-xxs: 2px;
   --space-xs: 4px;
   --space-sm: 8px;
@@ -74,14 +136,10 @@
   --space-xxl: 48px;
   --space-xxxl: 64px;
 
-  /* Border Radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
-  --radius-round: 50%;
-
-  /* Typography */
+  /* ===================
+     TYPOGRAPHY SYSTEM
+     =================== */
+  /* Font Sizes */
   --font-size-xs: 0.75rem; /* 12px */
   --font-size-sm: 0.875rem; /* 14px */
   --font-size-md: 1rem; /* 16px */
@@ -91,23 +149,77 @@
   --font-size-3xl: 2rem; /* 32px */
   --font-size-4xl: 2.5rem; /* 40px */
 
-  /* Line heights */
+  /* Line Heights */
   --line-height-tight: 1.2;
   --line-height-normal: 1.5;
   --line-height-relaxed: 1.8;
 
-  /* Font weights */
+  /* Font Weights */
   --font-weight-light: 300;
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
 
+  /* ===================
+     UI ELEMENTS 
+     =================== */
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-round: 50%;
+
+  /* Borders */
+  --border-color: #e0e0e0;
+  --border-color-focus: #aabcff;
+  --border-width: 1px;
+  --border-width-md: 2px;
+  --border-width-lg: 3px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+  
+  /* Legacy shadow names for compatibility */
+  --card-shadow: var(--shadow-md);
+  --hover-shadow: var(--shadow-lg);
+  --active-shadow: var(--shadow-sm);
+
+  /* Glass Effects */
+  --glass-bg: rgba(255, 255, 255, 0.4);
+  --glass-bg-dark: rgba(24, 24, 24, 0.4);
+  --glass-blur: blur(10px);
+  --glass-border: rgba(255, 255, 255, 0.2);
+
   /* Transitions */
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;
   --transition-slow: 350ms ease;
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  
+  /* Legacy transition for compatibility */
+  --transition: var(--transition-normal);
 
+  /* Z-index Layers */
+  --z-below: -1;
+  --z-normal: 1;
+  --z-above: 10;
+  --z-modal: 100;
+  --z-popover: 200;
+  --z-tooltip: 300;
+  --z-overlay: 400;
+  --z-maximum: 999;
+  
   /* Settings page specific variables */
   --text-primary: var(--text-dark);
   --text-secondary: var(--text-medium);
@@ -119,81 +231,172 @@
   --bg-warning: var(--warning-light);
   --bg-danger: var(--danger-light);
   --danger-color: var(--danger);
-  --danger-color-dark: #d63c5e;
+  --danger-color-dark: var(--danger-600);
   --text-disabled: #a0a0a0;
   --bg-input: var(--white);
-  --primary-rgb: 255, 51, 102;
-
-  /* Add notification color variables */
-  --color-heart: #ff4b4b;
-  --color-comment: #4b7bff;
-  --color-story: #ff9f4b;
-  --color-call: #4bff7b;
-  --bg-unread: rgba(0, 123, 255, 0.05);
 }
 
-/* Dark mode variables */
+/* ===================
+   DARK MODE THEME
+   =================== */
 .dark {
-  --primary-color: #ff6b6b;
-  --primary-hover: #ff5252;
-  --secondary-color: #4ecdc4;
-  --accent-color: #ffe66d;
-  --text-color: #f1f1f1;
-  --text-light: #b2bec3;
-  --bg-color: #2d3436;
-  --bg-light: #353b48;
-  --bg-dark: #1e272e;
-  --border-color: #636e72;
-
-  /* Enhanced dark mode */
-  --primary: #ff3366;
-  --primary-light: #ff6b99;
-  --primary-dark: #cc2952;
-  --primary-subtle: rgba(255, 51, 102, 0.15);
-
-  /* Neutrals */
-  --dark: #121212;
-  --medium: #1e1e1e;
-  --light: #2a2a2a;
-  --white: #333333;
-  --background: #121212;
-
-  /* Text */
-  --text-dark: #f0f0f0;
-  --text-medium: #c0c0c0;
-  --text-light: #a0a0a0;
-  --text-subtle: #808080;
-
+  /* Primary Colors - Dark Mode Adjusted */
+  --primary-50: #33050e;
+  --primary-100: #66091b;
+  --primary-200: #991028;
+  --primary-300: #cc1635;
+  --primary-400: #e6264a;
+  --primary-500: #ff3366; /* Base primary in dark mode */
+  --primary-600: #ff5c85;
+  --primary-700: #ff85a3;
+  --primary-800: #ffadc1;
+  --primary-900: #ffd6e0;
+  --primary-rgb: 255, 51, 102;
+  
+  /* Secondary Colors - Dark Mode Adjusted */
+  --secondary-50: #04132d;
+  --secondary-100: #082659;
+  --secondary-200: #0d3a86;
+  --secondary-300: #114db2;
+  --secondary-400: #1761df;
+  --secondary-500: #3a86ff; /* Base secondary in dark mode */
+  --secondary-600: #629fff;
+  --secondary-700: #8ab8ff;
+  --secondary-800: #b3d1ff;
+  --secondary-900: #dbe8ff;
+  
+  /* Success Colors - Dark Mode Adjusted */
+  --success-50: #052e1c;
+  --success-100: #095c38;
+  --success-200: #0e8a53;
+  --success-300: #13b86f;
+  --success-400: #29c27c;
+  --success-500: #33d685; /* Base success in dark mode */
+  --success-600: #5cde9c;
+  --success-700: #85e6b2;
+  --success-800: #adeec9;
+  --success-900: #d6f6e4;
+  
+  /* Warning Colors - Dark Mode Adjusted */
+  --warning-50: #332600;
+  --warning-100: #664c00;
+  --warning-200: #997100;
+  --warning-300: #cc9700;
+  --warning-400: #e6ab00;
+  --warning-500: #ffd166; /* Base warning in dark mode */
+  --warning-600: #ffda85;
+  --warning-700: #ffe4a3;
+  --warning-800: #ffecc1;
+  --warning-900: #fff6e0;
+  
+  /* Danger Colors - Dark Mode Adjusted */
+  --danger-50: #2e0d16;
+  --danger-100: #5d1a2c;
+  --danger-200: #8b2742;
+  --danger-300: #b93558;
+  --danger-400: #d84164;
+  --danger-500: #ef476f; /* Base danger in dark mode */
+  --danger-600: #f26989;
+  --danger-700: #f58ca3;
+  --danger-800: #f9aebe;
+  --danger-900: #fcd1d9;
+  
+  /* Neutral Colors - Dark Mode */
+  --neutral-50: #121212;
+  --neutral-100: #1a1a1a;
+  --neutral-200: #2a2a2a;
+  --neutral-300: #3a3a3a;
+  --neutral-400: #5a5a5a;
+  --neutral-500: #7a7a7a;
+  --neutral-600: #9a9a9a;
+  --neutral-700: #bdbdbd;
+  --neutral-800: #dadada;
+  --neutral-900: #f5f5f5;
+  
+  /* Legacy Color Names (Keep for compatibility) */
+  --primary-color: var(--primary-500);
+  --primary-hover: var(--primary-600);
+  --secondary-color: var(--secondary-500);
+  --accent-color: var(--warning-500);
+  --text-color: var(--neutral-900);
+  
+  /* Semantic Colors */
+  --primary: var(--primary-500);
+  --primary-light: var(--primary-600);
+  --primary-dark: var(--primary-400);
+  --primary-subtle: rgba(var(--primary-rgb), 0.15);
+  
+  --secondary: var(--secondary-500);
+  --secondary-light: var(--secondary-600);
+  --secondary-dark: var(--secondary-400);
+  
+  --success: var(--success-500);
+  --success-light: var(--success-600);
+  
+  --warning: var(--warning-500);
+  --warning-light: var(--warning-600);
+  
+  --danger: var(--danger-500);
+  --danger-light: var(--danger-600);
+  
+  /* UI Colors */
+  --dark: var(--neutral-50);
+  --medium: var(--neutral-200);
+  --light: var(--neutral-300);
+  --white: var(--neutral-400);
+  --background: var(--neutral-50);
+  
+  /* Text Colors */
+  --text-dark: var(--neutral-900);
+  --text-medium: var(--neutral-700);
+  --text-light: var(--neutral-600);
+  --text-subtle: var(--neutral-500);
+  
   /* UI Elements */
-  --border-color: #444444;
-  --border-color-focus: #666666;
-
-  /* Shadows & Effects */
-  --card-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-  --hover-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
-  --active-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-
-  /* "Glass" styling */
+  --border-color: var(--neutral-300);
+  --border-color-focus: var(--primary-400);
+  
+  /* Notification-specific colors */
+  --color-heart: var(--danger);
+  --color-comment: var(--secondary);
+  --color-story: var(--warning);
+  --color-call: var(--success);
+  --bg-unread: rgba(var(--primary-rgb), 0.1);
+  
+  /* Shadows - Enhanced for Dark Mode */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.7), 0 4px 6px -2px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.85);
+  --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.5);
+  
+  /* Legacy shadow names */
+  --card-shadow: var(--shadow-md);
+  --hover-shadow: var(--shadow-lg);
+  --active-shadow: var(--shadow-sm);
+  
+  /* Glass Effects */
   --glass-bg: rgba(30, 30, 30, 0.4);
   --glass-bg-dark: rgba(15, 15, 15, 0.4);
   --glass-blur: blur(10px);
   --glass-border: rgba(50, 50, 50, 0.2);
-
-  /* Settings page specific variables for dark mode */
+  
+  /* Settings page specific variables */
   --text-primary: var(--text-dark);
   --text-secondary: var(--text-medium);
   --bg-card: var(--medium);
   --bg-secondary: var(--dark);
   --bg-hover: rgba(255, 255, 255, 0.1);
   --bg-active: rgba(var(--primary-rgb), 0.2);
-  --bg-inactive: #444444;
+  --bg-inactive: var(--neutral-300);
   --bg-warning: rgba(255, 209, 102, 0.2);
   --bg-danger: rgba(239, 71, 111, 0.2);
-  --text-disabled: #666666;
+  --danger-color: var(--danger);
+  --danger-color-dark: var(--danger-400);
+  --text-disabled: var(--neutral-500);
   --bg-input: var(--dark);
-
-  /* Add these lines to your existing dark mode variables */
-  --bg-unread: rgba(0, 123, 255, 0.1);
 }
 
 /* Reset and base styles */
@@ -211,10 +414,10 @@ html {
 body {
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans",
     "Helvetica Neue", sans-serif;
-  color: var(--text-color);
-  background-color: var(--bg-light);
-  line-height: 1.6;
-  transition: var(--transition);
+  color: var(--text-dark);
+  background-color: var(--background);
+  line-height: var(--line-height-normal);
+  transition: var(--transition-normal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

@@ -1,9 +1,13 @@
 import SimplePeer from 'simple-peer';
 import 'webrtc-adapter'; // Import adapter for better browser compatibility
+import logger from './logger';
 
 /**
  * WebRTC utility functions for managing peer connections
  */
+
+// Create a logger specific to WebRTC utilities
+const log = logger.create('WebRTC');
 
 // Default ICE servers configuration
 const DEFAULT_ICE_SERVERS = [
@@ -42,7 +46,7 @@ export const createPeer = (isInitiator, stream, options = {}) => {
       ...config
     },
     sdpTransform,
-    debug: debug ? (data) => console.log('SimplePeer Debug:', data) : undefined,
+    debug: debug ? (data) => log.debug('SimplePeer Debug:', data) : undefined,
   });
 
   return peer;
@@ -58,15 +62,15 @@ export const getUserMedia = async (constraints = { video: true, audio: true }) =
     // Try to get media with specified constraints
     return await navigator.mediaDevices.getUserMedia(constraints);
   } catch (error) {
-    console.error('Error getting media with specified constraints:', error);
+    log.error('Error getting media with specified constraints:', error);
 
     // If video fails, try audio only
     if (constraints.video && constraints.audio) {
       try {
-        console.log('Trying audio only...');
+        log.info('Trying audio only...');
         return await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
       } catch (audioError) {
-        console.error('Audio only failed:', audioError);
+        log.error('Audio only failed:', audioError);
         // If all fails, throw the original error
         throw error;
       }
@@ -158,7 +162,7 @@ export const optimizeVideoTrack = (videoTrack, options = {}) => {
 
     // Apply the constraints to the track
     videoTrack.applyConstraints(constraints)
-      .catch(error => console.error('Error applying video constraints:', error));
+      .catch(error => log.error('Error applying video constraints:', error));
   }
 
   // Set content hints if supported
@@ -237,7 +241,7 @@ export const monitorConnectionQuality = (peerConnection, qualityCallback) => {
         bitrate,
       });
     } catch (error) {
-      console.error('Error getting connection stats:', error);
+      log.error('Error getting connection stats:', error);
     }
   };
 
@@ -260,7 +264,7 @@ export const addTrackToPeer = (peerConnection, track, stream) => {
   try {
     peerConnection.addTrack(track, stream);
   } catch (error) {
-    console.error('Error adding track to peer connection:', error);
+    log.error('Error adding track to peer connection:', error);
   }
 };
 
@@ -277,6 +281,6 @@ export const removeTrackFromPeer = (peerConnection, track) => {
       peerConnection.removeTrack(sender);
     }
   } catch (error) {
-    console.error('Error removing track from peer connection:', error);
+    log.error('Error removing track from peer connection:', error);
   }
 };
