@@ -7,11 +7,49 @@ const settingsService = {
    */
   getUserSettings: async () => {
     try {
-      const response = await apiService.get('/users/settings');
-      return response.data;
+      // Use /auth/me endpoint instead since it includes user settings
+      console.log('Fetching user settings from /auth/me endpoint');
+      const response = await apiService.get('/auth/me');
+      
+      // Ensure response has the right format
+      if (response.success && response.data) {
+        // Extract settings from the user data
+        const settings = response.data.settings || {
+          notifications: {
+            messages: true,
+            calls: true,
+            stories: true,
+            likes: true,
+            comments: true,
+          },
+          privacy: {
+            showOnlineStatus: true,
+            showReadReceipts: true,
+            showLastSeen: true,
+            allowStoryReplies: "everyone"
+          }
+        };
+        
+        console.log('Successfully fetched user settings from /auth/me:', settings);
+        return {
+          success: true,
+          data: settings
+        };
+      } else {
+        console.error('API returned unsuccessful response:', response);
+        return { 
+          success: false, 
+          error: response.error || 'Failed to fetch settings',
+          data: null
+        };
+      }
     } catch (error) {
       console.error('Error fetching user settings:', error);
-      throw error;
+      return { 
+        success: false, 
+        error: error.message || 'Failed to fetch settings',
+        data: null
+      };
     }
   },
 
@@ -22,12 +60,34 @@ const settingsService = {
    */
   updateSettings: async (settings) => {
     try {
-      // Removed extra "/api" from the endpoint
-      const response = await apiService.put('/users/settings', settings);
-      return response.data;
+      // Use the profile update endpoint instead, which correctly handles settings
+      console.log('Updating settings via /users/profile endpoint', settings);
+      const response = await apiService.put('/users/profile', { settings });
+      
+      // Log the response for debugging
+      console.log('Settings update API response:', response);
+      
+      // Ensure response has the right format
+      if (response.success) {
+        return {
+          success: true,
+          data: settings
+        };
+      } else {
+        console.error('API returned unsuccessful settings update response:', response);
+        return { 
+          success: false, 
+          error: response.error || 'Failed to update settings',
+          data: null
+        };
+      }
     } catch (error) {
       console.error('Error updating settings:', error);
-      throw error;
+      return { 
+        success: false, 
+        error: error.message || 'Failed to update settings',
+        data: null
+      };
     }
   },
 
@@ -38,14 +98,38 @@ const settingsService = {
    */
   updateNotificationSettings: async (notificationSettings) => {
     try {
-      // Removed extra "/api" from the endpoint
-      const response = await apiService.put('/users/settings/notifications', {
-        notifications: notificationSettings
+      // Use the profile update endpoint with settings structure
+      console.log('Updating notification settings via /users/profile endpoint', notificationSettings);
+      const response = await apiService.put('/users/profile', {
+        settings: {
+          notifications: notificationSettings
+        }
       });
-      return response.data;
+      
+      // Log the response for debugging
+      console.log('Notification settings update API response:', response);
+      
+      // Ensure response has the right format
+      if (response.success) {
+        return {
+          success: true,
+          data: { notifications: notificationSettings }
+        };
+      } else {
+        console.error('API returned unsuccessful notification settings update response:', response);
+        return { 
+          success: false, 
+          error: response.error || 'Failed to update notification settings',
+          data: null
+        };
+      }
     } catch (error) {
       console.error('Error updating notification settings:', error);
-      throw error;
+      return { 
+        success: false, 
+        error: error.message || 'Failed to update notification settings',
+        data: null
+      };
     }
   },
 
@@ -56,14 +140,38 @@ const settingsService = {
    */
   updatePrivacySettings: async (privacySettings) => {
     try {
-      // Removed extra "/api" from the endpoint
-      const response = await apiService.put('/users/settings/privacy', {
-        privacy: privacySettings
+      // Use the profile update endpoint with settings structure
+      console.log('Updating privacy settings via /users/profile endpoint', privacySettings);
+      const response = await apiService.put('/users/profile', {
+        settings: {
+          privacy: privacySettings
+        }
       });
-      return response.data;
+      
+      // Log the response for debugging
+      console.log('Privacy settings update API response:', response);
+      
+      // Ensure response has the right format
+      if (response.success) {
+        return {
+          success: true,
+          data: { privacy: privacySettings }
+        };
+      } else {
+        console.error('API returned unsuccessful privacy settings update response:', response);
+        return { 
+          success: false, 
+          error: response.error || 'Failed to update privacy settings',
+          data: null
+        };
+      }
     } catch (error) {
       console.error('Error updating privacy settings:', error);
-      throw error;
+      return { 
+        success: false, 
+        error: error.message || 'Failed to update privacy settings',
+        data: null
+      };
     }
   },
 

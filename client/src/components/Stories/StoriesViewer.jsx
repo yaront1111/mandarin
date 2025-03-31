@@ -543,13 +543,14 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     return storyUser.nickname || storyUser.username || storyUser.name || "User"
   }
 
-  const getProfilePicture = () => {
+  // Use memo to cache profile picture results
+  const getProfilePicture = useCallback(() => {
     const storyUser = currentStory.user || currentStory.userData || {}
     if (!storyUser || typeof storyUser === "string") {
-      return `/api/avatar/default`
+      return `/api/avatars/default`
     }
-    return storyUser.profilePicture || storyUser.avatar || `/api/avatar/${storyUser._id || "default"}`
-  }
+    return storyUser.profilePicture || storyUser.avatar || `/api/avatars/${storyUser._id || "default"}`
+  }, [currentStory])
 
   const formatTimestamp = () => {
     try {
@@ -611,6 +612,8 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
             alt="Story"
             className="stories-media"
             crossOrigin="anonymous"
+            loading="lazy"
+            decoding="async"
             onError={(e) => {
               e.target.onerror = null
               e.target.src = "/placeholder.svg"
@@ -709,6 +712,8 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
               src={getProfilePicture() || "/placeholder.svg"}
               alt={getUserDisplayName()}
               className="stories-user-avatar"
+              loading="lazy"
+              crossOrigin="anonymous"
               onError={(e) => {
                 e.target.onerror = null
                 e.target.src = "/placeholder.svg"

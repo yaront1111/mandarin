@@ -16,16 +16,25 @@ import {
   FaSyncAlt,
 } from "react-icons/fa"
 import { useNotifications } from "../context"
-import apiService from "../services/apiService.jsx"
-import socketService from "../services/socketService"
 import { toast } from "react-toastify"
+
+// Import common components 
+import { Button, LoadingSpinner } from "./common"
+// Import hooks and utilities
+import { useApi, useMounted } from "../hooks"
+import { formatDate, logger } from "../utils"
+// Keep direct import for socket service since it requires global state
+import socketService from "../services/socketService"
+
+// Create contextual logger
+const log = logger.create('NotificationsComponent')
 
 // BroadcastChannel for cross-tab synchronization
 let notificationChannel
 try {
   notificationChannel = new BroadcastChannel("notifications_sync")
 } catch (e) {
-  console.warn("BroadcastChannel not supported in this browser")
+  log.warn("BroadcastChannel not supported in this browser")
 }
 
 /**
@@ -57,6 +66,9 @@ const NotificationsComponent = ({
   const [filteredNotifications, setFilteredNotifications] = useState([])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [visibilityState, setVisibilityState] = useState(document.visibilityState)
+  
+  const api = useApi()
+  const { isMounted } = useMounted()
   const listRef = useRef(null)
   const lastRefreshRef = useRef(Date.now())
   const refreshTimeoutRef = useRef(null)
@@ -85,9 +97,7 @@ const NotificationsComponent = ({
     const handleCrossTabSync = (event) => {
       const { type, data } = event.data || {}
 
-      if (type === "NOTIFICATION_READ") {
-        refreshNotifications()
-      } else if (type === "NOTIFICATION_RECEIVED") {
+      if (type === "NOTIFICATION_READ" || type === "NOTIFICATION_RECEIVED") {
         refreshNotifications()
       }
     }
@@ -107,7 +117,7 @@ const NotificationsComponent = ({
   useEffect(() => {
     // Setup direct socket event listener for immediate updates
     const handleDirectNotification = (data) => {
-      console.log("⚡ DIRECT NOTIFICATION RECEIVED IN COMPONENT:", data)
+      log.debug("⚡ DIRECT NOTIFICATION RECEIVED IN COMPONENT:", data)
 
       // Force refresh immediately
       refreshNotifications()
@@ -124,7 +134,7 @@ const NotificationsComponent = ({
 
     // Connect directly to the socket for immediate notification updates
     if (socketService.socket) {
-      console.log("📱 Setting up direct socket handlers in NotificationsComponent")
+      log.debug("📱 Setting up direct socket handlers in NotificationsComponent")
 
       // Listen for all types of notification events
       socketService.socket.on("notification", handleDirectNotification)
@@ -136,8 +146,8 @@ const NotificationsComponent = ({
       socketService.socket.on("incomingCall", handleDirectNotification)
 
       // Test the socket connection by logging its state
-      console.log("Socket connected:", socketService.isConnected())
-      console.log("Socket ID:", socketService.socket.id)
+      log.debug("Socket connected:", socketService.isConnected())
+      log.debug("Socket ID:", socketService.socket.id)
     }
 
     return () => {
@@ -221,7 +231,9 @@ const NotificationsComponent = ({
       toast.error("Failed to refresh notifications")
     } finally {
       setTimeout(() => {
-        setIsRefreshing(false)
+        if (isMounted()) {
+          setIsRefreshing(false)
+        }
       }, 500)
     }
   }
@@ -290,15 +302,12 @@ const NotificationsComponent = ({
   // Handle clear all notifications
   const handleClearAll = async () => {
     try {
-      const response = await apiService.delete("/notifications/clear-all")
-      if (response.success) {
-        toast.success(`Cleared ${response.count} notifications`)
-        refreshNotifications() // Refresh immediately after clearing
-        lastRefreshRef.current = Date.now()
-      } else {
-        toast.error("Failed to clear notifications")
-      }
+      const response = await api.delete("/notifications/clear-all")
+      toast.success(`Cleared ${response?.count || 0} notifications`)
+      refreshNotifications() // Refresh immediately after clearing
+      lastRefreshRef.current = Date.now()
     } catch (error) {
+      log.error("Error clearing notifications:", error)
       toast.error("Error clearing notifications")
     }
   }
@@ -375,13 +384,15 @@ const NotificationsComponent = ({
     return (
       <div className="notification-filters">
         {filters.map((filter) => (
-          <button
+          <Button
             key={filter.id}
             className={`filter-btn ${activeFilter === filter.id ? "active" : ""}`}
             onClick={() => handleFilterChange(filter.id)}
+            variant={activeFilter === filter.id ? "primary" : "light"}
+            size="small"
           >
             {filter.label}
-          </button>
+          </Button>
         ))}
       </div>
     )
@@ -391,8 +402,7 @@ const NotificationsComponent = ({
   if (loadingNotifications) {
     return (
       <div className={`notification-loading ${className}`} style={style}>
-        <div className="spinner"></div>
-        <p>Loading notifications...</p>
+        <LoadingSpinner size="medium" text="Loading notifications..." centered />
       </div>
     )
   }
@@ -405,15 +415,26 @@ const NotificationsComponent = ({
         <p>No {activeFilter !== "all" ? `${activeFilter} ` : ""}notifications yet</p>
 
         <div className="notification-empty-actions">
-          <button onClick={handleRefresh} className="btn btn-sm btn-outline" disabled={isRefreshing}>
-            <FaSyncAlt className={isRefreshing ? "spin" : ""} />
-            <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
-          </button>
+          <Button 
+            onClick={handleRefresh} 
+            disabled={isRefreshing}
+            isLoading={isRefreshing}
+            variant="secondary"
+            size="small"
+            icon={<FaSyncAlt />}
+          >
+            {isRefreshing ? "Refreshing..." : "Refresh"}
+          </Button>
 
           {isDropdown && (
-            <button onClick={handleAddTestNotification} className="btn btn-sm btn-primary mt-3 ml-2">
+            <Button 
+              onClick={handleAddTestNotification} 
+              variant="primary"
+              size="small"
+              className="mt-3 ml-2"
+            >
               Add Test Notification
-            </button>
+            </Button>
           )}
         </div>
 
@@ -443,35 +464,60 @@ const NotificationsComponent = ({
 
           <div className="notification-header-actions">
             {/* Refresh button */}
-            <span className="notification-header-action" onClick={handleRefresh} title="Refresh notifications">
-              <FaSyncAlt size={14} className={isRefreshing ? "spin" : ""} />
-            </span>
+            <Button 
+              className="notification-header-action" 
+              onClick={handleRefresh} 
+              title="Refresh notifications"
+              variant="link"
+              size="small"
+              icon={<FaSyncAlt className={isRefreshing ? "spin" : ""} />}
+            />
 
             {unreadCount > 0 && (
-              <span className="notification-header-action" onClick={handleMarkAllAsRead}>
-                <FaCheck size={14} /> Mark all read
-              </span>
+              <Button 
+                className="notification-header-action" 
+                onClick={handleMarkAllAsRead}
+                variant="link"
+                size="small"
+                icon={<FaCheck />}
+              >
+                Mark all read
+              </Button>
             )}
 
             {!isDropdown && (
               <>
-                <span
-                  className="notification-header-action"
+                <Button 
+                  className="notification-header-action" 
                   onClick={() => handleFilterChange(activeFilter === "all" ? "unread" : "all")}
+                  variant="link"
+                  size="small"
+                  icon={<FaFilter />}
                 >
-                  <FaFilter size={14} /> {activeFilter === "all" ? "Show unread" : "Show all"}
-                </span>
+                  {activeFilter === "all" ? "Show unread" : "Show all"}
+                </Button>
 
-                <span className="notification-header-action" onClick={handleClearAll}>
-                  <FaTrash size={14} /> Clear all
-                </span>
+                <Button 
+                  className="notification-header-action" 
+                  onClick={handleClearAll}
+                  variant="link"
+                  size="small"
+                  icon={<FaTrash />}
+                >
+                  Clear all
+                </Button>
               </>
             )}
 
             {isDropdown && onClose && (
-              <button className="notification-close-btn" onClick={onClose}>
-                <FaTimes />
-              </button>
+              <Button 
+                className="notification-close-btn" 
+                onClick={onClose}
+                variant="light"
+                size="small"
+                icon={<FaTimes />}
+                aria-label="Close notifications"
+              />
             )}
           </div>
         </div>
@@ -504,7 +550,7 @@ const NotificationItem = ({ notification, onClick }) => {
   const NotificationIcon = getNotificationIcon(notification.type)
 
   // Format the notification time
-  const notificationTime = formatNotificationTime(notification.createdAt)
+  const formattedTime = formatDate(notification.createdAt, { showRelative: true, showTime: false, showDate: false })
 
   // Check if this notification has multiple items (bundled)
   const count = notification.count > 1 ? notification.count : null
@@ -540,7 +586,7 @@ const NotificationItem = ({ notification, onClick }) => {
         <div className="notification-message">{notification.message || notification.content || notification.title}</div>
 
         <div className="notification-time">
-          {notificationTime}
+          {formattedTime}
           {!notification.read && <span className="notification-time-dot"></span>}
           {!notification.read && <span className="notification-status">Unread</span>}
         </div>
@@ -571,28 +617,6 @@ function getNotificationIcon(type) {
     default:
       return FaBell
   }
-}
-
-/**
- * Format notification time in a human-readable way
- */
-function formatNotificationTime(timestamp) {
-  if (!timestamp) return "Just now"
-
-  const now = new Date()
-  const notificationTime = new Date(timestamp)
-  const diffMs = now - notificationTime
-  const diffSec = Math.floor(diffMs / 1000)
-  const diffMin = Math.floor(diffSec / 60)
-  const diffHour = Math.floor(diffMin / 60)
-  const diffDay = Math.floor(diffHour / 24)
-
-  if (diffSec < 60) return "Just now"
-  if (diffMin < 60) return `${diffMin}m ago`
-  if (diffHour < 24) return `${diffHour}h ago`
-  if (diffDay < 7) return `${diffDay}d ago`
-
-  return notificationTime.toLocaleDateString()
 }
 
 /**

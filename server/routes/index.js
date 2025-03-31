@@ -19,12 +19,29 @@ router.get("/health", (req, res) => {
   })
 })
 
+// Add diagnostic route for debugging avatar endpoint issues
+router.get("/debug-routes", (req, res) => {
+  const mountedRoutes = {
+    message: "Routes currently mounted in the server",
+    timestamp: new Date().toISOString(),
+    routes: {
+      "GET /api/health": "API health check",
+      "GET /api/avatar/health": "Avatar routes health check",
+      "GET /api/avatar/:userId": "Get user avatar",
+      "GET /api/debug-routes": "This route - shows available routes"
+    }
+  };
+  return res.status(200).json(mountedRoutes);
+})
+
 // Mount routes
 router.use("/auth", authRoutes)
 router.use("/users", userRoutes)
 router.use("/messages", messageRoutes)
 router.use("/stories", storyRoutes)
 router.use("/notifications", notificationRoutes)
+router.use("/avatar", avatarRoutes)
+// Also mount at '/avatars' for backwards compatibility 
 router.use("/avatars", avatarRoutes)
 router.use("/subscription", subscriptionRoutes)
 

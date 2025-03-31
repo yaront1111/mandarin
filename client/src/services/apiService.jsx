@@ -639,7 +639,7 @@ class ApiService {
       const response = await this.api.get(url, {
         params,
         ...options,
-        cancelToken: options.cancelToken,
+        cancelToken: options.request?.cancelToken || options.cancelToken,
       })
       return this._processResponse(response)
     } catch (error) {
@@ -656,7 +656,7 @@ class ApiService {
       }
       const response = await this.api.post(url, data, {
         ...options,
-        cancelToken: options.cancelToken,
+        cancelToken: options.request?.cancelToken || options.cancelToken,
       })
       return this._processResponse(response)
     } catch (error) {
@@ -673,7 +673,7 @@ class ApiService {
       }
       const response = await this.api.put(url, data, {
         ...options,
-        cancelToken: options.cancelToken,
+        cancelToken: options.request?.cancelToken || options.cancelToken,
       })
       return this._processResponse(response)
     } catch (error) {
@@ -690,7 +690,7 @@ class ApiService {
       }
       const response = await this.api.delete(url, {
         ...options,
-        cancelToken: options.cancelToken,
+        cancelToken: options.request?.cancelToken || options.cancelToken,
       })
       return this._processResponse(response)
     } catch (error) {
@@ -701,7 +701,7 @@ class ApiService {
 
   async upload(url, formData, onProgress = null, options = {}) {
     try {
-      const source = axios.CancelToken.source()
+      const cancelToken = options.request?.cancelToken || options.cancelToken || axios.CancelToken.source().token;
       const response = await this.api.post(url, formData, {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: onProgress
@@ -710,7 +710,7 @@ class ApiService {
               onProgress(percentCompleted)
             }
           : undefined,
-        cancelToken: source.token,
+        cancelToken: cancelToken,
         ...options,
       })
       return response
@@ -722,7 +722,7 @@ class ApiService {
 
   async download(url, params = {}, onProgress = null, options = {}) {
     try {
-      const source = axios.CancelToken.source()
+      const cancelToken = options.request?.cancelToken || options.cancelToken || axios.CancelToken.source().token;
       const response = await this.api.get(url, {
         params,
         responseType: "blob",
@@ -732,7 +732,7 @@ class ApiService {
               onProgress(percentCompleted)
             }
           : undefined,
-        cancelToken: source.token,
+        cancelToken: cancelToken,
         ...options,
       })
       return response
@@ -744,6 +744,18 @@ class ApiService {
 
   createCancelToken() {
     return axios.CancelToken.source()
+  }
+
+  /**
+   * Creates a cancelable request object that can be used with the useApi hook
+   * @returns {Object} An object with request and cancel properties
+   */
+  createCancelableRequest() {
+    const source = axios.CancelToken.source();
+    return {
+      request: { cancelToken: source.token },
+      cancel: () => source.cancel('Request canceled')
+    };
   }
 
   isCancel(error) {
@@ -764,11 +776,11 @@ class ApiService {
 
   async testConnection() {
     try {
-      const source = this.createCancelToken()
+      const { request, cancel } = this.createCancelableRequest();
       const timeout = setTimeout(() => {
-        source.cancel("Connection test timeout")
+        cancel("Connection test timeout")
       }, 5000)
-      const result = await this.get("/auth/test-connection", {}, { cancelToken: source.token })
+      const result = await this.get("/auth/test-connection", {}, { request })
       clearTimeout(timeout)
       return {
         success: true,

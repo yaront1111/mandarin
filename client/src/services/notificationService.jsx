@@ -1,19 +1,11 @@
-// client/src/services/notificationService.jsx
+// client/src/services/notificationService.jsx - Enhanced Production Version
 import apiService from "./apiService.jsx";
-import { toast } from "react-toastify";
 import socketService from "./socketService.jsx";
 import { useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 
 /**
- * Enhanced Notification Service
- *
- * Features:
- * - Automatic bundling of notifications from the same sender within an hour
- * - Simplified socket event listeners
- * - Better error handling and logging
- * - Consistent API for adding, updating, and reading notifications
- * - Support for all notification types
+ * Enhanced Notification Service with improved error handling and reliability
  */
 class NotificationService {
   constructor() {
@@ -27,9 +19,69 @@ class NotificationService {
     this.socketReconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectTimer = null;
+    this.isLoading = false;
+    this.lastFetch = 0;
+    this.fetchQueue = Promise.resolve(); // For sequential fetching
 
     // Notification grouping timeframe (in milliseconds)
     this.bundleTimeframe = 60 * 60 * 1000; // 1 hour
+
+    // Notification event types to listen for
+    this.notificationEventTypes = [
+      "notification",
+      "newMessage",
+      "newLike",
+      "photoPermissionRequestReceived",
+      "photoPermissionResponseReceived",
+      "newComment",
+      "incomingCall",
+      "newStory",
+    ];
+
+    // Cross-tab synchronization
+    this.setupNotificationSyncChannel();
+  }
+
+  /**
+   * Set up broadcast channel for cross-tab notification sync
+   */
+  setupNotificationSyncChannel() {
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        this.notificationSyncChannel = new BroadcastChannel("notification_sync");
+
+        // Listen for messages from other tabs
+        this.notificationSyncChannel.onmessage = (event) => {
+          const { type, data } = event.data || {};
+          if (!type) return;
+
+          switch(type) {
+            case "NEW_NOTIFICATION":
+              console.log("Received new notification from another tab");
+              this.addBundledNotification(data);
+              window.dispatchEvent(new CustomEvent("newNotification", { detail: data }));
+              break;
+            case "MARK_READ":
+              if (data && data.notificationId) {
+                this.markAsRead(data.notificationId, false); // Don't sync back
+              }
+              break;
+            case "MARK_ALL_READ":
+              this.markAllAsRead(false); // Don't sync back
+              break;
+            default:
+              break;
+          }
+        };
+
+        console.log("Notification sync channel initialized");
+      } else {
+        console.log("BroadcastChannel not supported, cross-tab sync disabled");
+      }
+    } catch (error) {
+      console.error("Error setting up notification sync channel:", error);
+      this.notificationSyncChannel = null;
+    }
   }
 
   /**
@@ -52,9 +104,21 @@ class NotificationService {
   initialize(userSettings) {
     if (this.initialized) {
       console.log("NotificationService already initialized");
+      // Even if already initialized, update settings if provided
+      if (userSettings && userSettings.notifications) {
+        console.log("Updating settings of already initialized service:", userSettings);
+        this.userSettings = userSettings;
+      }
       return;
     }
 
+    // Log the incoming settings for debugging
+    console.log("Initializing NotificationService with settings:", userSettings);
+    console.log("Messages notification setting specifically:", 
+      userSettings?.notifications?.messages,
+      "typeof:", typeof userSettings?.notifications?.messages);
+
+    // Set default settings if none provided
     this.userSettings = userSettings || {
       notifications: {
         messages: true,
@@ -66,13 +130,116 @@ class NotificationService {
       },
     };
 
-    if (socketService.isConnected()) {
-      this.registerSocketListeners();
+    // Ensure notifications object exists
+    if (!this.userSettings.notifications) {
+      this.userSettings.notifications = {
+        messages: true,
+        calls: true,
+        stories: true,
+        likes: true,
+        comments: true,
+        photoRequests: true,
+      };
     }
 
+    // Check socket connection and register listeners if connected
+    this.checkSocketConnection();
+
+    // Set up auto-retry for socket connection
+    this._setupSocketConnectionRetry();
+
     this.initialized = true;
-    this.getNotifications();
-    console.log("NotificationService initialized successfully");
+
+    // Get initial notifications (with error handling)
+    this.getNotifications().catch(err => {
+      console.error("Failed to fetch initial notifications:", err);
+    });
+
+    console.log("NotificationService initialized successfully with settings:", this.userSettings);
+    console.log("Final messages notification setting:", this.userSettings.notifications.messages);
+
+    // Set up visibility change handler to refresh when tab becomes visible
+    document.addEventListener('visibilitychange', this._handleVisibilityChange.bind(this));
+  }
+
+  /**
+   * Set up socket connection retry mechanism
+   * @private
+   */
+  _setupSocketConnectionRetry() {
+    // Clear any existing timer
+    if (this.reconnectTimer) {
+      clearInterval(this.reconnectTimer);
+    }
+
+    // Set up periodic check for socket connection
+    this.reconnectTimer = setInterval(() => {
+      if (!socketService.isConnected() && this.initialized) {
+        if (this.socketReconnectAttempts < this.maxReconnectAttempts) {
+          console.log(`Attempting to reconnect socket for notifications (attempt ${this.socketReconnectAttempts + 1}/${this.maxReconnectAttempts})`);
+          this.socketReconnectAttempts++;
+          this.checkSocketConnection();
+        } else if (this.socketReconnectAttempts === this.maxReconnectAttempts) {
+          console.warn("Max socket reconnection attempts reached for notifications");
+          this.socketReconnectAttempts++;
+
+          // After max attempts, try less frequently (once every 2 minutes)
+          clearInterval(this.reconnectTimer);
+          this.reconnectTimer = setInterval(() => {
+            console.log("Periodic socket reconnection attempt for notifications");
+            this.checkSocketConnection();
+          }, 120000); // 2 minutes
+        }
+      } else if (socketService.isConnected()) {
+        // Reset counter when connected
+        this.socketReconnectAttempts = 0;
+      }
+    }, 30000); // Check every 30 seconds initially
+  }
+
+  /**
+   * Handle visibility change for tab switching
+   * @private
+   */
+  _handleVisibilityChange() {
+    if (document.visibilityState === 'visible') {
+      // Check if we haven't fetched notifications in the last 60 seconds
+      const timeSinceLastFetch = Date.now() - this.lastFetch;
+      if (timeSinceLastFetch > 60000) {
+        console.log("Tab became visible, refreshing notifications");
+        this.refreshNotifications();
+      }
+    }
+  }
+
+  /**
+   * Clean up resources used by the service
+   */
+  cleanup() {
+    // Clean up socket listeners
+    this.socketListeners.forEach(removeListener => {
+      if (typeof removeListener === 'function') {
+        removeListener();
+      }
+    });
+    this.socketListeners = [];
+
+    // Clean up reconnect timer
+    if (this.reconnectTimer) {
+      clearInterval(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    // Clean up broadcast channel
+    if (this.notificationSyncChannel) {
+      this.notificationSyncChannel.close();
+      this.notificationSyncChannel = null;
+    }
+
+    // Clean up visibility handler
+    document.removeEventListener('visibilitychange', this._handleVisibilityChange);
+
+    console.log("NotificationService resources cleaned up");
   }
 
   /**
@@ -91,35 +258,21 @@ class NotificationService {
   }
 
   /**
-   * Clean up socket listeners
-   */
-  cleanup() {
-    if (this.socketListeners.length > 0) {
-      console.log(`Cleaning up ${this.socketListeners.length} socket listeners`);
-      this.socketListeners.forEach(removeListener => {
-        if (typeof removeListener === 'function') {
-          removeListener();
-        }
-      });
-      this.socketListeners = [];
-    }
-  }
-
-  /**
    * Register socket event listeners for different notification types
    */
   registerSocketListeners() {
+    // First clean up existing listeners to prevent duplicates
+    this.cleanup();
+
     if (!socketService.isConnected()) {
       console.warn("NotificationService: Socket not connected. Cannot register listeners.");
       return;
     }
 
-    // Clean up old listeners
-    this.cleanup();
-
     // Define all notification types in one place for easier management
+    // Note that for messages, we map to the "messages" property in settings, even though the type is "message"
     const notificationTypes = [
-      { event: "newMessage", type: "message", handler: this._handleMessageNotification.bind(this) },
+      { event: "newMessage", type: "message", settingName: "messages", handler: this._handleMessageNotification.bind(this) },
       { event: "incomingCall", type: "call", handler: this._handleCallNotification.bind(this) },
       { event: "newStory", type: "story", handler: this._handleStoryNotification.bind(this) },
       { event: "newLike", type: "like", handler: this._handleLikeNotification.bind(this) },
@@ -135,6 +288,14 @@ class NotificationService {
       this.socketListeners.push(removeListener);
     });
 
+    // Special handling for reconnects to refresh notifications
+    const reconnectHandler = () => {
+      console.log("Socket reconnected, refreshing notifications");
+      this.refreshNotifications();
+    };
+    const removeReconnectListener = socketService.on("connect", reconnectHandler);
+    this.socketListeners.push(removeReconnectListener);
+
     console.log(`Registered ${notificationTypes.length} socket notification listeners`);
   }
 
@@ -143,7 +304,12 @@ class NotificationService {
    * @param {Object} data - Message data
    */
   _handleMessageNotification(data) {
-    if (this.shouldShowNotification("messages") && data) {
+    // Use the "message" type for checking (not "messages") - this matches what we handle in shouldShowNotification
+    console.log("Checking if message notification should be shown");
+    
+    if (this.shouldShowNotification("message") && data) {
+      console.log("Message notification will be shown");
+      
       const notification = {
         _id: data._id || `msg-${Date.now()}`,
         type: "message",
@@ -157,6 +323,8 @@ class NotificationService {
       };
 
       this.addBundledNotification(notification);
+    } else {
+      console.log("Message notification suppressed by settings");
     }
   }
 
@@ -320,14 +488,57 @@ class NotificationService {
    * @returns {boolean} - Whether to show the notification
    */
   shouldShowNotification(notificationType) {
-    if (!this.initialized || !this.userSettings) return true;
+    if (!this.initialized || !this.userSettings) {
+      console.log(`Notification check - not initialized yet, defaulting to show ${notificationType}`);
+      return true;
+    }
 
     // Special case for photo requests
     if (notificationType === "photoRequest" || notificationType === "photoResponse") {
-      return this.userSettings.notifications?.photoRequests !== false;
+      const shouldShow = this.userSettings.notifications?.photoRequests !== false;
+      console.log(`Notification ${notificationType} check - photoRequests setting:`, 
+        this.userSettings.notifications?.photoRequests, 
+        'shouldShow:', shouldShow);
+      return shouldShow;
     }
 
-    return this.userSettings.notifications?.[notificationType] !== false;
+    // Add special handling for message notifications
+    if (notificationType === "message") {
+      // Handle "messages" (plural) vs "message" (singular) mapping
+      // This could be a source of the bug - if we're setting "messages" but checking "message"
+      
+      // First check the direct match (message)
+      if (this.userSettings.notifications?.message !== undefined) {
+        const setting = this.userSettings.notifications.message;
+        const shouldShow = setting !== false;
+        console.log(`Message notification check - direct "message" setting:`, 
+          setting,
+          'typeof:', typeof setting,
+          'shouldShow:', shouldShow);
+        return shouldShow;
+      }
+      
+      // Then check the plural version (messages)
+      if (this.userSettings.notifications?.messages !== undefined) {
+        const setting = this.userSettings.notifications.messages;
+        const shouldShow = setting !== false;
+        console.log(`Message notification check - "messages" setting:`, 
+          setting,
+          'typeof:', typeof setting,
+          'shouldShow:', shouldShow);
+        return shouldShow;
+      }
+      
+      // If neither is defined, default to true
+      console.log("Message notification check - no setting found, defaulting to true");
+      return true;
+    }
+
+    const shouldShow = this.userSettings.notifications?.[notificationType] !== false;
+    console.log(`Notification ${notificationType} check - setting:`, 
+      this.userSettings.notifications?.[notificationType], 
+      'shouldShow:', shouldShow);
+    return shouldShow;
   }
 
   /**
@@ -418,8 +629,9 @@ class NotificationService {
         // Notify listeners
         this.notifyListeners();
 
-        // Show toast for the bundled notification
-        this.showToast(this.notifications[similarNotificationIndex]);
+
+        // Sync to other tabs
+        this._syncToOtherTabs("NEW_NOTIFICATION", this.notifications[similarNotificationIndex]);
 
         return this.notifications[similarNotificationIndex];
       }
@@ -436,11 +648,12 @@ class NotificationService {
       this.unreadCount++;
     }
 
-    // Show toast notification
-    this.showToast(sanitizedNotification);
 
     // Notify listeners
     this.notifyListeners();
+
+    // Sync to other tabs
+    this._syncToOtherTabs("NEW_NOTIFICATION", sanitizedNotification);
 
     // Dispatch browser event for components not using the context
     window.dispatchEvent(new CustomEvent("newNotification", { detail: sanitizedNotification }));
@@ -448,6 +661,22 @@ class NotificationService {
     console.log(`Added notification: ${sanitizedNotification.type} - ${sanitizedNotification.title || sanitizedNotification.message}`);
 
     return sanitizedNotification;
+  }
+
+  /**
+   * Sync notification actions to other tabs
+   * @private
+   * @param {string} type - Action type
+   * @param {*} data - Data to sync
+   */
+  _syncToOtherTabs(type, data) {
+    if (this.notificationSyncChannel) {
+      try {
+        this.notificationSyncChannel.postMessage({ type, data });
+      } catch (err) {
+        console.error("Error syncing to other tabs:", err);
+      }
+    }
   }
 
   /**
@@ -477,46 +706,12 @@ class NotificationService {
   }
 
   /**
-   * Display a toast notification
+   * Display a notification (toast functionality removed)
    * @param {Object} notification - Notification to show
    */
   showToast(notification) {
-    try {
-      // Skip toast for certain notification types if needed
-      // if (["someType"].includes(notification.type)) return;
-
-      const toastOptions = {
-        onClick: () => this.handleNotificationClick(notification),
-        autoClose: 5000,
-        closeButton: true,
-        position: "top-right"
-      };
-
-      const title = notification.title || notification.message || "New Notification";
-      const message = (notification.message && notification.message !== title) ? notification.message : "";
-      const count = notification.count > 1 ? `(${notification.count})` : "";
-      const displayTitle = count ? `${title} ${count}` : title;
-
-      // Use different toast types based on notification type
-      let toastMethod = toast.info;
-      if (notification.type === "like" || notification.type === "match") {
-        toastMethod = toast.success;
-      } else if (notification.type === "photoRequest") {
-        toastMethod = toast.info;
-      } else if (notification.type === "photoResponse") {
-        toastMethod = notification.data?.status === "approved" ? toast.success : toast.info;
-      }
-
-      toastMethod(
-        <div className="notification-content">
-          <div className="notification-title">{displayTitle}</div>
-          {message && <div className="notification-message">{message}</div>}
-        </div>,
-        toastOptions
-      );
-    } catch (error) {
-      console.error("Error showing notification toast:", error);
-    }
+    // Toast functionality removed
+    console.log("Toast notifications have been disabled");
   }
 
   /**
@@ -626,8 +821,9 @@ class NotificationService {
   /**
    * Mark a notification as read
    * @param {string} notificationId - ID of the notification to mark
+   * @param {boolean} shouldSync - Whether to sync to other tabs
    */
-  markAsRead(notificationId) {
+  markAsRead(notificationId, shouldSync = true) {
     if (!notificationId) return;
 
     const index = this.notifications.findIndex(n =>
@@ -637,17 +833,27 @@ class NotificationService {
 
     if (index === -1 || this.notifications[index].read) return;
 
+    // Update local state
     const updatedNotifications = [...this.notifications];
     updatedNotifications[index] = { ...updatedNotifications[index], read: true };
     this.notifications = updatedNotifications;
     this.unreadCount = Math.max(0, this.unreadCount - 1);
+
+    // Notify listeners
     this.notifyListeners();
+
+    // Sync to other tabs if requested
+    if (shouldSync) {
+      this._syncToOtherTabs("MARK_READ", { notificationId });
+    }
 
     // Send read status to server if it's a valid MongoDB ObjectId
     if (notificationId && /^[0-9a-fA-F]{24}$/.test(notificationId)) {
-      apiService.put("/notifications/read", { ids: [notificationId] }).catch(() => {
-        apiService.put(`/notifications/${notificationId}/read`).catch(err =>
-          console.warn(`Failed backend markAsRead for ${notificationId}:`, err)
+      apiService.put("/notifications/read", { ids: [notificationId] }).catch(err => {
+        console.warn(`Failed to mark notification ${notificationId} as read on server:`, err);
+        // Fallback to single notification endpoint
+        apiService.put(`/notifications/${notificationId}/read`).catch(err2 =>
+          console.warn(`Failed backend markAsRead for ${notificationId}:`, err2)
         );
       });
     }
@@ -655,23 +861,35 @@ class NotificationService {
 
   /**
    * Mark all notifications as read
+   * @param {boolean} shouldSync - Whether to sync to other tabs
    */
-  markAllAsRead() {
+  markAllAsRead(shouldSync = true) {
     if (this.unreadCount === 0) return;
 
+    // Update local state
     this.notifications = this.notifications.map(n => ({ ...n, read: true }));
     this.unreadCount = 0;
+
+    // Notify listeners
     this.notifyListeners();
+
+    // Sync to other tabs if requested
+    if (shouldSync) {
+      this._syncToOtherTabs("MARK_ALL_READ");
+    }
 
     // Collect valid MongoDB ObjectIds for server update
     const realIds = this.notifications
       .map(n => n._id || n.id)
       .filter(id => id && /^[0-9a-fA-F]{24}$/.test(id));
 
+    // Update on server
     if (realIds.length > 0) {
-      apiService.put("/notifications/read-all").catch(() => {
-        apiService.put("/notifications/read", { ids: realIds }).catch(err =>
-          console.warn("Failed backend markAllAsRead:", err)
+      apiService.put("/notifications/read-all").catch(err => {
+        console.warn("Failed to mark all notifications as read on server:", err);
+        // Fallback to batch update endpoint
+        apiService.put("/notifications/read", { ids: realIds }).catch(err2 =>
+          console.warn("Failed backend markAllAsRead:", err2)
         );
       });
     }
@@ -680,46 +898,70 @@ class NotificationService {
   /**
    * Fetch notifications from the server
    * @param {Object} options - Query options
-   * @returns {Array} - Notifications
+   * @returns {Promise<Array>} - Notifications
    */
   async getNotifications(options = {}) {
-    if (!this.initialized) {
-      console.warn("Trying to fetch notifications before initialization");
-    }
-
-    try {
-      console.log("Fetching notifications from server...");
-      const response = await apiService.get("/notifications", options);
-      console.log("Server response:", response);
-
-      if (response.success && Array.isArray(response.data)) {
-        const validNotifications = response.data
-          .map(n => this.sanitizeNotification(n))
-          .filter(n => this.isValidNotification(n));
-
-        // Apply bundling to server notifications before setting state
-        const bundledNotifications = this._bundleServerNotifications(validNotifications);
-
-        this.notifications = bundledNotifications;
-        this.unreadCount = bundledNotifications.filter(n => !n.read).length;
-        this.notifyListeners();
-
-        console.log(`Loaded ${bundledNotifications.length} notifications from server`);
+    // Queue the fetch operation to prevent overlapping requests
+    this.fetchQueue = this.fetchQueue.then(async () => {
+      if (this.isLoading) {
+        console.log("Notifications already loading, request queued");
         return this.notifications;
       }
 
-      console.log("No notifications found or invalid response format");
-      this.notifications = [];
-      this.unreadCount = 0;
-      this.notifyListeners();
-      return [];
-    } catch (error) {
-      console.error("Error fetching notifications from API:", error);
-      this.notifications = [];
-      this.unreadCount = 0;
-      this.notifyListeners();
-      return [];
-    }
+      this.isLoading = true;
+      let success = false;
+
+      try {
+        if (!this.initialized) {
+          console.warn("Trying to fetch notifications before initialization");
+        }
+
+        console.log("Fetching notifications from server...");
+        const response = await apiService.get("/notifications", options);
+        this.lastFetch = Date.now();
+
+        if (response.success && Array.isArray(response.data)) {
+          const validNotifications = response.data
+            .map(n => this.sanitizeNotification(n))
+            .filter(n => this.isValidNotification(n));
+
+          // Apply bundling to server notifications before setting state
+          const bundledNotifications = this._bundleServerNotifications(validNotifications);
+
+          this.notifications = bundledNotifications;
+          this.unreadCount = bundledNotifications.filter(n => !n.read).length;
+          this.notifyListeners();
+
+          console.log(`Loaded ${bundledNotifications.length} notifications from server`);
+          success = true;
+          return this.notifications;
+        }
+
+        console.log("No notifications found or invalid response format");
+        this.notifications = [];
+        this.unreadCount = 0;
+        this.notifyListeners();
+        return [];
+      } catch (error) {
+        console.error("Error fetching notifications from API:", error);
+
+        // Don't reset notifications if we already have some and this is just an error
+        if (!success && this.notifications.length === 0) {
+          this.notifications = [];
+          this.unreadCount = 0;
+          this.notifyListeners();
+        }
+        return this.notifications;
+      } finally {
+        this.isLoading = false;
+      }
+    }).catch(err => {
+      console.error("Unexpected error in notification fetch queue:", err);
+      this.isLoading = false;
+      return this.notifications;
+    });
+
+    return this.fetchQueue;
   }
 
   /**
@@ -802,9 +1044,43 @@ class NotificationService {
    * @param {Object} settings - New settings
    */
   updateSettings(settings) {
-    this.userSettings = { ...this.userSettings, notifications: settings };
-    console.log("Notification settings updated:", settings);
-    // Optional: Persist settings via settingsService
+    // Log the incoming settings for debugging
+    console.log("Updating NotificationService settings:", settings);
+    console.log("Messages notification setting specifically:", 
+      settings?.messages,
+      "typeof:", typeof settings?.messages);
+    
+    // Ensure boolean values are properly handled
+    const normalizedSettings = {};
+    if (settings) {
+      // Explicitly convert to boolean where needed
+      normalizedSettings.messages = settings.messages === false ? false : Boolean(settings.messages);
+      normalizedSettings.calls = settings.calls === false ? false : Boolean(settings.calls);
+      normalizedSettings.stories = settings.stories === false ? false : Boolean(settings.stories);
+      normalizedSettings.likes = settings.likes === false ? false : Boolean(settings.likes);
+      normalizedSettings.comments = settings.comments === false ? false : Boolean(settings.comments);
+      normalizedSettings.photoRequests = settings.photoRequests === false ? false : Boolean(settings.photoRequests);
+    }
+    
+    console.log("Normalized notification settings:", normalizedSettings);
+    
+    // Update our settings
+    this.userSettings = { ...this.userSettings, notifications: normalizedSettings };
+    
+    // Persist settings via settingsService using dynamic import
+    import('./settingsService.jsx')
+      .then(module => {
+        const settingsService = module.default;
+        return settingsService.updateNotificationSettings(normalizedSettings);
+      })
+      .then(() => console.log('Notification settings saved to server'))
+      .catch(err => console.error('Failed to save notification settings to server:', err));
+    
+    // Notify all listeners of the settings change
+    this.notifyListeners();
+    
+    // Log the final state of settings
+    console.log("Final state of notification settings:", this.userSettings.notifications);
   }
 
   /**
@@ -842,6 +1118,14 @@ class NotificationService {
         console.error("Notify listener error:", err);
       }
     });
+  }
+
+  /**
+   * Refresh notifications manually
+   * @returns {Promise<Array>} - Refreshed notifications
+   */
+  refreshNotifications() {
+    return this.getNotifications({ _t: Date.now() }); // Add timestamp to bust cache
   }
 
   /**
@@ -925,5 +1209,10 @@ export function useInitializeNotificationServiceNavigation() {
     };
   }, [navigate]);
 }
+
+// Provide cleanup method on module itself for application shutdown
+notificationServiceInstance.globalCleanup = () => {
+  notificationServiceInstance.cleanup();
+};
 
 export default notificationServiceInstance;

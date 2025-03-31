@@ -1,7 +1,7 @@
 // client/src/components/Stories/StoryThumbnail.jsx
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useUser } from "../../context";
 import "../../styles/stories.css";
 // Removed: import UserAvatar from "../UserAvatar";
@@ -9,6 +9,9 @@ import "../../styles/stories.css";
 const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser }) => {
   const { user: contextUser } = useUser();
   const [imageError, setImageError] = useState(false); // State for image loading error
+  
+  // Use a ref to track images we've already tried to load and failed
+  const failedImagesRef = useRef(new Set());
 
   // Derive user object from story or props
   const storyUser = useMemo(() => {
@@ -25,12 +28,25 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser }) 
   const userName = storyUser.nickname || storyUser.username || storyUser.name || "User";
   const explicitAvatarSrc = storyUser.profilePicture || storyUser.avatar || null;
 
-  // Determine the final avatar URL
-  const avatarUrl = explicitAvatarSrc || (userId ? `/api/avatar/${userId}` : "/placeholder.svg");
+  // Determine the final avatar URL - use the proper URL pattern
+  const avatarUrl = useMemo(() => {
+    const baseUrl = window.location.origin;
+    const url = explicitAvatarSrc || 
+                (userId ? `${baseUrl}/api/avatars/${userId}` : `${baseUrl}/placeholder.svg`);
+    
+    // If we've already tried this URL and it failed, go straight to placeholder
+    if (failedImagesRef.current.has(url)) {
+      return `${baseUrl}/placeholder.svg`;
+    }
+    
+    return url;
+  }, [explicitAvatarSrc, userId]);
 
-  // Reset error state when avatarUrl changes
+  // Reset error state when avatarUrl changes, but only if it's not a known failed URL
   useEffect(() => {
-    setImageError(false);
+    if (!failedImagesRef.current.has(avatarUrl)) {
+      setImageError(false);
+    }
   }, [avatarUrl]);
 
   // Check if this story is viewed by the current user
@@ -92,8 +108,13 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser }) 
               className="story-thumbnail-image" // New class for direct styling
               src={avatarUrl}
               alt={`${userName}'s avatar`}
-              onError={() => setImageError(true)}
+              onError={(e) => {
+                // Add to failed images set
+                failedImagesRef.current.add(avatarUrl);
+                setImageError(true);
+              }}
               crossOrigin="anonymous"
+              loading="lazy"
             />
           ) : (
             renderPlaceholder() // Render fallback

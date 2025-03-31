@@ -224,22 +224,37 @@ router.get(
       }
 
       const users = await User.find(query) //
-        .select("nickname details photos isOnline lastActive") //
+        .select("nickname details photos isOnline lastActive settings") //
         .sort({ isOnline: -1, lastActive: -1 }) //
         .skip(skip) //
         .limit(limit) //
 
       const total = await User.countDocuments(query) //
+      
+      // Process each user to respect privacy settings
+      const processedUsers = users.map(user => {
+        const userObj = user.toObject();
+        
+        // Hide online status for users who have disabled it in settings
+        if (userObj.settings?.privacy?.showOnlineStatus === false) {
+          userObj.isOnline = false;
+        }
+        
+        // Remove settings from response
+        delete userObj.settings;
+        
+        return userObj;
+      });
 
       logger.debug(`Found ${users.length} users matching filters`) //
       res.status(200).json({
         //
         success: true, //
-        count: users.length, //
+        count: processedUsers.length, //
         total, //
         page, //
         pages: Math.ceil(total / limit), //
-        data: users, //
+        data: processedUsers, //
       })
     } catch (err) {
       logger.error(`Error fetching users: ${err.message}`) //
@@ -266,12 +281,24 @@ router.get(
         return res.status(400).json({ success: false, error: "Invalid user ID format" }) //
       }
 
-      const user = await User.findById(req.params.id).select("nickname details photos isOnline lastActive createdAt") //
+      const user = await User.findById(req.params.id).select("nickname details photos isOnline lastActive createdAt settings") //
       if (!user) {
         //
         logger.warn(`User not found: ${req.params.id}`) //
         return res.status(404).json({ success: false, error: "User not found" }) //
       }
+      
+      // Adjust user online status based on privacy settings
+      const responseUser = user.toObject();
+      
+      // If the user has hide online status enabled, set isOnline to false for other users
+      if (responseUser.settings?.privacy?.showOnlineStatus === false) {
+        responseUser.isOnline = false;
+        logger.debug(`Hiding online status for user ${req.params.id} due to privacy settings`);
+      }
+      
+      // Don't send the settings object to the client
+      delete responseUser.settings;
 
       const page = Number.parseInt(req.query.page, 10) || 1 //
       const limit = Number.parseInt(req.query.limit, 10) || 50 //
@@ -315,7 +342,7 @@ router.get(
         success: true, //
         data: {
           //
-          user, //
+          user: responseUser, //
           messages, //
           messagesPagination: {
             //
@@ -428,7 +455,7 @@ router.put(
     //
     logger.debug(`Updating profile for user ${req.user._id}`) //
     try {
-      const { nickname, details } = req.body //
+      const { nickname, details, settings } = req.body //
       if (nickname && nickname.trim().length < 3) {
         //
         return res.status(400).json({ success: false, error: "Nickname must be at least 3 characters" }) //
@@ -527,14 +554,64 @@ router.put(
           updateData.details.maritalStatus = details.maritalStatus //
         }
       }
+      
+      // Handle settings updates
+      if (settings) {
+        logger.debug(`Updating user settings: ${JSON.stringify(settings)}`) //
+        
+        // Get existing user with settings
+        const existingUser = await User.findById(req.user._id)
+        const existingSettings = existingUser.settings || {}
+        
+        // Initialize settings structure if it doesn't exist
+        updateData.settings = { ...existingSettings }
+        
+        // Update notifications settings
+        if (settings.notifications) {
+          updateData.settings.notifications = {
+            ...existingSettings.notifications,
+            ...settings.notifications
+          }
+          
+          // Ensure boolean values for notification settings
+          Object.keys(updateData.settings.notifications).forEach(key => {
+            const value = updateData.settings.notifications[key]
+            // If explicitly false (not null, undefined, or empty string), keep it false
+            updateData.settings.notifications[key] = value === false ? false : !!value
+          })
+        }
+        
+        // Update privacy settings
+        if (settings.privacy) {
+          updateData.settings.privacy = {
+            ...existingSettings.privacy,
+            ...settings.privacy
+          }
+        }
+        
+        // Update theme settings
+        if (settings.theme) {
+          updateData.settings.theme = {
+            ...existingSettings.theme,
+            ...settings.theme
+          }
+        }
+        
+        logger.debug(`Final settings update: ${JSON.stringify(updateData.settings)}`) //
+      }
 
       logger.debug(`Updating user with data: ${JSON.stringify(updateData)}`) //
 
-      const updatedUser = await User.findByIdAndUpdate(req.user._id, updateData, {
-        //
-        new: true, //
-        runValidators: true, //
-      })
+      // Use findOneAndUpdate to ensure proper document middleware execution
+      const updatedUser = await User.findOneAndUpdate(
+        { _id: req.user._id },
+        updateData,
+        {
+          new: true, // Return updated document
+          runValidators: true, // Run schema validators
+        }
+      )
+      
       logger.info(`Profile updated for user ${req.user._id}`) //
       res.status(200).json({ success: true, data: updatedUser }) //
     } catch (err) {
@@ -936,20 +1013,36 @@ router.get(
         query.isOnline = true //
       }
       const users = await User.find(query) //
-        .select("nickname details photos isOnline lastActive") //
+        .select("nickname details photos isOnline lastActive settings") //
         .sort({ isOnline: -1, lastActive: -1 }) //
         .skip(skip) //
         .limit(limit) //
       const total = await User.countDocuments(query) //
+      
+      // Process each user to respect privacy settings
+      const processedUsers = users.map(user => {
+        const userObj = user.toObject();
+        
+        // Hide online status for users who have disabled it in settings
+        if (userObj.settings?.privacy?.showOnlineStatus === false) {
+          userObj.isOnline = false;
+        }
+        
+        // Remove settings from response
+        delete userObj.settings;
+        
+        return userObj;
+      });
+      
       logger.debug(`Found ${users.length} users matching search criteria`) //
       res.status(200).json({
         //
         success: true, //
-        count: users.length, //
+        count: processedUsers.length, //
         total, //
         page, //
         pages: Math.ceil(total / limit), //
-        data: users, //
+        data: processedUsers, //
       })
     } catch (err) {
       logger.error(`Error searching users: ${err.message}`) //
@@ -1299,6 +1392,104 @@ router.put("/settings/privacy", protect, async (req, res) => {
   }
 })
 
+/**
+ * @route   GET /api/users/:id/photo-access-status
+ * @desc    Get overall photo access status for a user
+ * @access  Private
+ */
+router.get(
+  "/:id/photo-access-status",
+  protect,
+  asyncHandler(async (req, res) => {
+    logger.debug(`Getting photo access status for user ${req.params.id} requested by ${req.user._id}`);
+    
+    try {
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid user ID format"
+        });
+      }
+      
+      // Find the target user
+      const targetUser = await User.findById(req.params.id).select("photos");
+      if (!targetUser) {
+        return res.status(404).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+      
+      // Initialize default response structure
+      const accessInfo = {
+        success: true,
+        status: "none",
+        message: "No access status determined"
+      };
+      
+      // If user doesn't have any private photos, they have "approved" status automatically
+      const privatePhotos = targetUser.photos.filter(photo => photo.isPrivate);
+      if (privatePhotos.length === 0) {
+        accessInfo.status = "approved";
+        accessInfo.message = "No private photos exist";
+        return res.status(200).json(accessInfo);
+      }
+      
+      // If the requesting user is the photo owner, they have "approved" status
+      if (req.user._id.toString() === req.params.id.toString()) {
+        accessInfo.status = "approved";
+        accessInfo.message = "User is photo owner";
+        return res.status(200).json(accessInfo);
+      }
+      
+      // Check if there are any permission records for private photos
+      const privatePhotoIds = privatePhotos.map(photo => photo._id);
+      const permissions = await PhotoPermission.find({
+        photo: { $in: privatePhotoIds },
+        requestedBy: req.user._id
+      });
+      
+      // If no permissions exist, return "none"
+      if (!permissions || permissions.length === 0) {
+        accessInfo.status = "none";
+        accessInfo.message = "No photo access requests found";
+        return res.status(200).json(accessInfo);
+      }
+      
+      // Check if any permissions are approved
+      const approvedPermissions = permissions.filter(p => p.status === "approved");
+      if (approvedPermissions.length > 0) {
+        accessInfo.status = "approved";
+        accessInfo.message = `${approvedPermissions.length} photo permissions approved`;
+        return res.status(200).json(accessInfo);
+      }
+      
+      // Check if all permissions are rejected
+      const rejectedPermissions = permissions.filter(p => p.status === "rejected");
+      if (rejectedPermissions.length === permissions.length) {
+        accessInfo.status = "rejected";
+        accessInfo.message = "All photo access requests rejected";
+        return res.status(200).json(accessInfo);
+      }
+      
+      // Otherwise, user has at least one pending request
+      accessInfo.status = "pending";
+      accessInfo.message = "Photo access requests pending";
+      return res.status(200).json(accessInfo);
+      
+    } catch (err) {
+      logger.error(`Error fetching photo access status: ${err.message}`);
+      // Send a consistent response structure even in error case
+      return res.status(500).json({
+        success: false,
+        status: null,
+        error: "Server error while fetching photo access status",
+        message: err.message
+      });
+    }
+  })
+);
+
 // Add the following route handler after the existing photo-related routes
 
 // Approve all pending photo access requests
@@ -1353,6 +1544,224 @@ router.post("/photos/approve-all", protect, async (req, res) => {
     })
   }
 })
+
+/**
+ * @route   POST /api/users/:id/request-photo-access
+ * @desc    Request access to all of a user's private photos
+ * @access  Private
+ */
+router.post(
+  "/:id/request-photo-access",
+  protect,
+  asyncHandler(async (req, res) => {
+    const targetUserId = req.params.id;
+    logger.debug(`User ${req.user._id} requesting access to ALL photos from user ${targetUserId}`);
+    
+    try {
+      if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid user ID format"
+        });
+      }
+      
+      // Check if the user exists
+      const targetUser = await User.findById(targetUserId).select("photos");
+      if (!targetUser) {
+        return res.status(404).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+      
+      // Cannot request access to your own photos
+      if (req.user._id.toString() === targetUserId) {
+        return res.status(400).json({
+          success: false,
+          error: "You cannot request access to your own photos"
+        });
+      }
+      
+      // Get all private photos
+      const privatePhotos = targetUser.photos.filter(photo => photo.isPrivate);
+      
+      // If no private photos, nothing to do
+      if (privatePhotos.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "No private photos to request access to",
+          requests: []
+        });
+      }
+      
+      // Create permission requests for each private photo
+      const requests = [];
+      const createdAt = new Date();
+      
+      for (const photo of privatePhotos) {
+        // Check if a request already exists
+        const existingRequest = await PhotoPermission.findOne({
+          photo: photo._id,
+          requestedBy: req.user._id
+        });
+        
+        if (!existingRequest) {
+          const newRequest = new PhotoPermission({
+            photo: photo._id,
+            requestedBy: req.user._id,
+            status: "pending",
+            createdAt,
+            photoOwnerId: targetUserId
+          });
+          
+          await newRequest.save();
+          requests.push(newRequest);
+        } else if (existingRequest.status === "rejected") {
+          // If previously rejected, reactivate the request
+          existingRequest.status = "pending";
+          existingRequest.updatedAt = new Date();
+          await existingRequest.save();
+          requests.push(existingRequest);
+        } else {
+          // Already has a pending or approved request
+          requests.push(existingRequest);
+        }
+      }
+      
+      // Return success response
+      return res.status(200).json({
+        success: true,
+        message: `Successfully requested access to ${requests.length} photos`,
+        requests: requests
+      });
+      
+    } catch (err) {
+      logger.error(`Error requesting photo access: ${err.message}`);
+      return res.status(500).json({
+        success: false,
+        error: "Server error while requesting photo access"
+      });
+    }
+  })
+);
+
+/**
+ * @route   PUT /api/users/:id/approve-photo-access
+ * @desc    Approve all pending photo access requests from a specific user
+ * @access  Private
+ */
+router.put(
+  "/:id/approve-photo-access",
+  protect, 
+  asyncHandler(async (req, res) => {
+    const requestingUserId = req.params.id;
+    logger.debug(`Approving all photo access requests from user ${requestingUserId}`);
+    
+    try {
+      if (!mongoose.Types.ObjectId.isValid(requestingUserId)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid user ID format"
+        });
+      }
+      
+      // Find all pending photo permission requests from this user for the current user's photos
+      const pendingRequests = await PhotoPermission.find({
+        requestedBy: requestingUserId,
+        photoOwnerId: req.user._id.toString(),
+        status: "pending"
+      });
+      
+      if (!pendingRequests || pendingRequests.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "No pending requests found from this user",
+          approvedCount: 0
+        });
+      }
+      
+      // Update all requests to approved
+      const now = new Date();
+      for (const request of pendingRequests) {
+        request.status = "approved";
+        request.updatedAt = now;
+        request.respondedAt = now;
+        await request.save();
+      }
+      
+      return res.status(200).json({
+        success: true,
+        message: `Successfully approved ${pendingRequests.length} photo access requests`,
+        approvedCount: pendingRequests.length
+      });
+    } catch (err) {
+      logger.error(`Error approving photo access: ${err.message}`);
+      return res.status(500).json({
+        success: false,
+        error: "Server error while approving photo access"
+      });
+    }
+  })
+);
+
+/**
+ * @route   PUT /api/users/:id/reject-photo-access
+ * @desc    Reject all pending photo access requests from a specific user
+ * @access  Private
+ */
+router.put(
+  "/:id/reject-photo-access",
+  protect, 
+  asyncHandler(async (req, res) => {
+    const requestingUserId = req.params.id;
+    logger.debug(`Rejecting all photo access requests from user ${requestingUserId}`);
+    
+    try {
+      if (!mongoose.Types.ObjectId.isValid(requestingUserId)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid user ID format"
+        });
+      }
+      
+      // Find all pending photo permission requests from this user for the current user's photos
+      const pendingRequests = await PhotoPermission.find({
+        requestedBy: requestingUserId,
+        photoOwnerId: req.user._id.toString(),
+        status: "pending"
+      });
+      
+      if (!pendingRequests || pendingRequests.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "No pending requests found from this user",
+          rejectedCount: 0
+        });
+      }
+      
+      // Update all requests to rejected
+      const now = new Date();
+      for (const request of pendingRequests) {
+        request.status = "rejected";
+        request.updatedAt = now;
+        request.respondedAt = now;
+        await request.save();
+      }
+      
+      return res.status(200).json({
+        success: true,
+        message: `Successfully rejected ${pendingRequests.length} photo access requests`,
+        rejectedCount: pendingRequests.length
+      });
+    } catch (err) {
+      logger.error(`Error rejecting photo access: ${err.message}`);
+      return res.status(500).json({
+        success: false,
+        error: "Server error while rejecting photo access"
+      });
+    }
+  })
+);
 
 // Update the photo permission request route to send notifications
 router.post(

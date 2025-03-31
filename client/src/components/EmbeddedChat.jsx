@@ -21,15 +21,24 @@ import {
   FaLock,
   FaPhoneSlash,
   FaPhone,
+  FaSync
 } from "react-icons/fa"
-import { useAuth, useChat } from "../context"
+import { useAuth } from "../context"
 import { useNavigate } from "react-router-dom"
-import axios from "axios"
 import VideoCall from "./VideoCall"
 import "../styles/video-call.css"
-import socketService from "../services/socketService.jsx"
 import { toast } from "react-toastify"
-import "react-toastify/dist/ReactToastify.css"
+
+// Import common components
+import { Button, Avatar, LoadingSpinner, LoadingState, ErrorMessage, withErrorBoundary } from "./common"
+// Import hooks and utilities
+import { useApi, useMounted, useChatMessages } from "../hooks"
+import { formatDate, logger, normalizePhotoUrl } from "../utils"
+// Keep direct import for socket service for compatibility during refactoring
+import socketService from "../services/socketService.jsx"
+
+// Create contextual logger
+const log = logger.create('EmbeddedChat')
 
 // Add CSS for the pulse animation
 const pulseStyle = document.createElement("style")
@@ -45,38 +54,59 @@ pulseStyle.textContent = `
 `
 document.head.appendChild(pulseStyle)
 
-// Debug logger for console output
-const debug = (msg, ...args) => {
-  console.log(`[EmbeddedChat] ${msg}`, ...args)
-}
-
+/**
+ * EmbeddedChat component - Handles real-time messaging with a recipient
+ * 
+ * This component provides a full-featured chat interface with:
+ * - Real-time messaging using socket.io
+ * - Message read receipts
+ * - File uploads and media sharing
+ * - Typing indicators
+ * - Emoji support
+ * - Video calling
+ * 
+ * Uses the useChatMessages hook for messaging functionality
+ * 
+ * @param {Object} props - Component props
+ * @param {Object} props.recipient - The user object to chat with
+ * @param {boolean} props.isOpen - Whether the chat is open/visible
+ * @param {Function} props.onClose - Function to call when the close button is clicked
+ * @param {boolean} props.embedded - Whether the chat is embedded in another component
+ * @returns {React.ReactElement} The embedded chat component
+ */
 const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
-  const { user, token } = useAuth()
+  const { user } = useAuth()
   const navigate = useNavigate()
+  const { isMounted } = useMounted()
+  const api = useApi()
+  
+  // Get a stable recipient ID
+  const recipientId = useMemo(() => recipient?._id, [recipient?._id]);
+  
+  // Use the chat messages hook with stable ID reference
   const {
-    messages,
-    getMessages,
-    sendMessage,
-    sendTyping,
-    initiateVideoCall, // renamed if needed
-    typingUsers,
-    sending: sendingMessage,
+    messages: messagesData,
+    loading: isLoading,
     error: messageError,
+    isTyping: typingIndicator,
+    sendMessage,
+    sendTypingIndicator,
+    markMessagesAsRead,
+    loadMessages,
     clearError,
-    sendFileMessage,
-  } = useChat()
+    sendFileMessage
+  } = useChatMessages(recipientId)
 
   // Local state for chat and attachments
   const [newMessage, setNewMessage] = useState("")
   const [showEmojis, setShowEmojis] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
   const [attachment, setAttachment] = useState(null)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [messagesData, setMessagesData] = useState([])
   const [pendingPhotoRequests, setPendingPhotoRequests] = useState(0)
   const [isApprovingRequests, setIsApprovingRequests] = useState(false)
   const [requestsData, setRequestsData] = useState([])
+  const [sending, setSending] = useState(false)
 
   // Video call state
   const [activeCall, setActiveCall] = useState(false)
@@ -91,41 +121,19 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const typingTimeoutRef = useRef(null)
   const socketRef = useRef(null)
 
-  // Retrieve token from context/localStorage.
-  const getAuthToken = () => token || localStorage.getItem("token")
-
-  // Create an axios instance with auth headers; memoized
-  const authAxios = useMemo(() => {
-    const instance = axios.create({
-      baseURL: "",
-      headers: { "Content-Type": "application/json" },
-    })
-    instance.interceptors.request.use(
-      (config) => {
-        const authToken = getAuthToken()
-        if (authToken) {
-          config.headers.Authorization = `Bearer ${authToken}`
-        }
-        return config
-      },
-      (error) => Promise.reject(error)
-    )
-    return instance
-  }, [token])
-
   // Set up socket reference on mount
   useEffect(() => {
     if (socketService.socket) {
-      debug("Socket reference obtained")
+      log.debug("Socket reference obtained")
       socketRef.current = socketService.socket
 
       // Handle call answered events
       const handleCallAnswered = (data) => {
-        console.log("Call answer received:", data)
+        log.debug("Call answer received:", data)
         if (data.accept) {
-          console.log("Call was accepted")
+          log.debug("Call was accepted")
         } else {
-          console.log("Call was rejected")
+          log.debug("Call was rejected")
           if (activeCall) {
             setActiveCall(false)
             toast.info("Call was declined")
@@ -140,31 +148,43 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         }
       }
     } else {
-      debug("Socket connection not available", socketService)
+      log.warn("Socket connection not available", socketService)
     }
   }, [activeCall])
+
+  // Manual refresh function for user-initiated refreshes
+  const refreshMessages = useCallback(() => {
+    if (isOpen && recipient?._id) {
+      log.debug('Manual message refresh requested');
+      loadMessages();
+    }
+  }, [isOpen, recipient, loadMessages]);
+  
+  // We no longer need a separate useEffect to load messages when chat opens
+  // because the useChatMessages hook will handle the initial load
+  // This prevents duplicate loading and infinite loops
 
   // Incoming call handler
   const handleIncomingCall = useCallback(
     (data) => {
       try {
         if (!data) {
-          console.error("Received empty call data")
+          log.error("Received empty call data")
           return
         }
-        console.log("Incoming call received:", data)
+        log.debug("Incoming call received:", data)
         const callerId =
           (data.caller && (data.caller.userId || data.caller._id)) ||
           data.userId ||
           (data.from && data.from.userId)
         if (!callerId) {
-          console.error("Caller ID not found in incoming call data", data)
+          log.error("Caller ID not found in incoming call data", data)
           return
         }
         setIncomingCall(data)
-        debug("Incoming call state set", data)
+        log.debug("Incoming call state set", data)
       } catch (error) {
-        console.error("Error handling incoming call:", error)
+        log.error("Error handling incoming call:", error)
       }
     },
     [recipient]
@@ -173,11 +193,11 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   // Setup incoming call listener
   useEffect(() => {
     if (!socketRef.current) {
-      debug("No socket available for incoming call handling")
+      log.warn("No socket available for incoming call handling")
       return
     }
     const handleIncomingCallEvent = (data) => {
-      console.log("Incoming call event received:", data)
+      log.debug("Incoming call event received:", data)
       handleIncomingCall(data)
     }
     socketRef.current.on("incomingCall", handleIncomingCallEvent)
@@ -187,35 +207,6 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       }
     }
   }, [recipient, handleIncomingCall])
-
-  // Load messages when chat opens
-  useEffect(() => {
-    let isMounted = true
-    if (recipient && isOpen) {
-      setIsLoading(true)
-      getMessages(recipient._id)
-        .then((fetchedMessages) => {
-          if (isMounted && Array.isArray(fetchedMessages)) {
-            setMessagesData(fetchedMessages)
-          }
-          setIsLoading(false)
-        })
-        .catch((err) => {
-          setIsLoading(false)
-          console.error("Failed to load messages. Please try again.", err)
-        })
-    }
-    return () => {
-      isMounted = false
-    }
-  }, [recipient, isOpen, getMessages])
-
-  // Update messagesData if context messages change
-  useEffect(() => {
-    if (Array.isArray(messages)) {
-      setMessagesData(messages)
-    }
-  }, [messages])
 
   // Auto-scroll to the latest message
   useEffect(() => {
@@ -241,35 +232,26 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     }
   }, [isUploading])
 
-  // Add debug logging to help troubleshoot message sender/receiver issues
-  useEffect(() => {
-    if (user && recipient) {
-      console.log("Current user ID:", user._id);
-      console.log("Recipient ID:", recipient._id);
-      if (Array.isArray(messagesData) && messagesData.length > 0) {
-        console.log("Sample message sender:", messagesData[0].sender);
-      }
-    }
-  }, [user, recipient, messagesData]);
-
   // ------------------ Video Call Integration ------------------
 
   // Initiate video call handler
   const handleVideoCall = () => {
     if (user?.accountTier === "FREE") {
-      console.error("Free accounts cannot make video calls. Upgrade for video calls.")
+      log.error("Free accounts cannot make video calls. Upgrade for video calls.")
+      toast.error("Upgrade to make video calls")
       return
     }
     if (!socketRef.current) {
-      console.error("Cannot start call: No connection available")
+      log.error("Cannot start call: No connection available")
+      toast.error("Cannot connect to video service")
       return
     }
     if (activeCall) {
-      console.log("Call already in progress")
+      log.debug("Call already in progress")
       return
     }
     if (recipient?._id) {
-      console.log(`Starting video call with ${recipient.nickname}...`)
+      log.debug(`Starting video call with ${recipient.nickname}...`)
       setIsCallInitiator(true)
       setActiveCall(true)
       socketRef.current.emit("initiateCall", {
@@ -279,28 +261,33 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         callId: `call-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         caller: { userId: user._id, name: user.nickname || "User" },
       })
-      sendMessage(recipient._id, "video", "Video Call").catch((error) => {
-        console.error("Failed to send video call message:", error)
-      })
+      // Send a message about the video call
+      sendMessage("Video Call", "video")
+        .catch((error) => {
+          log.error("Failed to send video call message:", error)
+        })
     } else {
-      console.error("Cannot start call: recipient information is missing")
+      log.error("Cannot start call: recipient information is missing")
+      toast.error("Cannot start call: missing recipient information")
     }
   }
 
   // Accept incoming call
   const handleAcceptCall = () => {
-    debug("Accepting incoming call", incomingCall)
+    log.debug("Accepting incoming call", incomingCall)
     if (!incomingCall) {
-      console.error("No incoming call to accept")
+      log.error("No incoming call to accept")
       return
     }
     if (!socketRef.current) {
-      console.error("Cannot accept call: No socket connection available")
+      log.error("Cannot accept call: No socket connection available")
+      toast.error("Cannot connect to video service")
       return
     }
     const callerId = incomingCall.caller?.userId || incomingCall.userId
     if (!callerId) {
-      console.error("Cannot accept call: No caller ID found")
+      log.error("Cannot accept call: No caller ID found")
+      toast.error("Cannot accept call: Invalid call data")
       return
     }
     socketRef.current.emit("answerCall", {
@@ -309,7 +296,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       callId: incomingCall.callId,
       timestamp: Date.now(),
     })
-    console.log(`Accepting call from ${incomingCall.caller?.name || "caller"} with ID ${callerId}`)
+    log.debug(`Accepting call from ${incomingCall.caller?.name || "caller"} with ID ${callerId}`)
     setActiveCall(true)
     setIsCallInitiator(false)
     setIncomingCall(null)
@@ -317,18 +304,18 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Reject incoming call
   const handleRejectCall = () => {
-    debug("Rejecting incoming call", incomingCall)
+    log.debug("Rejecting incoming call", incomingCall)
     if (!incomingCall) {
-      console.error("No incoming call to reject")
+      log.error("No incoming call to reject")
       return
     }
     if (!socketRef.current) {
-      console.error("Cannot reject call: No socket connection available")
+      log.error("Cannot reject call: No socket connection available")
       return
     }
     const callerId = incomingCall.caller?.userId || incomingCall.userId
     if (!callerId) {
-      console.error("Cannot reject call: No caller ID found")
+      log.error("Cannot reject call: No caller ID found")
       return
     }
     socketRef.current.emit("answerCall", {
@@ -337,7 +324,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       callId: incomingCall.callId,
       timestamp: Date.now(),
     })
-    console.log(`Rejecting call from ${incomingCall.caller?.name || "caller"} with ID ${callerId}`)
+    log.debug(`Rejecting call from ${incomingCall.caller?.name || "caller"} with ID ${callerId}`)
     setIncomingCall(null)
   }
 
@@ -349,7 +336,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   // Capture any errors from VideoCall
   const handleCallError = useCallback((error) => {
     setCallError(error.message || "Call failed")
-    console.error("Call error:", error)
+    log.error("Call error:", error)
     setActiveCall(false)
   }, [])
 
@@ -366,19 +353,6 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     if (fileType.startsWith("audio/")) return <FaFileAudio />
     if (fileType === "application/pdf") return <FaFilePdf />
     return <FaFileAlt />
-  }, [])
-
-  // Format message time
-  const formatMessageTime = useCallback((timestamp) => {
-    if (!timestamp) return ""
-    try {
-      return new Date(timestamp).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    } catch (e) {
-      return ""
-    }
   }, [])
 
   // Group messages by date
@@ -411,8 +385,8 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
     // Only send typing events if input has content and we have recipient
     typingTimeoutRef.current = setTimeout(() => {
-      if (e.target.value.trim() && recipient && sendTyping) {
-        sendTyping(recipient._id)
+      if (e.target.value.trim() && recipient?._id) {
+        sendTypingIndicator()
       }
     }, 300)
   }
@@ -421,44 +395,75 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const handleSendMessage = async (e) => {
     e.preventDefault()
     if (attachment) return handleSendAttachment()
-    if (newMessage.trim() && !sendingMessage && recipient) {
+    if (newMessage.trim() && !sending && recipient?._id) {
       if (user?.accountTier === "FREE" && newMessage.trim() !== "😉") {
-        console.error("Free accounts can only send winks. Upgrade to send messages.")
+        toast.error("Free accounts can only send winks. Upgrade to send messages.")
         return
       }
       try {
-        await sendMessage(recipient._id, "text", newMessage.trim())
+        setSending(true)
+        await sendMessage(newMessage.trim(), "text")
         setNewMessage("")
       } catch (error) {
-        console.error(error.message || "Failed to send message")
+        log.error("Failed to send message:", error)
+        toast.error(error.message || "Failed to send message")
+      } finally {
+        setSending(false)
       }
     }
   }
 
   // Send attachment message
   const handleSendAttachment = async () => {
-    if (!attachment || !recipient || isUploading) return
+    if (!attachment || !recipient?._id || isUploading) return
     setIsUploading(true)
+    
     try {
-      await sendFileMessage(recipient._id, attachment, (progress) => setUploadProgress(progress))
-      console.log("File sent successfully")
+      // Update progress handler
+      const onProgress = (progress) => {
+        if (isMounted()) {
+          setUploadProgress(progress)
+        }
+      }
+      
+      // Use the hook's sendFileMessage method which handles validation
+      const response = await sendFileMessage(attachment, onProgress)
+      
+      if (!response) {
+        // This can happen due to validation errors in the hook
+        toast.error(messageError || "Failed to send file. Please try again.")
+        throw new Error('File upload failed')
+      }
+      
+      log.debug("File sent successfully")
+      
+      // Clear the attachment state
       setAttachment(null)
       setUploadProgress(0)
       if (fileInputRef.current) fileInputRef.current.value = ""
     } catch (error) {
-      console.error(error.message || "Failed to send file. Please try again.")
+      log.error("Failed to send file:", error)
+      if (!messageError) { // Only show toast if the hook didn't already set an error
+        toast.error(error.message || "Failed to send file. Please try again.")
+      }
     } finally {
-      setIsUploading(false)
+      if (isMounted()) {
+        setIsUploading(false)
+      }
     }
   }
 
   // Send wink message
   const handleSendWink = async () => {
-    if (!sendingMessage && recipient) {
+    if (!sending && recipient?._id) {
       try {
-        await sendMessage(recipient._id, "wink", "😉")
+        setSending(true)
+        await sendMessage("😉", "wink")
       } catch (error) {
-        console.error(error.message || "Failed to send wink")
+        log.error("Failed to send wink:", error)
+        toast.error(error.message || "Failed to send wink")
+      } finally {
+        setSending(false)
       }
     }
   }
@@ -466,7 +471,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   // Handle file attachment
   const handleFileAttachment = () => {
     if (user?.accountTier === "FREE") {
-      console.error("Free accounts cannot send files. Upgrade to send files.")
+      toast.error("Free accounts cannot send files. Upgrade to send files.")
       return
     }
     fileInputRef.current?.click()
@@ -476,32 +481,10 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > 5 * 1024 * 1024) {
-      console.error("File is too large. Maximum size is 5MB.")
-      e.target.value = null
-      return
-    }
-    const allowedTypes = [
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "image/gif",
-      "application/pdf",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "text/plain",
-      "audio/mpeg",
-      "audio/wav",
-      "video/mp4",
-      "video/quicktime",
-    ]
-    if (!allowedTypes.includes(file.type)) {
-      console.error("File type not supported.")
-      e.target.value = null
-      return
-    }
+    
+    // Set the file directly - validation happens in the hook
     setAttachment(file)
-    console.log(`Selected file: ${file.name}`)
+    log.debug(`Selected file: ${file.name}`)
     e.target.value = null
   }
 
@@ -519,16 +502,16 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       if (requestsData.length > 0) {
         const results = await Promise.allSettled(
           requestsData.map((request) =>
-            authAxios.put(`/api/users/photos/permissions/${request._id}`, {
+            api.put(`/users/photos/permissions/${request._id}`, {
               status: "approved",
             })
           )
         )
         const successCount = results.filter(
-          (result) => result.status === "fulfilled" && result.value.data.success
+          (result) => result.status === "fulfilled" && result.value
         ).length
         if (successCount > 0) {
-          console.log(`Approved ${successCount} photo request${successCount !== 1 ? "s" : ""}`)
+          log.debug(`Approved ${successCount} photo request${successCount !== 1 ? "s" : ""}`)
           const systemMessage = {
             _id: Date.now().toString(),
             sender: "system",
@@ -536,54 +519,35 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             createdAt: new Date().toISOString(),
             type: "system",
           }
-          setMessagesData((prev) => [...prev, systemMessage])
-          try {
-            await sendMessage(recipient._id, "text", `I've approved your request to view my private photos.`)
-          } catch (err) {
-            console.error("Error sending system message:", err)
-          }
+          // Using the sendMessage from hook to inform recipient
+          await sendMessage(`I've approved your request to view my private photos.`, "text")
           setPendingPhotoRequests(0)
           setRequestsData([])
         } else {
-          console.error("Failed to approve photo requests")
+          toast.error("Failed to approve photo requests")
         }
       } else {
-        const response = await authAxios.post(`/api/users/photos/approve-all`, {
+        const response = await api.post(`/users/photos/approve-all`, {
           requesterId: recipient._id,
         })
-        if (response.data?.success) {
-          const approvedCount = response.data.approvedCount || 1
-          console.log(`Approved ${approvedCount} photo request${approvedCount !== 1 ? "s" : ""}`)
-          const systemMessage = {
-            _id: Date.now().toString(),
-            sender: "system",
-            content: `Photo access approved.`,
-            createdAt: new Date().toISOString(),
-            type: "system",
-          }
-          setMessagesData((prev) => [...prev, systemMessage])
-          try {
-            await sendMessage(recipient._id, "text", `I've approved your request to view my private photos.`)
-          } catch (err) {
-            console.error("Error sending system message:", err)
-          }
+        if (response) {
+          const approvedCount = response.approvedCount || 1
+          log.debug(`Approved ${approvedCount} photo request${approvedCount !== 1 ? "s" : ""}`)
+          
+          // Using the sendMessage from hook to inform recipient
+          await sendMessage(`I've approved your request to view my private photos.`, "text")
           setPendingPhotoRequests(0)
         } else {
           throw new Error("Approval failed")
         }
       }
     } catch (error) {
-      console.error("Error approving photo requests. Please try again.", error)
-      const systemMessage = {
-        _id: Date.now().toString(),
-        sender: "system",
-        content: "Photo access approved (simulated).",
-        createdAt: new Date().toISOString(),
-        type: "system",
-      }
-      setMessagesData((prev) => [...prev, systemMessage])
+      log.error("Error approving photo requests:", error)
+      toast.error("Error approving photo requests. Please try again.")
     } finally {
-      setIsApprovingRequests(false)
+      if (isMounted()) {
+        setIsApprovingRequests(false)
+      }
     }
   }
 
@@ -607,112 +571,86 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         <div className="video-call-error">
           <h3>Cannot start video call</h3>
           <p>Connection not available. Please try again later.</p>
-          <button onClick={handleEndCall} className="error-close-btn">
+          <Button onClick={handleEndCall} variant="danger">
             Close
-          </button>
+          </Button>
         </div>
       ) : null}
 
       <div className="chat-header">
         <div className="chat-user">
-          {recipient?.photos?.length ? (
-            <img
-              src={recipient.photos[0].url || "/placeholder.svg"}
-              alt={recipient.nickname}
-              className="chat-avatar"
-              onError={(e) => {
-                e.target.onerror = null
-                e.target.src = "/placeholder.svg"
-              }}
-            />
-          ) : (
-            <div className="chat-avatar-placeholder" />
-          )}
+          <Avatar 
+            src={recipient?.photos?.length ? recipient.photos[0].url : null}
+            alt={recipient?.nickname}
+            size="small"
+            className="chat-avatar"
+            status={recipient?.isOnline ? "online" : null}
+          />
           <div className="chat-user-info">
-            <h3>{recipient.nickname}</h3>
-            <p className={recipient.isOnline ? "status-online" : "status-offline"}>
-              {recipient.isOnline ? "Online" : "Offline"}
+            <h3>{recipient?.nickname}</h3>
+            <p className={recipient?.isOnline ? "status-online" : "status-offline"}>
+              {recipient?.isOnline ? "Online" : "Offline"}
             </p>
           </div>
         </div>
         <div className="chat-header-actions">
-          <button
+          <Button
             className="photo-request-btn"
             onClick={handleApproveAllRequests}
-            title="Approve photo requests"
+            icon={isApprovingRequests ? <FaSpinner className="fa-spin" /> : <FaLock />}
             aria-label="Approve photo requests"
+            variant="light"
+            size="small"
             disabled={isApprovingRequests}
           >
-            {isApprovingRequests ? <FaSpinner className="fa-spin" /> : <FaLock />}
             <span className="request-badge">!</span>
-          </button>
+          </Button>
           {user?.accountTier !== "FREE" && !activeCall && (
-            <button
+            <Button
               className="video-call-btn"
               onClick={handleVideoCall}
-              title="Start Video Call"
+              icon={<FaVideo />}
               aria-label="Start video call"
-              disabled={isUploading || sendingMessage || activeCall}
-            >
-              <FaVideo />
-            </button>
+              variant="light"
+              size="small"
+              disabled={isUploading || sending || activeCall}
+            />
           )}
-          <button className="close-chat-btn" onClick={onClose} aria-label="Close chat" title="Close chat">
-            <FaTimes />
-          </button>
+          <Button 
+            className="close-chat-btn" 
+            onClick={onClose} 
+            icon={<FaTimes />}
+            aria-label="Close chat" 
+            variant="light"
+            size="small"
+          />
         </div>
       </div>
 
       {/* Incoming Call Banner */}
       {incomingCall && (
-        <div
-          className="incoming-call-banner"
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "10px 15px",
-            backgroundColor: "#4a1d96",
-            color: "white",
-            borderRadius: "4px",
-            margin: "5px 0",
-            zIndex: 100,
-          }}
-        >
+        <div className="incoming-call-banner">
           <div className="incoming-call-info">
-            <FaVideo className="call-icon pulse" style={{ marginRight: "10px" }} />
+            <FaVideo className="call-icon pulse" />
             <span>{recipient?.nickname || "Someone"} is calling you</span>
           </div>
           <div className="incoming-call-actions">
-            <button
+            <Button
               className="decline-call-btn"
               onClick={handleRejectCall}
-              title="Decline"
-              style={{
-                backgroundColor: "#dc2626",
-                border: "none",
-                borderRadius: "50%",
-                padding: "8px",
-                marginRight: "10px",
-                cursor: "pointer",
-              }}
-            >
-              <FaPhoneSlash />
-            </button>
-            <button
+              icon={<FaPhoneSlash />}
+              variant="danger"
+              size="small"
+              aria-label="Decline call"
+            />
+            <Button
               className="accept-call-btn"
               onClick={handleAcceptCall}
-              title="Accept"
-              style={{
-                backgroundColor: "#16a34a",
-                border: "none",
-                borderRadius: "50%",
-                padding: "8px",
-                cursor: "pointer",
-              }}
-            >
-              <FaPhone />
-            </button>
+              icon={<FaPhone />}
+              variant="success"
+              size="small"
+              aria-label="Accept call"
+            />
           </div>
         </div>
       )}
@@ -721,23 +659,64 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         <div className="premium-banner">
           <FaCrown className="premium-icon" />
           <span>Upgrade to send messages and make video calls (you can still send heart)</span>
-          <button className="upgrade-btn" onClick={() => navigate("/subscription")} aria-label="Upgrade to premium">
+          <Button 
+            className="upgrade-btn" 
+            onClick={() => navigate("/subscription")}
+            variant="primary"
+            size="small"
+          >
             Upgrade
-          </button>
+          </Button>
         </div>
       )}
 
       <div className="messages-container">
-        {isLoading ? (
-          <div className="loading-messages">
-            <div className="spinner"></div>
-            <p>Loading messages...</p>
-          </div>
-        ) : !messagesData || messagesData.length === 0 ? (
-          <div className="no-messages">
-            <p>No messages yet. Say hello!</p>
-          </div>
-        ) : (
+        <div className="messages-header">
+          <Button
+            className="refresh-messages-btn"
+            onClick={refreshMessages}
+            disabled={isLoading}
+            icon={isLoading ? <FaSpinner className="fa-spin" /> : <FaSync />}
+            title="Refresh messages"
+            aria-label="Refresh messages"
+            variant="light"
+            size="small"
+          />
+        </div>
+        
+        <LoadingState 
+          isLoading={isLoading}
+          error={messageError}
+          loadingText="Loading messages..."
+          size="medium"
+          spinnerProps={{ centered: true }}
+          showChildrenAfterLoad={true}
+          onRetry={refreshMessages}
+          renderError={(error, retry) => (
+            <div className="message-error">
+              <ErrorMessage
+                message={error}
+                title="Error Loading Messages"
+                type="error"
+                onDismiss={clearError}
+                showIcon={true}
+              />
+              <Button
+                onClick={retry}
+                variant="primary"
+                size="small"
+                className="mt-2"
+              >
+                Try Again
+              </Button>
+            </div>
+          )}
+        >
+          {!messagesData || messagesData.length === 0 ? (
+            <div className="no-messages">
+              <p>No messages yet. Say hello!</p>
+            </div>
+          ) : (
           Object.entries(groupMessagesByDate()).map(([date, msgs]) => (
             <React.Fragment key={date}>
               <div className="message-date">{date}</div>
@@ -758,7 +737,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                       <>
                         <p className="message-content">{message.content}</p>
                         <span className="message-time">
-                          {formatMessageTime(message.createdAt)}
+                          {formatDate(message.createdAt, { showTime: true, showDate: false })}
                           {isSentByCurrentUser &&
                             (message.read ? (
                               <FaCheckDouble className="read-indicator" />
@@ -778,7 +757,9 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                       <div className="video-call-message">
                         <FaVideo className="video-icon" />
                         <p className="message-content">Video Call</p>
-                        <span className="message-time">{formatMessageTime(message.createdAt)}</span>
+                        <span className="message-time">
+                          {formatDate(message.createdAt, { showTime: true, showDate: false })}
+                        </span>
                       </div>
                     )}
                     {message.type === "file" && (
@@ -786,13 +767,9 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                         {message.metadata?.fileUrl ? (
                           message.metadata.fileType?.startsWith("image/") ? (
                             <img
-                              src={message.metadata.fileUrl}
+                              src={normalizePhotoUrl(message.metadata.fileUrl)}
                               alt={message.metadata.fileName || "Image"}
                               className="image-attachment"
-                              onError={(e) => {
-                                e.target.onerror = null
-                                e.target.src = "/placeholder.svg"
-                              }}
                             />
                           ) : (
                             <div className="file-attachment">
@@ -809,15 +786,17 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                               <span className="file-size">
                                 {message.metadata.fileSize ? `(${Math.round(message.metadata.fileSize / 1024)} KB)` : ""}
                               </span>
-                              <a
+                              <Button
                                 href={message.metadata.fileUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="download-link"
                                 onClick={(e) => e.stopPropagation()}
+                                variant="link"
+                                size="small"
                               >
                                 Download
-                              </a>
+                              </Button>
                             </div>
                           )
                         ) : (
@@ -828,7 +807,9 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                     {message.type === "system" && (
                       <div className="system-message-content">
                         <p>{message.content}</p>
-                        <span className="message-time">{formatMessageTime(message.createdAt)}</span>
+                        <span className="message-time">
+                          {formatDate(message.createdAt, { showTime: true, showDate: false })}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -836,28 +817,17 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
               })}
             </React.Fragment>
           ))
-        )}
-        {recipient &&
-          typingUsers &&
-          recipient._id &&
-          typingUsers[recipient._id] &&
-          Date.now() - typingUsers[recipient._id] < 3000 &&
-          recipient._id !== user?._id && (
+          )}
+          
+          {recipient && typingIndicator && (
             <div className="typing-indicator">
               <span></span>
               <span></span>
               <span></span>
             </div>
           )}
-        {messageError && (
-          <div className="message-error">
-            <p>{messageError}</p>
-            <button onClick={clearError} aria-label="Dismiss error">
-              <FaTimes />
-            </button>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
+          <div ref={messagesEndRef} />
+        </LoadingState>
       </div>
 
       {attachment && (
@@ -873,31 +843,42 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
               <span className="upload-progress-text">{uploadProgress}%</span>
             </div>
           ) : (
-            <button className="remove-attachment" onClick={handleRemoveAttachment} disabled={isUploading}>
-              <FaTimes />
-            </button>
+            <Button
+              className="remove-attachment"
+              onClick={handleRemoveAttachment}
+              disabled={isUploading}
+              icon={<FaTimes />}
+              variant="light"
+              size="small"
+              aria-label="Remove attachment"
+            />
           )}
         </div>
       )}
 
       <form className="message-input" onSubmit={handleSendMessage}>
-        <button
+        <Button
           type="button"
           className="input-emoji"
           onClick={() => setShowEmojis(!showEmojis)}
-          title="Add Emoji"
+          icon={<FaSmile />}
           aria-label="Add emoji"
-          disabled={isUploading || sendingMessage}
-        >
-          <FaSmile />
-        </button>
+          variant="light"
+          size="small"
+          disabled={isUploading || sending}
+        />
+        
         {showEmojis && (
           <div className="emoji-picker">
             <div className="emoji-header">
               <h4>Emojis</h4>
-              <button onClick={() => setShowEmojis(false)} aria-label="Close emoji picker">
-                <FaTimes />
-              </button>
+              <Button 
+                onClick={() => setShowEmojis(false)} 
+                icon={<FaTimes />}
+                aria-label="Close emoji picker"
+                variant="light"
+                size="small"
+              />
             </div>
             <div className="emoji-list">
               {commonEmojis.map((emoji) => (
@@ -908,26 +889,30 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             </div>
           </div>
         )}
+        
         <input
           type="text"
           placeholder={user?.accountTier === "FREE" ? "Free users can only send winks" : "Type a message..."}
           value={newMessage}
           onChange={handleTyping}
           ref={chatInputRef}
-          disabled={sendingMessage || isUploading || user?.accountTier === "FREE"}
+          disabled={sending || isUploading || user?.accountTier === "FREE"}
           aria-label="Message input"
           title={user?.accountTier === "FREE" ? "Upgrade to send text messages" : "Type a message"}
         />
-        <button
+        
+        <Button
           type="button"
           className="input-attachment"
           onClick={handleFileAttachment}
-          disabled={sendingMessage || isUploading || user?.accountTier === "FREE"}
+          disabled={sending || isUploading || user?.accountTier === "FREE"}
+          icon={<FaPaperclip />}
           title={user?.accountTier === "FREE" ? "Upgrade to send files" : "Attach File"}
           aria-label="Attach file"
-        >
-          <FaPaperclip />
-        </button>
+          variant="light"
+          size="small"
+        />
+        
         <input
           type="file"
           ref={fileInputRef}
@@ -936,28 +921,57 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           aria-hidden="true"
           accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,audio/mpeg,audio/wav,video/mp4,video/quicktime"
         />
-        <button
+        
+        <Button
           type="button"
           className="input-wink"
           onClick={handleSendWink}
-          disabled={sendingMessage || isUploading}
+          disabled={sending || isUploading}
+          icon={<FaHeart />}
           title="Send Wink"
           aria-label="Send wink"
-        >
-          <FaHeart />
-        </button>
-        <button
+          variant="light"
+          size="small"
+        />
+        
+        <Button
           type="submit"
           className="input-send"
-          disabled={(!newMessage.trim() && !attachment) || sendingMessage || isUploading}
-          title="Send Message"
-          aria-label="Send message"
-        >
-          {sendingMessage || isUploading ? <FaSpinner className="fa-spin" /> : <FaPaperPlane />}
-        </button>
+          disabled={(!newMessage.trim() && !attachment) || sending || isUploading}
+          icon={sending || isUploading ? <FaSpinner className="fa-spin" /> : <FaPaperPlane />}
+          title={sending ? "Sending..." : "Send Message"}
+          aria-label={sending ? "Sending message" : "Send message"}
+          variant="primary"
+          size="small"
+        />
       </form>
     </div>
   )
 }
 
-export default EmbeddedChat
+// Wrap the component with error boundary HOC
+export default withErrorBoundary(EmbeddedChat, {
+  FallbackComponent: ({ error, resetErrorBoundary }) => (
+    <div className="embedded-chat-error">
+      <ErrorMessage 
+        title="Chat Error" 
+        message={error?.message || 'An error occurred in the chat component'} 
+      />
+      <Button 
+        onClick={resetErrorBoundary} 
+        variant="primary"
+        className="mt-3"
+      >
+        Try Again
+      </Button>
+    </div>
+  ),
+  onError: (error, info) => {
+    // Log error to the logger
+    log.error('EmbeddedChat error boundary caught error:', error);
+    log.error('Component stack:', info?.componentStack);
+    
+    // Could also send to an error reporting service here
+    toast.error('Something went wrong with the chat. Trying to recover...');
+  }
+});

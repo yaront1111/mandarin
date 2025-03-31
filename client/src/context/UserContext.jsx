@@ -71,9 +71,72 @@ const userReducer = (state, action) => {
         ),
       }
     case "UPDATE_PROFILE":
+      // Properly merge nested settings objects
+      const updatedUser = { ...state.currentUser };
+      
+      // Merge top-level fields
+      Object.keys(action.payload).forEach(key => {
+        if (key !== 'settings') {
+          updatedUser[key] = action.payload[key];
+        }
+      });
+      
+      // Special handling for settings to ensure proper merging
+      if (action.payload.settings) {
+        // Initialize settings if they don't exist yet
+        if (!updatedUser.settings) {
+          updatedUser.settings = {};
+        }
+        
+        // Handle notifications settings
+        if (action.payload.settings.notifications) {
+          // Create a normalized version of notification settings with explicit boolean conversion
+          const normalizedNotifications = {};
+          const notificationSettings = action.payload.settings.notifications;
+          
+          // Explicitly handle each notification setting
+          if ('messages' in notificationSettings) {
+            normalizedNotifications.messages = notificationSettings.messages === false ? false : !!notificationSettings.messages;
+          }
+          if ('calls' in notificationSettings) {
+            normalizedNotifications.calls = notificationSettings.calls === false ? false : !!notificationSettings.calls;
+          }
+          if ('stories' in notificationSettings) {
+            normalizedNotifications.stories = notificationSettings.stories === false ? false : !!notificationSettings.stories;
+          }
+          if ('likes' in notificationSettings) {
+            normalizedNotifications.likes = notificationSettings.likes === false ? false : !!notificationSettings.likes;
+          }
+          if ('comments' in notificationSettings) {
+            normalizedNotifications.comments = notificationSettings.comments === false ? false : !!notificationSettings.comments;
+          }
+          if ('photoRequests' in notificationSettings) {
+            normalizedNotifications.photoRequests = notificationSettings.photoRequests === false ? false : !!notificationSettings.photoRequests;
+          }
+          
+          console.log('Normalized notification settings for user update:', normalizedNotifications);
+          
+          updatedUser.settings.notifications = {
+            ...(updatedUser.settings.notifications || {}),
+            ...normalizedNotifications
+          };
+        }
+        
+        // Handle privacy settings
+        if (action.payload.settings.privacy) {
+          updatedUser.settings.privacy = {
+            ...(updatedUser.settings.privacy || {}),
+            ...action.payload.settings.privacy
+          };
+        }
+        
+        // Log merged settings for debugging
+        console.log('Merged settings in user reducer:', updatedUser.settings);
+      }
+      
       return {
         ...state,
-        currentUser: { ...state.currentUser, ...action.payload },
+        currentUser: updatedUser,
         updatingProfile: false,
       }
     case "UPDATING_PROFILE":
@@ -292,6 +355,37 @@ export const UserProvider = ({ children }) => {
       const data = await apiService.get(`/users/${id}`)
       if (data.success) {
         dispatch({ type: "GET_USER", payload: data.data })
+        
+        // Initialize services with user settings if this is the current user
+        if (user && id === user._id && data.data.user && data.data.user.settings) {
+          try {
+            // Initialize notification service with settings using dynamic imports
+            Promise.all([
+              import('../services/notificationService.jsx'),
+              import('../services/socketService.jsx')
+            ]).then(([notificationModule, socketModule]) => {
+              const notificationService = notificationModule.default;
+              const socketService = socketModule.default;
+              
+              console.log('Initializing services with user settings:', data.data.user.settings);
+              
+              // Initialize notification service
+              notificationService.initialize(data.data.user.settings);
+              
+              // Update socket service privacy settings
+              if (data.data.user.settings.privacy) {
+                socketService.updatePrivacySettings(data.data.user.settings.privacy);
+              }
+              
+              console.log('Services initialized with user settings');
+            }).catch(err => {
+              console.error('Error initializing services with settings:', err);
+            });
+          } catch (serviceError) {
+            console.error('Error in dynamic import for services:', serviceError);
+          }
+        }
+        
         return data.data
       } else {
         throw new Error(data.error || "Failed to fetch user")
@@ -301,7 +395,7 @@ export const UserProvider = ({ children }) => {
       dispatch({ type: "USER_ERROR", payload: errorMsg })
       return null
     }
-  }, [])
+  }, [user])
 
   /**
    * Update the current user's profile.
@@ -310,9 +404,65 @@ export const UserProvider = ({ children }) => {
   const updateProfile = useCallback(async (profileData) => {
     dispatch({ type: "UPDATING_PROFILE", payload: true })
     try {
+      console.log('Updating profile with data:', profileData);
+      
       const data = await apiService.put("/users/profile", profileData)
+      
       if (data.success) {
+        // If settings are being updated, make sure the data has the settings
+        if (profileData.settings) {
+          // Make sure data.data has settings field
+          if (!data.data.settings) {
+            data.data.settings = {};
+          }
+          
+          // Handle partial settings updates - merge with existing
+          if (profileData.settings.notifications && !data.data.settings.notifications) {
+            data.data.settings.notifications = profileData.settings.notifications;
+          }
+          
+          if (profileData.settings.privacy && !data.data.settings.privacy) {
+            data.data.settings.privacy = profileData.settings.privacy;
+          }
+          
+          // Log what we're using
+          console.log('Using settings in UPDATE_PROFILE:', data.data.settings);
+        }
+        
+        // Dispatch the update to User reducer
         dispatch({ type: "UPDATE_PROFILE", payload: data.data })
+        
+        // If we're updating settings, reinitialize services with the updated settings
+        if (profileData.settings) {
+          try {
+            Promise.all([
+              import('../services/notificationService.jsx'),
+              import('../services/socketService.jsx')
+            ]).then(([notificationModule, socketModule]) => {
+              const notificationService = notificationModule.default;
+              const socketService = socketModule.default;
+              
+              // Ensure notification service has the right settings
+              if (profileData.settings.notifications) {
+                console.log('Updating notification service after profile update:', profileData.settings.notifications);
+                notificationService.updateSettings(profileData.settings.notifications);
+              }
+              
+              // Ensure socket service has the right settings
+              if (profileData.settings.privacy) {
+                console.log('Updating socket service after profile update:', profileData.settings.privacy);
+                socketService.updatePrivacySettings(profileData.settings.privacy);
+              }
+              
+              console.log('Services updated after profile update with new settings');
+            }).catch(err => {
+              console.error('Error updating services after profile update:', err);
+            });
+          } catch (error) {
+            console.error('Error importing services for settings update:', error);
+          }
+        }
+        
         toast.success("Profile updated successfully")
         return data.data
       } else {

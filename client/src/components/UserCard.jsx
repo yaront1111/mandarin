@@ -1,16 +1,17 @@
-"use client"
-
-import React, { useState, useCallback, useMemo } from "react"
-import { useNavigate } from "react-router-dom"
-import PropTypes from "prop-types"
-import { FaHeart, FaComment, FaUser, FaMapMarkerAlt, FaClock } from "react-icons/fa"
+import React, { useState, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import PropTypes from "prop-types";
+import { FaHeart, FaComment, FaUser, FaMapMarkerAlt, FaClock } from "react-icons/fa";
+import { Avatar, Card, Button } from "./common";
+import { formatDate, normalizePhotoUrl, logger } from "../utils";
+import { withMemo } from "./common";
 
 // Constants
 const TAG_TYPES = {
   LOOKING_FOR: "lookingFor",
   INTO: "into",
   INTEREST: "interest",
-}
+};
 
 /**
  * UserCard Component - Displays user information in grid or list view
@@ -27,225 +28,185 @@ const UserCard = ({
   hasUnreadMessages = false,
 }) => {
   // Component state
-  const [imageError, setImageError] = useState(false)
-  const [showAllTags, setShowAllTags] = useState(false)
-  const [showMoreSections, setShowMoreSections] = useState(false)
+  const [showAllTags, setShowAllTags] = useState(false);
+  const [showMoreSections, setShowMoreSections] = useState(false);
 
   // Navigation
-  const navigate = useNavigate()
+  const navigate = useNavigate();
 
   // Helper functions
-  const normalizePhotoUrl = useCallback((url) => {
-    if (!url) return null
-    if (url.startsWith("http://") || url.startsWith("https://")) return url
-
-    // Fix for avatar URLs - use full API URL
-    if (url.startsWith("/api/")) {
-      return `${process.env.REACT_APP_API_URL || "http://localhost:5000"}${url.substring(4)}`
-    }
-
-    return url.startsWith("/") ? url : `/${url}`
-  }, [])
-
   const getTagClass = useCallback((type) => {
     switch (type) {
       case TAG_TYPES.LOOKING_FOR:
-        return "looking-for-tag"
+        return "looking-for-tag";
       case TAG_TYPES.INTO:
-        return "into-tag"
+        return "into-tag";
       case TAG_TYPES.INTEREST:
-        return "interest-tag"
+        return "interest-tag";
       default:
-        return "interest-tag"
+        return "interest-tag";
     }
-  }, [])
+  }, []);
 
   // Event handlers
   const handleCardClick = useCallback(() => {
     if (onClick) {
-      onClick()
+      onClick();
     } else {
-      navigate(`/user/${user._id}`)
+      navigate(`/user/${user._id}`);
     }
-  }, [onClick, navigate, user?._id])
+  }, [onClick, navigate, user?._id]);
 
   // Fixed like click handler to properly pass user data
   const handleLikeClick = useCallback(
     (e) => {
       // Prevent event propagation to avoid triggering parent click
-      e.stopPropagation()
-      e.preventDefault()
+      e.stopPropagation();
+      e.preventDefault();
 
       if (onLike) {
-        console.log(`Like button clicked for user ${user._id}, current isLiked: ${isLiked}`)
+        logger.debug(`Like button clicked for user ${user._id}, current isLiked: ${isLiked}`);
         // Pass the user ID and name to the parent component for like handling
-        onLike(user._id, user.nickname)
+        onLike(user._id, user.nickname);
       }
     },
     [onLike, user?._id, user?.nickname, isLiked],
-  )
+  );
 
   const handleMessageClick = useCallback(
     (e) => {
-      e.stopPropagation()
+      e.stopPropagation();
       if (onMessage) {
-        onMessage(e, user)
+        onMessage(e, user);
       }
     },
     [onMessage, user],
-  )
+  );
 
   const toggleShowAllTags = useCallback((e) => {
-    e?.stopPropagation()
-    setShowAllTags((prev) => !prev)
-  }, [])
+    e?.stopPropagation();
+    setShowAllTags((prev) => !prev);
+  }, []);
 
   const toggleShowMoreSections = useCallback((e) => {
-    e?.stopPropagation()
-    setShowMoreSections((prev) => !prev)
-  }, [])
+    e?.stopPropagation();
+    setShowMoreSections((prev) => !prev);
+  }, []);
 
   // Memoized data calculations
   const profilePhotoUrl = useMemo(() => {
-    if (!user?.photos?.length) return null
-    return normalizePhotoUrl(user.photos[0]?.url)
-  }, [user?.photos, normalizePhotoUrl])
+    if (!user?.photos?.length) return null;
+    return user.photos[0]?.url;
+  }, [user?.photos]);
 
   const subtitle = useMemo(() => {
-    if (!user?.details) return ""
-    const { age, gender, location } = user.details
-    const parts = []
-    if (age) parts.push(age)
-    if (gender) parts.push(gender)
-    if (location) parts.push(location)
-    return parts.join(" • ")
-  }, [user?.details])
+    if (!user?.details) return "";
+    const { age, gender, location } = user.details;
+    const parts = [];
+    if (age) parts.push(age);
+    if (gender) parts.push(gender);
+    if (location) parts.push(location);
+    return parts.join(" • ");
+  }, [user?.details]);
 
   const extendedDetails = useMemo(() => {
     if (!user?.details)
       return {
         status: null,
         identity: null,
-      }
+      };
 
     const details = {
       status: null,
       identity: null,
-    }
+    };
 
-    const { maritalStatus, iAm } = user.details
+    const { maritalStatus, iAm } = user.details;
 
     if (maritalStatus) {
-      details.status = maritalStatus
+      details.status = maritalStatus;
     }
 
     if (iAm) {
-      details.identity = iAm
+      details.identity = iAm;
     }
 
-    return details
-  }, [user?.details])
+    return details;
+  }, [user?.details]);
 
   const tags = useMemo(() => {
-    if (!user?.details) return []
+    if (!user?.details) return [];
 
     const allTags = {
       lookingFor: [],
       into: [],
       interests: [],
-    }
+    };
 
-    const { lookingFor = [], intoTags = [], interests = [] } = user.details
+    const { lookingFor = [], intoTags = [], interests = [] } = user.details;
 
-    lookingFor.forEach((item) => allTags.lookingFor.push(item))
-    intoTags.forEach((item) => allTags.into.push(item))
-    interests.forEach((item) => allTags.interests.push(item))
+    lookingFor.forEach((item) => allTags.lookingFor.push(item));
+    intoTags.forEach((item) => allTags.into.push(item));
+    interests.forEach((item) => allTags.interests.push(item));
 
-    return allTags
-  }, [user?.details])
+    return allTags;
+  }, [user?.details]);
 
   // Last active formatting
   const lastActiveText = useMemo(() => {
     // If user is currently online, show "Active now" regardless of lastActive timestamp
-    if (user?.isOnline) return "Active now"
+    if (user?.isOnline) return "Active now";
 
-    if (!user?.lastActive) return "Never active"
+    if (!user?.lastActive) return "Never active";
 
-    // Create a simple last active text (could be expanded with proper date formatting)
-    const lastActive = new Date(user.lastActive)
-    const now = new Date()
-    const diffHours = Math.floor((now - lastActive) / (1000 * 60 * 60))
-
-    if (diffHours < 1) return "Active just now"
-    if (diffHours < 24) return `Active ${diffHours}h ago`
-
-    const diffDays = Math.floor(diffHours / 24)
-    if (diffDays < 7) return `Active ${diffDays}d ago`
-
-    return `Active ${lastActive.toLocaleDateString()}`
-  }, [user?.lastActive, user?.isOnline])
+    return formatDate(user.lastActive, { showRelative: true, showTime: false, showDate: false });
+  }, [user?.lastActive, user?.isOnline]);
 
   // Validation
-  if (!user) return null
+  if (!user) return null;
 
   // Common action buttons for both grid and list view
   const renderActionButtons = () => (
     <>
-      <button
-        className={`card-action-button like ${isLiked ? "active" : ""}`}
+      <Button
+        variant={isLiked ? "danger" : "light"}
+        size="small"
         onClick={handleLikeClick}
         aria-label={`${isLiked ? "Unlike" : "Like"} ${user.nickname}`}
-        style={{
-          color: isLiked ? "#ff4757" : "#aaa",
-          background: isLiked ? "rgba(255, 71, 87, 0.1)" : "transparent",
-        }}
-      >
-        <FaHeart />
-      </button>
-      <button
-        className="card-action-button message"
+        icon={<FaHeart />}
+        className={`card-action-button like ${isLiked ? "active" : ""}`}
+      />
+      <Button
+        variant="primary"
+        size="small"
         onClick={handleMessageClick}
         aria-label={`Message ${user.nickname}`}
-      >
-        <FaComment />
-      </button>
+        icon={<FaComment />}
+        className="card-action-button message"
+      />
     </>
-  )
+  );
 
-  // Common photo rendering for both views
-  const renderUserPhoto = (containerClass, imageClass = "") => (
-    <div className={containerClass}>
-      {user.photos?.length > 0 ? (
-        <>
-          <img
-            src={profilePhotoUrl || "/placeholder.svg"}
-            alt={user.nickname}
-            onError={() => setImageError(true)}
-            style={{ display: imageError ? "none" : "block" }}
-            className={imageClass}
-            loading="lazy"
-          />
-          {imageError && (
-            <div className="avatar-placeholder">
-              <FaUser />
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="avatar-placeholder">
-          <FaUser />
-        </div>
-      )}
-      {user.isOnline && <div className="online-indicator"></div>}
-    </div>
-  )
-
-  // Rendering based on view mode
+  // Render the user card
   if (viewMode === "grid") {
     return (
-      <div className="user-card" onClick={handleCardClick}>
+      <Card
+        className="user-card"
+        onClick={handleCardClick}
+        hover={true}
+        headerClassName="user-card-header"
+        bodyClassName="user-card-body"
+      >
         {/* User Photo */}
-        {renderUserPhoto("user-card-photo")}
+        <div className="user-card-photo">
+          <Avatar
+            src={profilePhotoUrl}
+            alt={user.nickname}
+            size="large"
+            status={user.isOnline ? "online" : null}
+            showFallback={true}
+          />
+        </div>
 
         {/* User Info */}
         <div className="user-card-info">
@@ -390,15 +351,23 @@ const UserCard = ({
           {/* Action Buttons */}
           <div className="user-actions">{renderActionButtons()}</div>
         </div>
-      </div>
-    )
+      </Card>
+    );
   }
 
   // List View Rendering
   return (
     <div className="user-list-item" onClick={handleCardClick}>
       {/* User Photo - List View */}
-      {renderUserPhoto("user-list-photo-container", "user-list-photo")}
+      <div className="user-list-photo-container">
+        <Avatar
+          src={profilePhotoUrl}
+          alt={user.nickname}
+          size="medium"
+          status={user.isOnline ? "online" : null}
+          showFallback={true}
+        />
+      </div>
 
       {/* User Info - List View */}
       <div className="user-list-info">
@@ -421,7 +390,7 @@ const UserCard = ({
           {user.details?.location || "Unknown location"}
         </p>
 
-        {/* Extended Details Section - List View */}
+        {/* Extended Details and Tags - Reusing same code as grid view with different class */}
         {showExtendedDetails && (extendedDetails.status || extendedDetails.identity) && (
           <div className="user-tags-container list-view">
             {extendedDetails.status && (
@@ -543,8 +512,8 @@ const UserCard = ({
       {/* Action Buttons - List View */}
       <div className="user-list-actions">{renderActionButtons()}</div>
     </div>
-  )
-}
+  );
+};
 
 // PropTypes for better type checking
 UserCard.propTypes = {
@@ -577,6 +546,17 @@ UserCard.propTypes = {
   showExtendedDetails: PropTypes.bool,
   unreadMessageCount: PropTypes.number,
   hasUnreadMessages: PropTypes.bool,
-}
+};
 
-export default React.memo(UserCard)
+// Use the withMemo HOC instead of React.memo
+export default withMemo(UserCard, (prevProps, nextProps) => {
+  // Custom comparison function for UserCard
+  return (
+    prevProps.user._id === nextProps.user._id &&
+    prevProps.isLiked === nextProps.isLiked &&
+    prevProps.viewMode === nextProps.viewMode &&
+    prevProps.hasUnreadMessages === nextProps.hasUnreadMessages &&
+    prevProps.unreadMessageCount === nextProps.unreadMessageCount &&
+    prevProps.user.isOnline === nextProps.user.isOnline
+  );
+}, { debug: process.env.NODE_ENV !== 'production' });
