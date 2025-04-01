@@ -21,7 +21,7 @@ import {
   FaLock,
   FaPhoneSlash,
   FaPhone,
-  FaSync
+  FaSync,
 } from "react-icons/fa"
 import { useAuth } from "../context"
 import { useNavigate } from "react-router-dom"
@@ -30,15 +30,16 @@ import "../styles/video-call.css"
 import { toast } from "react-toastify"
 
 // Import common components
-import { Button, Avatar, LoadingSpinner, LoadingState, ErrorMessage, withErrorBoundary } from "./common"
+import { Button, Avatar, LoadingState, ErrorMessage, withErrorBoundary } from "./common"
 // Import hooks and utilities
 import { useApi, useMounted, useChatMessages } from "../hooks"
 import { formatDate, logger, normalizePhotoUrl } from "../utils"
+import { groupMessagesByDate, classNames, getFileIconType, commonEmojis } from "../utils/chatUtils"
 // Keep direct import for socket service for compatibility during refactoring
 import socketService from "../services/socketService.jsx"
 
 // Create contextual logger
-const log = logger.create('EmbeddedChat')
+const log = logger.create("EmbeddedChat")
 
 // Add CSS for the pulse animation
 const pulseStyle = document.createElement("style")
@@ -56,7 +57,7 @@ document.head.appendChild(pulseStyle)
 
 /**
  * EmbeddedChat component - Handles real-time messaging with a recipient
- * 
+ *
  * This component provides a full-featured chat interface with:
  * - Real-time messaging using socket.io
  * - Message read receipts
@@ -64,9 +65,9 @@ document.head.appendChild(pulseStyle)
  * - Typing indicators
  * - Emoji support
  * - Video calling
- * 
+ *
  * Uses the useChatMessages hook for messaging functionality
- * 
+ *
  * @param {Object} props - Component props
  * @param {Object} props.recipient - The user object to chat with
  * @param {boolean} props.isOpen - Whether the chat is open/visible
@@ -79,10 +80,10 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const navigate = useNavigate()
   const { isMounted } = useMounted()
   const api = useApi()
-  
+
   // Get a stable recipient ID
-  const recipientId = useMemo(() => recipient?._id, [recipient?._id]);
-  
+  const recipientId = useMemo(() => recipient?._id, [recipient?._id])
+
   // Use the chat messages hook with stable ID reference
   const {
     messages: messagesData,
@@ -94,7 +95,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     markMessagesAsRead,
     loadMessages,
     clearError,
-    sendFileMessage
+    sendFileMessage,
   } = useChatMessages(recipientId)
 
   // Local state for chat and attachments
@@ -155,11 +156,11 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   // Manual refresh function for user-initiated refreshes
   const refreshMessages = useCallback(() => {
     if (isOpen && recipient?._id) {
-      log.debug('Manual message refresh requested');
-      loadMessages();
+      log.debug("Manual message refresh requested")
+      loadMessages()
     }
-  }, [isOpen, recipient, loadMessages]);
-  
+  }, [isOpen, recipient, loadMessages])
+
   // We no longer need a separate useEffect to load messages when chat opens
   // because the useChatMessages hook will handle the initial load
   // This prevents duplicate loading and infinite loops
@@ -174,9 +175,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         }
         log.debug("Incoming call received:", data)
         const callerId =
-          (data.caller && (data.caller.userId || data.caller._id)) ||
-          data.userId ||
-          (data.from && data.from.userId)
+          (data.caller && (data.caller.userId || data.caller._id)) || data.userId || (data.from && data.from.userId)
         if (!callerId) {
           log.error("Caller ID not found in incoming call data", data)
           return
@@ -187,7 +186,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         log.error("Error handling incoming call:", error)
       }
     },
-    [recipient]
+    [recipient],
   )
 
   // Setup incoming call listener
@@ -210,13 +209,27 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Auto-scroll to the latest message
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (!messagesEndRef.current) return
+
+    // Only smooth scroll for new messages, not on initial load
+    const behavior = messagesData.length > 0 ? "smooth" : "auto"
+
+    // Use requestAnimationFrame to ensure DOM is ready
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior })
+    })
   }, [messagesData])
 
   // Focus chat input when chat opens
   useEffect(() => {
-    if (isOpen && recipient) {
-      setTimeout(() => chatInputRef.current?.focus(), 300)
+    if (isOpen && recipient && chatInputRef.current) {
+      // Use requestAnimationFrame for better timing after animations
+      requestAnimationFrame(() => {
+        // Add a small delay to account for any animations
+        setTimeout(() => {
+          chatInputRef.current?.focus()
+        }, 300)
+      })
     }
   }, [isOpen, recipient])
 
@@ -262,10 +275,9 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         caller: { userId: user._id, name: user.nickname || "User" },
       })
       // Send a message about the video call
-      sendMessage("Video Call", "video")
-        .catch((error) => {
-          log.error("Failed to send video call message:", error)
-        })
+      sendMessage("Video Call", "video").catch((error) => {
+        log.error("Failed to send video call message:", error)
+      })
     } else {
       log.error("Cannot start call: recipient information is missing")
       toast.error("Cannot start call: missing recipient information")
@@ -344,33 +356,33 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // ------------------ Message & Attachment Handlers ------------------
 
-  // Utility for file icon (returns a corresponding icon component)
+  // Utility for file icon using shared getFileIconType helper
   const getFileIcon = useCallback((file) => {
     if (!file) return <FaFile />
     const fileType = file.type || ""
-    if (fileType.startsWith("image/")) return <FaImage />
-    if (fileType.startsWith("video/")) return <FaFileVideo />
-    if (fileType.startsWith("audio/")) return <FaFileAudio />
-    if (fileType === "application/pdf") return <FaFilePdf />
-    return <FaFileAlt />
+    const iconType = getFileIconType(fileType)
+
+    switch (iconType) {
+      case "image":
+        return <FaImage />
+      case "video":
+        return <FaFileVideo />
+      case "audio":
+        return <FaFileAudio />
+      case "pdf":
+        return <FaFilePdf />
+      default:
+        return <FaFileAlt />
+    }
   }, [])
 
-  // Group messages by date
-  const groupMessagesByDate = useCallback(() => {
-    const groups = {}
-    if (!Array.isArray(messagesData)) return groups
-    messagesData.forEach((message) => {
-      if (message && message.createdAt) {
-        const date = new Date(message.createdAt).toDateString()
-        groups[date] = groups[date] || []
-        groups[date].push(message)
-      }
-    })
-    return groups
+  // Use the shared utility function to group messages by date
+  const getMessageGroups = useCallback(() => {
+    return groupMessagesByDate(messagesData)
   }, [messagesData])
 
-  // Emoji handling
-  const commonEmojis = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"]
+  // Use shared emoji list from utils
+  // No need to redefine this list as it's imported from utils as commonEmojis
 
   const handleEmojiClick = (emoji) => {
     setNewMessage((prev) => prev + emoji)
@@ -417,7 +429,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const handleSendAttachment = async () => {
     if (!attachment || !recipient?._id || isUploading) return
     setIsUploading(true)
-    
+
     try {
       // Update progress handler
       const onProgress = (progress) => {
@@ -425,25 +437,26 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           setUploadProgress(progress)
         }
       }
-      
+
       // Use the hook's sendFileMessage method which handles validation
       const response = await sendFileMessage(attachment, onProgress)
-      
+
       if (!response) {
         // This can happen due to validation errors in the hook
         toast.error(messageError || "Failed to send file. Please try again.")
-        throw new Error('File upload failed')
+        throw new Error("File upload failed")
       }
-      
+
       log.debug("File sent successfully")
-      
+
       // Clear the attachment state
       setAttachment(null)
       setUploadProgress(0)
       if (fileInputRef.current) fileInputRef.current.value = ""
     } catch (error) {
       log.error("Failed to send file:", error)
-      if (!messageError) { // Only show toast if the hook didn't already set an error
+      if (!messageError) {
+        // Only show toast if the hook didn't already set an error
         toast.error(error.message || "Failed to send file. Please try again.")
       }
     } finally {
@@ -481,7 +494,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    
+
     // Set the file directly - validation happens in the hook
     setAttachment(file)
     log.debug(`Selected file: ${file.name}`)
@@ -504,12 +517,10 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           requestsData.map((request) =>
             api.put(`/users/photos/permissions/${request._id}`, {
               status: "approved",
-            })
-          )
+            }),
+          ),
         )
-        const successCount = results.filter(
-          (result) => result.status === "fulfilled" && result.value
-        ).length
+        const successCount = results.filter((result) => result.status === "fulfilled" && result.value).length
         if (successCount > 0) {
           log.debug(`Approved ${successCount} photo request${successCount !== 1 ? "s" : ""}`)
           const systemMessage = {
@@ -533,7 +544,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         if (response) {
           const approvedCount = response.approvedCount || 1
           log.debug(`Approved ${approvedCount} photo request${approvedCount !== 1 ? "s" : ""}`)
-          
+
           // Using the sendMessage from hook to inform recipient
           await sendMessage(`I've approved your request to view my private photos.`, "text")
           setPendingPhotoRequests(0)
@@ -556,7 +567,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   if (!isOpen) return null
 
   return (
-    <div className={`embedded-chat ${embedded ? "embedded" : "standalone"}`}>
+    <div className={classNames("embedded-chat", embedded ? "embedded" : "standalone")}>
       {/* Video Call Integration */}
       {activeCall && socketRef.current ? (
         <VideoCall
@@ -579,7 +590,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
       <div className="chat-header">
         <div className="chat-user">
-          <Avatar 
+          <Avatar
             src={recipient?.photos?.length ? recipient.photos[0].url : null}
             alt={recipient?.nickname}
             size="small"
@@ -616,11 +627,11 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
               disabled={isUploading || sending || activeCall}
             />
           )}
-          <Button 
-            className="close-chat-btn" 
-            onClick={onClose} 
+          <Button
+            className="close-chat-btn"
+            onClick={onClose}
             icon={<FaTimes />}
-            aria-label="Close chat" 
+            aria-label="Close chat"
             variant="light"
             size="small"
           />
@@ -659,12 +670,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         <div className="premium-banner">
           <FaCrown className="premium-icon" />
           <span>Upgrade to send messages and make video calls (you can still send heart)</span>
-          <Button 
-            className="upgrade-btn" 
-            onClick={() => navigate("/subscription")}
-            variant="primary"
-            size="small"
-          >
+          <Button className="upgrade-btn" onClick={() => navigate("/subscription")} variant="primary" size="small">
             Upgrade
           </Button>
         </div>
@@ -683,8 +689,8 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             size="small"
           />
         </div>
-        
-        <LoadingState 
+
+        <LoadingState
           isLoading={isLoading}
           error={messageError}
           loadingText="Loading messages..."
@@ -701,12 +707,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                 onDismiss={clearError}
                 showIcon={true}
               />
-              <Button
-                onClick={retry}
-                variant="primary"
-                size="small"
-                className="mt-2"
-              >
+              <Button onClick={retry} variant="primary" size="small" className="mt-2">
                 Try Again
               </Button>
             </div>
@@ -717,108 +718,129 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
               <p>No messages yet. Say hello!</p>
             </div>
           ) : (
-          Object.entries(groupMessagesByDate()).map(([date, msgs]) => (
-            <React.Fragment key={date}>
-              <div className="message-date">{date}</div>
-              {msgs.map((message) => {
-                // Make sure we're comparing strings with strings or IDs with IDs
-                const isSentByCurrentUser = user && message.sender &&
-                  (message.sender === user._id ||
-                   (typeof message.sender === 'object' && message.sender._id === user._id));
+            Object.entries(getMessageGroups()).map(([date, msgs]) => (
+              <React.Fragment key={date}>
+                <div className="message-date">{date}</div>
+                {msgs.map((message) => {
+                  if (!message || !message._id) {
+                    // Skip invalid messages
+                    return null
+                  }
 
-                return (
-                  <div
-                    key={message._id}
-                    className={`message ${isSentByCurrentUser ? "sent" : "received"} ${
-                      message.type === "system" ? "system-message" : ""
-                    }`}
-                  >
-                    {message.type === "text" && (
-                      <>
-                        <p className="message-content">{message.content}</p>
-                        <span className="message-time">
-                          {formatDate(message.createdAt, { showTime: true, showDate: false })}
-                          {isSentByCurrentUser &&
-                            (message.read ? (
-                              <FaCheckDouble className="read-indicator" />
-                            ) : (
-                              <FaCheck className="read-indicator" />
-                            ))}
-                        </span>
-                      </>
-                    )}
-                    {message.type === "wink" && (
-                      <div className="wink-message">
-                        <p className="message-content">😉</p>
-                        <span className="message-label">Wink</span>
-                      </div>
-                    )}
-                    {message.type === "video" && (
-                      <div className="video-call-message">
-                        <FaVideo className="video-icon" />
-                        <p className="message-content">Video Call</p>
-                        <span className="message-time">
-                          {formatDate(message.createdAt, { showTime: true, showDate: false })}
-                        </span>
-                      </div>
-                    )}
-                    {message.type === "file" && (
-                      <div className="file-message">
-                        {message.metadata?.fileUrl ? (
-                          message.metadata.fileType?.startsWith("image/") ? (
-                            <img
-                              src={normalizePhotoUrl(message.metadata.fileUrl)}
-                              alt={message.metadata.fileName || "Image"}
-                              className="image-attachment"
-                            />
-                          ) : (
-                            <div className="file-attachment">
-                              {message.metadata.fileType?.startsWith("video/") ? (
-                                <FaFileVideo className="file-icon" />
-                              ) : message.metadata.fileType?.startsWith("audio/") ? (
-                                <FaFileAudio className="file-icon" />
-                              ) : message.metadata.fileType === "application/pdf" ? (
-                                <FaFilePdf className="file-icon" />
+                  // Make sure we're comparing strings with strings or IDs with IDs
+                  const isSentByCurrentUser =
+                    user &&
+                    message.sender &&
+                    (message.sender === user._id ||
+                      (typeof message.sender === "object" && message.sender._id === user._id))
+
+                  return (
+                    <div
+                      key={message._id}
+                      className={classNames(
+                        "message",
+                        isSentByCurrentUser ? "sent" : "received",
+                        message.type === "system" ? "system-message" : "",
+                        message.pending ? "pending" : "",
+                        message.error ? "error" : "",
+                      )}
+                    >
+                      {message.type === "text" && (
+                        <>
+                          <p className="message-content">{message.content}</p>
+                          <span className="message-time">
+                            {formatDate(message.createdAt, { showTime: true, showDate: false })}
+                            {isSentByCurrentUser &&
+                              (message.pending ? (
+                                <span className="pending-indicator" title="Sending...">
+                                  ⋯
+                                </span>
+                              ) : message.error ? (
+                                <span className="error-indicator" title="Failed to send">
+                                  !
+                                </span>
+                              ) : message.read ? (
+                                <FaCheckDouble className="read-indicator" title="Read" />
                               ) : (
-                                <FaFileAlt className="file-icon" />
-                              )}
-                              <span className="file-name">{message.metadata.fileName || "File"}</span>
-                              <span className="file-size">
-                                {message.metadata.fileSize ? `(${Math.round(message.metadata.fileSize / 1024)} KB)` : ""}
-                              </span>
-                              <Button
-                                href={message.metadata.fileUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="download-link"
-                                onClick={(e) => e.stopPropagation()}
-                                variant="link"
-                                size="small"
-                              >
-                                Download
-                              </Button>
-                            </div>
-                          )
-                        ) : (
-                          <p className="message-content">Attachment unavailable</p>
-                        )}
-                      </div>
-                    )}
-                    {message.type === "system" && (
-                      <div className="system-message-content">
-                        <p>{message.content}</p>
-                        <span className="message-time">
-                          {formatDate(message.createdAt, { showTime: true, showDate: false })}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </React.Fragment>
-          ))
+                                <FaCheck className="read-indicator" title="Sent" />
+                              ))}
+                          </span>
+                        </>
+                      )}
+                      {message.type === "wink" && (
+                        <div className="wink-message">
+                          <p className="message-content">😉</p>
+                          <span className="message-label">Wink</span>
+                        </div>
+                      )}
+                      {message.type === "video" && (
+                        <div className="video-call-message">
+                          <FaVideo className="video-icon" />
+                          <p className="message-content">Video Call</p>
+                          <span className="message-time">
+                            {formatDate(message.createdAt, { showTime: true, showDate: false })}
+                          </span>
+                        </div>
+                      )}
+                      {message.type === "file" && (
+                        <div className="file-message">
+                          {message.metadata?.fileUrl ? (
+                            message.metadata.fileType?.startsWith("image/") ? (
+                              <img
+                                src={normalizePhotoUrl(message.metadata.fileUrl) || "/placeholder.svg"}
+                                alt={message.metadata.fileName || "Image"}
+                                className="image-attachment"
+                              />
+                            ) : (
+                              <div className="file-attachment">
+                                {message.metadata.fileType?.startsWith("video/") ? (
+                                  <FaFileVideo className="file-icon" />
+                                ) : message.metadata.fileType?.startsWith("audio/") ? (
+                                  <FaFileAudio className="file-icon" />
+                                ) : message.metadata.fileType === "application/pdf" ? (
+                                  <FaFilePdf className="file-icon" />
+                                ) : (
+                                  <FaFileAlt className="file-icon" />
+                                )}
+                                <span className="file-name">{message.metadata.fileName || "File"}</span>
+                                <span className="file-size">
+                                  {message.metadata.fileSize
+                                    ? `(${Math.round(message.metadata.fileSize / 1024)} KB)`
+                                    : ""}
+                                </span>
+                                <Button
+                                  href={message.metadata.fileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="download-link"
+                                  onClick={(e) => e.stopPropagation()}
+                                  variant="link"
+                                  size="small"
+                                >
+                                  Download
+                                </Button>
+                              </div>
+                            )
+                          ) : (
+                            <p className="message-content">Attachment unavailable</p>
+                          )}
+                        </div>
+                      )}
+                      {message.type === "system" && (
+                        <div className="system-message-content">
+                          <p>{message.content}</p>
+                          <span className="message-time">
+                            {formatDate(message.createdAt, { showTime: true, showDate: false })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </React.Fragment>
+            ))
           )}
-          
+
           {recipient && typingIndicator && (
             <div className="typing-indicator">
               <span></span>
@@ -867,13 +889,13 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           size="small"
           disabled={isUploading || sending}
         />
-        
+
         {showEmojis && (
           <div className="emoji-picker">
             <div className="emoji-header">
               <h4>Emojis</h4>
-              <Button 
-                onClick={() => setShowEmojis(false)} 
+              <Button
+                onClick={() => setShowEmojis(false)}
                 icon={<FaTimes />}
                 aria-label="Close emoji picker"
                 variant="light"
@@ -889,7 +911,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             </div>
           </div>
         )}
-        
+
         <input
           type="text"
           placeholder={user?.accountTier === "FREE" ? "Free users can only send winks" : "Type a message..."}
@@ -900,7 +922,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           aria-label="Message input"
           title={user?.accountTier === "FREE" ? "Upgrade to send text messages" : "Type a message"}
         />
-        
+
         <Button
           type="button"
           className="input-attachment"
@@ -912,7 +934,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           variant="light"
           size="small"
         />
-        
+
         <input
           type="file"
           ref={fileInputRef}
@@ -921,7 +943,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           aria-hidden="true"
           accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,audio/mpeg,audio/wav,video/mp4,video/quicktime"
         />
-        
+
         <Button
           type="button"
           className="input-wink"
@@ -933,7 +955,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           variant="light"
           size="small"
         />
-        
+
         <Button
           type="submit"
           className="input-send"
@@ -953,25 +975,18 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 export default withErrorBoundary(EmbeddedChat, {
   FallbackComponent: ({ error, resetErrorBoundary }) => (
     <div className="embedded-chat-error">
-      <ErrorMessage 
-        title="Chat Error" 
-        message={error?.message || 'An error occurred in the chat component'} 
-      />
-      <Button 
-        onClick={resetErrorBoundary} 
-        variant="primary"
-        className="mt-3"
-      >
+      <ErrorMessage title="Chat Error" message={error?.message || "An error occurred in the chat component"} />
+      <Button onClick={resetErrorBoundary} variant="primary" className="mt-3">
         Try Again
       </Button>
     </div>
   ),
   onError: (error, info) => {
     // Log error to the logger
-    log.error('EmbeddedChat error boundary caught error:', error);
-    log.error('Component stack:', info?.componentStack);
-    
+    log.error("EmbeddedChat error boundary caught error:", error)
+    log.error("Component stack:", info?.componentStack)
+
     // Could also send to an error reporting service here
-    toast.error('Something went wrong with the chat. Trying to recover...');
-  }
-});
+    toast.error("Something went wrong with the chat. Trying to recover...")
+  },
+})

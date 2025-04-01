@@ -479,7 +479,6 @@ const NotificationsComponent = ({
                 onClick={handleMarkAllAsRead}
                 variant="link"
                 size="small"
-                icon={<FaCheck />}
               >
                 Mark all read
               </Button>
@@ -587,8 +586,7 @@ const NotificationItem = ({ notification, onClick }) => {
 
         <div className="notification-time">
           {formattedTime}
-          {!notification.read && <span className="notification-time-dot"></span>}
-          {!notification.read && <span className="notification-status">Unread</span>}
+          {!notification.read && <span className="notification-status">•&nbsp;New</span>}
         </div>
       </div>
     </div>

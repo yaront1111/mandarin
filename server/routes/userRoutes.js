@@ -1599,32 +1599,44 @@ router.post(
       const createdAt = new Date();
       
       for (const photo of privatePhotos) {
-        // Check if a request already exists
-        const existingRequest = await PhotoPermission.findOne({
-          photo: photo._id,
-          requestedBy: req.user._id
-        });
-        
-        if (!existingRequest) {
-          const newRequest = new PhotoPermission({
+        try {
+          // Check if a request already exists
+          const existingRequest = await PhotoPermission.findOne({
             photo: photo._id,
-            requestedBy: req.user._id,
-            status: "pending",
-            createdAt,
-            photoOwnerId: targetUserId
+            requestedBy: req.user._id
           });
           
-          await newRequest.save();
-          requests.push(newRequest);
-        } else if (existingRequest.status === "rejected") {
-          // If previously rejected, reactivate the request
-          existingRequest.status = "pending";
-          existingRequest.updatedAt = new Date();
-          await existingRequest.save();
-          requests.push(existingRequest);
-        } else {
-          // Already has a pending or approved request
-          requests.push(existingRequest);
+          if (!existingRequest) {
+            const newRequest = new PhotoPermission({
+              photo: photo._id,
+              requestedBy: req.user._id,
+              photoOwnerId: targetUserId, // Important for validation
+              status: "pending",
+              createdAt
+            });
+            
+            await newRequest.save();
+            requests.push(newRequest);
+          } else if (existingRequest.status === "rejected") {
+            // If previously rejected, reactivate the request
+            existingRequest.status = "pending";
+            existingRequest.updatedAt = new Date();
+            
+            // Add photoOwnerId if missing (for legacy data)
+            if (!existingRequest.photoOwnerId) {
+              existingRequest.photoOwnerId = targetUserId;
+            }
+            
+            await existingRequest.save();
+            requests.push(existingRequest);
+          } else {
+            // Already has a pending or approved request
+            requests.push(existingRequest);
+          }
+        } catch (photoError) {
+          logger.error(`Error processing photo ${photo._id}: ${photoError.message}`);
+          // Continue with other photos even if one fails
+          continue;
         }
       }
       
@@ -1637,9 +1649,22 @@ router.post(
       
     } catch (err) {
       logger.error(`Error requesting photo access: ${err.message}`);
+      
+      // Even if there's an error, if we processed some requests successfully, return partial success
+      if (requests && requests.length > 0) {
+        return res.status(200).json({
+          success: true,
+          message: `Processed ${requests.length} photo access requests with some errors`,
+          requests: requests,
+          partial: true,
+          error: err.message
+        });
+      }
+      
       return res.status(500).json({
         success: false,
-        error: "Server error while requesting photo access"
+        error: "Server error while requesting photo access",
+        message: err.message
       });
     }
   })

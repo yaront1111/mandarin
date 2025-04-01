@@ -7,11 +7,11 @@ import { Navbar, Alert, PrivateRoute as LayoutPrivateRoute } from "./LayoutCompo
 // User card
 import UserCard from "./UserCard.jsx"
 
-// Chat Components
-// Fixing the imports for Chat components
+// Chat Components - Legacy
 import EmbeddedChat from "./EmbeddedChat"
 
-// We'll skip importing Spinner if it doesn't exist as a direct file
+// Chat Components - New Modular Version
+import * as chat from "./chat"
 
 // Stories Components
 import StoriesCarousel from "./Stories/StoriesCarousel"
@@ -52,4 +52,6 @@ export {
   ThemeToggle,
   // User Profile Modal
   UserProfileModal,
+  // Modular Chat Components
+  chat,
 }

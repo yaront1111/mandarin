@@ -18,6 +18,7 @@ import {
   ThemeProvider,
   NotificationProvider,
 } from "./context";
+import { ChatConnectionProvider } from "./context/ChatConnectionContext";
 // Correctly import the named hook
 import { useInitializeNotificationServiceNavigation } from "./services/notificationService.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
@@ -43,40 +44,42 @@ function App() {
       <ThemeProvider>
         <AuthProvider>
           <UserProvider>
-            <ChatProvider>
-              <StoriesProvider>
-                <NotificationProvider>
-                  <div className="app">
-                    <Routes>
-                      <Route path="/" element={<Home />} />
-                      <Route path="/login" element={<Login />} />
-                      <Route path="/register" element={<Register />} />
-                      <Route path="/dashboard" element={ <PrivateRoute><Dashboard /></PrivateRoute> } />
-                      <Route path="/user/:id" element={ <PrivateRoute><UserProfile /></PrivateRoute> } />
-                      <Route path="/profile" element={ <PrivateRoute><Profile /></PrivateRoute> } />
-                      <Route path="/messages" element={ <PrivateRoute><Messages /></PrivateRoute> } />
-                      <Route path="/messages/:userId" element={ <PrivateRoute><Messages /></PrivateRoute> } />
-                      <Route path="/settings" element={ <PrivateRoute><Settings /></PrivateRoute> } />
-                      <Route path="/subscription" element={ <PrivateRoute><Subscription /></PrivateRoute> } />
-                      <Route path="*" element={<NotFound />} />
-                    </Routes>
-                    <ToastContainer
-                      position="top-right"
-                      autoClose={3000}
-                      hideProgressBar={false}
-                      newestOnTop={false}
-                      closeOnClick
-                      rtl={false}
-                      pauseOnFocusLoss
-                      draggable
-                      pauseOnHover
-                      limit={5}
-                      theme="colored"
-                    />
-                  </div>
-                </NotificationProvider>
-              </StoriesProvider>
-            </ChatProvider>
+            <ChatConnectionProvider>
+              <ChatProvider>
+                <StoriesProvider>
+                  <NotificationProvider>
+                    <div className="app-wrapper">
+                      <Routes>
+                        <Route path="/" element={<Home />} />
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/register" element={<Register />} />
+                        <Route path="/dashboard" element={ <PrivateRoute><Dashboard /></PrivateRoute> } />
+                        <Route path="/user/:id" element={ <PrivateRoute><UserProfile /></PrivateRoute> } />
+                        <Route path="/profile" element={ <PrivateRoute><Profile /></PrivateRoute> } />
+                        <Route path="/messages" element={ <PrivateRoute><Messages /></PrivateRoute> } />
+                        <Route path="/messages/:userId" element={ <PrivateRoute><Messages /></PrivateRoute> } />
+                        <Route path="/settings" element={ <PrivateRoute><Settings /></PrivateRoute> } />
+                        <Route path="/subscription" element={ <PrivateRoute><Subscription /></PrivateRoute> } />
+                        <Route path="*" element={<NotFound />} />
+                      </Routes>
+                      <ToastContainer
+                        position="top-right"
+                        autoClose={3000}
+                        hideProgressBar={false}
+                        newestOnTop={false}
+                        closeOnClick
+                        rtl={false}
+                        pauseOnFocusLoss
+                        draggable
+                        pauseOnHover
+                        limit={5}
+                        theme="colored"
+                      />
+                    </div>
+                  </NotificationProvider>
+                </StoriesProvider>
+              </ChatProvider>
+            </ChatConnectionProvider>
           </UserProvider>
         </AuthProvider>
       </ThemeProvider>

@@ -25,11 +25,13 @@
 .stories-carousel {
   display: flex;
   overflow-x: auto;
-  padding: 10px 5px;
-  gap: 18px;
+  padding: var(--space-xs) var(--space-md);
+  padding-bottom: var(--space-md);
+  gap: var(--space-md);
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
   scroll-behavior: smooth;
+  margin: 0 -8px; /* Negative margin to allow edge bleeding */
 }
 
 .stories-carousel::-webkit-scrollbar {
@@ -92,50 +94,68 @@
   align-items: center;
   cursor: pointer;
   transition: transform 0.25s ease;
-  margin: 0 5px;
+  margin: 0 6px;
   width: 80px; /* Fixed width to ensure consistent spacing */
   position: relative;
 }
 
 .story-thumbnail:hover {
-  transform: translateY(-4px);
+  transform: translateY(-2px);
 }
 
 .story-avatar-border {
-  width: 70px;
-  height: 70px;
+  width: 80px;
+  height: 80px;
   border-radius: 50%;
-  padding: 3px;
   background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
-  transition: all 0.25s ease;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  position: relative;
+  padding: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  position: relative; /* Ensure proper positioning context */
 }
 
 .story-avatar-border.viewed {
   background: #e0e0e0;
 }
 
-.story-avatar {
+.story-image-container {
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  border-radius: 50%;
+  overflow: hidden;
+  background-color: white;
+  position: relative;
+  z-index: 3;
+}
+
+.story-thumbnail-image {
   width: 100%;
   height: 100%;
-  border-radius: 50% !important;
   object-fit: cover;
-  border: 2px solid white;
-  background-color: var(--light, #f2f2f2);
-  overflow: hidden;
+  border-radius: 50%;
+}
+
+.story-thumbnail-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: bold;
+  color: white;
+  font-size: 24px;
+  background-color: #aaaaaa;
 }
 
 .story-username {
-  margin-top: 8px;
+  margin-top: 6px;
   font-size: var(--font-size-xs, 0.75rem);
   font-weight: var(--font-weight-medium, 500);
   color: var(--text-medium, #4f4f4f);
-  max-width: 65px;
+  max-width: 80px;
   text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -972,17 +992,18 @@
 /* Stories section in Dashboard */
 .stories-section {
   margin-bottom: var(--space-xl, 32px);
-  padding: var(--space-md, 16px);
-  background-color: #ffffff;
-  border-radius: var(--radius-lg, 16px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  padding: var(--space-sm, 8px) 0;
+  background-color: transparent;
+  width: 100%;
+  overflow: visible;
 }
 
 .stories-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--space-md, 16px);
+  margin-bottom: var(--space-sm, 8px);
+  padding: 0 var(--space-md, 16px);
 }
 
 .stories-header h2 {

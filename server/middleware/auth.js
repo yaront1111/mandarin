@@ -256,13 +256,53 @@ const protect = async (req, res, next) => {
         })
       }
 
-      // Set user object on request
-      req.user = user
-      return next()
+      // Ensure user._id is consistently a string to avoid ObjectId vs String comparison issues
+      if (user._id) {
+        // Ensure _id is always a string format and a valid MongoDB ObjectId
+        const userIdStr = user._id.toString();
+        
+        // Validate that the ID is a valid format (24 hex characters)
+        if (!/^[0-9a-fA-F]{24}$/.test(userIdStr)) {
+          logger.error(`User ID has invalid format after toString(): ${userIdStr}`);
+          return res.status(401).json({
+            success: false,
+            error: "Invalid user ID format in authentication. Please log in again.",
+            code: "INVALID_USER_ID",
+          });
+        }
+        
+        // Set the string version of the ID
+        user._id = userIdStr;
+      }
+      
+      // Set user object on request with string ID
+      req.user = user;
+      logger.debug(`User authenticated: ${user._id}, ID type: ${typeof user._id}`);
+      return next();
     } else if (decoded.user) {
       // If token contains user object, set it directly (for backwards compatibility)
-      req.user = decoded.user
-      return next()
+      // But also ensure consistent ID format with validation
+      const userObj = decoded.user;
+      if (userObj && userObj._id) {
+        // Convert to string and validate format
+        const userIdStr = userObj._id.toString();
+        
+        // Validate that the ID is a valid format (24 hex characters)
+        if (!/^[0-9a-fA-F]{24}$/.test(userIdStr)) {
+          logger.error(`User ID has invalid format in token: ${userIdStr}`);
+          return res.status(401).json({
+            success: false,
+            error: "Invalid user ID format in token. Please log in again.",
+            code: "INVALID_USER_ID_IN_TOKEN",
+          });
+        }
+        
+        userObj._id = userIdStr;
+      }
+      
+      req.user = userObj;
+      logger.debug(`User authenticated via token object: ${userObj?._id}, ID type: ${typeof userObj?._id}`);
+      return next();
     }
 
     // If we get here, token format is invalid

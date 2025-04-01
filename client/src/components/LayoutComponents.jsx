@@ -51,6 +51,7 @@ export const Navbar = () => {
       e.preventDefault()
       e.stopPropagation()
     }
+    console.log("Toggle notification dropdown")
     setShowNotifications((prevState) => !prevState)
     setShowUserDropdown(false) // Close user dropdown
   }
@@ -66,20 +67,23 @@ export const Navbar = () => {
   // Close dropdowns if clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
+      // Handle notifications dropdown
+      const clickedNotificationButton = event.target.closest('.notification-button');
       if (
         notificationDropdownRef.current &&
         !notificationDropdownRef.current.contains(event.target) &&
-        notificationButtonRef.current &&
-        !notificationButtonRef.current.contains(event.target)
+        !clickedNotificationButton
       ) {
-        setShowNotifications(false)
+        setShowNotifications(false);
       }
+      
+      // Handle user dropdown
       if (
         userDropdownRef.current &&
         !userDropdownRef.current.contains(event.target) &&
-        !event.target.closest(".user-avatar-dropdown")
+        !event.target.closest(".user-menu")
       ) {
-        setShowUserDropdown(false)
+        setShowUserDropdown(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside)
@@ -104,45 +108,61 @@ export const Navbar = () => {
   }
 
   return (
-    <header className="modern-header">
-      <div className="container d-flex justify-content-between align-items-center">
-        <div className="logo" style={{ cursor: "pointer" }} onClick={() => navigate("/")}>
-          Mandarin
+    <header className="app-header">
+      <div className="header-inner">
+        <div className="header-logo" onClick={() => navigate("/")}>
+          <span>Mandarin</span>
         </div>
 
         {isAuthenticated && (
-          <div className="main-tabs d-none d-md-flex">
-            <button
-              className={`tab-button ${window.location.pathname === "/dashboard" ? "active" : ""}`}
-              onClick={() => navigate("/dashboard")}
-            >
-              <FaSearch className="tab-icon" />
-              <span>Discover</span>
-            </button>
-            <button
-              className={`tab-button ${window.location.pathname === "/messages" ? "active" : ""}`}
-              onClick={() => navigate("/messages")}
-            >
-              <FaEnvelopeOpen className="tab-icon" />
-              <span>Massages</span>
-            </button>
-          </div>
+          <nav className="header-nav">
+            <ul className="nav-tabs">
+              <li>
+                <button
+                  className={`nav-tab ${window.location.pathname === "/dashboard" ? "active" : ""}`}
+                  onClick={() => navigate("/dashboard")}
+                >
+                  <FaSearch />
+                  <span className="nav-text">Discover</span>
+                </button>
+              </li>
+              <li>
+                <button
+                  className={`nav-tab ${window.location.pathname === "/messages" ? "active" : ""}`}
+                  onClick={() => navigate("/messages")}
+                >
+                  <FaEnvelopeOpen />
+                  <span className="nav-text">Messages</span>
+                </button>
+              </li>
+            </ul>
+          </nav>
         )}
 
-        <div className="header-actions d-flex align-items-center">
+        <div className="header-actions">
           <ThemeToggle />
 
           {isAuthenticated ? (
             <>
-              <div style={{ position: "relative", marginLeft: "10px" }}>
-                {/* Notification bell button */}
+              <div className="notification-wrapper">
+                {/* Standalone notification button */}
                 <button
                   ref={notificationButtonRef}
-                  onClick={toggleNotificationDropdown}
                   aria-label="Notifications"
-                  className={`notification-specific-button ${notificationPulse ? "notification-pulse" : ""}`}
+                  className={`notification-button ${notificationPulse ? "notification-pulse" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    console.log("Notification button clicked");
+                    toggleNotificationDropdown(e);
+                  }}
+                  style={{
+                    position: "relative",
+                    zIndex: 102,
+                    cursor: "pointer"
+                  }}
                 >
-                  <FaBell size={20} />
+                  <FaBell />
                   {unreadCount > 0 && (
                     <span className="notification-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
                   )}
@@ -162,23 +182,18 @@ export const Navbar = () => {
                 )}
               </div>
 
-              <div className="user-avatar-dropdown" style={{ marginLeft: "10px" }}>
-                <div style={{ position: "relative" }}>
+              <div className="user-menu">
+                <div className="user-avatar-container">
                   {user?.photos?.length > 0 ? (
                     <img
                       src={user.photos[0].url || "/placeholder.svg?height=32&width=32"}
                       alt={user.nickname}
                       className="user-avatar"
-                      style={{ width: "32px", height: "32px" }}
                       onClick={toggleUserDropdown}
                     />
                   ) : (
                     <FaUserCircle
-                      style={{
-                        fontSize: "32px",
-                        cursor: "pointer",
-                        color: "var(--text-color)",
-                      }}
+                      className="user-avatar-icon"
                       onClick={toggleUserDropdown}
                     />
                   )}
@@ -186,16 +201,20 @@ export const Navbar = () => {
                   {showUserDropdown && (
                     <div ref={userDropdownRef} className="user-dropdown">
                       <div className="user-dropdown-item" onClick={navigateToProfile}>
+                        <FaUserCircle />
                         Profile
                       </div>
                       <div className="user-dropdown-item" onClick={() => navigate("/settings")}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                         Settings
                       </div>
                       <div className="user-dropdown-item" onClick={() => navigate("/subscription")}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
                         Subscription
                       </div>
                       <div className="user-dropdown-divider"></div>
                       <div className="user-dropdown-item danger" onClick={handleLogout}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
                         Logout
                       </div>
                     </div>
@@ -216,100 +235,6 @@ export const Navbar = () => {
         </div>
       </div>
 
-      {/* Custom styles for notification specific elements */}
-      <style jsx="true">{`
-        .notification-specific-button {
-          background: var(--primary-color, #ff3366);
-          border: none;
-          cursor: pointer;
-          padding: 0.6rem;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          position: relative;
-          width: 40px;
-          height: 40px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-          z-index: 101;
-          transition: all 0.3s ease;
-          pointer-events: auto;
-          color: white;
-          outline: none;
-        }
-
-        .notification-specific-button:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        }
-
-        .notification-specific-button:active {
-          transform: translateY(0);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-        }
-
-        .notification-badge {
-          position: absolute;
-          top: -5px;
-          right: -5px;
-          background-color: var(--danger-color, #dc3545);
-          color: white;
-          border-radius: 50%;
-          font-size: 10px;
-          width: 20px;
-          height: 20px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: bold;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-        }
-
-        .notification-dropdown {
-          z-index: 1050;
-          display: block;
-          visibility: visible;
-          opacity: 1;
-          position: absolute;
-          right: 0;
-          top: 100%;
-          width: 320px;
-          max-height: 400px;
-          overflow: hidden;
-          background-color: var(--bg-color);
-          border-radius: 8px;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-          border: 1px solid var(--border-color);
-        }
-
-        .notification-dropdown-content {
-          width: 100%; 
-          height: 100%;
-          border-radius: 8px;
-          overflow: hidden;
-        }
-
-        @keyframes notification-pulse {
-          0% {
-            transform: scale(1);
-            box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.7);
-          }
-          
-          70% {
-            transform: scale(1.1);
-            box-shadow: 0 0 0 10px rgba(255, 51, 102, 0);
-          }
-          
-          100% {
-            transform: scale(1);
-            box-shadow: 0 0 0 0 rgba(255, 51, 102, 0);
-          }
-        }
-
-        .notification-pulse {
-          animation: notification-pulse 1s cubic-bezier(0.66, 0, 0, 1) 2;
-        }
-      `}</style>
     </header>
   )
 }

@@ -10,7 +10,7 @@ class SocketService {
     this.eventListeners = new Map() // Keep track of all event listeners
     this.pendingMessages = []
     this.userId = null
-    this.connectionState = 'disconnected'
+    this.connectionState = "disconnected"
     this.reconnectAttempts = 0
     this.maxReconnectAttempts = 5
     this.reconnectInterval = 3000 // 3 seconds
@@ -40,12 +40,12 @@ class SocketService {
     try {
       this.socket.init(userId, token, options)
       this.initialized = true
-      this.connectionState = 'connecting'
+      this.connectionState = "connecting"
 
       // Add connection state listeners
       this.socket.on("connect", () => {
         this._log("Socket connection established")
-        this.connectionState = 'connected'
+        this.connectionState = "connected"
         this.reconnectAttempts = 0
         this._processPendingMessages()
 
@@ -55,7 +55,7 @@ class SocketService {
 
       this.socket.on("disconnect", (reason) => {
         this._log(`Socket disconnected: ${reason}`)
-        this.connectionState = 'disconnected'
+        this.connectionState = "disconnected"
 
         // Start monitoring connection if not already monitoring
         this._startConnectionMonitor()
@@ -63,7 +63,7 @@ class SocketService {
 
       this.socket.on("connect_error", (error) => {
         this._log(`Socket connection error: ${error}`)
-        this.connectionState = 'error'
+        this.connectionState = "error"
 
         // Start monitoring connection if not already monitoring
         this._startConnectionMonitor()
@@ -74,8 +74,8 @@ class SocketService {
 
       return this.socket
     } catch (err) {
-      this._log(`Socket initialization error: ${err.message}`, 'error')
-      this.connectionState = 'error'
+      this._log(`Socket initialization error: ${err.message}`, "error")
+      this.connectionState = "error"
       throw err
     }
   }
@@ -90,11 +90,21 @@ class SocketService {
     this._log("Starting socket connection monitor")
 
     this.connectionMonitor = setInterval(() => {
-      if (this.connectionState !== 'connected' && this.initialized) {
+      // Only attempt reconnect if:
+      // 1. Socket is initialized
+      // 2. Not currently connected
+      // 3. Not in cooldown mode (reconnectAttempts >= maxReconnectAttempts)
+      // 4. Not currently reconnecting
+      if (
+        this.initialized &&
+        this.connectionState !== "connected" &&
+        this.reconnectAttempts < this.maxReconnectAttempts &&
+        this.connectionState !== "reconnecting"
+      ) {
         this._log(`Connection monitor: Socket is ${this.connectionState}, attempting reconnect`)
         this.reconnect()
       }
-    }, 10000) // Check every 10 seconds
+    }, 15000) // Check every 15 seconds (increased from 10 to reduce frequency)
   }
 
   /**
@@ -121,19 +131,43 @@ class SocketService {
    * Force reconnection: disconnect and reinitialize
    */
   reconnect() {
+    // If socket is already connected, no need to reconnect
+    if (this.connectionState === "connected") {
+      this._log("Socket already connected, no need to reconnect")
+      this.reconnectAttempts = 0
+      return true
+    }
+
+    // Prevent excessive reconnection attempts
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this._log(`Maximum reconnect attempts (${this.maxReconnectAttempts}) reached, stopping reconnection attempts`, 'warn')
+      this._log(
+        `Maximum reconnect attempts (${this.maxReconnectAttempts}) reached, stopping reconnection attempts`,
+        "warn",
+      )
+
+      // After a 30 second cooldown, reset the counter to allow future reconnect attempts
+      setTimeout(() => {
+        this._log("Reconnect cooldown completed, resetting counter")
+        this.reconnectAttempts = 0
+      }, 30000)
+
       return false
     }
 
     this.reconnectAttempts++
     this._log(`Forcing socket reconnection (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
-    this.connectionState = 'reconnecting'
+    this.connectionState = "reconnecting"
 
     try {
-      return this.socket.reconnect()
+      // Only attempt reconnect if socket exists
+      if (this.socket && typeof this.socket.reconnect === "function") {
+        return this.socket.reconnect()
+      } else {
+        this._log("Socket not initialized, cannot reconnect", "warn")
+        return false
+      }
     } catch (err) {
-      this._log(`Reconnection error: ${err.message}`, 'error')
+      this._log(`Reconnection error: ${err.message}`, "error")
       return false
     }
   }
@@ -145,7 +179,7 @@ class SocketService {
     this._log("Disconnecting socket")
     this._clearConnectionMonitor()
     this.initialized = false
-    this.connectionState = 'disconnected'
+    this.connectionState = "disconnected"
     this.pendingMessages = []
 
     // Keep track of listeners to restore on reconnection
@@ -162,8 +196,8 @@ class SocketService {
    * @returns {Function} - Unsubscribe function
    */
   on(event, callback) {
-    if (!callback || typeof callback !== 'function') {
-      this._log(`Invalid callback for event: ${event}`, 'error')
+    if (!callback || typeof callback !== "function") {
+      this._log(`Invalid callback for event: ${event}`, "error")
       return () => {}
     }
 
@@ -179,7 +213,7 @@ class SocketService {
     try {
       unsubscribe = this.socket.on(event, callback)
     } catch (err) {
-      this._log(`Error registering event listener for ${event}: ${err.message}`, 'error')
+      this._log(`Error registering event listener for ${event}: ${err.message}`, "error")
       unsubscribe = () => {}
     }
 
@@ -194,7 +228,7 @@ class SocketService {
       try {
         unsubscribe()
       } catch (err) {
-        this._log(`Error unsubscribing from event ${event}: ${err.message}`, 'error')
+        this._log(`Error unsubscribing from event ${event}: ${err.message}`, "error")
       }
     }
   }
@@ -210,7 +244,7 @@ class SocketService {
     try {
       this.socket.off(event, callback)
     } catch (err) {
-      this._log(`Error removing event listener for ${event}: ${err.message}`, 'error')
+      this._log(`Error removing event listener for ${event}: ${err.message}`, "error")
     }
 
     // Also remove from our tracking
@@ -233,17 +267,17 @@ class SocketService {
    */
   emit(event, data = {}) {
     if (!this.socket) {
-      this._log(`Socket not initialized, cannot emit '${event}'`)
+      this._log(`Socket not initialized, cannot emit '${event}'`, "warn")
       return false
     }
 
     if (!this.isConnected()) {
-      this._log(`Socket not connected, queueing '${event}'`)
+      this._log(`Socket not connected, queueing '${event}'`, "warn")
       // Add timestamp to pending messages for potential TTL implementation
       this.pendingMessages.push({
         event,
         data,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       })
       return true
     }
@@ -253,7 +287,19 @@ class SocketService {
       this.socket.emit(event, data)
       return true
     } catch (error) {
-      this._log(`Error emitting '${event}': ${error.message}`, 'error')
+      this._log(`Error emitting '${event}': ${error.message}`, "error")
+
+      // Add to pending messages if it's an important event
+      const importantEvents = ["sendMessage", "messageRead", "answerCall"]
+      if (importantEvents.includes(event)) {
+        this._log(`Adding failed '${event}' to pending queue for retry`, "warn")
+        this.pendingMessages.push({
+          event,
+          data,
+          timestamp: Date.now(),
+        })
+      }
+
       return false
     }
   }
@@ -285,7 +331,7 @@ class SocketService {
           content,
           metadata: {
             ...metadata,
-            clientMessageId: tempMessageId
+            clientMessageId: tempMessageId,
           },
           createdAt: new Date().toISOString(),
           read: false,
@@ -296,18 +342,18 @@ class SocketService {
 
         // Queue the message for when connection is restored
         this.pendingMessages.push({
-          event: 'sendMessage',
+          event: "sendMessage",
           data: {
             recipientId,
             type,
             content,
             metadata: {
               ...metadata,
-              clientMessageId: tempMessageId
+              clientMessageId: tempMessageId,
             },
-            tempMessageId
+            tempMessageId,
           },
-          timestamp: Date.now()
+          timestamp: Date.now(),
         })
 
         return resolve(tempMessage)
@@ -338,7 +384,7 @@ class SocketService {
 
       const handleMessageError = (error) => {
         if (error && error.tempMessageId === tempMessageId) {
-          this._log(`Message error for ${tempMessageId}: ${error.error || "Unknown error"}`, 'error')
+          this._log(`Message error for ${tempMessageId}: ${error.error || "Unknown error"}`, "error")
           cleanupHandlers()
           reject(new Error(error.error || "Failed to send message"))
         }
@@ -351,7 +397,7 @@ class SocketService {
       // Enhance metadata
       const enhancedMetadata = {
         ...metadata,
-        clientMessageId: tempMessageId
+        clientMessageId: tempMessageId,
       }
 
       // Emit the message
@@ -365,7 +411,7 @@ class SocketService {
       })
 
       if (!emissionSuccess) {
-        this._log(`Message emission failed immediately for ${tempMessageId}`, 'error')
+        this._log(`Message emission failed immediately for ${tempMessageId}`, "error")
         cleanupHandlers()
 
         // Return a pending message so UI can show something
@@ -389,7 +435,7 @@ class SocketService {
       timeoutRef.current = setTimeout(() => {
         if (handlersCleaned) return
 
-        this._log(`Message timeout reached for ${tempMessageId}`, 'warn')
+        this._log(`Message timeout reached for ${tempMessageId}`, "warn")
         cleanupHandlers()
 
         // If timed out, return a temporary message with pending status
@@ -439,10 +485,10 @@ class SocketService {
       // Apply a short staggered delay to avoid overwhelming the server
       setTimeout(() => {
         // Check if the message is too old (5 minutes)
-        const isTooOld = Date.now() - msg.timestamp > 300000;
+        const isTooOld = Date.now() - msg.timestamp > 300000
 
         if (isTooOld) {
-          this._log(`Skipping stale pending message of type ${msg.event}`, 'warn')
+          this._log(`Skipping stale pending message of type ${msg.event}`, "warn")
           return
         }
 
@@ -462,7 +508,7 @@ class SocketService {
 
     return new Promise((resolve, reject) => {
       if (!this.isConnected()) {
-        this._log(`Socket not connected, cannot initiate call`, 'error')
+        this._log(`Socket not connected, cannot initiate call`, "error")
         return reject(new Error("Socket not connected"))
       }
 
@@ -479,14 +525,14 @@ class SocketService {
       }
 
       const handleCallInitiated = (response) => {
-        this._log(`Call initiated successfully: ${response.callId || 'unknown'}`)
+        this._log(`Call initiated successfully: ${response.callId || "unknown"}`)
         this.socket.off("callInitiated", handleCallInitiated)
         this.socket.off("callError", handleCallError)
         resolve(response)
       }
 
       const handleCallError = (error) => {
-        this._log(`Call initiation error: ${error.message || 'unknown'}`, 'error')
+        this._log(`Call initiation error: ${error.message || "unknown"}`, "error")
         this.socket.off("callInitiated", handleCallInitiated)
         this.socket.off("callError", handleCallError)
         reject(new Error(error.message || "Failed to initiate call"))
@@ -501,7 +547,7 @@ class SocketService {
 
       // Set a timeout
       setTimeout(() => {
-        this._log(`Call initiation timeout reached`, 'warn')
+        this._log(`Call initiation timeout reached`, "warn")
         this.socket.off("callInitiated", handleCallInitiated)
         this.socket.off("callError", handleCallError)
         resolve({ success: true, callId: callData.callId })
@@ -520,7 +566,7 @@ class SocketService {
     this._log(`Answering call from ${callerId} with accept=${accept}`)
 
     if (!this.isConnected()) {
-      this._log(`Cannot answer call: Socket not connected`, 'error')
+      this._log(`Cannot answer call: Socket not connected`, "error")
       return false
     }
 
@@ -539,7 +585,7 @@ class SocketService {
       })
 
       if (!success && attempts < maxAttempts) {
-        this._log(`Retrying call answer (attempt ${attempts})`, 'warn')
+        this._log(`Retrying call answer (attempt ${attempts})`, "warn")
         setTimeout(attemptAnswer, 1000)
       }
 
@@ -560,7 +606,7 @@ class SocketService {
       userId: this.userId,
       state: this.connectionState,
       reconnectAttempts: this.reconnectAttempts,
-      pendingMessages: this.pendingMessages.length
+      pendingMessages: this.pendingMessages.length,
     }
   }
 
@@ -571,29 +617,29 @@ class SocketService {
   setShowConnectionToasts(enable) {
     this.showConnectionToasts = enable
   }
-  
+
   /**
    * Update privacy settings for socket-related features
    * @param {Object} privacySettings - User privacy settings
    */
   updatePrivacySettings(privacySettings) {
-    if (!privacySettings) return;
-    
+    if (!privacySettings) return
+
     // Store privacy settings reference
-    this.privacySettings = privacySettings;
-    
+    this.privacySettings = privacySettings
+
     // Apply relevant settings
     if (privacySettings.showOnlineStatus !== undefined) {
-      this._log(`Updating online status visibility: ${privacySettings.showOnlineStatus}`);
+      this._log(`Updating online status visibility: ${privacySettings.showOnlineStatus}`)
       // Emit status update to server if needed
       if (this.isConnected()) {
         this.socket.emit("updatePrivacySettings", {
-          showOnlineStatus: privacySettings.showOnlineStatus
-        });
+          showOnlineStatus: privacySettings.showOnlineStatus,
+        })
       }
     }
-    
-    this._log(`Privacy settings updated: ${JSON.stringify(privacySettings)}`);
+
+    this._log(`Privacy settings updated: ${JSON.stringify(privacySettings)}`)
   }
 
   /**
@@ -610,19 +656,22 @@ class SocketService {
    * @param {string} message - Message to log
    * @param {string} level - Log level ('log', 'warn', 'error')
    */
-  _log(message, level = 'log') {
-    if (!this.debugMode && level === 'log') return
+  _log(message, level = "log") {
+    if (!this.debugMode && level === "log") return
 
-    const prefix = `[SocketService]`;
+    const prefix = `[SocketService]`
+    const timestamp = new Date().toISOString().substring(11, 19) // HH:MM:SS
+
     switch (level) {
-      case 'warn':
-        console.warn(prefix, message);
-        break;
-      case 'error':
-        console.error(prefix, message);
-        break;
+      case "warn":
+        console.warn(`${prefix} [${timestamp}]`, message)
+        break
+      case "error":
+        console.error(`${prefix} [${timestamp}]`, message)
+        // Could also send to an error reporting service here
+        break
       default:
-        console.log(prefix, message);
+        console.log(`${prefix} [${timestamp}]`, message)
     }
   }
 }

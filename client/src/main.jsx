@@ -8,7 +8,8 @@ if (typeof global === 'undefined') {
 }
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import "./styles/base.css";
-import "./styles/components.css";
+import "./styles/layout.css"; // Modern layout system
+import "./styles/components.css"; // Updated with 2025 Design System
 import "./styles/pages.css";
 import "./styles/utilities.css";
 // Assuming these are needed globally as well

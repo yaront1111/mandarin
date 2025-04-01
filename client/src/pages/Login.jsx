@@ -123,6 +123,7 @@ const Login = () => {
                       value={formData.email}
                       onChange={handleChange}
                       disabled={isSubmitting}
+                      autoComplete="email"
                     />
                   </div>
                   {formErrors.email && <p className="error-message">{formErrors.email}</p>}
@@ -148,6 +149,7 @@ const Login = () => {
                       value={formData.password}
                       onChange={handleChange}
                       disabled={isSubmitting}
+                      autoComplete="current-password"
                     />
                     <button type="button" className="toggle-password" onClick={togglePasswordVisibility} tabIndex={-1}>
                       {showPassword ? <FaEyeSlash /> : <FaEye />}

@@ -571,32 +571,123 @@ class ApiService {
     }
   }
 
-  // Add a utility function to validate MongoDB ObjectIds
+  // Enhanced utility to validate and sanitize MongoDB ObjectIds
   isValidObjectId = (id) => {
-    return id && typeof id === "string" && /^[0-9a-fA-F]{24}$/.test(id)
+    if (!id) return false;
+    
+    // If it's already a valid ObjectId string format, return true
+    if (typeof id === "string" && /^[0-9a-fA-F]{24}$/.test(id)) {
+      return true;
+    }
+    
+    // Try to extract a valid ObjectId from complex formats
+    try {
+      // Convert to string first
+      const idStr = String(id);
+      
+      // If it's a clean 24-char string, check directly
+      if (idStr.length === 24 && /^[0-9a-fA-F]{24}$/.test(idStr)) {
+        return true;
+      }
+      
+      // Look for a 24-character hex sequence embedded in a longer string
+      const match = idStr.match(/([0-9a-fA-F]{24})/);
+      if (match && match[1]) {
+        return true;
+      }
+      
+      // Check for ObjectId wrapping pattern
+      const objectIdMatch = idStr.match(/ObjectId\(['"](.*)['"]\)/);
+      if (objectIdMatch && objectIdMatch[1] && /^[0-9a-fA-F]{24}$/.test(objectIdMatch[1])) {
+        return true;
+      }
+    } catch (err) {
+      apiLogger.debug(`ObjectId validation error: ${err.message}`);
+    }
+    
+    return false;
+  }
+  
+  // Extract a valid ObjectId string from various formats
+  sanitizeObjectId = (id) => {
+    if (!id) return null;
+    
+    try {
+      // If already a string in the correct format, return as is
+      if (typeof id === "string" && /^[0-9a-fA-F]{24}$/.test(id)) {
+        return id;
+      }
+      
+      // Convert to string
+      const idStr = String(id);
+      
+      // Extract valid ObjectId if embedded in a longer string
+      const match = idStr.match(/([0-9a-fA-F]{24})/);
+      if (match && match[1]) {
+        return match[1];
+      }
+      
+      // Handle ObjectId wrapper format
+      const objectIdMatch = idStr.match(/ObjectId\(['"](.*)['"]\)/);
+      if (objectIdMatch && objectIdMatch[1] && /^[0-9a-fA-F]{24}$/.test(objectIdMatch[1])) {
+        return objectIdMatch[1];
+      }
+      
+      // Handle object with _id property
+      if (typeof id === 'object' && id !== null) {
+        if (id._id) return this.sanitizeObjectId(id._id);
+        if (id.id) return this.sanitizeObjectId(id.id);
+      }
+      
+      // If all else fails, return null
+      return null;
+    } catch (err) {
+      apiLogger.error(`Failed to sanitize ObjectId: ${err.message}`);
+      return null;
+    }
   }
 
-  // Update the get method to use the _processResponse helper
+  // Update the get method to use the _processResponse helper and sanitize ObjectIds
   async get(url, params = {}, options = {}) {
     try {
       // Check if the endpoint contains an ID parameter (common pattern: /users/:id, /messages/:id)
       const idMatch = url.match(/\/([^/]+)$/)
       if (idMatch && idMatch[1] && !url.includes("?") && !url.endsWith("/")) {
         const potentialId = idMatch[1]
-        // If it looks like a MongoDB ID but isn't valid, reject early
-        if (potentialId.length === 24 && !this.isValidObjectId(potentialId)) {
-          apiLogger.error(`Invalid ObjectId in request: ${potentialId}`)
-          return {
-            success: false,
-            error: "Invalid ID format",
-            status: 400,
+        
+        // Try to sanitize the ID first if it might be an ObjectId
+        if (potentialId.length >= 24 || potentialId.includes("ObjectId")) {
+          const sanitizedId = this.sanitizeObjectId(potentialId);
+          if (sanitizedId && sanitizedId !== potentialId) {
+            // Replace the invalid ID with the sanitized one
+            apiLogger.debug(`Sanitized ObjectId in URL: ${potentialId} -> ${sanitizedId}`);
+            url = url.replace(potentialId, sanitizedId);
+          } else if (potentialId.length === 24 && !this.isValidObjectId(potentialId)) {
+            apiLogger.error(`Invalid ObjectId in request: ${potentialId}`)
+            return {
+              success: false,
+              error: "Invalid ID format",
+              status: 400,
+            }
+          }
+        }
+      }
+      
+      // Sanitize any ID params in the request
+      const sanitizedParams = { ...params };
+      for (const key in sanitizedParams) {
+        if (key.toLowerCase().includes('id') && sanitizedParams[key]) {
+          const sanitizedId = this.sanitizeObjectId(sanitizedParams[key]);
+          if (sanitizedId) {
+            apiLogger.debug(`Sanitized param ${key}: ${sanitizedParams[key]} -> ${sanitizedId}`);
+            sanitizedParams[key] = sanitizedId;
           }
         }
       }
 
-      // Continue with the original request
+      // Continue with the original request using sanitized values
       const response = await this.api.get(url, {
-        params,
+        params: sanitizedParams,
         ...options,
         cancelToken: options.request?.cancelToken || options.cancelToken,
       })
@@ -607,13 +698,18 @@ class ApiService {
     }
   }
 
-  // Update the post method to use the _processResponse helper
+  // Update the post method to use the _processResponse helper and sanitize ObjectIds
   async post(url, data = {}, options = {}) {
     try {
       if (options.invalidateCache !== false) {
         this.cache.invalidate(url)
       }
-      const response = await this.api.post(url, data, {
+      
+      // Sanitize any ID fields in the request body
+      const sanitizedData = { ...data };
+      this._sanitizeObjectInPlace(sanitizedData);
+      
+      const response = await this.api.post(url, sanitizedData, {
         ...options,
         cancelToken: options.request?.cancelToken || options.cancelToken,
       })
@@ -623,14 +719,48 @@ class ApiService {
       throw error
     }
   }
+  
+  // Helper method to recursively sanitize object IDs within an object
+  _sanitizeObjectInPlace(obj) {
+    if (!obj || typeof obj !== 'object') return;
+    
+    Object.keys(obj).forEach(key => {
+      // If this is an ID field, sanitize it
+      if ((key === '_id' || key === 'id' || key.endsWith('Id')) && obj[key]) {
+        const sanitizedId = this.sanitizeObjectId(obj[key]);
+        if (sanitizedId) {
+          obj[key] = sanitizedId;
+        }
+      } 
+      // Recursively process nested objects and arrays
+      else if (obj[key] && typeof obj[key] === 'object') {
+        if (Array.isArray(obj[key])) {
+          // Process array items
+          obj[key].forEach(item => {
+            if (item && typeof item === 'object') {
+              this._sanitizeObjectInPlace(item);
+            }
+          });
+        } else {
+          // Process nested object
+          this._sanitizeObjectInPlace(obj[key]);
+        }
+      }
+    });
+  }
 
-  // Update the put method to use the _processResponse helper
+  // Update the put method to use the _processResponse helper and sanitize ObjectIds
   async put(url, data = {}, options = {}) {
     try {
       if (options.invalidateCache !== false) {
         this.cache.invalidate(url)
       }
-      const response = await this.api.put(url, data, {
+      
+      // Sanitize any ID fields in the request body
+      const sanitizedData = { ...data };
+      this._sanitizeObjectInPlace(sanitizedData);
+      
+      const response = await this.api.put(url, sanitizedData, {
         ...options,
         cancelToken: options.request?.cancelToken || options.cancelToken,
       })
@@ -641,12 +771,29 @@ class ApiService {
     }
   }
 
-  // Update the delete method to use the _processResponse helper
+  // Update the delete method to use the _processResponse helper and sanitize ObjectIds
   async delete(url, options = {}) {
     try {
       if (options.invalidateCache !== false) {
         this.cache.invalidate(url)
       }
+      
+      // Check if the endpoint contains an ID parameter and sanitize if needed
+      const idMatch = url.match(/\/([^/]+)$/)
+      if (idMatch && idMatch[1] && !url.includes("?") && !url.endsWith("/")) {
+        const potentialId = idMatch[1]
+        
+        // Try to sanitize the ID first if it might be an ObjectId
+        if (potentialId.length >= 24 || potentialId.includes("ObjectId")) {
+          const sanitizedId = this.sanitizeObjectId(potentialId);
+          if (sanitizedId && sanitizedId !== potentialId) {
+            // Replace the invalid ID with the sanitized one
+            apiLogger.debug(`Sanitized ObjectId in DELETE URL: ${potentialId} -> ${sanitizedId}`);
+            url = url.replace(potentialId, sanitizedId);
+          }
+        }
+      }
+      
       const response = await this.api.delete(url, {
         ...options,
         cancelToken: options.request?.cancelToken || options.cancelToken,

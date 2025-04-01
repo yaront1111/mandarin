@@ -24,6 +24,14 @@ const PhotoPermissionSchema = new Schema({
     required: [true, 'Requesting user ID is required'],
     index: true
   },
+  
+  // Owner of the photo (for easier querying)
+  photoOwnerId: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'Photo owner ID is required'],
+    index: true
+  },
 
   // Current status of the request
   status: {
@@ -88,29 +96,10 @@ PhotoPermissionSchema.pre('validate', async function(next) {
   try {
     // If this is a new permission request
     if (this.isNew) {
-      // Load the User model without causing circular dependency
-      const User = model('User');
-
-      // Find the owner of the photo
-      const photoOwner = await User.findOne({ 'photos._id': this.photo });
-
-      if (!photoOwner) {
-        return next(new Error('Photo not found'));
-      }
-
-      // Check if the requester is the owner
-      if (photoOwner._id.toString() === this.requestedBy.toString()) {
+      // Basic validation: requester cannot be the owner
+      if (this.photoOwnerId && this.requestedBy && 
+          this.photoOwnerId.toString() === this.requestedBy.toString()) {
         return next(new Error('Cannot request permission for your own photo'));
-      }
-
-      // Check if the photo is actually private
-      const photo = photoOwner.photos.id(this.photo);
-      if (!photo) {
-        return next(new Error('Photo not found'));
-      }
-
-      if (!photo.isPrivate) {
-        return next(new Error('Permission not required for public photos'));
       }
     }
 

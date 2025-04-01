@@ -168,22 +168,22 @@ const UserCard = ({
   // Common action buttons for both grid and list view
   const renderActionButtons = () => (
     <>
-      <Button
-        variant={isLiked ? "danger" : "light"}
-        size="small"
+      <button 
         onClick={handleLikeClick}
         aria-label={`${isLiked ? "Unlike" : "Like"} ${user.nickname}`}
-        icon={<FaHeart />}
-        className={`card-action-button like ${isLiked ? "active" : ""}`}
-      />
-      <Button
-        variant="primary"
-        size="small"
+        className={`action-btn like-btn ${isLiked ? "active" : ""}`}
+      >
+        <FaHeart size={18} />
+        {isLiked ? 'Liked' : 'Like'}
+      </button>
+      <button
         onClick={handleMessageClick}
         aria-label={`Message ${user.nickname}`}
-        icon={<FaComment />}
-        className="card-action-button message"
-      />
+        className="action-btn message-btn"
+      >
+        <FaComment size={18} />
+        Message
+      </button>
     </>
   );
 
@@ -231,21 +231,12 @@ const UserCard = ({
           </p>
 
           {/* Extended Details Section */}
-          {showExtendedDetails && (extendedDetails.status || extendedDetails.identity) && (
-            <div className="user-tags-container">
-              {extendedDetails.status && (
-                <div className="tag-category">
-                  <h4 className="tag-category-title">Status</h4>
-                  <div className="user-interests">
-                    <span className="interest-tag status-tag">{extendedDetails.status}</span>
-                  </div>
-                </div>
-              )}
-
-              {extendedDetails.identity && (
-                <div className="tag-category">
-                  <h4 className="tag-category-title">I am</h4>
-                  <div className="user-interests">
+          {showExtendedDetails && (
+            <div className="user-tags-container extended-details-container">
+              <div className="extended-details-row">
+                {extendedDetails.identity && (
+                  <div className="extended-detail-item">
+                    <span className="detail-label">I am:</span>
                     <span
                       className={`interest-tag identity-tag ${
                         extendedDetails.identity.toLowerCase().includes("woman")
@@ -260,35 +251,36 @@ const UserCard = ({
                       {extendedDetails.identity}
                     </span>
                   </div>
-                </div>
-              )}
+                )}
+                
+                {tags.lookingFor.length > 0 && (
+                  <div className="extended-detail-item">
+                    <span className="detail-label">Into:</span>
+                    <span className={`interest-tag ${
+                      tags.lookingFor[0].toLowerCase().includes("women") || tags.lookingFor[0].toLowerCase().includes("woman")
+                        ? "identity-woman"
+                        : tags.lookingFor[0].toLowerCase().includes("men") || tags.lookingFor[0].toLowerCase().includes("man")
+                          ? "identity-man"
+                          : tags.lookingFor[0].toLowerCase().includes("couple")
+                            ? "identity-couple"
+                            : "looking-for-tag"
+                    }`}>
+                      {tags.lookingFor[0]}
+                    </span>
+                    {tags.lookingFor.length > 1 && (
+                      <span className="more-count">+{tags.lookingFor.length - 1}</span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           {/* User Tags */}
           {showExtendedDetails && (
             <div className="user-tags-container">
-              {/* Interests always visible */}
-              {tags.interests.length > 0 && (
-                <div className="tag-category">
-                  <h4 className="tag-category-title">Interests</h4>
-                  <div className="user-interests">
-                    {(showAllTags ? tags.interests : tags.interests.slice(0, 3)).map((tag, idx) => (
-                      <span key={`interest-${idx}`} className="interest-tag">
-                        {tag}
-                      </span>
-                    ))}
-                    {tags.interests.length > 3 && !showAllTags && (
-                      <span className="interest-more" onClick={toggleShowAllTags}>
-                        +{tags.interests.length - 3}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Show More/Less Toggle for additional sections */}
-              {(tags.lookingFor.length > 0 || tags.into.length > 0) && (
+              {/* Show More/Less Toggle for all sections */}
+              {(tags.lookingFor.length > 0 || tags.into.length > 0 || tags.interests.length > 0) && (
                 <div className="tags-toggle">
                   <span className="tags-toggle-btn" onClick={toggleShowMoreSections}>
                     {showMoreSections ? "Show less" : "Show more"}
@@ -296,33 +288,53 @@ const UserCard = ({
                 </div>
               )}
 
-              {/* Looking For and Into sections - only visible when showMoreSections is true */}
+              {/* All sections now only visible when showMoreSections is true */}
               {showMoreSections && (
                 <>
-                  {tags.lookingFor.length > 0 && (
+                  {/* Interests */}
+                  {tags.interests.length > 0 && (
                     <div className="tag-category">
-                      <h4 className="tag-category-title">Looking for</h4>
+                      <h4 className="tag-category-title">Interests</h4>
                       <div className="user-interests">
-                        {(showAllTags ? tags.lookingFor : tags.lookingFor.slice(0, 3)).map((tag, idx) => (
-                          <span key={`lookingFor-${idx}`} className="interest-tag looking-for-tag">
+                        {(showAllTags ? tags.interests : tags.interests.slice(0, 3)).map((tag, idx) => (
+                          <span key={`interest-${idx}`} className={`interest-tag ${
+                            tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
+                              ? "identity-woman"
+                              : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
+                                ? "identity-man"
+                                : tag.toLowerCase().includes("couple")
+                                  ? "identity-couple"
+                                  : ""
+                          }`}>
                             {tag}
                           </span>
                         ))}
-                        {tags.lookingFor.length > 3 && !showAllTags && (
+                        {tags.interests.length > 3 && !showAllTags && (
                           <span className="interest-more" onClick={toggleShowAllTags}>
-                            +{tags.lookingFor.length - 3}
+                            +{tags.interests.length - 3}
                           </span>
                         )}
                       </div>
                     </div>
                   )}
+                
+                  {/* Into section - moved to details row above */}
 
+                  {/* Preferences section (formerly Into) */}
                   {tags.into.length > 0 && (
                     <div className="tag-category">
-                      <h4 className="tag-category-title">Into</h4>
+                      <h4 className="tag-category-title">Preferences</h4>
                       <div className="user-interests">
                         {(showAllTags ? tags.into : tags.into.slice(0, 3)).map((tag, idx) => (
-                          <span key={`into-${idx}`} className="interest-tag into-tag">
+                          <span key={`into-${idx}`} className={`interest-tag ${
+                            tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
+                              ? "identity-woman"
+                              : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
+                                ? "identity-man"
+                                : tag.toLowerCase().includes("couple")
+                                  ? "identity-couple"
+                                  : "into-tag"
+                          }`}>
                             {tag}
                           </span>
                         ))}
@@ -336,14 +348,13 @@ const UserCard = ({
                   )}
 
                   {/* Global More/Less Toggle for all tags */}
-                  {showMoreSections &&
-                    (tags.lookingFor.length > 3 || tags.into.length > 3 || tags.interests.length > 3) && (
-                      <div className="tags-toggle">
-                        <span className="tags-toggle-btn" onClick={toggleShowAllTags}>
-                          {showAllTags ? "Show less tags" : "Show all tags"}
-                        </span>
-                      </div>
-                    )}
+                  {(tags.lookingFor.length > 3 || tags.into.length > 3 || tags.interests.length > 3) && (
+                    <div className="tags-toggle">
+                      <span className="tags-toggle-btn" onClick={toggleShowAllTags}>
+                        {showAllTags ? "Show less tags" : "Show all tags"}
+                      </span>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -392,22 +403,13 @@ const UserCard = ({
           {user.details?.location || "Unknown location"}
         </p>
 
-        {/* Extended Details and Tags - Reusing same code as grid view with different class */}
-        {showExtendedDetails && (extendedDetails.status || extendedDetails.identity) && (
-          <div className="user-tags-container list-view">
-            {extendedDetails.status && (
-              <div className="tag-category">
-                <h4 className="tag-category-title">Status</h4>
-                <div className="user-interests">
-                  <span className="interest-tag status-tag">{extendedDetails.status}</span>
-                </div>
-              </div>
-            )}
-
-            {extendedDetails.identity && (
-              <div className="tag-category">
-                <h4 className="tag-category-title">I am</h4>
-                <div className="user-interests">
+        {/* Extended Details - List View */}
+        {showExtendedDetails && (
+          <div className="user-tags-container extended-details-container list-view">
+            <div className="extended-details-row">
+              {extendedDetails.identity && (
+                <div className="extended-detail-item">
+                  <span className="detail-label">I am:</span>
                   <span
                     className={`interest-tag identity-tag ${
                       extendedDetails.identity.toLowerCase().includes("woman")
@@ -422,35 +424,36 @@ const UserCard = ({
                     {extendedDetails.identity}
                   </span>
                 </div>
-              </div>
-            )}
+              )}
+              
+              {tags.lookingFor.length > 0 && (
+                <div className="extended-detail-item">
+                  <span className="detail-label">Into:</span>
+                  <span className={`interest-tag ${
+                    tags.lookingFor[0].toLowerCase().includes("women") || tags.lookingFor[0].toLowerCase().includes("woman")
+                      ? "identity-woman"
+                      : tags.lookingFor[0].toLowerCase().includes("men") || tags.lookingFor[0].toLowerCase().includes("man")
+                        ? "identity-man"
+                        : tags.lookingFor[0].toLowerCase().includes("couple")
+                          ? "identity-couple"
+                          : "looking-for-tag"
+                  }`}>
+                    {tags.lookingFor[0]}
+                  </span>
+                  {tags.lookingFor.length > 1 && (
+                    <span className="more-count">+{tags.lookingFor.length - 1}</span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {/* User Tags - List View */}
         {showExtendedDetails && (
           <div className="user-tags-container list-view">
-            {/* Interests are always visible */}
-            {tags.interests.length > 0 && (
-              <div className="tag-category">
-                <h4 className="tag-category-title">Interests</h4>
-                <div className="user-interests">
-                  {(showAllTags ? tags.interests : tags.interests.slice(0, 2)).map((tag, idx) => (
-                    <span key={`interest-${idx}`} className="interest-tag">
-                      {tag}
-                    </span>
-                  ))}
-                  {tags.interests.length > 2 && !showAllTags && (
-                    <span className="interest-more" onClick={toggleShowAllTags}>
-                      +{tags.interests.length - 2}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Show More/Less Toggle for additional sections */}
-            {(tags.lookingFor.length > 0 || tags.into.length > 0) && (
+            {/* Show More/Less Toggle for all sections */}
+            {(tags.lookingFor.length > 0 || tags.into.length > 0 || tags.interests.length > 0) && (
               <div className="tags-toggle">
                 <span className="tags-toggle-btn" onClick={toggleShowMoreSections}>
                   {showMoreSections ? "Show less" : "Show more"}
@@ -458,33 +461,53 @@ const UserCard = ({
               </div>
             )}
 
-            {/* Looking For and Into sections - only visible when showMoreSections is true */}
+            {/* All sections now only visible when showMoreSections is true */}
             {showMoreSections && (
               <>
-                {tags.lookingFor.length > 0 && (
+                {/* Interests */}
+                {tags.interests.length > 0 && (
                   <div className="tag-category">
-                    <h4 className="tag-category-title">Looking for</h4>
+                    <h4 className="tag-category-title">Interests</h4>
                     <div className="user-interests">
-                      {(showAllTags ? tags.lookingFor : tags.lookingFor.slice(0, 2)).map((tag, idx) => (
-                        <span key={`lookingFor-${idx}`} className="interest-tag looking-for-tag">
+                      {(showAllTags ? tags.interests : tags.interests.slice(0, 2)).map((tag, idx) => (
+                        <span key={`interest-${idx}`} className={`interest-tag ${
+                          tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
+                            ? "identity-woman"
+                            : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
+                              ? "identity-man"
+                              : tag.toLowerCase().includes("couple")
+                                ? "identity-couple"
+                                : ""
+                        }`}>
                           {tag}
                         </span>
                       ))}
-                      {tags.lookingFor.length > 2 && !showAllTags && (
+                      {tags.interests.length > 2 && !showAllTags && (
                         <span className="interest-more" onClick={toggleShowAllTags}>
-                          +{tags.lookingFor.length - 2}
+                          +{tags.interests.length - 2}
                         </span>
                       )}
                     </div>
                   </div>
                 )}
+                
+                {/* Into section - moved to details row above */}
 
+                {/* Preferences section (formerly Into) */}
                 {tags.into.length > 0 && (
                   <div className="tag-category">
-                    <h4 className="tag-category-title">Into</h4>
+                    <h4 className="tag-category-title">Preferences</h4>
                     <div className="user-interests">
                       {(showAllTags ? tags.into : tags.into.slice(0, 2)).map((tag, idx) => (
-                        <span key={`into-${idx}`} className="interest-tag into-tag">
+                        <span key={`into-${idx}`} className={`interest-tag ${
+                          tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
+                            ? "identity-woman"
+                            : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
+                              ? "identity-man"
+                              : tag.toLowerCase().includes("couple")
+                                ? "identity-couple"
+                                : "into-tag"
+                        }`}>
                           {tag}
                         </span>
                       ))}

@@ -6,6 +6,7 @@ export { useApi } from './useApi';
 export { useSocketConnection } from './useSocketConnection';
 export { useSettings } from './useSettings';
 export { useChatMessages } from './useChatMessages';
+export { default as useChat } from './useChat';
 
 // Simplified hook for checking if component is mounted (useful for async operations)
 import { useRef, useEffect, useState } from 'react';

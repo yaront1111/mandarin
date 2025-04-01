@@ -559,12 +559,42 @@ class SocketClient {
         const reconnectDelay = 1000 + Math.random() * 2000
         setTimeout(() => {
           try {
-            this.init(this.userId, token)
+            // Re-fetch a fresh token directly from storage in case it changed
+            const freshToken = localStorage.getItem("token") || sessionStorage.getItem("token")
+            if (freshToken !== token) {
+              console.log("Token changed since reconnection attempt started, using fresh token")
+            }
+            
+            // Always use the most recent token available
+            this.init(this.userId, freshToken || token)
+            
             // Dispatch reconnection success event specifically for notifications
             window.dispatchEvent(new CustomEvent("notificationSocketReconnected"))
             console.log("Socket reconnected with notification support")
           } catch (err) {
             console.error("Socket reconnection failed:", err)
+            
+            // If reconnection failed due to token issues, try one more time with a clean token
+            if (err.message && err.message.includes("auth")) {
+              console.log("Authentication error detected, trying emergency session reset")
+              
+              // Wait 2 seconds before trying the emergency recovery
+              setTimeout(() => {
+                try {
+                  // Use the emergency fix function if available
+                  if (typeof window.fixMyUserId === 'function') {
+                    window.fixMyUserId();
+                  } else {
+                    // Fallback to manual reset if fix function not available
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    window.location.reload();
+                  }
+                } catch (emergencyErr) {
+                  console.error("Emergency recovery failed:", emergencyErr);
+                }
+              }, 2000);
+            }
           }
           this.reconnecting = false
         }, reconnectDelay)

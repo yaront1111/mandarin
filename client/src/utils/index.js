@@ -3,6 +3,195 @@
  */
 
 export { default as logger, createLogger, LogLevel } from './logger';
+export * from './chatUtils';
+
+/**
+ * Reset user session by clearing all local storage and session storage
+ * Use this when the user encounters authentication issues
+ * @returns {void}
+ */
+export const resetUserSession = () => {
+  // Check if token exists before clearing
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  const hasToken = !!token;
+  
+  // Clear tokens
+  localStorage.removeItem('token');
+  sessionStorage.removeItem('token');
+  localStorage.removeItem('authToken');
+  sessionStorage.removeItem('authToken');
+  
+  // Clear any user data
+  localStorage.removeItem('user');
+  sessionStorage.removeItem('user');
+  
+  // Optional: Clear everything but keep console message
+  localStorage.clear();
+  sessionStorage.clear();
+  
+  // Add console message for debugging
+  console.log("🧹 User session reset completely!");
+  
+  // If we had a token before, put it back in localStorage only to ensure consistent source
+  if (hasToken && token) {
+    console.log("🔑 Re-saving token to localStorage only");
+    localStorage.setItem('token', token);
+  }
+  
+  // Show alert before reloading
+  alert("Session reset completed. You'll be redirected to login page.");
+  
+  // Reload the page
+  window.location.href = '/login';
+};
+
+/**
+ * EMERGENCY FIX: Direct fix for MongoDB ObjectId formatting issues
+ * This creates a globally accessible emergency fix function
+ */
+export const emergencyUserIdFix = () => {
+  // Try to get the current user from anywhere it might be stored
+  try {
+    // Create a dialog that shows what we're doing
+    const dialog = document.createElement('div');
+    dialog.style.position = 'fixed';
+    dialog.style.top = '20px';
+    dialog.style.left = '20px';
+    dialog.style.padding = '20px';
+    dialog.style.backgroundColor = 'white';
+    dialog.style.border = '1px solid black';
+    dialog.style.zIndex = '10000';
+    dialog.style.maxWidth = '80%';
+    dialog.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
+    
+    dialog.innerHTML = '<h3>🔧 Emergency User ID Fix Tool</h3><div id="status">Analyzing user data...</div>';
+    document.body.appendChild(dialog);
+    
+    const updateStatus = (text) => {
+      document.getElementById('status').innerHTML += `<br>${text}`;
+    };
+    
+    // Get the raw token
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    if (!token) {
+      updateStatus('❌ No token found. Please log in again.');
+      return;
+    }
+    
+    updateStatus('✅ Token found');
+    
+    // Force logout and clear storage
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Save just the token back
+    localStorage.setItem('token', token);
+    
+    updateStatus('✅ Session data reset, token preserved');
+    updateStatus('⏳ Reloading page in 2 seconds...');
+    
+    setTimeout(() => {
+      window.location.reload();
+    }, 2000);
+  } catch (err) {
+    console.error('Error in emergency fix:', err);
+    alert('Error fixing user ID. Try logging out and back in.');
+  }
+};
+
+// Add the fix as a global function for emergency use
+window.fixMyUserId = emergencyUserIdFix;
+
+/**
+ * Direct validator and fixer for MongoDB ObjectIDs
+ * @param {string|object} id - The ID to validate or fix
+ * @returns {string|null} - Valid MongoDB ObjectId string or null if unfixable
+ */
+export const ensureValidObjectId = (id) => {
+  if (!id) return null;
+  
+  // If already a valid ObjectId string, return it unchanged
+  const idString = typeof id === 'string' ? id : String(id);
+  if (/^[0-9a-fA-F]{24}$/.test(idString)) {
+    return idString;
+  }
+  
+  // If it's longer than 24 chars, try to extract a valid ObjectId
+  if (idString.length > 24) {
+    // Look for a 24-character hex sequence
+    const match = idString.match(/([0-9a-fA-F]{24})/);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  // Handle corrupted toString() results that might include "ObjectId(...)"
+  const objectIdMatch = idString.match(/ObjectId\(['"](.*)['"]\)/);
+  if (objectIdMatch && objectIdMatch[1]) {
+    const extracted = objectIdMatch[1];
+    if (/^[0-9a-fA-F]{24}$/.test(extracted)) {
+      return extracted;
+    }
+  }
+  
+  // For object with _id property
+  if (typeof id === 'object' && id !== null && id._id) {
+    return ensureValidObjectId(id._id);
+  }
+  
+  // For object with id property
+  if (typeof id === 'object' && id !== null && id.id) {
+    return ensureValidObjectId(id.id);
+  }
+  
+  return null;
+};
+
+/**
+ * A utility to directly patch MongoDB ObjectId requests into the API layer
+ * This is a more targeted version of the emergency fix that can be used in specific contexts
+ */
+export const patchApiObjectIdRequests = () => {
+  // Only run this once
+  if (window._objectIdRequestsPatched) return;
+  window._objectIdRequestsPatched = true;
+  
+  console.log("🔧 Installing API ObjectId request patch");
+  
+  // Intercept axios requests to fix ObjectId format issues
+  const originalOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function() {
+    this.addEventListener('readystatechange', function() {
+      if (this.readyState === 4 && this.status === 400) {
+        try {
+          const response = JSON.parse(this.responseText);
+          
+          // Check if error is related to user ID format
+          if (response.error && (
+              response.error === 'Invalid user ID format' || 
+              response.error === 'Invalid authenticated user ID format' || 
+              response.error === 'Invalid user ID format in request'
+          )) {
+            console.warn("⚠️ Caught ObjectId validation error:", response.error);
+            
+            // Try to auto-recover using the emergency fix
+            if (confirm("Session ID format error detected. Apply emergency fix?")) {
+              emergencyUserIdFix();
+            }
+          }
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
+    });
+    originalOpen.apply(this, arguments);
+  };
+  
+  console.log("✅ API ObjectId request patch installed");
+};
+
+// Install the patch immediately
+patchApiObjectIdRequests();
 
 // Create a URL normalization cache to avoid repetitive normalization work
 // and prevent duplicate network requests

@@ -18,9 +18,20 @@ export const useSocketConnection = (options = {}) => {
   useEffect(() => {
     const { userId, token, autoConnect = true } = options;
     
-    // Only attempt to connect if we have the required credentials
-    // and autoConnect is enabled
-    if (autoConnect && userId && token) {
+    // Determine if we should connect now
+    const shouldConnect = autoConnect && userId && token;
+    
+    // Get current connection status
+    const isCurrentlyConnected = socketService.isConnected();
+    
+    // Update our state to match actual socket state
+    if (isCurrentlyConnected !== connected) {
+      setConnected(isCurrentlyConnected);
+    }
+    
+    // Only attempt to connect if required credentials are available 
+    // and we're not already connected and autoConnect is enabled
+    if (shouldConnect && !isCurrentlyConnected) {
       connectSocket(userId, token);
     }
     
@@ -29,18 +40,27 @@ export const useSocketConnection = (options = {}) => {
       setConnected(true);
       setConnectionError(null);
       setIsConnecting(false);
+      console.log("Socket connected successfully");
     };
     
     const handleDisconnect = (reason) => {
       setConnected(false);
       setIsConnecting(false);
+      console.log(`Socket disconnected: ${reason}`);
+      
+      // If disconnected by server, set error
       if (reason === 'io server disconnect') {
         setConnectionError('Server disconnected the socket');
+      } else if (reason === 'transport close' || reason === 'transport error') {
+        // Network issues - don't show error to user but log it
+        console.log("Network disconnect - will auto-reconnect");
       }
     };
     
     const handleError = (err) => {
-      setConnectionError(err?.message || 'Connection error');
+      const errorMsg = err?.message || 'Connection error';
+      console.error(`Socket error: ${errorMsg}`);
+      setConnectionError(errorMsg);
       setIsConnecting(false);
     };
     
@@ -49,11 +69,25 @@ export const useSocketConnection = (options = {}) => {
     const disconnectListener = socketService.on('disconnect', handleDisconnect);
     const errorListener = socketService.on('error', handleError);
     
+    // Add connect error handler
+    const connectErrorListener = socketService.on('connect_error', (err) => {
+      console.error(`Socket connect error: ${err?.message}`);
+      setIsConnecting(false);
+      
+      // Don't show auth errors to user immediately - let retry happen first
+      if (err?.message?.includes('auth') || err?.message?.includes('token')) {
+        console.log("Auth error in socket - will retry");
+      } else {
+        setConnectionError(`Connect error: ${err?.message}`);
+      }
+    });
+    
     // Cleanup function to remove event listeners
     return () => {
       connectListener();
       disconnectListener();
       errorListener();
+      connectErrorListener();
       
       // Clean up any other event listeners we've registered
       eventListenersRef.current.forEach(removeListener => {

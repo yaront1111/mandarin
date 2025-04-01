@@ -352,23 +352,23 @@ const Dashboard = () => {
   const isLoading = (loading || likesLoading) && page === 1 && !initialLoadComplete
 
   return (
-    <div className="modern-dashboard">
+    <div className="app-container">
       <Navbar />
 
-      <main className="dashboard-content">
-        <div className="container">
+      <main className="app-main">
+        <div className="dashboard">
           {/* Stories Section */}
           <div className="stories-section">
-            <div className="stories-header d-flex justify-content-between align-items-center mb-3">
-              <h2>Stories</h2>
+            <div className="stories-header">
+              <h2 className="stories-title">Stories</h2>
               <button
-                className="btn btn-primary create-story-btn"
+                className="btn btn-primary btn-sm"
                 onClick={() => !creatingStory && setShowStoryCreator(true)}
                 aria-label="Create a new story"
                 disabled={creatingStory}
               >
-                <FaPlus className="me-2 d-none d-sm-inline" />
-                <span className="d-none d-md-inline">{creatingStory ? "Creating..." : "Create Story"}</span>
+                <FaPlus />
+                <span>{creatingStory ? "Creating..." : "Create Story"}</span>
               </button>
             </div>
             <StoriesCarousel
@@ -381,12 +381,15 @@ const Dashboard = () => {
           </div>
 
           {/* Content Header with Filters and View Toggle */}
-          <div className="content-header d-flex justify-content-between align-items-center">
-            <h1>{activeTab === "discover" ? "Discover People" : "Your Matches"}</h1>
-            <div className="content-actions d-flex align-items-center gap-2">
-              <div className="view-toggle d-none d-md-flex">
+          <div className="dashboard-header">
+            <div>
+              <h1 className="dashboard-title">{activeTab === "discover" ? "Discover People" : "Your Matches"}</h1>
+              <p className="dashboard-subtitle">Find the perfect match for you</p>
+            </div>
+            <div className="dashboard-actions">
+              <div className="view-toggle">
                 <button
-                  className={`view-toggle-btn ${viewMode === "grid" ? "active" : ""}`}
+                  className={`view-toggle-button ${viewMode === "grid" ? "active" : ""}`}
                   onClick={() => setViewMode("grid")}
                   title="Grid View"
                   aria-label="Grid view"
@@ -394,7 +397,7 @@ const Dashboard = () => {
                   <FaThLarge />
                 </button>
                 <button
-                  className={`view-toggle-btn ${viewMode === "list" ? "active" : ""}`}
+                  className={`view-toggle-button ${viewMode === "list" ? "active" : ""}`}
                   onClick={() => setViewMode("list")}
                   title="List View"
                   aria-label="List view"
@@ -402,17 +405,15 @@ const Dashboard = () => {
                   <FaList />
                 </button>
               </div>
-              <div
-                className={`filter-button d-flex ${showFilters ? "active" : ""}`}
+              <button
+                className={`filter-button ${showFilters ? "active" : ""}`}
                 onClick={() => setShowFilters(!showFilters)}
-                role="button"
-                tabIndex={0}
                 aria-expanded={showFilters}
                 aria-label="Toggle filters"
               >
                 <FaFilter />
-                <span className="d-none d-md-inline">Filters</span>
-              </div>
+                <span>Filters</span>
+              </button>
             </div>
           </div>
 
@@ -565,11 +566,14 @@ const Dashboard = () => {
           )}
 
           {/* Users Grid/List Display using enhanced UserCard component */}
-          <div className={`users-${viewMode} mt-4 animate-fade-in`}>
-            {isLoading ? (
-              <div className="loading-container">
-                <div className="spinner spinner-dark"></div>
-                <p className="loading-text">Loading users...</p>
+          <div className="users-section">
+            <div className={`users-${viewMode}`}>
+              {isLoading ? (
+              <div className="content-loader">
+                <div className="loading-container">
+                  <div className="spinner"></div>
+                  <p className="loading-text">Loading users...</p>
+                </div>
               </div>
             ) : sortedUsers.length > 0 ? (
               <>
@@ -600,25 +604,30 @@ const Dashboard = () => {
 
                 {/* Loading indicator at the bottom when loading more */}
                 {loadingMore && (
-                  <div className="loading-more-container">
-                    <FaSpinner className="loading-spinner" />
-                    <p>Loading more users...</p>
+                  <div className="content-loader" style={{minHeight: "100px"}}>
+                    <div className="loading-container">
+                      <div className="spinner"></div>
+                      <p className="loading-text">Loading more users...</p>
+                    </div>
                   </div>
                 )}
               </>
             ) : (
               // No Results Found
-              <div className="no-results">
-                <div className="no-results-icon">
-                  <FaSearch />
+              <div className="content-loader">
+                <div className="loading-container">
+                  <div className="no-results-icon">
+                    <FaSearch />
+                  </div>
+                  <h3>No matches found</h3>
+                  <p>Try adjusting your filters to see more people</p>
+                  <button className="btn btn-primary" onClick={resetFilters} aria-label="Reset filters">
+                    Reset Filters
+                  </button>
                 </div>
-                <h3>No matches found</h3>
-                <p>Try adjusting your filters to see more people</p>
-                <button className="btn btn-primary mt-3" onClick={resetFilters} aria-label="Reset filters">
-                  Reset Filters
-                </button>
               </div>
             )}
+            </div>
           </div>
         </div>
       </main>
@@ -647,44 +656,6 @@ const Dashboard = () => {
         />
       )}
 
-      {/* Add CSS for infinite scroll loading and badge positioning */}
-      <style jsx="true">{`
-        .user-card-wrapper {
-          position: relative;
-        }
-        
-        .loading-more-container {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 20px;
-          width: 100%;
-        }
-        
-        .loading-spinner {
-          animation: spin 1s linear infinite;
-          font-size: 24px;
-          margin-bottom: 10px;
-        }
-        
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        
-        .users-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-          gap: 1.5rem;
-        }
-        
-        .users-list {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
-      `}</style>
     </div>
   )
 }

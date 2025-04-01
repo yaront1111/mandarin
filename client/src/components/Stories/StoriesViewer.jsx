@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useStories, useUser, useAuth } from "../../context"
 import { FaHeart, FaRegHeart, FaComment, FaShare, FaPlay, FaPause, FaVolumeUp, FaVolumeMute } from "react-icons/fa"
 import { toast } from "react-toastify"
@@ -404,10 +404,10 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     return () => document.removeEventListener("keydown", keyHandler)
   }, [handlePrevStory, handleNextStory, onClose, navigating])
 
-  const handleClose = () => onClose?.()
+  const handleClose = useCallback(() => onClose?.(), [onClose])
 
-  // Action buttons styles
-  const actionButtonsStyle = {
+  // Action buttons styles - memoize all style objects to maintain consistent hook count
+  const actionButtonsStyle = useMemo(() => ({
     position: "absolute",
     bottom: "80px",
     right: "20px",
@@ -416,9 +416,9 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     gap: "16px",
     zIndex: 9999,
     pointerEvents: "auto",
-  }
+  }), []);
 
-  const storyActionButtonStyle = {
+  const storyActionButtonStyle = useMemo(() => ({
     width: "46px",
     height: "46px",
     borderRadius: "50%",
@@ -434,151 +434,136 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     WebkitBackdropFilter: "blur(4px)",
     pointerEvents: "auto",
     boxShadow: "0 2px 10px rgba(0, 0, 0, 0.3)",
-  }
+  }), []);
 
-  const activeButtonStyle = {
+  const activeButtonStyle = useMemo(() => ({
     ...storyActionButtonStyle,
     color: "var(--primary, #ff3366)",
     backgroundColor: "rgba(255, 51, 102, 0.2)",
     transform: "scale(1.1)",
-  }
+  }), [storyActionButtonStyle]);
 
-  const navigationStyle = {
+  const navigationStyle = useMemo(() => ({
     pointerEvents: "auto",
     zIndex: 900,
-  }
+  }), []);
 
-  const navArrowStyle = {
+  const navArrowStyle = useMemo(() => ({
     zIndex: 950,
-  }
+  }), []);
 
-  // Loading or Error states
-  if (loading) {
-    return (
-      <div className="stories-viewer-overlay">
-        <div className="stories-viewer-container" style={{ justifyContent: "center", alignItems: "center" }}>
-          <div className="spinner"></div>
-          <p style={{ color: "white" }}>Loading stories...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="stories-viewer-overlay">
-        <div className="stories-viewer-container" style={{ justifyContent: "center", alignItems: "center" }}>
-          <p style={{ color: "white" }}>{error}</p>
-          <button
-            onClick={handleClose}
-            style={{
-              marginTop: "20px",
-              padding: "10px 20px",
-              background: "#ff3366",
-              color: "white",
-              border: "none",
-              borderRadius: "5px",
-              cursor: "pointer",
-            }}
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (!currentStories.length || currentStoryIndex >= currentStories.length) {
-    return (
-      <div className="stories-viewer-overlay">
-        <div className="stories-viewer-container" style={{ justifyContent: "center", alignItems: "center" }}>
-          <p style={{ color: "white" }}>No stories available</p>
-          <button
-            onClick={handleClose}
-            style={{
-              marginTop: "20px",
-              padding: "10px 20px",
-              background: "#ff3366",
-              color: "white",
-              border: "none",
-              borderRadius: "5px",
-              cursor: "pointer",
-            }}
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  const currentStory = currentStories[currentStoryIndex]
-  if (!currentStory) {
-    return (
-      <div className="stories-viewer-overlay">
-        <div className="stories-viewer-container" style={{ justifyContent: "center", alignItems: "center" }}>
-          <p style={{ color: "white" }}>Story not available</p>
-          <button
-            onClick={handleClose}
-            style={{
-              marginTop: "20px",
-              padding: "10px 20px",
-              background: "#ff3366",
-              color: "white",
-              border: "none",
-              borderRadius: "5px",
-              cursor: "pointer",
-            }}
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  const getUserDisplayName = () => {
-    const storyUser = currentStory.user || currentStory.userData || {}
-    if (!storyUser || typeof storyUser === "string") return "Unknown User"
-    return storyUser.nickname || storyUser.username || storyUser.name || "User"
-  }
-
-  // Use memo to cache profile picture results
-  const getProfilePicture = useCallback(() => {
-    const storyUser = currentStory.user || currentStory.userData || {}
-    if (!storyUser || typeof storyUser === "string") {
-      return `/api/avatars/default`
+  // We'll define all renders here, but use a conditional to choose which one to display
+  // This maintains consistent hook calls
+  
+  // Extract current story if available
+  const currentStory = useMemo(() => {
+    if (currentStories && currentStories.length > 0 && currentStoryIndex < currentStories.length) {
+      return currentStories[currentStoryIndex];
     }
-    return storyUser.profilePicture || storyUser.avatar || `/api/avatars/${storyUser._id || "default"}`
-  }, [currentStory])
+    return null;
+  }, [currentStories, currentStoryIndex]);
+  
+  // Define common button style
+  const closeButtonStyle = useMemo(() => ({
+    marginTop: "20px",
+    padding: "10px 20px",
+    background: "#ff3366",
+    color: "white",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  }), []);
+  
+  // Define common container style
+  const centerContainerStyle = useMemo(() => ({
+    justifyContent: "center", 
+    alignItems: "center"
+  }), []);
+  
+  // Determine which view state to render
+  const viewState = useMemo(() => {
+    if (loading) return "loading";
+    if (error) return "error";
+    if (!currentStories.length || currentStoryIndex >= currentStories.length) return "empty";
+    if (!currentStory) return "notAvailable";
+    return "normal";
+  }, [loading, error, currentStories, currentStoryIndex, currentStory]);
 
-  const formatTimestamp = () => {
+  const getUserDisplayName = useCallback(() => {
+    if (!currentStories || !currentStories.length || currentStoryIndex >= currentStories.length) {
+      return "Unknown User";
+    }
+    const story = currentStories[currentStoryIndex];
+    if (!story) return "Unknown User";
+    
+    const storyUser = story.user || story.userData || {};
+    if (!storyUser || typeof storyUser === "string") return "Unknown User";
+    return storyUser.nickname || storyUser.username || storyUser.name || "User";
+  }, [currentStories, currentStoryIndex]);
+
+  // Memoize the profile picture calculation
+  const profilePicture = useCallback(() => {
+    if (!currentStories || !currentStories.length || currentStoryIndex >= currentStories.length) {
+      return `/api/avatars/default`;
+    }
+    const story = currentStories[currentStoryIndex];
+    if (!story) return `/api/avatars/default`;
+    
+    const storyUser = story.user || story.userData || {};
+    if (!storyUser || typeof storyUser === "string") {
+      return `/api/avatars/default`;
+    }
+    return storyUser.profilePicture || storyUser.avatar || `/api/avatars/${storyUser._id || "default"}`;
+  }, [currentStories, currentStoryIndex]);
+
+  const formatTimestamp = useCallback(() => {
+    if (!currentStories || !currentStories.length || currentStoryIndex >= currentStories.length) {
+      return "Recently";
+    }
+    
+    const story = currentStories[currentStoryIndex];
+    if (!story || !story.createdAt) return "Recently";
+    
     try {
-      return new Date(currentStory.createdAt).toLocaleTimeString([], {
+      return new Date(story.createdAt).toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
-      })
+      });
     } catch {
-      return "Recently"
+      return "Recently";
     }
-  }
+  }, [currentStories, currentStoryIndex]);
 
-  const getStoryContent = () => {
-    // Ensure we have a valid story to display
-    if (!currentStory) {
-      return <div className="stories-text-content">No story available</div>
+  // Memoize story content to prevent conditional hooks
+  const storyContent = useCallback(() => {
+    // Guard against missing story data
+    if (!currentStories || !currentStories.length || currentStoryIndex >= currentStories.length) {
+      return (
+        <div className="stories-text-content">
+          <p>No story available</p>
+        </div>
+      );
+    }
+
+    const story = currentStories[currentStoryIndex];
+    if (!story) {
+      return (
+        <div className="stories-text-content">
+          <p>Story not found</p>
+        </div>
+      );
     }
 
     // Handle text stories
-    if (currentStory.mediaType === "text" || currentStory.type === "text") {
-      const styleProps = {}
-      if (currentStory.backgroundStyle) {
-        styleProps.background = currentStory.backgroundStyle
-      } else if (currentStory.backgroundColor) {
-        styleProps.background = currentStory.backgroundColor
+    if (story.mediaType === "text" || story.type === "text") {
+      const styleProps = {};
+      if (story.backgroundStyle) {
+        styleProps.background = story.backgroundStyle;
+      } else if (story.backgroundColor) {
+        styleProps.background = story.backgroundColor;
       }
-      if (currentStory.fontStyle) {
-        styleProps.fontFamily = currentStory.fontStyle
+      if (story.fontStyle) {
+        styleProps.fontFamily = story.fontStyle;
       }
 
       return (
@@ -586,22 +571,22 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
           <div className="story-user-overlay">
             <span className="story-nickname">{getUserDisplayName()}</span>
           </div>
-          {currentStory.text || currentStory.content || ""}
+          {story.text || story.content || ""}
           {paused && (
             <div className="pause-indicator">
               <FaPlay size={24} />
             </div>
           )}
         </div>
-      )
+      );
     }
 
     // Handle image stories
     if (
-      (currentStory.mediaType?.startsWith("image") || currentStory.type === "image") &&
-      (currentStory.mediaUrl || currentStory.media)
+      (story.mediaType?.startsWith("image") || story.type === "image") &&
+      (story.mediaUrl || story.media)
     ) {
-      const mediaUrl = currentStory.mediaUrl || currentStory.media
+      const mediaUrl = story.mediaUrl || story.media;
       return (
         <div className="stories-image-container">
           <div className="story-user-overlay">
@@ -615,8 +600,8 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
             loading="lazy"
             decoding="async"
             onError={(e) => {
-              e.target.onerror = null
-              e.target.src = "/placeholder.svg"
+              e.target.onerror = null;
+              e.target.src = "/placeholder.svg";
             }}
           />
           {paused && (
@@ -624,19 +609,19 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
               <FaPlay size={24} />
             </div>
           )}
-          {currentStory.content && currentStory.content.trim() && (
-            <div className="story-caption">{currentStory.content}</div>
+          {story.content && story.content.trim() && (
+            <div className="story-caption">{story.content}</div>
           )}
         </div>
-      )
+      );
     }
 
     // Handle video stories
     if (
-      (currentStory.mediaType?.startsWith("video") || currentStory.type === "video") &&
-      (currentStory.mediaUrl || currentStory.media)
+      (story.mediaType?.startsWith("video") || story.type === "video") &&
+      (story.mediaUrl || story.media)
     ) {
-      const mediaUrl = currentStory.mediaUrl || currentStory.media
+      const mediaUrl = story.mediaUrl || story.media;
       return (
         <div className="stories-video-container">
           <div className="story-user-overlay">
@@ -653,7 +638,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
             crossOrigin="anonymous"
             onTimeUpdate={handleTimeUpdate}
             onError={(e) => {
-              console.error("Video failed to load:", e)
+              console.error("Video failed to load:", e);
             }}
           />
           {paused && (
@@ -668,11 +653,11 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
           >
             {muted ? <FaVolumeMute size={16} /> : <FaVolumeUp size={16} />}
           </button>
-          {currentStory.content && currentStory.content.trim() && (
-            <div className="story-caption">{currentStory.content}</div>
+          {story.content && story.content.trim() && (
+            <div className="story-caption">{story.content}</div>
           )}
         </div>
-      )
+      );
     }
 
     // Fallback for unknown story types
@@ -681,149 +666,218 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
         <div className="story-user-overlay">
           <span className="story-nickname">{getUserDisplayName()}</span>
         </div>
-        <p>{currentStory.text || currentStory.content || "No content available"}</p>
+        <p>{story.text || story.content || "No content available"}</p>
         {paused && (
           <div className="pause-indicator">
             <FaPlay size={24} />
           </div>
         )}
       </div>
-    )
-  }
+    );
+  }, [currentStories, currentStoryIndex, paused, muted, getUserDisplayName, handleTimeUpdate, toggleMute]);
+  
+  // Define getStoryContent as a wrapper function that calls storyContent
+  // This ensures backward compatibility without conditional hooks
+  const getStoryContent = useCallback(() => {
+    return storyContent();
+  }, [storyContent]);
 
-  return (
-    <div className="stories-viewer-overlay">
-      <div className="stories-viewer-container">
-        <div className="stories-viewer-header">
-          {/* Progress bars */}
-          <div className="stories-progress-container">
-            {currentStories.map((_, index) => (
-              <div key={index} className={`stories-progress-bar ${index < currentStoryIndex ? "completed" : ""}`}>
-                {index === currentStoryIndex && (
-                  <div className="stories-progress-fill" style={{ width: `${progress}%` }} />
-                )}
-              </div>
-            ))}
-          </div>
+  // Render Loading State
+  const loadingContent = useMemo(() => (
+    <div className="stories-viewer-container" style={centerContainerStyle}>
+      <div className="spinner"></div>
+      <p style={{ color: "white" }}>Loading stories...</p>
+    </div>
+  ), [centerContainerStyle]);
 
-          {/* User info */}
-          <div className="stories-user-info">
-            <img
-              src={getProfilePicture() || "/placeholder.svg"}
-              alt={getUserDisplayName()}
-              className="stories-user-avatar"
-              loading="lazy"
-              crossOrigin="anonymous"
-              onError={(e) => {
-                e.target.onerror = null
-                e.target.src = "/placeholder.svg"
-              }}
-            />
-            <div className="stories-user-details">
-              <span className="stories-username">{getUserDisplayName()}</span>
-              <span className="stories-timestamp">{formatTimestamp()}</span>
+  // Render Error State
+  const errorContent = useMemo(() => (
+    <div className="stories-viewer-container" style={centerContainerStyle}>
+      <p style={{ color: "white" }}>{error}</p>
+      <button onClick={handleClose} style={closeButtonStyle}>Close</button>
+    </div>
+  ), [error, handleClose, centerContainerStyle, closeButtonStyle]);
+
+  // Render Empty State
+  const emptyContent = useMemo(() => (
+    <div className="stories-viewer-container" style={centerContainerStyle}>
+      <p style={{ color: "white" }}>No stories available</p>
+      <button onClick={handleClose} style={closeButtonStyle}>Close</button>
+    </div>
+  ), [handleClose, centerContainerStyle, closeButtonStyle]);
+
+  // Render Not Available State
+  const notAvailableContent = useMemo(() => (
+    <div className="stories-viewer-container" style={centerContainerStyle}>
+      <p style={{ color: "white" }}>Story not available</p>
+      <button onClick={handleClose} style={closeButtonStyle}>Close</button>
+    </div>
+  ), [handleClose, centerContainerStyle, closeButtonStyle]);
+
+  // Render Normal State (with full content)
+  const normalContent = useMemo(() => (
+    <div className="stories-viewer-container">
+      <div className="stories-viewer-header">
+        {/* Progress bars */}
+        <div className="stories-progress-container">
+          {currentStories.map((_, index) => (
+            <div key={index} className={`stories-progress-bar ${index < currentStoryIndex ? "completed" : ""}`}>
+              {index === currentStoryIndex && (
+                <div className="stories-progress-fill" style={{ width: `${progress}%` }} />
+              )}
             </div>
+          ))}
+        </div>
+
+        {/* User info */}
+        <div className="stories-user-info">
+          <img
+            src={profilePicture() || "/placeholder.svg"}
+            alt={getUserDisplayName()}
+            className="stories-user-avatar"
+            loading="lazy"
+            crossOrigin="anonymous"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = "/placeholder.svg";
+            }}
+          />
+          <div className="stories-user-details">
+            <span className="stories-username">{getUserDisplayName()}</span>
+            <span className="stories-timestamp">{formatTimestamp()}</span>
           </div>
-
-          {/* Close button */}
-          <button className="stories-close-btn" onClick={handleClose} aria-label="Close stories">
-            ×
-          </button>
         </div>
 
+        {/* Close button */}
+        <button className="stories-close-btn" onClick={handleClose} aria-label="Close stories">
+          ×
+        </button>
+      </div>
+
+      <div
+        className="stories-viewer-content"
+        onClick={(e) => {
+          // Only toggle pause if click is directly on content (not on a button or other element)
+          if (e.target === e.currentTarget) {
+            togglePause(e);
+          }
+        }}
+      >
+        {storyContent()}
+      </div>
+
+      <div className="stories-viewer-navigation" style={navigationStyle}>
         <div
-          className="stories-viewer-content"
-          onClick={(e) => {
-            // Only toggle pause if click is directly on content (not on a button or other element)
-            if (e.target === e.currentTarget) {
-              togglePause(e)
-            }
-          }}
-        >
-          {getStoryContent()}
-        </div>
-
-        <div className="stories-viewer-navigation" style={navigationStyle}>
-          <div
-            className="stories-nav-left"
-            onClick={handlePrevStory}
-            aria-label="Previous story"
-            style={navArrowStyle}
-          ></div>
-          <div
-            className="stories-nav-right"
-            onClick={handleNextStory}
-            aria-label="Next story"
-            style={navArrowStyle}
-          ></div>
-        </div>
-
-        {/* Improved Story actions */}
+          className="stories-nav-left"
+          onClick={handlePrevStory}
+          aria-label="Previous story"
+          style={navArrowStyle}
+        ></div>
         <div
-          ref={actionsRef}
-          className="stories-actions"
-          style={actionButtonsStyle}
-          onClick={(e) => {
-            // Prevent event bubbling
-            e.stopPropagation()
-            e.preventDefault()
-            setActionClicked(true)
-          }}
+          className="stories-nav-right"
+          onClick={handleNextStory}
+          aria-label="Next story"
+          style={navArrowStyle}
+        ></div>
+      </div>
+
+      {/* Story actions */}
+      <div
+        ref={actionsRef}
+        className="stories-actions"
+        style={actionButtonsStyle}
+        onClick={(e) => {
+          // Prevent event bubbling
+          e.stopPropagation();
+          e.preventDefault();
+          setActionClicked(true);
+        }}
+      >
+        <button
+          className={`story-action-button ${reacted ? "active" : ""}`}
+          style={reacted ? activeButtonStyle : storyActionButtonStyle}
+          onClick={handleReact}
+          aria-label="Like story"
         >
-          <button
-            className={`story-action-button ${reacted ? "active" : ""}`}
-            style={reacted ? activeButtonStyle : storyActionButtonStyle}
-            onClick={handleReact}
-            aria-label="Like story"
-          >
-            {reacted ? <FaHeart size={20} /> : <FaRegHeart size={20} />}
-          </button>
-          <button
-            className="story-action-button"
-            style={storyActionButtonStyle}
-            onClick={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              setActionClicked(true)
-              toast.info("Comments feature coming soon!")
-              setTimeout(() => setActionClicked(false), 300)
-            }}
-            aria-label="Comment on story"
-          >
-            <FaComment size={20} />
-          </button>
-          <button
-            className="story-action-button"
-            style={storyActionButtonStyle}
-            onClick={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              setActionClicked(true)
-              toast.info("Share feature coming soon!")
-              setTimeout(() => setActionClicked(false), 300)
-            }}
-            aria-label="Share story"
-          >
-            <FaShare size={20} />
-          </button>
-          <button
-            className="story-action-button"
-            style={storyActionButtonStyle}
-            onClick={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              setActionClicked(true)
-              togglePause(e)
-              setTimeout(() => setActionClicked(false), 300)
-            }}
-            aria-label={paused ? "Play story" : "Pause story"}
-          >
-            {paused ? <FaPlay size={20} /> : <FaPause size={20} />}
-          </button>
-        </div>
+          {reacted ? <FaHeart size={20} /> : <FaRegHeart size={20} />}
+        </button>
+        <button
+          className="story-action-button"
+          style={storyActionButtonStyle}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            setActionClicked(true);
+            toast.info("Comments feature coming soon!");
+            setTimeout(() => setActionClicked(false), 300);
+          }}
+          aria-label="Comment on story"
+        >
+          <FaComment size={20} />
+        </button>
+        <button
+          className="story-action-button"
+          style={storyActionButtonStyle}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            setActionClicked(true);
+            toast.info("Share feature coming soon!");
+            setTimeout(() => setActionClicked(false), 300);
+          }}
+          aria-label="Share story"
+        >
+          <FaShare size={20} />
+        </button>
+        <button
+          className="story-action-button"
+          style={storyActionButtonStyle}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            setActionClicked(true);
+            togglePause(e);
+            setTimeout(() => setActionClicked(false), 300);
+          }}
+          aria-label={paused ? "Play story" : "Pause story"}
+        >
+          {paused ? <FaPlay size={20} /> : <FaPause size={20} />}
+        </button>
       </div>
     </div>
-  )
+  ), [
+    currentStories, 
+    currentStoryIndex, 
+    progress, 
+    profilePicture, 
+    getUserDisplayName, 
+    formatTimestamp, 
+    handleClose, 
+    togglePause, 
+    storyContent, 
+    navigationStyle, 
+    handlePrevStory, 
+    handleNextStory, 
+    navArrowStyle, 
+    actionButtonsStyle, 
+    setActionClicked, 
+    reacted, 
+    activeButtonStyle, 
+    storyActionButtonStyle, 
+    handleReact, 
+    paused
+  ]);
+
+  // Main render with a single return statement
+  return (
+    <div className="stories-viewer-overlay">
+      {viewState === "loading" && loadingContent}
+      {viewState === "error" && errorContent}
+      {viewState === "empty" && emptyContent}
+      {viewState === "notAvailable" && notAvailableContent}
+      {viewState === "normal" && normalContent}
+    </div>
+  );
 }
 
 export default StoriesViewer

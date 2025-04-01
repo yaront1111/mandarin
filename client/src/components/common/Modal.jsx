@@ -115,7 +115,7 @@ const Modal = ({
   if (!isOpen) return null;
   
   const modalContent = (
-    <div className={`modal-overlay ${isOpen ? 'open' : ''}`}>
+    <div className={`modal-overlay ${isOpen ? 'open' : ''}`} onClick={closeOnClickOutside ? onClose : undefined}>
       <div 
         className={`modal ${sizeClasses[size] || ''} ${className}`}
         ref={(el) => {
@@ -124,6 +124,7 @@ const Modal = ({
             closeModalRef.current = el;
           }
         }}
+        onClick={(e) => e.stopPropagation()} 
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? "modal-title" : undefined}

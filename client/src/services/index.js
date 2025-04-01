@@ -6,7 +6,8 @@ import storiesService from './storiesService.jsx';
 import notificationService from './notificationService.jsx';
 import settingsService from './settingsService.jsx';
 import subscriptionService from './subscriptionService.jsx';
-import permissionClient from './PermissionClient.jsx'; // <-- Import new client
+import permissionClient from './PermissionClient.jsx';
+import chatService from './ChatService';
 
 // Standard services
 export {
@@ -16,11 +17,17 @@ export {
   notificationService,
   settingsService,
   subscriptionService,
-  permissionClient // <-- Export new client
+  permissionClient,
+  chatService
 };
 
 // Socket-specific exports (optional)
 export const socket = {
   service: socketService,
   client: socketClient
+};
+
+// Chat-specific exports
+export const chat = {
+  service: chatService,
 };
