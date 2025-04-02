@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { FaBell, FaLock, FaPalette, FaSignOutAlt, FaTrash, FaUser, FaShieldAlt, FaSave, FaTimes } from "react-icons/fa"
+import { FaBell, FaLock, FaPalette, FaSignOutAlt, FaTrash, FaUser, FaShieldAlt, FaSave, FaTimes, FaExclamationTriangle } from "react-icons/fa"
 import { toast } from "react-toastify"
 import { useAuth, useTheme, useUser } from "../context"
 import { settingsService } from "../services"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
+import { Navbar } from "../components/LayoutComponents"
+import styles from "../styles/settings.module.css"
 
 const Settings = () => {
   const navigate = useNavigate()
@@ -403,268 +405,284 @@ const Settings = () => {
     switch (activeTab) {
       case "notifications":
         return (
-          <div className="settings-content">
-            <div className="settings-option">
-              <div className="option-text">
-                <h3>Message Notifications</h3>
-                <p>Get notified when you receive new messages</p>
+          <div className={styles.settingsContent}>
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>Message Notifications</h3>
+                <p className={styles.optionDescription}>Get notified when you receive new messages</p>
               </div>
-              <label className="toggle-switch">
+              <label className={styles.toggleWrapper}>
                 <input
                   type="checkbox"
                   checked={settings.notifications.messages}
                   onChange={() => handleToggleChange("notifications", "messages")}
+                  className={styles.toggleInput}
                 />
-                <span className="toggle-slider"></span>
+                <span className={styles.toggleSlider}></span>
               </label>
             </div>
 
-            <div className="settings-option">
-              <div className="option-text">
-                <h3>Call Notifications</h3>
-                <p>Get notified for incoming calls</p>
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>Call Notifications</h3>
+                <p className={styles.optionDescription}>Get notified for incoming calls</p>
               </div>
-              <label className="toggle-switch">
+              <label className={styles.toggleWrapper}>
                 <input
                   type="checkbox"
                   checked={settings.notifications.calls}
                   onChange={() => handleToggleChange("notifications", "calls")}
+                  className={styles.toggleInput}
                 />
-                <span className="toggle-slider"></span>
+                <span className={styles.toggleSlider}></span>
               </label>
             </div>
 
-            <div className="settings-option">
-              <div className="option-text">
-                <h3>Story Notifications</h3>
-                <p>Get notified when friends post new stories</p>
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>Story Notifications</h3>
+                <p className={styles.optionDescription}>Get notified when friends post new stories</p>
               </div>
-              <label className="toggle-switch">
+              <label className={styles.toggleWrapper}>
                 <input
                   type="checkbox"
                   checked={settings.notifications.stories}
                   onChange={() => handleToggleChange("notifications", "stories")}
+                  className={styles.toggleInput}
                 />
-                <span className="toggle-slider"></span>
+                <span className={styles.toggleSlider}></span>
               </label>
             </div>
 
-            <div className="settings-option">
-              <div className="option-text">
-                <h3>Like Notifications</h3>
-                <p>Get notified when someone likes your content</p>
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>Like Notifications</h3>
+                <p className={styles.optionDescription}>Get notified when someone likes your content</p>
               </div>
-              <label className="toggle-switch">
+              <label className={styles.toggleWrapper}>
                 <input
                   type="checkbox"
                   checked={settings.notifications.likes}
                   onChange={() => handleToggleChange("notifications", "likes")}
+                  className={styles.toggleInput}
                 />
-                <span className="toggle-slider"></span>
+                <span className={styles.toggleSlider}></span>
               </label>
             </div>
 
-            <div className="settings-option">
-              <div className="option-text">
-                <h3>Comment Notifications</h3>
-                <p>Get notified when someone comments on your content</p>
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>Comment Notifications</h3>
+                <p className={styles.optionDescription}>Get notified when someone comments on your content</p>
               </div>
-              <label className="toggle-switch">
+              <label className={styles.toggleWrapper}>
                 <input
                   type="checkbox"
                   checked={settings.notifications.comments}
                   onChange={() => handleToggleChange("notifications", "comments")}
+                  className={styles.toggleInput}
                 />
-                <span className="toggle-slider"></span>
+                <span className={styles.toggleSlider}></span>
               </label>
             </div>
           </div>
-        )
+        );
 
       case "privacy":
         return (
-          <div className="settings-content">
-            <div className="settings-option">
-              <div className="option-text">
-                <h3>Online Status</h3>
-                <p>Show when you're active on the app</p>
+          <div className={styles.settingsContent}>
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>Online Status</h3>
+                <p className={styles.optionDescription}>Show when you're active on the app</p>
               </div>
-              <label className="toggle-switch">
+              <label className={styles.toggleWrapper}>
                 <input
                   type="checkbox"
                   checked={settings.privacy.showOnlineStatus}
                   onChange={() => handleToggleChange("privacy", "showOnlineStatus")}
+                  className={styles.toggleInput}
                 />
-                <span className="toggle-slider"></span>
+                <span className={styles.toggleSlider}></span>
               </label>
             </div>
 
-            <div className="settings-option">
-              <div className="option-text">
-                <h3>Read Receipts</h3>
-                <p>Let others know when you've read their messages</p>
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>Read Receipts</h3>
+                <p className={styles.optionDescription}>Let others know when you've read their messages</p>
               </div>
-              <label className="toggle-switch">
+              <label className={styles.toggleWrapper}>
                 <input
                   type="checkbox"
                   checked={settings.privacy.showReadReceipts}
                   onChange={() => handleToggleChange("privacy", "showReadReceipts")}
+                  className={styles.toggleInput}
                 />
-                <span className="toggle-slider"></span>
+                <span className={styles.toggleSlider}></span>
               </label>
             </div>
 
-            <div className="settings-option">
-              <div className="option-text">
-                <h3>Last Seen</h3>
-                <p>Show when you were last active</p>
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>Last Seen</h3>
+                <p className={styles.optionDescription}>Show when you were last active</p>
               </div>
-              <label className="toggle-switch">
+              <label className={styles.toggleWrapper}>
                 <input
                   type="checkbox"
                   checked={settings.privacy.showLastSeen}
                   onChange={() => handleToggleChange("privacy", "showLastSeen")}
+                  className={styles.toggleInput}
                 />
-                <span className="toggle-slider"></span>
+                <span className={styles.toggleSlider}></span>
               </label>
             </div>
 
-            <div className="settings-option">
-              <div className="option-text">
-                <h3>Story Replies</h3>
-                <p>Control who can reply to your stories</p>
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>Story Replies</h3>
+                <p className={styles.optionDescription}>Control who can reply to your stories</p>
               </div>
-              <div className="radio-options">
-                <label className="radio-option">
+              <div className={styles.radioGroup}>
+                <label className={styles.radioOption}>
                   <input
                     type="radio"
                     name="storyReplies"
                     value="everyone"
                     checked={settings.privacy.allowStoryReplies === "everyone"}
                     onChange={() => handleRadioChange("privacy", "allowStoryReplies", "everyone")}
+                    className={styles.radioInput}
                   />
                   Everyone
                 </label>
-                <label className="radio-option">
+                <label className={styles.radioOption}>
                   <input
                     type="radio"
                     name="storyReplies"
                     value="friends"
                     checked={settings.privacy.allowStoryReplies === "friends"}
                     onChange={() => handleRadioChange("privacy", "allowStoryReplies", "friends")}
+                    className={styles.radioInput}
                   />
                   Friends only
                 </label>
-                <label className="radio-option">
+                <label className={styles.radioOption}>
                   <input
                     type="radio"
                     name="storyReplies"
                     value="none"
                     checked={settings.privacy.allowStoryReplies === "none"}
                     onChange={() => handleRadioChange("privacy", "allowStoryReplies", "none")}
+                    className={styles.radioInput}
                   />
                   No one
                 </label>
               </div>
             </div>
           </div>
-        )
+        );
 
       case "appearance":
         return (
-          <div className="settings-content">
-            <div className="settings-option">
-              <div className="option-text">
-                <h3>Theme</h3>
-                <p>Choose your preferred app theme</p>
+          <div className={styles.settingsContent}>
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>Theme</h3>
+                <p className={styles.optionDescription}>Choose your preferred app theme</p>
               </div>
-              <div className="theme-options">
+              <div className={styles.themeOptions}>
                 <button
-                  className={`theme-option ${theme === "light" ? "active" : ""}`}
+                  className={`${styles.themeOption} ${theme === "light" ? styles.active : ""}`}
                   onClick={() => handleThemeChange("light")}
                 >
-                  <div className="theme-preview light"></div>
-                  <span>Light</span>
+                  <div className={`${styles.themePreview} ${styles.light}`}></div>
+                  <span className={styles.themeName}>Light</span>
                 </button>
                 <button
-                  className={`theme-option ${theme === "dark" ? "active" : ""}`}
+                  className={`${styles.themeOption} ${theme === "dark" ? styles.active : ""}`}
                   onClick={() => handleThemeChange("dark")}
                 >
-                  <div className="theme-preview dark"></div>
-                  <span>Dark</span>
+                  <div className={`${styles.themePreview} ${styles.dark}`}></div>
+                  <span className={styles.themeName}>Dark</span>
                 </button>
                 <button
-                  className={`theme-option ${theme === "system" ? "active" : ""}`}
+                  className={`${styles.themeOption} ${theme === "system" ? styles.active : ""}`}
                   onClick={() => handleThemeChange("system")}
                 >
-                  <div className="theme-preview system"></div>
-                  <span>System</span>
+                  <div className={`${styles.themePreview} ${styles.system}`}></div>
+                  <span className={styles.themeName}>System</span>
                 </button>
               </div>
             </div>
 
-            <div className="settings-option">
-              <div className="option-text">
-                <h3>Quick Theme Toggle</h3>
-                <p>Quickly switch between light and dark mode</p>
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>Quick Theme Toggle</h3>
+                <p className={styles.optionDescription}>Quickly switch between light and dark mode</p>
               </div>
               <ThemeToggle />
             </div>
           </div>
-        )
+        );
 
       case "account":
         return (
-          <div className="settings-content">
-            <div className="account-info">
-              <div className="account-detail">
-                <strong>Username:</strong> {user?.username || "Not available"}
+          <div className={styles.settingsContent}>
+            <div className={styles.accountInfo}>
+              <div className={styles.accountDetail}>
+                <span className={styles.accountLabel}>Username:</span> {user?.username || "Not available"}
               </div>
-              <div className="account-detail">
-                <strong>Email:</strong> {user?.email || "Not available"}
+              <div className={styles.accountDetail}>
+                <span className={styles.accountLabel}>Email:</span> {user?.email || "Not available"}
               </div>
-              <div className="account-detail">
-                <strong>Member since:</strong>{" "}
+              <div className={styles.accountDetail}>
+                <span className={styles.accountLabel}>Member since:</span>{" "}
                 {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : "Not available"}
               </div>
-              <div className="account-detail">
-                <strong>Subscription:</strong> {user?.subscription?.plan || "Free"}
+              <div className={styles.accountDetail}>
+                <span className={styles.accountLabel}>Subscription:</span> {user?.subscription?.plan || "Free"}
               </div>
             </div>
 
-            <div className="account-actions">
-              <button className="settings-action-button edit" onClick={() => navigate("/profile")}>
-                <FaUser />
+            <div className={styles.accountActions}>
+              <button className={`${styles.actionButton} ${styles.editButton}`} onClick={() => navigate("/profile")}>
+                <FaUser className={styles.actionIcon} />
                 <span>Edit Profile</span>
               </button>
 
-              <button className="settings-action-button logout" onClick={handleLogout}>
-                <FaSignOutAlt />
+              <button className={`${styles.actionButton} ${styles.logoutButton}`} onClick={handleLogout}>
+                <FaSignOutAlt className={styles.actionIcon} />
                 <span>Log out</span>
               </button>
 
-              <button className="settings-action-button delete" onClick={handleDeleteAccount}>
-                <FaTrash />
+              <button className={`${styles.actionButton} ${styles.deleteButton}`} onClick={handleDeleteAccount}>
+                <FaTrash className={styles.actionIcon} />
                 <span>Delete Account</span>
               </button>
             </div>
           </div>
-        )
+        );
 
       default:
-        return null
+        return null;
     }
-  }
+  };
 
   // Add a loading state to ensure settings are only shown when we have user data
   // This conditional return MUST come after all hooks are defined
   if (!currentUser && loadingSettings && !fallbackSettings) {
     return (
-      <div className="settings-page">
-        <div className="settings-container">
-          <h1 className="settings-title">Settings</h1>
-          <div className="loading-message">
-            <p>Loading your settings...</p>
+      <div className={styles.settingsPage}>
+        <Navbar />
+        <div className={styles.settingsContent}>
+          <div className={styles.settingsContainer}>
+            <div className={styles.gradientBar}></div>
+            <h1 className={styles.settingsTitle}>Settings</h1>
+            <div className={styles.loadingState}>
+              <div className={styles.spinner}></div>
+              <p className={styles.loadingText}>Loading your settings...</p>
+            </div>
           </div>
         </div>
       </div>
@@ -672,125 +690,133 @@ const Settings = () => {
   }
 
   return (
-    <div className="settings-page">
-      <div className="settings-container">
-        <h1 className="settings-title">Settings</h1>
+    <div className={styles.settingsPage}>
+      <Navbar />
+      <div className={styles.settingsContent}>
+        <div className={styles.settingsContainer}>
+          <div className={styles.gradientBar}></div>
+          <h1 className={styles.settingsTitle}>Settings</h1>
 
-        {/* Settings navigation */}
-        <div className="settings-navigation">
-          <button
-            className={`settings-nav-item ${activeTab === "notifications" ? "active" : ""}`}
-            onClick={() => setActiveTab("notifications")}
-          >
-            <FaBell className="settings-icon" />
-            <span>Notifications</span>
-          </button>
+          {/* Settings navigation */}
+          <div className={styles.settingsNavigation}>
+            <button
+              className={`${styles.navItem} ${activeTab === "notifications" ? styles.active : ""}`}
+              onClick={() => setActiveTab("notifications")}
+            >
+              <FaBell className={styles.navIcon} />
+              <span>Notifications</span>
+            </button>
 
-          <button
-            className={`settings-nav-item ${activeTab === "privacy" ? "active" : ""}`}
-            onClick={() => setActiveTab("privacy")}
-          >
-            <FaLock className="settings-icon" />
-            <span>Privacy</span>
-          </button>
+            <button
+              className={`${styles.navItem} ${activeTab === "privacy" ? styles.active : ""}`}
+              onClick={() => setActiveTab("privacy")}
+            >
+              <FaLock className={styles.navIcon} />
+              <span>Privacy</span>
+            </button>
 
-          <button
-            className={`settings-nav-item ${activeTab === "appearance" ? "active" : ""}`}
-            onClick={() => setActiveTab("appearance")}
-          >
-            <FaPalette className="settings-icon" />
-            <span>Appearance</span>
-          </button>
+            <button
+              className={`${styles.navItem} ${activeTab === "appearance" ? styles.active : ""}`}
+              onClick={() => setActiveTab("appearance")}
+            >
+              <FaPalette className={styles.navIcon} />
+              <span>Appearance</span>
+            </button>
 
-          <button
-            className={`settings-nav-item ${activeTab === "account" ? "active" : ""}`}
-            onClick={() => setActiveTab("account")}
-          >
-            <FaUser className="settings-icon" />
-            <span>Account</span>
-          </button>
-        </div>
-
-        {/* Settings content */}
-        <div className="settings-panel">
-          <div className="settings-header">
-            {activeTab === "notifications" && <FaBell className="settings-header-icon" />}
-            {activeTab === "privacy" && <FaLock className="settings-header-icon" />}
-            {activeTab === "appearance" && <FaPalette className="settings-header-icon" />}
-            {activeTab === "account" && <FaUser className="settings-header-icon" />}
-
-            <h2 className="settings-section-title">
-              {activeTab === "notifications" && "Notification Settings"}
-              {activeTab === "privacy" && "Privacy Settings"}
-              {activeTab === "appearance" && "Appearance Settings"}
-              {activeTab === "account" && "Account Settings"}
-            </h2>
+            <button
+              className={`${styles.navItem} ${activeTab === "account" ? styles.active : ""}`}
+              onClick={() => setActiveTab("account")}
+            >
+              <FaUser className={styles.navIcon} />
+              <span>Account</span>
+            </button>
           </div>
 
-          {renderTabContent()}
+          {/* Settings content */}
+          <div className={styles.settingsPanel}>
+            <div className={styles.sectionHeader}>
+              {activeTab === "notifications" && <FaBell className={styles.sectionIcon} />}
+              {activeTab === "privacy" && <FaLock className={styles.sectionIcon} />}
+              {activeTab === "appearance" && <FaPalette className={styles.sectionIcon} />}
+              {activeTab === "account" && <FaUser className={styles.sectionIcon} />}
 
-          {/* Save button - only show for tabs with settings that need saving */}
-          {(activeTab === "notifications" || activeTab === "privacy") && (
-            <div className="settings-save">
-              <button
-                className={`btn btn-primary save-button ${hasUnsavedChanges ? "has-changes" : ""}`}
-                onClick={handleSaveSettings}
-                disabled={saving || !hasUnsavedChanges}
-              >
-                <FaSave />
-                {saving ? "Saving..." : "Save Changes"}
-              </button>
+              <h2 className={styles.sectionTitle}>
+                {activeTab === "notifications" && "Notification Settings"}
+                {activeTab === "privacy" && "Privacy Settings"}
+                {activeTab === "appearance" && "Appearance Settings"}
+                {activeTab === "account" && "Account Settings"}
+              </h2>
             </div>
-          )}
+
+            {renderTabContent()}
+
+            {/* Save button - only show for tabs with settings that need saving */}
+            {(activeTab === "notifications" || activeTab === "privacy") && (
+              <div className={styles.saveSection}>
+                <button
+                  className={`${styles.saveButton} ${hasUnsavedChanges ? styles.hasChanges : ""}`}
+                  onClick={handleSaveSettings}
+                  disabled={saving || !hasUnsavedChanges}
+                >
+                  <FaSave />
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Delete Account Confirmation Modal */}
       {showDeleteConfirmation && (
-        <div className="modal-overlay">
-          <div className="confirmation-modal">
-            <div className="modal-header">
-              <h2>
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContainer}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>
                 <FaTrash /> Delete Account
               </h2>
-              <button className="close-button" onClick={cancelDeleteAccount}>
+              <button className={styles.closeButton} onClick={cancelDeleteAccount}>
                 <FaTimes />
               </button>
             </div>
 
-            <div className="modal-content">
-              <div className="warning-message">
-                <FaShieldAlt className="warning-icon" />
-                <p>
+            <div className={styles.modalContent}>
+              <div className={styles.warningBox}>
+                <FaShieldAlt className={styles.warningIcon} />
+                <p className={styles.warningText}>
                   This action <strong>cannot be undone</strong>. All your data will be permanently deleted, including:
                 </p>
-                <ul>
-                  <li>Your profile information</li>
-                  <li>All messages and conversations</li>
-                  <li>Photos and media you've shared</li>
-                  <li>Stories and other content</li>
+                <ul className={styles.warningList}>
+                  <li className={styles.warningItem}>Your profile information</li>
+                  <li className={styles.warningItem}>All messages and conversations</li>
+                  <li className={styles.warningItem}>Photos and media you've shared</li>
+                  <li className={styles.warningItem}>Stories and other content</li>
                 </ul>
               </div>
 
-              <div className="password-confirmation">
-                <label htmlFor="delete-password">Enter your password to confirm:</label>
+              <div className={styles.passwordSection}>
+                <label className={styles.passwordLabel} htmlFor="delete-password">Enter your password to confirm:</label>
                 <input
                   id="delete-password"
                   type="password"
                   value={deletePassword}
                   onChange={(e) => setDeletePassword(e.target.value)}
                   placeholder="Your password"
-                  className={deleteError ? "error" : ""}
+                  className={`${styles.passwordInput} ${deleteError ? styles.error : ""}`}
                 />
-                {deleteError && <div className="error-message">{deleteError}</div>}
+                {deleteError && (
+                  <div className={styles.errorMessage}>
+                    <FaExclamationTriangle /> {deleteError}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="confirmation-actions">
-              <button className="btn btn-secondary" onClick={cancelDeleteAccount}>
+            <div className={styles.modalActions}>
+              <button className={styles.buttonCancel} onClick={cancelDeleteAccount}>
                 <FaTimes /> Cancel
               </button>
-              <button className="btn btn-danger" onClick={confirmDeleteAccount} disabled={!deletePassword}>
+              <button className={styles.buttonDelete} onClick={confirmDeleteAccount} disabled={!deletePassword}>
                 <FaTrash /> Delete My Account
               </button>
             </div>
@@ -798,7 +824,7 @@ const Settings = () => {
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default Settings
+export default Settings;

@@ -78,7 +78,7 @@ export const NotificationProvider = ({ children }) => {
       }
 
       // Show toast notification if it's new
-      const isNew = data.createdAt && new Date().getTime() - new Date(data.createdAt).getTime() < 60000
+      const isNew = false
 
       if (isNew) {
         // Determine notification message

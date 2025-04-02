@@ -19,12 +19,12 @@ import {
   FaSpinner,
   FaEye,
 } from "react-icons/fa"
-import { useUser, useChat, useAuth, useStories } from "../context"
+import { useUser, useAuth, useStories } from "../context"
 import { EmbeddedChat } from "../components"
 import StoriesViewer from "./Stories/StoriesViewer"
 import StoryThumbnail from "./Stories/StoryThumbnail"
 import { toast } from "react-toastify"
-import "../styles/UserProfileModal.css"
+import styles from "../styles/userprofilemodal.module.css"
 import { useNavigate } from "react-router-dom"
 
 // Import common components
@@ -60,7 +60,6 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   } = useUser();
 
   // Other contexts
-  const { initiateChat } = useChat();
   const { loadUserStories, hasUnviewedStories } = useStories();
 
   // State management
@@ -765,7 +764,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   if (loading) {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="large">
-        <div className="loading-container">
+        <div className={styles.loadingContainer}>
           <LoadingSpinner text="Loading profile..." size="large" centered />
         </div>
       </Modal>
@@ -775,9 +774,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   if (error) {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="small">
-        <div className="error-container">
-          <h3>Error Loading Profile</h3>
-          <p>{error}</p>
+        <div className={styles.errorContainer}>
+          <h3 className={styles.errorTitle}>Error Loading Profile</h3>
+          <p className={styles.errorText}>{error}</p>
           <Button variant="primary" onClick={onClose}>
             Close
           </Button>
@@ -789,9 +788,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   if (!profileUser) {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="small">
-        <div className="not-found-container">
-          <h3>User Not Found</h3>
-          <p>The user you're looking for doesn't exist or has been removed.</p>
+        <div className={styles.notFoundContainer}>
+          <h3 className={styles.notFoundTitle}>User Not Found</h3>
+          <p className={styles.notFoundText}>The user you're looking for doesn't exist or has been removed.</p>
           <Button variant="primary" onClick={onClose}>
             Close
           </Button>
@@ -806,52 +805,49 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       isOpen={isOpen}
       onClose={onClose}
       size="xlarge"
-      className="user-profile-modal"
+      className={styles.modalContainer}
       showCloseButton={true}
+      headerClassName={styles.modalHeader}
       bodyClassName="modern-user-profile"
       closeOnClickOutside={true}
     >
-      <div className="container profile-content" ref={profileRef}>
+      <div className={styles.profileContent} ref={profileRef}>
         {/* Pending requests notification */}
         {!isOwnProfile && hasPendingRequestFromUser && currentUserRequests && (
-          <div className="pending-requests-notification">
-            <div className="notification-content">
-              <FaEye className="notification-icon" />
-              <div className="notification-text">
-                <p>
-                  <strong>{profileUser.nickname}</strong> has requested access to your private photos
-                </p>
-              </div>
+          <div className={styles.requestNotification}>
+            <div className={styles.notificationContent}>
+              <FaEye className={styles.notificationIcon} />
+              <p className={styles.notificationText}>
+                <strong>{profileUser.nickname}</strong> has requested access to your private photos
+              </p>
             </div>
-            <div className="notification-actions">
-              <Button
-                variant="success"
+            <div className={styles.notificationActions}>
+              <button
+                className={styles.approveBtn}
                 onClick={() => handleApproveAllRequests(profileUser._id, currentUserRequests.requests)}
                 disabled={isProcessingApproval}
-                isLoading={isProcessingApproval}
-                icon={<FaCheck />}
               >
+                {isProcessingApproval ? <FaSpinner className={styles.spinner} /> : <FaCheck />}
                 Approve
-              </Button>
-              <Button
-                variant="danger"
+              </button>
+              <button
+                className={styles.rejectBtn}
                 onClick={() => handleRejectAllRequests(profileUser._id, currentUserRequests.requests)}
                 disabled={isProcessingApproval}
-                isLoading={isProcessingApproval}
-                icon={<FaBan />}
               >
+                {isProcessingApproval ? <FaSpinner className={styles.spinner} /> : <FaBan />}
                 Reject
-              </Button>
+              </button>
             </div>
           </div>
         )}
 
-        <div className="profile-layout">
+        <div className={styles.profileLayout}>
           {/* Left: Photos */}
-          <div className="profile-photos-section">
+          <div className={styles.photosSection}>
             {/* Stories Thumbnail */}
             {userStories && userStories.length > 0 && (
-              <div className="profile-stories">
+              <div className={styles.storiesThumbnail}>
                 <StoryThumbnail
                   user={profileUser}
                   hasUnviewedStories={hasUnviewedStories && hasUnviewedStories(profileUser._id)}
@@ -862,41 +858,41 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {/* Photo Gallery */}
             {profileUser && profileUser.photos && profileUser.photos.length > 0 ? (
-              <div className="photo-gallery-container">
-                <div className="gallery-photo">
+              <div className={styles.galleryContainer}>
+                <div className={styles.gallery}>
                   {profileUser.photos[activePhotoIndex] &&
                   profileUser.photos[activePhotoIndex].isPrivate &&
                   !canViewPrivatePhotos ? (
-                    <div className="private-photo-placeholder">
-                      <FaLock className="lock-icon" />
+                    <div className={styles.privatePhoto}>
+                      <FaLock className={styles.lockIcon} />
                       <p>Private Photo</p>
 
                       {userPhotoAccess.status === "pending" && (
-                        <p className="permission-status pending">Access Request Pending</p>
+                        <p className={`${styles.permissionStatus} ${styles.pending}`}>Access Request Pending</p>
                       )}
 
                       {userPhotoAccess.status === "rejected" && (
-                        <p className="permission-status rejected">Access Denied</p>
+                        <p className={`${styles.permissionStatus} ${styles.rejected}`}>Access Denied</p>
                       )}
 
                       {(!userPhotoAccess.status || userPhotoAccess.status === "none") && (
                         <button
-                          className="request-access-btn"
+                          className={styles.requestAccessBtn}
                           onClick={handleRequestAccessToAllPhotos}
                           disabled={userPhotoAccess.isLoading}
                         >
-                          {userPhotoAccess.isLoading ? <FaSpinner className="fa-spin" /> : null}
+                          {userPhotoAccess.isLoading ? <FaSpinner className={styles.spinner} /> : null}
                           Request Photo Access
                         </button>
                       )}
                     </div>
                   ) : (
                     profileUser.photos[activePhotoIndex] && (
-                      <div className="gallery-image-container">
+                      <div className={styles.imageContainer}>
                         <img
                           src={profileUser.photos[activePhotoIndex].url}
                           alt={`${profileUser.nickname}'s photo`}
-                          className="gallery-image"
+                          className={styles.galleryImage}
                           onError={() => handleImageError(profileUser.photos[activePhotoIndex]._id)}
                         />
                       </div>
@@ -905,8 +901,8 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
                   {/* Online badge */}
                   {profileUser.isOnline && (
-                    <div className="online-badge">
-                      <span className="pulse"></span>
+                    <div className={styles.onlineBadge}>
+                      <span className={styles.pulse}></span>
                       Online Now
                     </div>
                   )}
@@ -915,7 +911,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   {profileUser.photos.length > 1 && (
                     <>
                       <button
-                        className="gallery-nav prev"
+                        className={`${styles.nav} ${styles.navPrev}`}
                         onClick={prevPhoto}
                         disabled={activePhotoIndex === 0}
                         aria-label="Previous photo"
@@ -923,7 +919,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                         <FaChevronLeft />
                       </button>
                       <button
-                        className="gallery-nav next"
+                        className={`${styles.nav} ${styles.navNext}`}
                         onClick={nextPhoto}
                         disabled={activePhotoIndex === profileUser.photos.length - 1}
                         aria-label="Next photo"
@@ -936,18 +932,18 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
                 {/* Photo thumbnails */}
                 {profileUser.photos.length > 1 && (
-                  <div className="photo-thumbnails">
+                  <div className={styles.thumbnails}>
                     {profileUser.photos.map((photo, index) => (
                       <div
                         key={photo._id || index}
-                        className={`photo-thumbnail ${index === activePhotoIndex ? "active" : ""}`}
+                        className={`${styles.thumbnail} ${index === activePhotoIndex ? styles.thumbnailActive : ""}`}
                         onClick={() => setActivePhotoIndex(index)}
                       >
                         {photo.isPrivate && !canViewPrivatePhotos ? (
-                          <div className="private-thumbnail">
+                          <div className={styles.privateThumbnail}>
                             <FaLock />
                             {userPhotoAccess.status && (
-                              <div className={`permission-status ${userPhotoAccess.status}`}>
+                              <div className={`${styles.permissionStatus} ${styles[userPhotoAccess.status]}`}>
                                 {userPhotoAccess.status === "pending" && "Pending"}
                                 {userPhotoAccess.status === "approved" && "Granted"}
                                 {userPhotoAccess.status === "rejected" && "Denied"}
@@ -955,13 +951,12 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                             )}
                           </div>
                         ) : (
-                          <div className="thumbnail-img-container">
-                            <img 
-                              src={photo.url}
-                              alt={`${profileUser.nickname} ${index + 1}`}
-                              onError={() => handleImageError(photo._id)}
-                            />
-                          </div>
+                          <img 
+                            src={photo.url}
+                            alt={`${profileUser.nickname} ${index + 1}`}
+                            className={styles.thumbnailImg}
+                            onError={() => handleImageError(photo._id)}
+                          />
                         )}
                       </div>
                     ))}
@@ -969,7 +964,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 )}
               </div>
             ) : (
-              <div className="no-photo-placeholder">
+              <div className={styles.gallery}>
                 <Avatar
                   size="xlarge"
                   placeholder="/default-avatar.png"
@@ -981,46 +976,46 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             )}
 
             {/* Profile actions */}
-            <div className="profile-actions">
+            <div className={styles.actions}>
               {!isOwnProfile && (
                 <>
                   <button
-                    className={`profile-action-btn ${isUserLiked && isUserLiked(profileUser._id) ? "liked" : "btn-primary"}`}
+                    className={`${styles.actionBtn} ${isUserLiked && isUserLiked(profileUser._id) ? styles.likedBtn : styles.likeBtn}`}
                     onClick={handleLike}
                     disabled={isLiking}
                   >
-                    {isLiking ? <FaSpinner className="fa-spin" /> : <FaHeart />}
+                    {isLiking ? <FaSpinner className={styles.spinner} /> : <FaHeart />}
                     {isUserLiked && isUserLiked(profileUser._id) ? "Liked" : "Like"}
                   </button>
                   <button
-                    className="profile-action-btn btn-primary"
+                    className={`${styles.actionBtn} ${styles.messageBtn}`}
                     onClick={handleMessage}
                     disabled={isChatInitiating}
                   >
-                    {isChatInitiating ? <FaSpinner className="fa-spin" /> : <FaComment />}
+                    {isChatInitiating ? <FaSpinner className={styles.spinner} /> : <FaComment />}
                     Message
                   </button>
                 </>
               )}
-              <div className="more-actions-dropdown">
+              <div className={styles.moreActions}>
                 <button
-                  className="dropdown-toggle-btn"
+                  className={styles.toggleBtn}
                   onClick={() => setShowActions(!showActions)}
                   aria-label="More actions"
                 >
                   <FaEllipsisH />
                 </button>
                 {showActions && (
-                  <div className="actions-dropdown">
+                  <div className={styles.dropdown}>
                     <button
-                      className="dropdown-item"
+                      className={styles.dropdownItem}
                       onClick={handleReport}
                     >
                       <FaFlag />
                       Report User
                     </button>
                     <button
-                      className="dropdown-item"
+                      className={styles.dropdownItem}
                       onClick={handleBlock}
                     >
                       <FaBan />
@@ -1033,60 +1028,60 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
           </div>
 
           {/* Right: User Details */}
-          <div className="profile-details-section">
+          <div className={styles.detailsSection}>
             {/* User headline */}
-            <div className="user-headline">
-              <h1>
+            <div className={styles.headline}>
+              <h1 className={styles.headlineTitle}>
                 {profileUser.nickname}, {profileUser.details?.age || "?"}
               </h1>
               {profileUser.role === "premium" && (
-                <div className="premium-badge">
+                <div className={styles.premiumBadge}>
                   <FaTrophy /> Premium
                 </div>
               )}
             </div>
 
             {/* User location */}
-            <div className="user-location">
-              <FaMapMarkerAlt />
+            <div className={styles.location}>
+              <FaMapMarkerAlt className={styles.icon} />
               <span>{profileUser.details?.location || "Unknown location"}</span>
-              <div className={`online-status ${profileUser.isOnline ? "online" : ""}`}>
+              <div className={`${styles.onlineStatus} ${profileUser.isOnline ? styles.isOnline : ""}`}>
                 {profileUser.isOnline ? "Online now" : "Offline"}
               </div>
             </div>
 
             {/* User activity */}
-            <div className="user-activity">
-              <div className="activity-item">
-                <FaRegClock />
+            <div className={styles.activity}>
+              <div className={styles.activityItem}>
+                <FaRegClock className={styles.icon} />
                 <span>
                   {profileUser.isOnline
                     ? "Active now"
                     : `Last active ${formatDate(profileUser.lastActive, { showTime: false })}`}
                 </span>
               </div>
-              <div className="activity-item">
-                <FaCalendarAlt />
+              <div className={styles.activityItem}>
+                <FaCalendarAlt className={styles.icon} />
                 <span>Member since {formatDate(profileUser.createdAt, { showTime: false })}</span>
               </div>
             </div>
 
             {/* Compatibility section */}
             {!isOwnProfile && (
-              <div className="compatibility-section">
-                <h2>Compatibility</h2>
-                <div className="compatibility-score">
-                  <div className="score-circle">
+              <div className={styles.compatibilitySection}>
+                <h2 className={styles.sectionTitle}>Compatibility</h2>
+                <div className={styles.compatibilityScore}>
+                  <div className={styles.scoreCircle}>
                     <svg viewBox="0 0 100 100">
                       <defs>
                         <linearGradient id="compatibility-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" stopColor="var(--primary)" />
-                          <stop offset="100%" stopColor="#ff4d7d" />
+                          <stop offset="0%" stopColor="#ff3366" />
+                          <stop offset="100%" stopColor="#ff6b98" />
                         </linearGradient>
                       </defs>
-                      <circle className="score-bg" cx="50" cy="50" r="45" />
+                      <circle className={styles.scoreBg} cx="50" cy="50" r="45" />
                       <circle
-                        className="score-fill"
+                        className={styles.scoreFill}
                         cx="50"
                         cy="50"
                         r="45"
@@ -1094,14 +1089,14 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                         strokeDashoffset={283 - (283 * compatibility) / 100}
                       />
                     </svg>
-                    <div className="score-value">{compatibility}%</div>
+                    <div className={styles.scoreValue}>{compatibility}%</div>
                   </div>
-                  <div className="compatibility-details">
-                    <div className="compatibility-factor">
-                      <span>Location</span>
-                      <div className="factor-bar">
+                  <div className={styles.compatibilityDetails}>
+                    <div className={styles.compatibilityFactor}>
+                      <span className={styles.factorLabel}>Location</span>
+                      <div className={styles.factorBar}>
                         <div
-                          className="factor-fill"
+                          className={styles.factorFill}
                           style={{
                             width:
                               profileUser.details?.location === currentUser?.details?.location ? "100%" : "30%",
@@ -1109,11 +1104,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                         ></div>
                       </div>
                     </div>
-                    <div className="compatibility-factor">
-                      <span>Age</span>
-                      <div className="factor-bar">
+                    <div className={styles.compatibilityFactor}>
+                      <span className={styles.factorLabel}>Age</span>
+                      <div className={styles.factorBar}>
                         <div
-                          className="factor-fill"
+                          className={styles.factorFill}
                           style={{
                             width:
                               Math.abs((profileUser.details?.age || 0) - (currentUser?.details?.age || 0)) <= 5
@@ -1125,11 +1120,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                         ></div>
                       </div>
                     </div>
-                    <div className="compatibility-factor">
-                      <span>Interests</span>
-                      <div className="factor-bar">
+                    <div className={styles.compatibilityFactor}>
+                      <span className={styles.factorLabel}>Interests</span>
+                      <div className={styles.factorBar}>
                         <div
-                          className="factor-fill"
+                          className={styles.factorFill}
                           style={{
                             width: `${Math.min(100, commonInterests.length * 20)}%`,
                           }}
@@ -1143,32 +1138,40 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {/* User details sections */}
             {profileUser.details?.bio && (
-              <div className="profile-section">
-                <h2>About Me</h2>
-                <p className="about-text">{profileUser.details.bio}</p>
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>About Me</h2>
+                <p className={styles.aboutText}>{profileUser.details.bio}</p>
               </div>
             )}
 
             {profileUser.details?.iAm && (
-              <div className="profile-section">
-                <h2>I am a</h2>
-                <p>{capitalize(profileUser.details.iAm)}</p>
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>I am a</h2>
+                <div className={styles.tagsContainer}>
+                  <span className={`${styles.tag} ${styles.identityTag}`}>
+                    {capitalize(profileUser.details.iAm)}
+                  </span>
+                </div>
               </div>
             )}
 
             {profileUser.details?.maritalStatus && (
-              <div className="profile-section">
-                <h2>Marital Status</h2>
-                <p>{profileUser.details.maritalStatus}</p>
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>Marital Status</h2>
+                <div className={styles.tagsContainer}>
+                  <span className={`${styles.tag} ${styles.statusTag}`}>
+                    {profileUser.details.maritalStatus}
+                  </span>
+                </div>
               </div>
             )}
 
             {profileUser.details?.lookingFor && profileUser.details.lookingFor.length > 0 && (
-              <div className="profile-section">
-                <h2>Looking For</h2>
-                <div className="tags-container">
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>Looking For</h2>
+                <div className={styles.tagsContainer}>
                   {profileUser.details.lookingFor.map((item, index) => (
-                    <span key={index} className="tag looking-for-tag">
+                    <span key={index} className={`${styles.tag} ${styles.lookingForTag}`}>
                       {item}
                     </span>
                   ))}
@@ -1177,11 +1180,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             )}
 
             {profileUser.details?.intoTags && profileUser.details.intoTags.length > 0 && (
-              <div className="profile-section">
-                <h2>I'm Into</h2>
-                <div className="tags-container">
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>I'm Into</h2>
+                <div className={styles.tagsContainer}>
                   {profileUser.details.intoTags.map((item, index) => (
-                    <span key={index} className="tag into-tag">
+                    <span key={index} className={`${styles.tag} ${styles.intoTag}`}>
                       {item}
                     </span>
                   ))}
@@ -1190,11 +1193,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             )}
 
             {profileUser.details?.turnOns && profileUser.details.turnOns.length > 0 && (
-              <div className="profile-section">
-                <h2>It Turns Me On</h2>
-                <div className="tags-container">
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>It Turns Me On</h2>
+                <div className={styles.tagsContainer}>
                   {profileUser.details.turnOns.map((item, index) => (
-                    <span key={index} className="tag turn-on-tag">
+                    <span key={index} className={`${styles.tag} ${styles.turnOnTag}`}>
                       {item}
                     </span>
                   ))}
@@ -1204,30 +1207,28 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {/* Interests section */}
             {profileUser.details?.interests?.length > 0 && (
-              <div className="profile-section">
-                <h2>Interests</h2>
-                <div className="interests-tags">
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>Interests</h2>
+                <div className={styles.interestsTags}>
                   {(showAllInterests
                     ? profileUser.details.interests
                     : profileUser.details.interests.slice(0, 8)
                   ).map((interest) => (
                     <span
                       key={interest}
-                      className={`interest-tag ${commonInterests.includes(interest) ? "common" : ""}`}
+                      className={`${styles.interestTag} ${commonInterests.includes(interest) ? styles.commonTag : ""}`}
                     >
                       {interest}
-                      {commonInterests.includes(interest) && <FaCheck className="common-icon" />}
+                      {commonInterests.includes(interest) && <FaCheck className={styles.commonIcon} />}
                     </span>
                   ))}
                   {!showAllInterests && profileUser.details.interests.length > 8 && (
-                    <Button
-                      className="show-more-interests"
+                    <button
+                      className={styles.showMoreBtn}
                       onClick={() => setShowAllInterests(true)}
-                      variant="link"
-                      size="small"
                     >
                       +{profileUser.details.interests.length - 8} more
-                    </Button>
+                    </button>
                   )}
                 </div>
               </div>
@@ -1238,7 +1239,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         {/* Embedded Chat */}
         {showChat && (
           <>
-            <div className="chat-overlay" onClick={handleCloseChat}></div>
+            <div className={styles.chatOverlay} onClick={handleCloseChat}></div>
             <EmbeddedChat recipient={profileUser} isOpen={showChat} onClose={handleCloseChat} />
           </>
         )}

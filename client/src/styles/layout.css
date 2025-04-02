@@ -425,7 +425,7 @@
   position: absolute;
   right: 0;
   top: calc(100% + 5px);
-  width: 360px;
+  width: 400px;
   max-height: 500px;
   overflow: hidden;
   background-color: var(--white);
@@ -565,14 +565,14 @@
 }
 
 /* Header styling */
-.notification-dropdown-content .notification-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--border-color);
-  background-color: var(--background);
-}
+/*.notification-dropdown-content .notification-header {*/
+/*  display: flex;*/
+/*  justify-content: space-between;*/
+/*  align-items: center;*/
+/*  padding: var(--space-sm) var(--space-md);*/
+/*  border-bottom: 1px solid var(--border-color);*/
+/*  background-color: var(--background);*/
+/*}*/
 
 .notification-dropdown-content .notification-header-title {
   font-weight: 600;
@@ -958,7 +958,6 @@
 .dashboard {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
   padding: var(--space-md);
   width: 100%;
   margin: 0 auto;
@@ -996,8 +995,6 @@
 ================================*/
 /* Instagram-style Stories Section */
 .stories-section {
-  margin-bottom: var(--space-xl);
-  padding: var(--space-sm) 0;
   position: relative;
   background: transparent;
   width: 100%;
@@ -1879,11 +1876,6 @@
   background-color: var(--primary);
 }
 
-.profile-content {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: var(--space-lg);
-}
 
 .profile-about {
   background-color: var(--white);
@@ -2136,10 +2128,7 @@
   .users-grid {
     grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   }
-  
-  .profile-content {
-    grid-template-columns: 1.5fr 1fr;
-  }
+
 }
 
 @media (max-width: 992px) {
@@ -2200,10 +2189,7 @@
   .settings-nav-item.active {
     border-left: none;
   }
-  
-  .profile-content {
-    grid-template-columns: 1fr;
-  }
+
   
   .profile-header {
     flex-direction: column;

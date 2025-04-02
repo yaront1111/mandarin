@@ -49,7 +49,8 @@ class SocketClient {
     this.userId = userId
 
     // IMPORTANT: Always connect to the backend server, not the frontend
-    const serverUrl = options.serverUrl || process.env.REACT_APP_SOCKET_URL || "http://localhost:5000"
+    // Use relative path when in the same domain or origin
+    const serverUrl = options.serverUrl || process.env.REACT_APP_SOCKET_URL || window.location.origin
     console.log(`Connecting to socket server at ${serverUrl}`)
 
     try {

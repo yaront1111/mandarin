@@ -3,10 +3,10 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useUser } from "../../context";
-import "../../styles/stories.css";
-// Removed: import UserAvatar from "../UserAvatar";
+import { FaImage, FaVideo, FaStarOfLife } from "react-icons/fa";
+import styles from "../../styles/stories.module.css";
 
-const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser }) => {
+const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser, mediaType }) => {
   const { user: contextUser } = useUser();
   const [imageError, setImageError] = useState(false); // State for image loading error
   
@@ -15,7 +15,6 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser }) 
 
   // Derive user object from story or props
   const storyUser = useMemo(() => {
-    // ... (this logic remains the same)
     if (propUser) return propUser;
     if (!story) return {};
     if (typeof story.user === "object") return story.user;
@@ -51,7 +50,6 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser }) 
 
   // Check if this story is viewed by the current user
   const isViewed = useMemo(() => {
-    // ... (this logic remains the same)
     if (typeof hasUnviewedStories !== "undefined") {
       return !hasUnviewedStories;
     }
@@ -59,6 +57,11 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser }) 
     if (!Array.isArray(story.viewers)) return false;
     return story.viewers.includes(contextUser._id);
   }, [hasUnviewedStories, contextUser, story]);
+
+  // Determine if this is a "coming soon" story type
+  const isComingSoon = useMemo(() => {
+    return mediaType === "video" || mediaType === "image";
+  }, [mediaType]);
 
   // Generate placeholder similar to UserAvatar
   const renderPlaceholder = () => {
@@ -72,18 +75,11 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser }) 
       : 0;
     const bgColor = colors[colorIndex];
     const initial = userName ? userName.charAt(0).toUpperCase() : "?";
-    const size = 64; // Match the desired avatar size
 
     return (
       <div
-        // === Added new class for placeholder ===
-        className="story-thumbnail-placeholder flex items-center justify-center rounded-full text-white font-bold"
-        style={{
-          width: `${size}px`,
-          height: `${size}px`,
-          backgroundColor: bgColor,
-          fontSize: `${size / 2}px`,
-        }}
+        className={styles.thumbnailPlaceholder}
+        style={{ backgroundColor: bgColor }}
       >
         {initial}
       </div>
@@ -91,6 +87,13 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser }) 
   };
 
   const handleClick = (e) => {
+    if (isComingSoon) {
+      e.preventDefault();
+      e.stopPropagation();
+      // Don't trigger onClick for coming soon stories
+      return;
+    }
+    
     e.preventDefault();
     e.stopPropagation();
     if (typeof onClick === "function") onClick();
@@ -99,13 +102,12 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser }) 
   if (!story && !propUser) return null;
 
   return (
-    <div className="story-thumbnail" onClick={handleClick}>
-      <div className={`story-avatar-border ${isViewed ? "viewed" : ""}`}>
-        <div className="story-image-container rounded-full overflow-hidden"> {/* Optional container */}
+    <div className={styles.storyThumbnail} onClick={handleClick}>
+      <div className={`${styles.avatarBorder} ${isViewed ? styles.avatarBorderViewed : ""}`}>
+        <div className={styles.imageContainer}>
           {!imageError ? (
             <img
-              // === Added new class for image ===
-              className="story-thumbnail-image" // New class for direct styling
+              className={styles.thumbnailImage}
               src={avatarUrl}
               alt={`${userName}'s avatar`}
               onError={(e) => {
@@ -117,11 +119,32 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser }) 
               loading="lazy"
             />
           ) : (
-            renderPlaceholder() // Render fallback
+            renderPlaceholder()
+          )}
+          
+          {/* Media type icon */}
+          {mediaType === "video" && (
+            <div className={styles.mediaTypeIcon}>
+              <FaVideo />
+            </div>
+          )}
+          
+          {mediaType === "image" && (
+            <div className={styles.mediaTypeIcon}>
+              <FaImage />
+            </div>
           )}
         </div>
       </div>
-      <div className="story-username">{userName}</div>
+      
+      {/* Coming soon badge */}
+      {isComingSoon && (
+        <div className={styles.comingSoonBadge}>
+          <FaStarOfLife size={8} style={{ marginRight: "2px" }} /> Coming Soon
+        </div>
+      )}
+      
+      <div className={styles.username}>{userName}</div>
     </div>
   );
 };

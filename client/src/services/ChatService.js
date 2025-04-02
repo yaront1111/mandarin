@@ -25,25 +25,137 @@ class ChatService {
    * @param {Object} user - Current user information
    */
   initialize(user) {
+    console.log('ChatService.initialize called with user:', user);
+    
     if (this.initialized && this.user?._id === user?._id) {
       log.debug('Chat service already initialized for this user');
-      return;
+      console.log('Chat service already initialized for user:', user?._id);
+      return Promise.resolve(true);
     }
 
-    log.info(`Initializing chat service for user: ${user?.nickname || user?._id}`);
-    this.user = user;
-    this.initialized = true;
+    // Validate the user object and ID
+    if (!user) {
+      const error = new Error('Cannot initialize chat service without user data');
+      log.error(error.message);
+      console.error(error.message);
+      return Promise.reject(error);
+    }
+
+    // Direct validation without external dependencies
+    let validUserId;
+    try {
+      // Simple validation function
+      const isValidId = (id) => id && /^[0-9a-fA-F]{24}$/.test(id.toString());
+      
+      // Fix user ID if needed
+      if (user._id) {
+        // Direct string validation
+        if (typeof user._id === 'string' && isValidId(user._id)) {
+          validUserId = user._id;
+        }
+        // Handle object with toString() method
+        else if (typeof user._id === 'object' && user._id !== null) {
+          try {
+            const idString = user._id.toString();
+            // Look for valid MongoDB ObjectId pattern
+            const match = idString.match(/([0-9a-fA-F]{24})/);
+            if (match && match[1]) {
+              validUserId = match[1];
+              log.debug(`Extracted ObjectId from complex object: ${validUserId}`);
+            }
+          } catch (err) {
+            log.error(`Failed to extract valid ID from object: ${err.message}`);
+          }
+        }
+      } 
+      
+      // If we couldn't get a valid ID from user._id, try user.id
+      if (!validUserId && user.id) {
+        if (isValidId(user.id)) {
+          validUserId = user.id;
+          log.debug(`Using user.id instead of user._id: ${validUserId}`);
+        }
+      }
+      
+      // If we still don't have a valid ID, try to get it from the token
+      if (!validUserId) {
+        log.warn(`User has invalid ID: ${user._id}, trying token-based ID`);
+        
+        try {
+          const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+          if (token) {
+            const base64Url = token.split(".")[1];
+            const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+            const payload = JSON.parse(atob(base64));
+            
+            const tokenId = payload.id || payload.sub || 
+                           (payload.user && (payload.user._id || payload.user.id));
+                           
+            if (tokenId && isValidId(tokenId)) {
+              validUserId = tokenId;
+              log.info(`Using ID from token payload: ${validUserId}`);
+            }
+          }
+        } catch (tokenErr) {
+          log.error(`Failed to extract ID from token: ${tokenErr.message}`);
+        }
+      }
+
+      // If we still don't have a valid ID, log an error
+      if (!validUserId) {
+        log.error('Cannot initialize chat service: no valid user ID available');
+        return;
+      }
+
+      // Create a user object with the valid ID
+      const validatedUser = {
+        ...user,
+        _id: validUserId,
+        id: validUserId // Ensure both _id and id are set
+      };
+
+      log.info(`Initializing chat service for user: ${validatedUser.nickname || validatedUser._id}`);
+      console.log(`Initializing chat service for user ID: ${validatedUser._id}`);
+      
+      // Set the validated user object
+      this.user = validatedUser;
+      this.initialized = true;
+      
+      // Listen for relevant socket events
+      this._setupSocketListeners();
+      
+      return Promise.resolve(true);
+    }
+    catch (error) {
+      log.error('Error validating user ID:', error);
+      console.error('Error validating user ID:', error);
+      
+      // Fall back to the original user object
+      log.warn('Falling back to original user object without validation');
+      console.warn('Falling back to original user object without validation');
+      
+      this.user = user;
+      this.initialized = true;
+      validUserId = user._id;
+      
+      // Still listen for socket events even in fallback mode
+      this._setupSocketListeners();
+      
+      return Promise.resolve(true);
+    }
 
     // Initialize socket service if needed
-    if (!socketService.isConnected() && user) {
+    if (!socketService.isConnected() && validUserId) {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      if (token && user._id) {
-        socketService.init(user._id, token);
+      if (token) {
+        log.debug(`Initializing socket with validated user ID: ${validUserId}`);
+        console.log(`Initializing socket with validated user ID: ${validUserId}`);
+        socketService.init(validUserId, token);
       }
     }
-
-    // Listen for relevant socket events
-    this._setupSocketListeners();
+    
+    // Return the promise
+    return Promise.resolve(true);
   }
 
   /**
@@ -127,18 +239,70 @@ class ChatService {
   _updateMessageCache(conversationId, message) {
     if (!conversationId || !message) return;
     
+    log.debug(`Updating message cache for ${conversationId} with message ${message._id || 'unknown'}`);
+    
     // Get or create message array for this conversation
     const messages = this.messageCache.get(conversationId) || [];
     
-    // Check if message already exists
+    // First check if we're updating a temp message (using tempMessageId or tempId)
+    const tempId = message.tempMessageId || message.tempId;
+    if (tempId) {
+      const tempIndex = messages.findIndex(m => 
+        m.tempId === tempId || 
+        m.tempMessageId === tempId || 
+        m._id === tempId
+      );
+      
+      if (tempIndex >= 0) {
+        log.debug(`Found temp message to update at index ${tempIndex}`);
+        // Replace temp message with server message, but keep temp ID for reference
+        messages[tempIndex] = { 
+          ...message,
+          tempId: tempId // Keep reference to temp ID
+        };
+        
+        // Do not trigger messageReceived event here as it causes duplication
+        // Instead, use the messageUpdated event
+        this._notifyEventListeners('messageUpdated', messages[tempIndex]);
+        
+        // Re-sort, update cache and return early
+        messages.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        this.messageCache.set(conversationId, messages);
+        return;
+      }
+    }
+    
+    // If not a temp message, check for standard message ID match
     const existingIndex = messages.findIndex(m => m._id === message._id);
     
     if (existingIndex >= 0) {
       // Update existing message
+      log.debug(`Updating existing message at index ${existingIndex}`);
       messages[existingIndex] = { ...messages[existingIndex], ...message };
+      
+      // Trigger update event
+      this._notifyEventListeners('messageUpdated', messages[existingIndex]);
     } else {
-      // Add new message at the beginning (newer messages first)
-      messages.unshift(message);
+      // Check for a nearly identical message (same content sent in the last 5 seconds)
+      // This helps prevent double/triple sends
+      const now = new Date();
+      const nearDuplicates = messages.filter(m => 
+        m.content === message.content &&
+        m.sender === message.sender &&
+        m.recipient === message.recipient &&
+        Math.abs(new Date(m.createdAt) - new Date(message.createdAt)) < 5000 // Within 5 seconds
+      );
+      
+      if (nearDuplicates.length > 0) {
+        log.debug(`Skipping near-duplicate message in cache for ${conversationId}`);
+      } else {
+        // Add new message at the beginning (newer messages first)
+        log.debug(`Adding new message to cache for ${conversationId}`);
+        messages.unshift(message);
+        
+        // Trigger new message event
+        this._notifyEventListeners('messageReceived', message);
+      }
     }
     
     // Re-sort messages by date
@@ -156,20 +320,47 @@ class ChatService {
    * @returns {Promise<Array>} - Array of messages
    */
   async getMessages(recipientId, page = 1, limit = 20) {
+    // Debug information to track initialization issues
+    log.info(`getMessages called with recipientId: ${recipientId}, initialized: ${this.initialized}, user: ${this.user?._id}`);
+    console.log(`ChatService.getMessages called with recipientId: ${recipientId}, page: ${page}, limit: ${limit}`);
+    console.log(`ChatService state: initialized=${this.initialized}, user ID=${this.user?._id}`);
+    
     if (!this.initialized || !this.user?._id) {
       log.warn('Attempted to get messages without initialization');
+      console.warn('ChatService not initialized or missing user ID, returning empty array');
+      return [];
+    }
+
+    // Validate recipient ID
+    if (!recipientId) {
+      log.error('No recipient ID provided for getMessages');
+      console.error('No recipient ID provided for ChatService.getMessages');
       return [];
     }
 
     // Try to get from cache first as fallback
     const cachedMessages = this.messageCache.get(recipientId);
+    if (cachedMessages) {
+      console.log(`Found ${cachedMessages.length} cached messages for ${recipientId}`);
+    } else {
+      console.log(`No cached messages found for ${recipientId}`);
+    }
+
+    // Adding a small delay to ensure initialization is complete
+    if (!cachedMessages) {
+      console.log('Adding small delay before API call to ensure initialization');
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
 
     // Create a promise with timeout
     const fetchWithTimeout = (timeoutMs = 8000) => {
+      // Add debug info to URL params to help track requests
       return Promise.race([
         apiService.get(`/messages/${recipientId}`, {
           page,
-          limit
+          limit,
+          _t: Date.now(),
+          _c: Math.random().toString(36).substring(2, 8)
         }),
         new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Request timed out')), timeoutMs)
@@ -179,29 +370,51 @@ class ChatService {
 
     try {
       log.debug(`Fetching messages with ${recipientId}, page ${page}`);
+      console.log(`Fetching messages from API for ${recipientId}, page ${page}`);
       
       // Always fetch from server to ensure we have the latest
+      console.log('About to call API with fetchWithTimeout');
       const response = await fetchWithTimeout();
+      console.log('API response received:', response);
+      
+      // If we have a response object but it's empty or has no data property, convert to empty array
+      if (response && (!response.data || response.data.length === 0)) {
+        log.debug('Response received but no messages found');
+        console.log('Response received but no messages found or empty data array');
+        // Update cache with empty array
+        this.messageCache.set(recipientId, []);
+        return [];
+      }
       
       if (!response || !response.success) {
         const errorMsg = response?.error || 'Failed to load messages';
         log.error(`API returned error: ${errorMsg}`);
+        console.error(`API returned error: ${errorMsg}`, response);
+        
+        // Use cached messages if available instead of throwing
+        if (cachedMessages && cachedMessages.length > 0) {
+          log.debug(`Using ${cachedMessages.length} cached messages due to API error`);
+          console.log(`Using ${cachedMessages.length} cached messages due to API error`);
+          return cachedMessages;
+        }
+        
+        console.error('No cached messages available and API error occurred');
         throw new Error(errorMsg);
       }
       
       // Guard against null or undefined response data
       const messages = Array.isArray(response.data) ? response.data : [];
       log.debug(`Loaded ${messages.length} messages from server`);
-      
-      // Return empty array instead of null/undefined if no messages
-      if (messages.length === 0) {
-        log.debug('No messages found for this conversation');
-      }
+      console.log(`Loaded ${messages.length} messages from server:`, messages);
       
       // Update cache with server data
       this.messageCache.set(recipientId, messages);
       
-      return messages;
+      // Debug the final return value
+      console.log(`ChatService.getMessages returning ${messages.length} messages`);
+      
+      // Ensure we're returning an array
+      return Array.isArray(messages) ? messages : [];
     } catch (err) {
       log.error(`Error fetching messages with ${recipientId}:`, err);
       
@@ -226,16 +439,23 @@ class ChatService {
    * @returns {Promise<Object>} - The sent message
    */
   async sendMessage(recipientId, content, type = 'text', metadata = null) {
+    console.log(`ChatService.sendMessage called: recipientId=${recipientId}, content="${content}", type="${type}"`);
+    console.log(`ChatService state: initialized=${this.initialized}, user ID=${this.user?._id}`);
+    
     if (!this.initialized || !this.user?._id) {
       log.warn('Attempted to send message without initialization');
+      console.warn('ChatService not initialized or missing user ID');
       throw new Error('Chat service not initialized');
     }
 
     if (!recipientId) {
+      console.error('No recipient ID provided for sendMessage');
       throw new Error('Recipient ID is required');
     }
 
     log.debug(`Sending ${type} message to ${recipientId}`);
+    console.log(`Sending ${type} message to ${recipientId} with content: "${content}"`);
+    console.log('Socket connected:', socketService.isConnected());
 
     try {
       // Create a temporary message object for optimistic UI updates
@@ -260,51 +480,171 @@ class ChatService {
       // Try socket first if connected
       if (socketService.isConnected()) {
         return new Promise((resolve, reject) => {
-          socketService.emit('sendMessage', {
-            recipient: recipientId,
+          // Try first with the most likely event name
+          log.debug(`Emitting socket message to ${recipientId} with tempId ${tempId}`);
+          console.log(`Emitting socket message to ${recipientId} with tempId ${tempId}`);
+          
+          const emitData = {
+            recipientId,
             content,
             type,
             metadata,
             tempMessageId: tempId
-          });
+          };
           
-          // Listen for confirmation
-          const messageListener = socketService.on('messageSent', (message) => {
-            if (message.tempMessageId === tempId) {
-              messageListener(); // Unsubscribe
-              resolve(message);
-              
-              // Update cache with confirmed message
-              this._updateMessageCache(recipientId, {
-                ...message,
-                pending: false,
-                status: 'sent'
-              });
+          console.log('Socket emit data:', emitData);
+          socketService.emit('sendMessage', emitData);
+          console.log('Socket message emitted');
+          
+          // Setup listeners for both possible response event names
+          let messageListener, messageListener2;
+          let errorListener, errorListener2;
+          
+          // Centralized handler for successful message sending
+          const handleSuccess = (message) => {
+            log.debug(`Message confirmed sent: ${tempId}`);
+            console.log(`Message confirmed sent: ${tempId}`, message);
+            
+            // Clean up all listeners and timeouts
+            if (messageListener) {
+              console.log('Cleaning up messageListener');
+              messageListener();
+              if (messageListener.cleanup) messageListener.cleanup();
+            }
+            if (messageListener2) {
+              console.log('Cleaning up messageListener2');
+              messageListener2();
+              if (messageListener2.cleanup) messageListener2.cleanup();
+            }
+            if (errorListener) {
+              console.log('Cleaning up errorListener');
+              errorListener();
+              if (errorListener.cleanup) errorListener.cleanup();
+            }
+            if (errorListener2) {
+              console.log('Cleaning up errorListener2');
+              errorListener2();
+              if (errorListener2.cleanup) errorListener2.cleanup();
+            }
+            
+            // Resolve with message data
+            console.log('Resolving promise with message:', message);
+            resolve(message);
+            
+            // Update cache with confirmed message
+            this._updateMessageCache(recipientId, {
+              ...message,
+              pending: false,
+              status: 'sent'
+            });
+          };
+          
+          // Centralized handler for message errors
+          const handleError = (error) => {
+            log.error(`Message error for ${tempId}: ${error.message || error.error || 'Unknown error'}`);
+            console.error(`Message error for ${tempId}:`, error);
+            
+            // Clean up all listeners and timeouts
+            if (messageListener) {
+              console.log('Cleaning up messageListener');
+              messageListener();
+              if (messageListener.cleanup) messageListener.cleanup();
+            }
+            if (messageListener2) {
+              console.log('Cleaning up messageListener2');
+              messageListener2();
+              if (messageListener2.cleanup) messageListener2.cleanup();
+            }
+            if (errorListener) {
+              console.log('Cleaning up errorListener');
+              errorListener();
+              if (errorListener.cleanup) errorListener.cleanup();
+            }
+            if (errorListener2) {
+              console.log('Cleaning up errorListener2');
+              errorListener2();
+              if (errorListener2.cleanup) errorListener2.cleanup();
+            }
+            
+            // Update cache to show error state
+            console.log('Updating message cache with error state');
+            this._updateMessageCache(recipientId, {
+              ...tempMessage,
+              status: 'error',
+              error: error.message || error.error || 'Failed to send message'
+            });
+            
+            console.log('Rejecting promise with error');
+            reject(new Error(error.message || error.error || 'Failed to send message'));
+          };
+          
+          // Listen for confirmation (primary event name)
+          messageListener = socketService.on('messageSent', (message) => {
+            if (message && message.tempMessageId === tempId) {
+              handleSuccess(message);
             }
           });
           
-          // Listen for errors
-          const errorListener = socketService.on('messageError', (error) => {
-            if (error.tempMessageId === tempId) {
-              errorListener(); // Unsubscribe
-              messageListener(); // Unsubscribe
-              
-              // Update cache to show error state
-              this._updateMessageCache(recipientId, {
-                ...tempMessage,
-                status: 'error',
-                error: error.message
-              });
-              
-              reject(new Error(error.message || 'Failed to send message'));
+          // Listen for confirmation (alternative event name)
+          messageListener2 = socketService.on('message:sent', (message) => {
+            if (message && message.tempMessageId === tempId) {
+              handleSuccess(message);
             }
           });
           
-          // Set timeout for socket response
-          setTimeout(() => {
-            // If no response after 5 seconds, fall back to API
-            sendViaApi().then(resolve).catch(reject);
-          }, 5000);
+          // Listen for errors (primary event name)
+          errorListener = socketService.on('messageError', (error) => {
+            if (error && error.tempMessageId === tempId) {
+              handleError(error);
+            }
+          });
+          
+          // Listen for errors (alternative event name)
+          errorListener2 = socketService.on('message:error', (error) => {
+            if (error && error.tempMessageId === tempId) {
+              handleError(error);
+            }
+          });
+          
+          // Set timeout for socket response - use shorter timeout to improve user experience
+          const timeoutId = setTimeout(() => {
+            console.log(`Message socket timeout reached for ${tempId}`);
+            if (socketService.isConnected()) {
+              log.debug(`Message socket timeout reached for ${tempId}, falling back to API`);
+              console.log(`Socket still connected but timeout reached, falling back to API`);
+              // If no response after 3 seconds, fall back to API but maintain socket for future messages
+              this._sendViaApi(recipientId, content, type, metadata, tempId)
+                .then(message => {
+                  console.log('API fallback successful:', message);
+                  resolve(message);
+                })
+                .catch(error => {
+                  console.error('API fallback failed:', error);
+                  reject(error);
+                });
+            } else {
+              log.debug(`Socket not connected for ${tempId}, immediately falling back to API`);
+              console.log(`Socket not connected, immediately falling back to API`);
+              this._sendViaApi(recipientId, content, type, metadata, tempId)
+                .then(message => {
+                  console.log('API fallback successful:', message);
+                  resolve(message);
+                })
+                .catch(error => {
+                  console.error('API fallback failed:', error);
+                  reject(error);
+                });
+            }
+          }, 2000); // Reduced from 3s to 2s for faster fallback
+          
+          // Clean up timeout if any listener resolves before timeout
+          const cleanupTimeout = () => {
+            clearTimeout(timeoutId);
+          };
+          messageListener.cleanup = cleanupTimeout;
+          messageListener2.cleanup = cleanupTimeout;
+          errorListener.cleanup = cleanupTimeout;
+          errorListener2.cleanup = cleanupTimeout;
         });
       } else {
         // Socket not connected, queue for later and use API
@@ -335,33 +675,76 @@ class ChatService {
    */
   async _sendViaApi(recipientId, content, type, metadata, tempId) {
     try {
-      log.debug(`Sending message via API fallback`);
+      log.info(`Sending message via API fallback to ${recipientId}`);
+      console.log(`Sending message via API fallback to ${recipientId}`);
       
-      const response = await apiService.post('/messages', {
+      // First update the temp message to show as "sending via API"
+      const tempMessage = {
+        _id: tempId,
+        sender: this.user._id,
+        recipient: recipientId,
+        content,
+        type,
+        metadata: metadata || {},
+        createdAt: new Date().toISOString(),
+        status: 'sending',
+        pending: true,
+        tempId,
+        tempMessageId: tempId, // For consistent reference
+        note: 'Sending via API...'
+      };
+      
+      console.log('Updating cache with sending state:', tempMessage);
+      this._updateMessageCache(recipientId, tempMessage);
+      
+      // Make the API request
+      console.log('Making API request to /messages endpoint');
+      const requestData = {
         recipient: recipientId,
         content,
         type,
         metadata
-      });
+      };
+      console.log('API request data:', requestData);
+      
+      const response = await apiService.post('/messages', requestData);
+      console.log('API response:', response);
       
       if (!response.success) {
+        console.error('API response indicates failure:', response.error);
         throw new Error(response.error || 'Failed to send message');
       }
       
       const message = response.data;
+      log.debug(`Message sent via API: ${message._id}`);
+      console.log(`Message sent via API: ${message._id}`, message);
       
-      // Update cache
-      this._updateMessageCache(recipientId, {
+      // Create a properly formatted message object
+      const formattedMessage = {
         ...message,
-        tempMessageId: tempId,
+        tempMessageId: tempId, // Keep reference to temp ID
         pending: false,
         status: 'sent'
-      });
+      };
       
-      return message;
+      console.log('Formatted message for cache update:', formattedMessage);
+      
+      // Update cache with the confirmed message
+      this._updateMessageCache(recipientId, formattedMessage);
+      
+      // DO NOT trigger messageReceived again - this causes duplication
+      // We'll update local cache but not trigger additional events
+      console.log('Message already added to cache, not triggering additional events');
+      
+      // Return the formatted message
+      console.log('Returning formatted message from _sendViaApi');
+      return formattedMessage;
     } catch (err) {
+      log.error(`API message send error:`, err);
+      console.error(`API message send error:`, err);
+      
       // Update cache with error state
-      this._updateMessageCache(recipientId, {
+      const errorMessage = {
         _id: tempId,
         sender: this.user._id,
         recipient: recipientId,
@@ -371,7 +754,21 @@ class ChatService {
         createdAt: new Date().toISOString(),
         status: 'error',
         error: err.message,
-        pending: false
+        pending: false,
+        tempId,
+        tempMessageId: tempId
+      };
+      
+      console.log('Updating cache with error state:', errorMessage);
+      
+      // Update the message cache
+      this._updateMessageCache(recipientId, errorMessage);
+      
+      // Trigger event with the error message
+      console.log('Notifying event listeners of message error');
+      this._notifyEventListeners('messageError', {
+        tempMessageId: tempId, 
+        error: err.message
       });
       
       throw err;
@@ -530,13 +927,34 @@ class ChatService {
     };
   }
 
+  // Track recently processed messages to prevent duplicates
+  _processedMessages = new Set();
+  
   /**
-   * Notify all event listeners
+   * Notify all event listeners with deduplication for message events
    * @param {string} event - Event name
    * @param {any} data - Event data
    * @private
    */
   _notifyEventListeners(event, data) {
+    // Deduplicate message related events
+    if ((event === 'messageReceived' || event === 'messageSent') && data && data._id) {
+      const messageKey = `${event}-${data._id}-${Date.now().toString().substring(0, 10)}`;
+      
+      // Check if we've processed this message in the last second
+      if (this._processedMessages.has(messageKey)) {
+        log.debug(`Skipping duplicate ${event} notification for message ${data._id}`);
+        return;
+      }
+      
+      // Add to processed set with auto-cleanup after 2 seconds
+      this._processedMessages.add(messageKey);
+      setTimeout(() => {
+        this._processedMessages.delete(messageKey);
+      }, 2000);
+    }
+    
+    // Notify all registered handlers
     if (!this.eventListeners.has(event)) return;
     
     this.eventListeners.get(event).forEach(callback => {

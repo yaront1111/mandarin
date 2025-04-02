@@ -26,7 +26,7 @@ class PermissionClient {
       }
 
       const payload = { ownerId, photoId };
-      const requestId = `req-<span class="math-inline">\{photoId\}\-</span>{this.socket.socket?.userId}`; // Match server-side for potential tracking
+      const requestId = `req-${photoId}-${this.socket.socket?.userId}`; // Match server-side for potential tracking
 
       const handleSuccess = (response) => {
         if (response.requestId === requestId) {
@@ -90,7 +90,7 @@ class PermissionClient {
       }
 
       const payload = { permissionId, status };
-      const requestId = `res-<span class="math-inline">\{permissionId\}\-</span>{this.socket.socket?.userId}`;
+      const requestId = `res-${permissionId}-${this.socket.socket?.userId}`;
 
        const handleSuccess = (response) => {
          if (response.requestId === requestId) {

@@ -45,62 +45,6 @@ export const resetUserSession = () => {
   window.location.href = '/login';
 };
 
-/**
- * EMERGENCY FIX: Direct fix for MongoDB ObjectId formatting issues
- * This creates a globally accessible emergency fix function
- */
-export const emergencyUserIdFix = () => {
-  // Try to get the current user from anywhere it might be stored
-  try {
-    // Create a dialog that shows what we're doing
-    const dialog = document.createElement('div');
-    dialog.style.position = 'fixed';
-    dialog.style.top = '20px';
-    dialog.style.left = '20px';
-    dialog.style.padding = '20px';
-    dialog.style.backgroundColor = 'white';
-    dialog.style.border = '1px solid black';
-    dialog.style.zIndex = '10000';
-    dialog.style.maxWidth = '80%';
-    dialog.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
-    
-    dialog.innerHTML = '<h3>🔧 Emergency User ID Fix Tool</h3><div id="status">Analyzing user data...</div>';
-    document.body.appendChild(dialog);
-    
-    const updateStatus = (text) => {
-      document.getElementById('status').innerHTML += `<br>${text}`;
-    };
-    
-    // Get the raw token
-    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-    if (!token) {
-      updateStatus('❌ No token found. Please log in again.');
-      return;
-    }
-    
-    updateStatus('✅ Token found');
-    
-    // Force logout and clear storage
-    localStorage.clear();
-    sessionStorage.clear();
-    
-    // Save just the token back
-    localStorage.setItem('token', token);
-    
-    updateStatus('✅ Session data reset, token preserved');
-    updateStatus('⏳ Reloading page in 2 seconds...');
-    
-    setTimeout(() => {
-      window.location.reload();
-    }, 2000);
-  } catch (err) {
-    console.error('Error in emergency fix:', err);
-    alert('Error fixing user ID. Try logging out and back in.');
-  }
-};
-
-// Add the fix as a global function for emergency use
-window.fixMyUserId = emergencyUserIdFix;
 
 /**
  * Direct validator and fixer for MongoDB ObjectIDs
@@ -262,12 +206,6 @@ export const normalizePhotoUrl = (url) => {
   return result;
 };
 
-// Use this function when debugging avatar issues
-export const debugPhotoUrl = (url) => {
-  const normalized = normalizePhotoUrl(url);
-  console.log(`Original URL: ${url}\nNormalized URL: ${normalized}`);
-  return normalized;
-};
 
 /**
  * Mark a URL as failed in the cache so we don't try it again
@@ -363,19 +301,6 @@ export const safeJsonParse = (json, defaultValue = null) => {
   }
 };
 
-/**
- * Generate a random string
- * @param {number} length - Length of the string
- * @returns {string} Random string
- */
-export const randomString = (length = 10) => {
-  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += characters.charAt(Math.floor(Math.random() * characters.length));
-  }
-  return result;
-};
 
 /**
  * Calculate file size with appropriate units
@@ -391,15 +316,6 @@ export const formatFileSize = (bytes, decimals = 2) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   
   return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
-};
-
-/**
- * Deep clone an object
- * @param {Object} obj - Object to clone
- * @returns {Object} Cloned object
- */
-export const deepClone = (obj) => {
-  return JSON.parse(JSON.stringify(obj));
 };
 
 /**

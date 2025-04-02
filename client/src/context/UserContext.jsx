@@ -6,6 +6,7 @@ import { toast } from "react-toastify"
 import { FaHeart } from "react-icons/fa"
 import apiService from "../services/apiService"
 import { useAuth } from "./AuthContext"
+import logger from "../utils/logger"
 
 // Create UserContext
 const UserContext = createContext()
@@ -429,8 +430,40 @@ export const UserProvider = ({ children }) => {
           console.log('Using settings in UPDATE_PROFILE:', data.data.settings);
         }
         
+        // Make sure we have the user ID properly set in the response data
+        if (!data.data._id && state.currentUser && state.currentUser._id) {
+          console.log('Adding missing _id to profile data:', state.currentUser._id);
+          data.data._id = state.currentUser._id;
+        }
+        
         // Dispatch the update to User reducer
         dispatch({ type: "UPDATE_PROFILE", payload: data.data })
+        
+        // Update the current user in state 
+        if (state.currentUser) {
+          // Create a merged object with both the old and new data
+          const mergedData = {
+            ...state.currentUser,
+            ...data.data,
+            details: {
+              ...state.currentUser.details,
+              ...data.data.details,
+            }
+          };
+          
+          // Ensure all profile fields are included
+          if (profileData.details) {
+            if (profileData.details.iAm !== undefined) {
+              mergedData.details.iAm = profileData.details.iAm;
+            }
+            if (profileData.details.maritalStatus !== undefined) {
+              mergedData.details.maritalStatus = profileData.details.maritalStatus;
+            }
+          }
+          
+          // Re-dispatch with the merged data to ensure all fields are properly updated
+          dispatch({ type: "UPDATE_PROFILE", payload: mergedData });
+        }
         
         // If we're updating settings, reinitialize services with the updated settings
         if (profileData.settings) {
@@ -464,7 +497,13 @@ export const UserProvider = ({ children }) => {
         }
         
         toast.success("Profile updated successfully")
-        return data.data
+        
+        // Return the properly merged data with ID
+        const returnData = state.currentUser ? 
+          { ...data.data, _id: state.currentUser._id } : 
+          data.data;
+          
+        return returnData;
       } else {
         throw new Error(data.error || "Failed to update profile")
       }
@@ -473,7 +512,7 @@ export const UserProvider = ({ children }) => {
       dispatch({ type: "USER_ERROR", payload: errorMsg })
       return null
     }
-  }, [])
+  }, [state.currentUser])
 
   /**
    * Upload a photo.
@@ -557,14 +596,78 @@ export const UserProvider = ({ children }) => {
    */
   const refreshUserData = useCallback(
     async (userId = null) => {
-      if (userId) {
-        await getUser(userId)
-      } else if (state.currentUser) {
-        await getUser(state.currentUser._id)
+      try {
+        // First try to refresh from auth endpoint (doesn't require user ID)
+        try {
+          console.log("Refreshing user data from auth endpoint");
+          const authResponse = await apiService.get("/auth/me");
+          if (authResponse.success && authResponse.data) {
+            // Update our internal user state with the latest data
+            dispatch({ 
+              type: "UPDATE_PROFILE", 
+              payload: authResponse.data 
+            });
+            console.log("User data refreshed from auth endpoint");
+            
+            // Also refresh the users list in the background
+            getUsers().catch(err => console.error("Error refreshing users list:", err));
+            return true;
+          }
+        } catch (authError) {
+          console.warn("Could not refresh from auth endpoint", authError);
+        }
+        
+        // If auth endpoint fails and we have a userId, try user API
+        const idToUse = userId || (state.currentUser && state.currentUser._id);
+        if (idToUse) {
+          console.log(`Falling back to user API with ID: ${idToUse}`);
+          const userData = await getUser(idToUse);
+          if (userData) {
+            console.log("User data refreshed from user API");
+            // Also refresh the users list in the background
+            getUsers().catch(err => console.error("Error refreshing users list:", err));
+            return true;
+          } else {
+            console.error(`Failed to refresh user data for ID: ${idToUse}`);
+          }
+        } else {
+          console.warn("No user ID available for refresh, using token-based refresh");
+          
+          // Last resort: try to get token from storage and extract user ID
+          try {
+            const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+            if (token) {
+              const base64Url = token.split(".")[1];
+              const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+              const payload = JSON.parse(atob(base64));
+              
+              const tokenId = payload.id || (payload.user && (payload.user._id || payload.user.id));
+              if (tokenId) {
+                console.log(`Using ID from token: ${tokenId}`);
+                const userData = await getUser(tokenId);
+                if (userData) {
+                  console.log("User data refreshed from user API using token ID");
+                  // Also refresh the users list in the background
+                  getUsers().catch(err => console.error("Error refreshing users list:", err));
+                  return true;
+                }
+              }
+            }
+          } catch (tokenErr) {
+            console.error("Failed to extract ID from token", tokenErr);
+          }
+        }
+        
+        // Also refresh the users list in the background anyway
+        getUsers().catch(err => console.error("Error refreshing users list:", err));
+        
+        return false;
+      } catch (error) {
+        console.error("Error in refreshUserData:", error);
+        return false;
       }
-      await getUsers()
     },
-    [state.currentUser, getUser, getUsers],
+    [state.currentUser, getUser, getUsers, dispatch],
   )
 
   /**

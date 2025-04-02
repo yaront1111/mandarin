@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useAuth } from "../context"
 import { Navbar } from "../components/LayoutComponents"
-import { chat } from "../components"
+import { EmbeddedChat } from "../components"
 import {
   FaSearch,
   FaSpinner,
@@ -55,6 +55,15 @@ const MessagesPage = () => {
   // Load conversations when authenticated
   const getConversations = useCallback(
     async (forceRetry = false) => {
+      // Import ChatService for proper initialization
+      const chatService = require('../services/ChatService').default;
+        
+      // First, make sure ChatService is initialized
+      if (user?._id) {
+        log.info(`Ensuring ChatService is initialized for user ${user._id}`);
+        chatService.initialize(user);
+      }
+      
       // Skip if not authenticated or no user ID
       if (!isAuthenticated || !user?._id) {
         log.debug("Not authenticated or missing user ID, skipping conversation fetch")
@@ -577,49 +586,56 @@ const MessagesPage = () => {
   }, [conversations.length, loading, error]);
 
   return (
-    <div className="messages-page-layout">
+    <div className="messages-page-layout d-flex flex-column vh-100 overflow-hidden">
       <Navbar />
-      <div className="messages-main-content">
-        <div className={classNames("conversations-panel-wrapper", isChatPanelVisible ? "mobile-hidden" : "")}>
-          <div className="conversations-header">
-            <h2>Messages</h2>
-            <div className="search-container">
-              <FaSearch className="search-icon" />
+      <div className="messages-main-content d-flex flex-grow-1 overflow-hidden bg-light-subtle">
+        <div className="conversations-panel-wrapper w-320px flex-shrink-0 d-flex flex-column border-right bg-white" style={{ 
+          transform: isChatPanelVisible && window.innerWidth < 768 ? 'translateX(-100%)' : 'none',
+          pointerEvents: isChatPanelVisible && window.innerWidth < 768 ? 'none' : 'auto'
+        }}>
+          <div className="conversations-header p-4 border-bottom flex-shrink-0">
+            <h2 className="font-weight-bold font-size-lg mb-3">Messages</h2>
+            <div className="search-container position-relative">
+              <FaSearch className="search-icon position-absolute left-3 top-50 transform-translateY--50 text-opacity-60" />
               <input
                 type="text"
                 placeholder="Search conversations..."
                 value={searchQuery}
                 onChange={handleSearchChange}
                 ref={searchInputRef}
-                className="search-input"
+                className="search-input w-100 py-2 px-4 pl-9 rounded-pill border focus-ring bg-light-subtle"
                 aria-label="Search conversations"
               />
               {searchQuery && (
-                <button className="clear-search" onClick={handleClearSearch} aria-label="Clear search">
+                <button 
+                  className="clear-search position-absolute right-3 top-50 transform-translateY--50 bg-transparent border-0 text-opacity-60 cursor-pointer text-lg" 
+                  onClick={handleClearSearch} 
+                  aria-label="Clear search"
+                >
                   &times;
                 </button>
               )}
             </div>
           </div>
-          <div className="conversations-list" ref={conversationListRef}>
+          <div className="conversations-list flex-grow-1 overflow-y-auto p-2 custom-scrollbar" ref={conversationListRef}>
             {loading ? (
-              <div className="loading-state">
-                <FaSpinner className="fa-spin" />
-                <p>Loading conversations...</p>
-                {retryCount > 0 && <p className="retry-info">Attempt {retryCount} - Please wait...</p>}
+              <div className="d-flex flex-column align-items-center justify-content-center p-5 text-opacity-70 h-100 text-center">
+                <FaSpinner className="fa-spin text-primary text-xl mb-4" />
+                <p className="mb-2">Loading conversations...</p>
+                {retryCount > 0 && <p className="text-xs text-opacity-60 mt-2">Attempt {retryCount} - Please wait...</p>}
                 {retryCount > 2 && (
-                  <div className="loading-fallback">
-                    <p>This is taking longer than expected.</p>
-                    <div className="error-actions">
-                      <button onClick={handleRetry} className="retry-button">
-                        <FaSync /> Retry
+                  <div className="mt-5 p-4 bg-light rounded-lg shadow-sm w-90 max-w-md">
+                    <p className="mb-3 font-weight-medium">This is taking longer than expected.</p>
+                    <div className="d-flex gap-2 flex-wrap justify-content-center">
+                      <button onClick={handleRetry} className="btn btn-primary btn-sm d-flex align-items-center gap-2 rounded-pill shadow-sm">
+                        <FaSync /> <span>Retry</span>
                       </button>
-                      <button onClick={handleResetSession} className="reset-button">
-                        Reset Session
+                      <button onClick={handleResetSession} className="btn btn-danger btn-sm d-flex align-items-center gap-2 rounded-pill shadow-sm">
+                        <span>Reset Session</span>
                       </button>
                       {process.env.NODE_ENV === "development" && (
-                        <button onClick={createMockConversations} className="mock-button">
-                          Use Mock Data
+                        <button onClick={createMockConversations} className="btn btn-warning btn-sm d-flex align-items-center gap-2 rounded-pill shadow-sm">
+                          <span>Use Mock Data</span>
                         </button>
                       )}
                     </div>
@@ -627,36 +643,42 @@ const MessagesPage = () => {
                 )}
               </div>
             ) : error ? (
-              <div className="error-state">
-                <FaExclamationTriangle className="error-icon" />
-                <p>{error || "Failed to load conversations"}</p>
-                <div className="error-actions">
-                  <button onClick={handleRetry} className="retry-button">
-                    <FaSync className={loading ? "fa-spin" : ""} /> Retry
+              <div className="d-flex flex-column align-items-center justify-content-center p-5 text-danger h-100 text-center">
+                <FaExclamationTriangle className="text-danger text-3xl mb-4" />
+                <p className="mb-4 max-w-80 font-weight-medium">{error || "Failed to load conversations"}</p>
+                <div className="d-flex gap-2 flex-wrap justify-content-center">
+                  <button onClick={handleRetry} className="btn btn-primary btn-sm d-flex align-items-center gap-2 rounded-pill shadow-sm hover-scale transition-all">
+                    <FaSync className={loading ? "fa-spin" : ""} /> <span>Retry</span>
                   </button>
 
-                  <button onClick={handleResetSession} className="reset-button">
-                    Reset Session
+                  <button onClick={handleResetSession} className="btn btn-danger btn-sm d-flex align-items-center gap-2 rounded-pill shadow-sm hover-scale transition-all">
+                    <span>Reset Session</span>
                   </button>
                   
                   {process.env.NODE_ENV === "development" && (
-                    <button onClick={createMockConversations} className="mock-button">
-                      Use Mock Data
+                    <button onClick={createMockConversations} className="btn btn-warning btn-sm d-flex align-items-center gap-2 rounded-pill shadow-sm hover-scale transition-all">
+                      <span>Use Mock Data</span>
                     </button>
                   )}
                 </div>
               </div>
             ) : filteredConversations.length === 0 ? (
-              <div className="empty-state">
-                <p>{searchQuery ? "No conversations match search" : "No conversations yet"}</p>
+              <div className="d-flex flex-column align-items-center justify-content-center p-5 text-opacity-70 h-100 text-center">
+                <p className="mb-4">{searchQuery ? "No conversations match search" : "No conversations yet"}</p>
                 {!searchQuery && (
-                  <button className="start-chat-btn" onClick={() => navigate("/dashboard")}>
-                    Find Users
+                  <button 
+                    className="btn btn-primary btn-sm d-flex align-items-center gap-2 rounded-pill shadow-sm hover-scale transition-all px-4 py-2"
+                    onClick={() => navigate("/dashboard")}
+                  >
+                    <span>Find Users</span>
                   </button>
                 )}
                 {process.env.NODE_ENV === "development" && (
-                  <button onClick={createMockConversations} className="mock-button mt-2">
-                    Use Mock Data
+                  <button 
+                    onClick={createMockConversations} 
+                    className="btn btn-warning btn-sm d-flex align-items-center gap-2 rounded-pill shadow-sm hover-scale transition-all mt-3"
+                  >
+                    <span>Use Mock Data</span>
                   </button>
                 )}
               </div>
@@ -676,60 +698,68 @@ const MessagesPage = () => {
                   <div
                     key={conversation._id}
                     className={classNames(
-                      "conversation-item",
-                      isSelected ? "selected" : "",
-                      conversation.unreadCount > 0 ? "unread" : "",
+                      "d-flex p-3 rounded-lg mb-1 cursor-pointer transition-all hover-bg-light-subtle",
+                      isSelected ? "bg-primary-50" : "",
+                      conversation.unreadCount > 0 ? "font-weight-medium" : "",
                     )}
                     onClick={() => handleSelectConversation(userData)}
                     role="button"
                     tabIndex={0}
                     aria-selected={isSelected}
                   >
-                    <div className="avatar-container">
+                    <div className="position-relative mr-3 flex-shrink-0">
                       {userData?.photos?.length > 0 ? (
                         <img
                           src={normalizePhotoUrl(userData.photos[0].url) || "/placeholder.svg?height=50&width=50"}
                           alt={userData.nickname || `User ${recipientId}`}
-                          className="avatar"
+                          className="w-50px h-50px rounded-circle object-cover shadow-sm"
                           onError={(e) => {
                             e.target.onerror = null
                             e.target.src = "/placeholder.svg?height=50&width=50"
                           }}
                         />
                       ) : (
-                        <FaUserCircle className="avatar-placeholder" />
+                        <FaUserCircle className="w-50px h-50px text-opacity-60" />
                       )}
-                      {userData?.isOnline && <span className="online-indicator" />}
+                      {userData?.isOnline && (
+                        <span className="position-absolute bottom-0 right-0 w-12px h-12px bg-success rounded-circle border-2 border-white" />
+                      )}
                     </div>
-                    <div className="conversation-info">
-                      <div className="conversation-info-header">
-                        <h3 className="recipient-name">{userData.nickname || "User"}</h3>
-                        <span className="timestamp">{formatTimestamp(conversation.lastMessage?.createdAt)}</span>
+                    <div className="flex-grow-1 overflow-hidden d-flex flex-column justify-content-center min-width-0">
+                      <div className="d-flex justify-content-between align-items-baseline mb-1">
+                        <h3 className="font-weight-medium font-size-sm text-truncate m-0">{userData.nickname || "User"}</h3>
+                        <span className="text-xs text-opacity-60 ml-2 flex-shrink-0">{formatTimestamp(conversation.lastMessage?.createdAt)}</span>
                       </div>
-                      <div className="last-message">
+                      <div className="d-flex align-items-center gap-1 min-width-0">
                         {getMessageTypeIcon(conversation.lastMessage)}
-                        <p className="message-preview">{formatPreview(conversation.lastMessage)}</p>
+                        <p className="text-sm text-opacity-70 text-truncate m-0 flex-grow-1">{formatPreview(conversation.lastMessage)}</p>
                         {conversation.unreadCount > 0 && (
-                          <span className="unread-badge">
+                          <span className="flex-shrink-0 bg-primary text-white text-xs font-weight-bold px-2 py-1 rounded-pill ml-2">
                             {conversation.unreadCount > 9 ? "9+" : conversation.unreadCount}
                           </span>
                         )}
                       </div>
                     </div>
-                    <div className="conversation-actions">
+                    <div className="position-relative ml-2">
                       <button
-                        className="conversation-menu-btn"
+                        className="bg-transparent border-0 text-opacity-60 cursor-pointer p-1 rounded-circle hover-bg-light-subtle transition-all d-flex align-items-center justify-content-center w-30px h-30px"
                         onClick={(e) => toggleConversationMenu(e, recipientId)}
                         aria-label="Conversation options"
                       >
                         <FaEllipsisV />
                       </button>
                       {conversationMenuOpen === recipientId && (
-                        <div className="conversation-menu" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={(e) => handleToggleMute(e, conversation._id, muted)}>
-                            {muted ? <FaBell /> : <FaBellSlash />} {muted ? "Unmute" : "Mute"}
+                        <div className="position-absolute right-0 top-35px bg-white rounded-lg shadow-md z-10 overflow-hidden min-w-120px border" onClick={(e) => e.stopPropagation()}>
+                          <button 
+                            className="d-flex align-items-center gap-2 w-100 py-2 px-3 text-left bg-transparent border-0 cursor-pointer text-sm text-opacity-70 hover-bg-light-subtle transition-all"
+                            onClick={(e) => handleToggleMute(e, conversation._id, muted)}
+                          >
+                            {muted ? <FaBell className="text-primary" /> : <FaBellSlash className="text-primary" />} {muted ? "Unmute" : "Mute"}
                           </button>
-                          <button className="delete-btn" onClick={(e) => handleDeleteConversation(e, recipientId)}>
+                          <button 
+                            className="d-flex align-items-center gap-2 w-100 py-2 px-3 text-left bg-transparent border-0 cursor-pointer text-sm text-danger hover-bg-danger-50 transition-all"
+                            onClick={(e) => handleDeleteConversation(e, recipientId)}
+                          >
                             <FaRegTrashAlt /> Delete
                           </button>
                         </div>
@@ -741,532 +771,24 @@ const MessagesPage = () => {
             )}
           </div>
         </div>
-        <div className={classNames("chat-panel-wrapper", !isChatPanelVisible ? "mobile-hidden" : "")}>
+        <div className="flex-grow-1" style={{ position: 'relative', height: '100%' }}>
           {selectedConversationRecipient ? (
-            <chat.EmbeddedChat
-              key={selectedConversationRecipient._id} // Force re-mount on recipient change
+            <EmbeddedChat
+              key={selectedConversationRecipient._id}
               recipient={selectedConversationRecipient}
               isOpen={true}
               onClose={handleCloseChatPanel}
               embedded={false}
             />
           ) : (
-            <div className="no-chat-selected">
-              <FaChevronLeft className="select-arrow-icon" />
-              <h3>Select a conversation</h3>
-              <p>Choose someone from the list to start chatting.</p>
+            <div className="d-flex flex-column align-items-center justify-content-center h-100 text-center text-opacity-70 p-5 bg-white">
+              <FaChevronLeft className="text-3xl text-opacity-40 mb-4 animate-pulse" />
+              <h3 className="font-weight-medium mb-2 text-lg">Select a conversation</h3>
+              <p className="text-sm max-w-xs">Choose someone from the list to start chatting.</p>
             </div>
           )}
         </div>
       </div>
-      <style>{`
-        .messages-page-layout {
-          display: flex;
-          flex-direction: column;
-          height: 100vh;
-          overflow: hidden;
-        }
-        .messages-main-content {
-          display: flex;
-          flex-grow: 1;
-          overflow: hidden;
-          background-color: var(--bg-light);
-        }
-        .conversations-panel-wrapper {
-          width: 320px;
-          flex-shrink: 0;
-          display: flex;
-          flex-direction: column;
-          border-right: 1px solid var(--border-color);
-          background-color: var(--white);
-        }
-        .chat-panel-wrapper {
-          flex-grow: 1;
-          display: flex;
-          flex-direction: column;
-          background-color: var(--bg-card);
-          overflow: hidden;
-        }
-
-        /* Override EmbeddedChat styles */
-        .chat-panel-wrapper > :global(.embedded-chat) {
-          position: relative !important;
-          height: 100% !important;
-          width: 100% !important;
-          max-width: none !important;
-          max-height: none !important;
-          box-shadow: none !important;
-          border-radius: 0 !important;
-          border: none !important;
-          animation: none !important;
-          bottom: auto !important;
-          right: auto !important;
-          z-index: 1 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          flex-grow: 1 !important;
-          overflow: hidden;
-        }
-        /* Ensure inner chat container also takes full height */
-        .chat-panel-wrapper > :global(.embedded-chat > div:first-child) {
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .conversations-header {
-          padding: 16px;
-          border-bottom: 1px solid var(--border-color);
-          flex-shrink: 0;
-        }
-        .conversations-header h2 {
-          font-size: 1.1rem;
-          font-weight: 600;
-          margin: 0 0 12px 0;
-        }
-        .search-container {
-          position: relative;
-        }
-        .search-icon {
-          position: absolute;
-          left: 10px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: var(--text-light);
-        }
-        .search-input {
-          width: 100%;
-          padding: 8px 12px 8px 35px;
-          border-radius: 20px;
-          border: 1px solid var(--border-color);
-          background-color: var(--bg-light);
-        }
-        .clear-search {
-          position: absolute;
-          right: 10px;
-          top: 50%;
-          transform: translateY(-50%);
-          background: none;
-          border: none;
-          color: var(--text-light);
-          cursor: pointer;
-          font-size: 1.2rem;
-        }
-        .conversations-list {
-          flex-grow: 1;
-          overflow-y: auto;
-          padding: 8px;
-          scrollbar-width: thin;
-          scrollbar-color: var(--border-color) transparent;
-        }
-        .conversations-list::-webkit-scrollbar {
-          width: 5px;
-        }
-        .conversations-list::-webkit-scrollbar-thumb {
-          background-color: var(--border-color);
-          border-radius: 10px;
-        }
-        .conversation-item {
-          display: flex;
-          padding: 12px 8px;
-          border-radius: 8px;
-          margin-bottom: 4px;
-          cursor: pointer;
-          transition: background-color 0.2s ease;
-          position: relative;
-        }
-        .conversation-item:hover {
-          background-color: var(--bg-light);
-        }
-        .conversation-item.selected {
-          background-color: var(--primary-subtle);
-        }
-        .conversation-item.unread .recipient-name,
-        .conversation-item.unread .message-preview {
-          font-weight: 600;
-          color: var(--text-dark);
-        }
-        .conversation-item.unread .message-type-icon {
-          color: var(--text-dark);
-        }
-        .avatar-container {
-          position: relative;
-          margin-right: 12px;
-          flex-shrink: 0;
-        }
-        .avatar {
-          width: 50px;
-          height: 50px;
-          border-radius: 50%;
-          object-fit: cover;
-        }
-        .avatar-placeholder {
-          width: 50px;
-          height: 50px;
-          border-radius: 50%;
-          background-color: var(--light);
-          color: var(--text-light);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 1.5rem;
-        }
-        .online-indicator {
-          position: absolute;
-          bottom: 2px;
-          right: 2px;
-          width: 12px;
-          height: 12px;
-          background-color: var(--success);
-          border-radius: 50%;
-          border: 2px solid var(--white);
-        }
-        .conversation-info {
-          flex-grow: 1;
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-        }
-        .conversation-info-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: baseline;
-        }
-        .recipient-name {
-          font-weight: 500;
-          font-size: 0.9rem;
-          color: var(--text-dark);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          margin: 0;
-        }
-        .timestamp {
-          font-size: 0.7rem;
-          color: var(--text-light);
-          flex-shrink: 0;
-          margin-left: 8px;
-        }
-        .last-message {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          margin-top: 2px;
-          max-width: 100%;
-        }
-        .message-type-icon {
-          font-size: 0.8rem;
-          color: var(--text-light);
-          flex-shrink: 0;
-        }
-        .message-preview {
-          font-size: 0.8rem;
-          color: var(--text-light);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          margin: 0;
-          flex-grow: 1;
-        }
-        .unread-badge {
-          background-color: var(--primary);
-          color: white;
-          font-size: 0.7rem;
-          font-weight: bold;
-          padding: 1px 6px;
-          border-radius: 10px;
-          margin-left: 8px;
-          flex-shrink: 0;
-        }
-        .conversation-actions {
-          position: relative;
-        }
-        .conversation-menu-btn {
-          background: none;
-          border: none;
-          color: var(--text-light);
-          cursor: pointer;
-          padding: 5px;
-          margin-left: 5px;
-          border-radius: 50%;
-          width: 30px;
-          height: 30px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: background-color 0.2s;
-        }
-        .conversation-menu-btn:hover {
-          background-color: var(--bg-light);
-        }
-        .conversation-menu {
-          position: absolute;
-          right: 0;
-          top: 35px;
-          background-color: var(--white);
-          border-radius: 8px;
-          box-shadow: var(--shadow);
-          z-index: 10;
-          overflow: hidden;
-          min-width: 120px;
-          border: 1px solid var(--border-color);
-        }
-        .conversation-menu button {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          width: 100%;
-          padding: 8px 12px;
-          text-align: left;
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-size: 0.85rem;
-          color: var(--text-medium);
-        }
-        .conversation-menu button:hover {
-          background-color: var(--bg-light);
-        }
-        .conversation-menu button.delete-btn {
-          color: var(--danger);
-        }
-        .conversation-menu button.delete-btn:hover {
-          background-color: var(--danger-light);
-        }
-        .no-chat-selected {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          height: 100%;
-          text-align: center;
-          color: var(--text-light);
-          background-color: var(--bg-card);
-          padding: 20px;
-        }
-        .no-chat-selected h3 {
-          margin-top: 16px;
-          font-size: 1.1rem;
-          color: var(--text-medium);
-        }
-        .select-arrow-icon {
-          font-size: 2rem;
-          color: var(--border-color);
-          margin-bottom: 16px;
-          animation: bounce-left 1.5s infinite;
-        }
-        @keyframes bounce-left {
-          0%, 100% { transform: translateX(0); }
-          50% { transform: translateX(-10px); }
-        }
-
-        .loading-state, .error-state, .empty-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 20px;
-          color: var(--text-light);
-          height: calc(100% - 100px);
-          text-align: center;
-        }
-        
-        .loading-fallback {
-          margin-top: 1.5rem;
-          padding: 1rem;
-          background-color: var(--bg-light);
-          border-radius: 8px;
-          width: 90%;
-          max-width: 300px;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-        }
-        .error-icon {
-          font-size: 2rem;
-          color: var(--danger);
-          margin-bottom: 16px;
-        }
-        .error-state p {
-          max-width: 80%;
-          margin-bottom: 16px;
-          color: var(--danger);
-        }
-        .retry-info {
-          font-size: 0.8rem;
-          color: var(--text-light);
-          margin-top: 8px;
-        }
-        .error-actions {
-          display: flex;
-          gap: 10px;
-          margin-top: 10px;
-          flex-wrap: wrap;
-          justify-content: center;
-        }
-        .retry-button, .reset-button, .mock-button {
-          padding: 8px 16px;
-          border-radius: 20px;
-          cursor: pointer;
-          font-weight: 500;
-          border: none;
-          transition: background-color 0.2s;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-        .retry-button {
-          background-color: var(--primary);
-          color: white;
-        }
-        .retry-button:hover {
-          background-color: var(--primary-dark);
-        }
-        .reset-button {
-          background-color: var(--danger);
-          color: white;
-        }
-        .reset-button:hover {
-          background-color: var(--danger-dark);
-        }
-        .mock-button {
-          background-color: var(--warning);
-          color: var(--dark);
-        }
-        .mock-button:hover {
-          background-color: var(--warning-dark);
-        }
-        .mt-2 {
-          margin-top: 8px;
-        }
-        .start-chat-btn {
-          margin-top: 16px;
-          padding: 8px 16px;
-          background-color: var(--primary);
-          color: white;
-          border: none;
-          border-radius: 20px;
-          cursor: pointer;
-        }
-
-        /* Loading spinner animation */
-        .fa-spin {
-          animation: fa-spin 2s infinite linear;
-        }
-        @keyframes fa-spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(359deg); }
-        }
-
-        /* Mobile adjustments */
-        @media (max-width: 768px) {
-          .messages-main-content {
-            position: relative;
-            overflow: hidden;
-          }
-          .conversations-panel-wrapper, .chat-panel-wrapper {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            transition: transform 0.3s ease-in-out;
-            backface-visibility: hidden;
-            background-color: var(--bg-color);
-          }
-          .conversations-panel-wrapper {
-            transform: translateX(0);
-            z-index: 2;
-          }
-          .conversations-panel-wrapper.mobile-hidden {
-            transform: translateX(-100%);
-            pointer-events: none;
-          }
-          .chat-panel-wrapper {
-            transform: translateX(100%);
-            z-index: 1;
-          }
-          .chat-panel-wrapper:not(.mobile-hidden) {
-            transform: translateX(0);
-            z-index: 3;
-          }
-          /* Add mobile back button style */
-          :global(.embedded-chat .mobile-back-button) {
-            display: flex !important;
-            align-items: center;
-            justify-content: center;
-            position: absolute;
-            left: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: rgba(255, 255, 255, 0.15);
-            border: none;
-            font-size: 1.2rem;
-            color: white;
-            cursor: pointer;
-            z-index: 10;
-            padding: 0;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            backdrop-filter: blur(5px);
-          }
-          :global(.embedded-chat .mobile-back-button:hover) {
-            background: rgba(255, 255, 255, 0.25);
-          }
-          /* Adjust header padding for back button */
-          .chat-panel-wrapper > :global(.embedded-chat .chat-header) {
-            padding-left: 60px;
-            position: relative;
-          }
-        }
-
-        /* Dark mode adjustments */
-        .dark .conversations-panel-wrapper {
-          background-color: var(--medium);
-          border-color: var(--border-dark);
-        }
-        .dark .chat-panel-wrapper {
-          background-color: var(--dark);
-        }
-        .dark .search-input {
-          background-color: var(--dark);
-          border-color: var(--border-dark);
-          color: var(--text-dark);
-        }
-        .dark .conversation-item:hover {
-          background-color: rgba(255, 255, 255, 0.05);
-        }
-        .dark .conversation-item.selected {
-          background-color: rgba(var(--primary-rgb), 0.15);
-        }
-        .dark .conversation-menu {
-          background-color: var(--dark);
-          border-color: var(--border-dark);
-        }
-        .dark .conversation-menu button {
-          color: var(--text-medium);
-        }
-        .dark .conversation-menu button:hover {
-          background-color: rgba(255, 255, 255, 0.05);
-        }
-        .dark .conversation-menu button.delete-btn {
-          color: var(--danger);
-        }
-        .dark .conversation-menu button.delete-btn:hover {
-          background-color: var(--danger-light);
-        }
-        .dark .no-chat-selected {
-          background-color: var(--dark);
-          color: var(--text-light);
-        }
-        .dark .select-arrow-icon {
-          color: var(--border-dark);
-        }
-        /* Ensure EmbeddedChat in dark mode inherits background */
-        .dark .chat-panel-wrapper > :global(.embedded-chat) {
-          background-color: inherit;
-        }
-      `}</style>
     </div>
   )
 }

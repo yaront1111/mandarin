@@ -1,10 +1,9 @@
-
-
 // client/src/pages/Login.js
 import { useState, useEffect } from "react"
 import { Link, useNavigate, useLocation } from "react-router-dom"
-import { FaEnvelope, FaLock, FaEye, FaEyeSlash, FaGoogle, FaFacebook, FaArrowRight } from "react-icons/fa"
+import { FaEnvelope, FaLock, FaEye, FaEyeSlash, FaGoogle, FaFacebook, FaArrowRight, FaExclamationTriangle } from "react-icons/fa"
 import { useAuth } from "../context"
+import styles from "../styles/login.module.css"
 
 const Login = () => {
   const [formData, setFormData] = useState({ email: "", password: "" })
@@ -90,130 +89,138 @@ const Login = () => {
   }
 
   return (
-    <div className="auth-page login-page d-flex">
-      <div className="auth-container d-flex flex-column justify-content-center w-100">
-        <div className="container" style={{ maxWidth: "500px" }}>
-          <div className="card">
-            <div className="card-header text-center">
-              <Link to="/" className="logo">
-                Mandarin
-              </Link>
-              <h2 className="mb-1">Welcome Back</h2>
-              <p className="text-light">Sign in to continue your journey</p>
-            </div>
-            <div className="card-body">
-              {formErrors.general && (
-                <div className="alert alert-danger">
-                  <p>{formErrors.general}</p>
-                </div>
-              )}
-              <form onSubmit={handleSubmit}>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="email">
-                    Email Address
-                  </label>
-                  <div className="input-with-icon">
-                    <FaEnvelope className="field-icon" />
-                    <input
-                      type="email"
-                      id="email"
-                      name="email"
-                      className="form-control"
-                      placeholder="Enter your email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      disabled={isSubmitting}
-                      autoComplete="email"
-                    />
-                  </div>
-                  {formErrors.email && <p className="error-message">{formErrors.email}</p>}
-                </div>
+    <div className="auth-page login-page d-flex min-vh-100 bg-light-subtle">
+      <div className={styles.loginContainer}>
+        <div className={styles.gradientBar}></div>
+        
+        <div className="text-center mb-4">
+          <Link to="/" className={styles.pageTitle}>
+            Mandarin
+          </Link>
+          <p className={styles.subtitle}>Sign in to continue your journey</p>
+        </div>
 
-                <div className="form-group">
-                  <div className="d-flex justify-content-between">
-                    <label className="form-label" htmlFor="password">
-                      Password
-                    </label>
-                    <Link to="/forgot-password" className="text-primary" style={{ fontSize: "0.875rem" }}>
-                      Forgot Password?
-                    </Link>
-                  </div>
-                  <div className="input-with-icon">
-                    <FaLock className="field-icon" />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      id="password"
-                      name="password"
-                      className="form-control"
-                      placeholder="Enter your password"
-                      value={formData.password}
-                      onChange={handleChange}
-                      disabled={isSubmitting}
-                      autoComplete="current-password"
-                    />
-                    <button type="button" className="toggle-password" onClick={togglePasswordVisibility} tabIndex={-1}>
-                      {showPassword ? <FaEyeSlash /> : <FaEye />}
-                    </button>
-                  </div>
-                  {formErrors.password && <p className="error-message">{formErrors.password}</p>}
-                </div>
-
-                <div className="form-group d-flex align-items-center">
-                  <label className="checkbox-label d-flex align-items-center">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={() => setRememberMe(!rememberMe)}
-                      disabled={isSubmitting}
-                    />
-                    <span style={{ marginLeft: "8px" }}>Remember me</span>
-                  </label>
-                </div>
-
-                <button
-                  type="submit"
-                  className={`btn btn-primary w-100 ${isSubmitting ? "loading" : ""}`}
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <span className="spinner spinner-dark"></span>
-                      <span style={{ marginLeft: "8px" }}>Signing in...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Sign In</span>
-                      <FaArrowRight />
-                    </>
-                  )}
-                </button>
-              </form>
-
-              <div className="auth-separator text-center mt-4 mb-2">
-                <span>OR</span>
-              </div>
-
-              <div className="d-flex flex-column gap-2">
-                <button className="btn btn-outline d-flex align-items-center justify-content-center">
-                  <FaGoogle style={{ marginRight: "8px" }} />
-                  Sign in with Google
-                </button>
-                <button className="btn btn-outline d-flex align-items-center justify-content-center">
-                  <FaFacebook style={{ marginRight: "8px" }} />
-                  Sign in with Facebook
-                </button>
-              </div>
-
-              <div className="auth-footer text-center mt-4">
-                <p className="mb-0">
-                  Don't have an account?{" "}
-                  <Link to="/register" className="text-primary">
-                    Sign Up
-                  </Link>
-                </p>
-              </div>
-            </div>
+        {formErrors.general && (
+          <div className={`${styles.alert} ${styles.alertDanger}`}>
+            <FaExclamationTriangle />
+            <p className="mb-0">{formErrors.general}</p>
           </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div className={styles.formGroup}>
+            <label className={styles.formLabel} htmlFor="email">
+              Email Address
+            </label>
+            <div className={styles.inputWrapper}>
+              <FaEnvelope className={styles.inputIcon} />
+              <input
+                type="email"
+                id="email"
+                name="email"
+                className={styles.input}
+                placeholder="Enter your email"
+                value={formData.email}
+                onChange={handleChange}
+                disabled={isSubmitting}
+                autoComplete="email"
+              />
+            </div>
+            {formErrors.email && (
+              <p className={styles.errorMessage}>
+                <FaExclamationTriangle />
+                {formErrors.email}
+              </p>
+            )}
+          </div>
+
+          <div className={styles.formGroup}>
+            <label className={styles.formLabel} htmlFor="password">
+              Password
+            </label>
+            <div className={styles.inputWrapper}>
+              <FaLock className={styles.inputIcon} />
+              <input
+                type={showPassword ? "text" : "password"}
+                id="password"
+                name="password"
+                className={styles.input}
+                placeholder="Enter your password"
+                value={formData.password}
+                onChange={handleChange}
+                disabled={isSubmitting}
+                autoComplete="current-password"
+              />
+              <button 
+                type="button" 
+                className={styles.togglePassword}
+                onClick={togglePasswordVisibility} 
+                tabIndex={-1}
+              >
+                {showPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
+            </div>
+            {formErrors.password && (
+              <p className={styles.errorMessage}>
+                <FaExclamationTriangle />
+                {formErrors.password}
+              </p>
+            )}
+          </div>
+
+          <div className={styles.rememberForgotWrapper}>
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                className={styles.checkbox}
+                checked={rememberMe}
+                onChange={() => setRememberMe(!rememberMe)}
+                disabled={isSubmitting}
+              />
+              Remember me
+            </label>
+            <Link to="/forgot-password" className={styles.forgotPassword}>
+              Forgot Password?
+            </Link>
+          </div>
+
+          <button
+            type="submit"
+            className={styles.submitButton}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <>
+                <span className={styles.spinner}></span>
+                <span>Signing in...</span>
+              </>
+            ) : (
+              <>
+                <span>Sign In</span>
+                <FaArrowRight />
+              </>
+            )}
+          </button>
+        </form>
+
+        <div className={styles.divider}>OR</div>
+
+        <div>
+          <button className={styles.socialButton}>
+            <FaGoogle className={styles.googleIcon} />
+            <span>Sign in with Google</span>
+          </button>
+          <button className={styles.socialButton}>
+            <FaFacebook className={styles.facebookIcon} />
+            <span>Sign in with Facebook</span>
+          </button>
+        </div>
+
+        <div className={styles.footer}>
+          Don't have an account?{" "}
+          <Link to="/register" className={styles.footerLink}>
+            Sign Up
+          </Link>
         </div>
       </div>
     </div>

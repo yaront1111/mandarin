@@ -13,6 +13,7 @@
     "@heroicons/react": "^2.2.0",
     "axios": "^1.8.3",
     "date-fns": "^4.1.0",
+    "framer-motion": "^12.6.3",
     "lodash": "^4.17.21",
     "lucide-react": "^0.483.0",
     "peer": "^1.0.2",

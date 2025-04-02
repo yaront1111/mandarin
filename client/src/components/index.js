@@ -10,8 +10,6 @@ import UserCard from "./UserCard.jsx"
 // Chat Components - Legacy
 import EmbeddedChat from "./EmbeddedChat"
 
-// Chat Components - New Modular Version
-import * as chat from "./chat"
 
 // Stories Components
 import StoriesCarousel from "./Stories/StoriesCarousel"
@@ -38,6 +36,7 @@ export {
   LayoutPrivateRoute,
   // Chat Components
   EmbeddedChat,
+
   UserCard,
   // Stories Components
   StoriesCarousel,
@@ -52,6 +51,5 @@ export {
   ThemeToggle,
   // User Profile Modal
   UserProfileModal,
-  // Modular Chat Components
-  chat,
+
 }

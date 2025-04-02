@@ -20,23 +20,56 @@ class ResponseCache {
   }
 
   generateKey(url, params) {
-    const sortedParams = params ? JSON.stringify(Object.entries(params).sort()) : ""
-    return `${url}:${sortedParams}`
+    // Normalize the URL by removing trailing slashes
+    const normalizedUrl = url.replace(/\/+$/, "");
+    
+    // Extract any ID from the URL for cache normalization (useful for REST APIs)
+    const idMatch = normalizedUrl.match(/\/([0-9a-fA-F]{24})$/);
+    const baseUrl = idMatch ? normalizedUrl.replace(idMatch[1], ":id") : normalizedUrl;
+    
+    // Use the normalized URL structure for more consistent caching
+    // For ID-specific endpoints, cache with the specific ID
+    const cacheUrl = idMatch ? `${baseUrl}:${idMatch[1]}` : normalizedUrl;
+    
+    const sortedParams = params ? JSON.stringify(Object.entries(params).sort()) : "";
+    return `${cacheUrl}:${sortedParams}`;
   }
 
   set(url, params, data) {
     // Only cache successful responses
     if (!data || !data.success) return null
+    
+    // Generate the cache key
     const key = this.generateKey(url, params)
-    const expiresAt = Date.now() + this.ttl
+    
+    // Set different TTL based on endpoint type
+    let ttl = this.ttl;
+    
+    // User profiles can be cached longer (2 minutes) since they change less frequently
+    if (url.match(/\/users\/[0-9a-fA-F]{24}$/)) {
+      ttl = 120000; // 2 minutes
+      cacheLogger.debug(`Using extended TTL (120s) for user profile: ${url}`);
+    }
+    
+    // Messages need shorter cache time
+    if (url.includes('/messages/')) {
+      ttl = 10000; // 10 seconds
+      cacheLogger.debug(`Using shorter TTL (10s) for messages endpoint: ${url}`);
+    }
+    
+    const expiresAt = Date.now() + ttl
+    
+    // If cache is full, remove oldest entry
     if (this.cache.size >= this.maxSize) {
       // Remove oldest entry (first in Map)
       const oldestKey = this.cache.keys().next().value
       this.cache.delete(oldestKey)
       cacheLogger.debug(`Cache full, removing oldest entry: ${oldestKey}`)
     }
+    
+    // Save to cache
     this.cache.set(key, { data, expiresAt })
-    cacheLogger.debug(`Cached response for: ${key}`)
+    cacheLogger.debug(`Cached response for: ${key} (expires in ${Math.round(ttl/1000)}s)`)
     return data
   }
 
@@ -196,9 +229,9 @@ class RequestQueue {
  */
 class ApiService {
   constructor() {
-    this.baseURL =
-      import.meta.env.VITE_API_URL ||
-      (window.location.hostname.includes("localhost") ? "http://localhost:5000/api" : "/api")
+    // Initialize with a more resilient baseURL resolution
+    // We'll prioritize just using the /api path for better proxy support
+    this.baseURL = "/api";
     apiLogger.info(`Initializing with baseURL: ${this.baseURL}`)
 
     // Create axios instance
@@ -650,6 +683,11 @@ class ApiService {
   // Update the get method to use the _processResponse helper and sanitize ObjectIds
   async get(url, params = {}, options = {}) {
     try {
+      // Special debug logging for message-related API calls
+      if (url.includes("/messages")) {
+        apiLogger.info(`Message API call: GET ${url} params:${JSON.stringify(params)}`);
+      }
+      
       // Check if the endpoint contains an ID parameter (common pattern: /users/:id, /messages/:id)
       const idMatch = url.match(/\/([^/]+)$/)
       if (idMatch && idMatch[1] && !url.includes("?") && !url.endsWith("/")) {
@@ -691,9 +729,34 @@ class ApiService {
         ...options,
         cancelToken: options.request?.cancelToken || options.cancelToken,
       })
+      
+      // Special debug logging for message-related API responses
+      if (url.includes("/messages")) {
+        apiLogger.info(`Message API response success: GET ${url} - Data: ${JSON.stringify(response)}`);
+      }
+      
       return this._processResponse(response)
     } catch (error) {
-      apiLogger.error(`GET request failed: ${url}`, error)
+      // Special error logging for message-related API errors
+      if (url.includes("/messages")) {
+        apiLogger.error(`Message API request failed: GET ${url}`, error);
+        
+        // Log more detailed error info
+        if (error.response) {
+          apiLogger.error(`Message API error details: ${JSON.stringify({
+            status: error.response.status,
+            data: error.response.data,
+            headers: error.response.headers
+          })}`);
+        } else if (error.request) {
+          apiLogger.error(`Message API no response received: ${error.request}`);
+        } else {
+          apiLogger.error(`Message API error setting up request: ${error.message}`);
+        }
+      } else {
+        apiLogger.error(`GET request failed: ${url}`, error);
+      }
+      
       throw error
     }
   }
@@ -701,6 +764,11 @@ class ApiService {
   // Update the post method to use the _processResponse helper and sanitize ObjectIds
   async post(url, data = {}, options = {}) {
     try {
+      // Special debug logging for message-related API calls
+      if (url.includes("/messages")) {
+        apiLogger.info(`Message API call: POST ${url} data:${JSON.stringify(data)}`);
+      }
+      
       if (options.invalidateCache !== false) {
         this.cache.invalidate(url)
       }
@@ -713,9 +781,34 @@ class ApiService {
         ...options,
         cancelToken: options.request?.cancelToken || options.cancelToken,
       })
+      
+      // Special debug logging for message-related API responses
+      if (url.includes("/messages")) {
+        apiLogger.info(`Message API response success: POST ${url} - Data: ${JSON.stringify(response)}`);
+      }
+      
       return this._processResponse(response)
     } catch (error) {
-      apiLogger.error(`POST request failed: ${url}`, error)
+      // Special error logging for message-related API errors
+      if (url.includes("/messages")) {
+        apiLogger.error(`Message API request failed: POST ${url}`, error);
+        
+        // Log more detailed error info
+        if (error.response) {
+          apiLogger.error(`Message API error details: ${JSON.stringify({
+            status: error.response.status,
+            data: error.response.data,
+            headers: error.response.headers
+          })}`);
+        } else if (error.request) {
+          apiLogger.error(`Message API no response received: ${error.request}`);
+        } else {
+          apiLogger.error(`Message API error setting up request: ${error.message}`);
+        }
+      } else {
+        apiLogger.error(`POST request failed: ${url}`, error)
+      }
+      
       throw error
     }
   }

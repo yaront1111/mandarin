@@ -1,5 +1,5 @@
 // client/src/App.jsx
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -7,13 +7,13 @@ import "./styles/base.css";
 import "./styles/components.css";
 import "./styles/pages.css";
 import "./styles/utilities.css";
-import "./styles/settings.css";
+import "./styles/settings.css"; // Using regular CSS for settings
 import "./styles/notifications.css";
+import "./styles/stories.css"; // Using regular CSS for stories
 
 import {
   AuthProvider,
   UserProvider,
-  ChatProvider,
   StoriesProvider,
   ThemeProvider,
   NotificationProvider,
@@ -33,10 +33,51 @@ import NotFound from "./pages/NotFound";
 import Home from "./pages/Home";
 import Messages from "./pages/Messages.jsx";
 import Subscription from "./pages/Subscription";
+import { EmbeddedChat } from "./components";
 
 function App() {
   // Call the hook here to set up navigation for the notification service
   useInitializeNotificationServiceNavigation();
+  
+  // State for global chat component
+  const [chatRecipient, setChatRecipient] = useState(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
+  useEffect(() => {
+    // Listen for custom chat events
+    const handleOpenChat = (event) => {
+      console.log('openChat event received in App.jsx', event.detail);
+      const { recipient } = event.detail;
+      
+      if (recipient && recipient._id) {
+        console.log('Setting chat recipient and opening chat in App.jsx');
+        setChatRecipient(recipient);
+        setIsChatOpen(true);
+        
+        // Force the component to re-render with a slight delay
+        setTimeout(() => {
+          console.log('Forcing chat open state refresh');
+          setIsChatOpen(true);
+        }, 50);
+      }
+    };
+
+    // Add the event listener
+    window.addEventListener("openChat", handleOpenChat);
+
+    // Test the event listener on mount in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Chat event handler registered in App.jsx');
+    }
+
+    return () => {
+      window.removeEventListener("openChat", handleOpenChat);
+    };
+  }, []);
+
+  const handleCloseChat = () => {
+    setIsChatOpen(false);
+  };
 
   return (
     // ErrorBoundary and Providers remain the same
@@ -45,7 +86,6 @@ function App() {
         <AuthProvider>
           <UserProvider>
             <ChatConnectionProvider>
-              <ChatProvider>
                 <StoriesProvider>
                   <NotificationProvider>
                     <div className="app-wrapper">
@@ -62,6 +102,16 @@ function App() {
                         <Route path="/subscription" element={ <PrivateRoute><Subscription /></PrivateRoute> } />
                         <Route path="*" element={<NotFound />} />
                       </Routes>
+                      
+                      {/* Global floating chat window */}
+                      {isChatOpen && chatRecipient && (
+                        <EmbeddedChat 
+                          recipient={chatRecipient}
+                          isOpen={isChatOpen}
+                          onClose={handleCloseChat}
+                        />
+                      )}
+                      
                       <ToastContainer
                         position="top-right"
                         autoClose={3000}
@@ -78,7 +128,6 @@ function App() {
                     </div>
                   </NotificationProvider>
                 </StoriesProvider>
-              </ChatProvider>
             </ChatConnectionProvider>
           </UserProvider>
         </AuthProvider>

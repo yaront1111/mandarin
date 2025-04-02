@@ -17,33 +17,4 @@ export { default as withErrorBoundary, withErrorBoundary as WithErrorBoundary } 
 export { default as withSuspense, withSuspense as WithSuspense } from './withSuspense';
 export { default as withMemo, withMemo as WithMemo } from './withMemo';
 
-/**
- * Compose multiple higher-order components
- * @param {...Function} hocs - HOCs to compose
- * @returns {Function} - Composed HOC
- */
-export const compose = (...hocs) => {
-  return (BaseComponent) => 
-    hocs.reduceRight(
-      (AccumulatedComponent, hoc) => hoc(AccumulatedComponent), 
-      BaseComponent
-    );
-};
 
-/**
- * Higher-order component for both error boundary and suspense
- * @param {React.Component} Component - Component to wrap
- * @param {Object} options - Options for error boundary and suspense
- * @returns {React.Component} - Wrapped component
- */
-export const withErrorHandling = (Component, options = {}) => {
-  const { 
-    errorBoundaryOptions = {}, 
-    SuspenseFallback = undefined 
-  } = options;
-  
-  return compose(
-    (C) => withErrorBoundary(C, errorBoundaryOptions),
-    (C) => withSuspense(C, SuspenseFallback)
-  )(Component);
-};

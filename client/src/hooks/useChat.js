@@ -1,7 +1,7 @@
 // client/src/hooks/useChat.js
 /**
- * Comprehensive hook for chat functionality
- * Provides messages, conversation state, and actions
+ * Refactored chat hook for conversation management
+ * Provides messages, conversation state, and actions with improved stability
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context';
@@ -16,10 +16,14 @@ const log = logger.create('useChat');
  * @param {string} recipientId - ID of the conversation partner
  * @returns {Object} - Chat state and methods
  */
-export const useChat = (recipientId) => {
+export const useChat = (recipientId = null) => {
+  // Ensure recipientId is treated as a string if it exists
+  const normalizedRecipientId = recipientId ? String(recipientId) : null;
   const { user, isAuthenticated } = useAuth();
+  
+  // Component state
   const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const [hasMore, setHasMore] = useState(true);
@@ -27,94 +31,191 @@ export const useChat = (recipientId) => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [typingStatus, setTypingStatus] = useState(false);
   const [isConnected, setIsConnected] = useState(chatService.isConnected());
+  const [initialized, setInitialized] = useState(false);
 
   // Refs for tracking state in callbacks and event listeners
   const messagesRef = useRef(messages);
   const typingTimeoutRef = useRef(null);
   const listenerCleanupRef = useRef(null);
   const mountedRef = useRef(true);
+  const loadingTimeoutRef = useRef(null);
 
   // Update refs when state changes
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
-  // Initialize chat service when component mounts
+  // Initialize chat service when component mounts with retry mechanism
   useEffect(() => {
-    if (isAuthenticated && user?._id) {
-      chatService.initialize(user);
-    }
+    mountedRef.current = true;
+    
+    // Retry counter for initialization
+    let retryCount = 0;
+    const maxRetries = 3;
+    let retryTimeoutId = null;
+    
+    const initChat = async () => {
+      if (isAuthenticated && user?._id) {
+        try {
+          console.log(`Initializing chat service (attempt ${retryCount + 1})...`, {
+            userId: user._id,
+            isAuthenticated
+          });
+          
+          // Initialize chat service with user data
+          await chatService.initialize(user);
+          
+          if (mountedRef.current) {
+            console.log("Chat service initialized successfully!");
+            setInitialized(true);
+            setIsConnected(chatService.isConnected());
+          }
+        } catch (err) {
+          log.error("Failed to initialize chat service:", err);
+          console.error("Chat service initialization error:", err);
+          
+          if (mountedRef.current) {
+            if (retryCount < maxRetries) {
+              // Retry with exponential backoff
+              retryCount++;
+              const delay = Math.min(1000 * Math.pow(2, retryCount), 5000);
+              console.log(`Retrying chat initialization in ${delay}ms (attempt ${retryCount + 1}/${maxRetries + 1})`);
+              
+              retryTimeoutId = setTimeout(initChat, delay);
+            } else {
+              setError("Failed to initialize chat. Please refresh and try again.");
+            }
+          }
+        }
+      } else {
+        console.warn("Cannot initialize chat: missing user ID or not authenticated", {
+          userId: user?._id,
+          isAuthenticated,
+        });
+      }
+    };
+    
+    initChat();
 
+    // Cleanup function with retry timeout clearance
     return () => {
       mountedRef.current = false;
       
-      // Clean up typing timeout
+      // Clear timeouts
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
       
-      // Clean up event listeners
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+      
+      // Clear the retry timeout if it exists
+      if (retryTimeoutId) {
+        clearTimeout(retryTimeoutId);
+      }
+      
+      // Clear event listeners
       if (listenerCleanupRef.current) {
-        listenerCleanupRef.current.forEach(cleanup => cleanup());
+        listenerCleanupRef.current.forEach(cleanup => {
+          if (typeof cleanup === 'function') {
+            cleanup();
+          }
+        });
         listenerCleanupRef.current = null;
       }
     };
   }, [isAuthenticated, user]);
 
-  // Set up event listeners
+  // Setup event listeners for the current conversation
   useEffect(() => {
-    if (!recipientId || !isAuthenticated || !user?._id) return;
-    
-    // Remove previous listeners
-    if (listenerCleanupRef.current) {
-      listenerCleanupRef.current.forEach(cleanup => cleanup());
+    // Skip setup if missing required data or not initialized
+    if (!normalizedRecipientId || !isAuthenticated || !user?._id || !initialized) {
+      return;
     }
     
-    // Initialize cleanup array
+    // Clear previous listeners
+    if (listenerCleanupRef.current) {
+      listenerCleanupRef.current.forEach(cleanup => {
+        if (typeof cleanup === 'function') {
+          cleanup();
+        }
+      });
+    }
+    
+    // Create new listeners array
     const listeners = [];
     
-    // Listen for new messages
+    // 0. Message updated listener (for existing messages)
+    const updateListener = chatService.on('messageUpdated', (message) => {
+      if (!mountedRef.current) return;
+      
+      // Update messages state specifically for existing messages
+      setMessages(prev => {
+        // Find the message to update (by ID or tempId)
+        return prev.map(m => {
+          if (m._id === message._id || 
+              (message.tempId && m.tempId === message.tempId) ||
+              (message.tempMessageId && m.tempId === message.tempMessageId)) {
+            return { ...m, ...message, updated: true };
+          }
+          return m;
+        });
+      });
+    });
+    listeners.push(updateListener);
+    
+    // 1. Message received listener
     const messageListener = chatService.on('messageReceived', (message) => {
       if (!mountedRef.current) return;
       
-      // Only add messages relevant to this conversation
+      // Only process messages for this conversation
       if (
-        (message.sender === recipientId && message.recipient === user._id) ||
-        (message.sender === user._id && message.recipient === recipientId)
+        // Only handle INCOMING messages from the recipient
+        // This prevents duplications with messageSent events
+        message.sender === normalizedRecipientId && message.recipient === user._id
       ) {
-        log.debug(`Received new message in conversation with ${recipientId}`);
+        log.debug(`Received message from ${normalizedRecipientId}`);
         
-        // Update messages state
+        // Update messages state, preventing duplicates
         setMessages(prev => {
-          // Check if message already exists
-          const exists = prev.some(m => m._id === message._id);
-          if (exists) {
-            return prev.map(m => m._id === message._id ? { ...m, ...message } : m);
-          }
-          return [message, ...prev].sort((a, b) => 
-            new Date(b.createdAt) - new Date(a.createdAt)
+          // IMPORTANT: Skip duplicate messages by ID to prevent triple display
+          // Check if message already exists by ID or tempID
+          const exists = prev.some(m => 
+            m._id === message._id || 
+            (message.tempMessageId && m.tempId === message.tempMessageId)
           );
+          
+          // If the message already exists in our state, don't add it again
+          if (exists) {
+            log.debug(`Skipping duplicate message ${message._id} - already exists in state`);
+            return prev;
+          }
+          
+          // Add new message to the bottom (newest last)
+          return [...prev, message];
         });
         
-        // Mark the message as read if it's from the recipient
-        if (message.sender === recipientId && !message.read) {
-          chatService.markConversationRead(recipientId);
-        }
+        // Mark message as read since we're looking at it
+        chatService.markConversationRead(normalizedRecipientId);
       }
     });
     listeners.push(messageListener);
     
-    // Listen for sent message confirmations
+    // 2. Message sent confirmation listener
     const sentListener = chatService.on('messageSent', (message) => {
       if (!mountedRef.current) return;
       
-      if (message.recipient === recipientId) {
-        log.debug(`Message sent confirmation for conversation with ${recipientId}`);
+      // Only handle messages for this conversation
+      if (message.recipient === normalizedRecipientId) {
+        log.debug(`Message sent confirmation for ${normalizedRecipientId}`);
         
-        // Update messages state
+        // Update message state with confirmed message
         setMessages(prev => {
+          // Find temp message by ID or tempId
           const messageIndex = prev.findIndex(m => 
-            m._id === message._id || m.tempId === message.tempMessageId
+            m._id === message._id || 
+            m.tempId === message.tempMessageId
           );
           
           if (messageIndex >= 0) {
@@ -129,22 +230,19 @@ export const useChat = (recipientId) => {
             return newMessages;
           }
           
-          // Add new message if not found
-          return [
-            { ...message, status: 'sent', pending: false },
-            ...prev
-          ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          // Don't add as new if not found - prevent duplication
+          log.debug("Message with tempId not found - this shouldn't happen normally");
+          return prev;
         });
       }
     });
     listeners.push(sentListener);
     
-    // Listen for typing indicators
+    // 3. Typing indicator listener
     const typingListener = chatService.on('userTyping', (data) => {
       if (!mountedRef.current) return;
       
-      if (data.userId === recipientId) {
-        log.debug(`${recipientId} is typing...`);
+      if (data.userId === normalizedRecipientId) {
         setTypingStatus(true);
         
         // Auto-clear typing indicator after 3 seconds
@@ -161,37 +259,69 @@ export const useChat = (recipientId) => {
     });
     listeners.push(typingListener);
     
-    // Listen for connection changes
+    // 4. Connection status listener
     const connectionListener = chatService.on('connectionChanged', ({ connected }) => {
       if (!mountedRef.current) return;
+      
       setIsConnected(connected);
       
-      // Reload messages if connection was re-established
+      // Reload messages if connection was restored
       if (connected) {
         loadMessages(true);
       }
     });
     listeners.push(connectionListener);
     
+    // 5. Message error listener
+    const errorListener = chatService.on('messageError', (error) => {
+      if (!mountedRef.current) return;
+      
+      if (error.tempMessageId) {
+        // Update the message with error status
+        setMessages(prev => {
+          return prev.map(m => {
+            if (m.tempId === error.tempMessageId) {
+              return {
+                ...m,
+                error: true,
+                status: 'error',
+                errorMessage: error.error || 'Failed to send message'
+              };
+            }
+            return m;
+          });
+        });
+      }
+      
+      setError(error.error || 'Error sending message');
+    });
+    listeners.push(errorListener);
+    
     // Save listeners for cleanup
     listenerCleanupRef.current = listeners;
     
-    // Initial load
+    // Initial load of messages
     loadMessages();
     
     // Mark conversation as read when opened
-    chatService.markConversationRead(recipientId);
+    chatService.markConversationRead(normalizedRecipientId);
     
+    // Cleanup function
     return () => {
-      // Clean up listeners when component unmounts or recipientId changes
-      listeners.forEach(cleanup => cleanup());
+      // Clean up listeners when unmounting or recipientId changes
+      if (listeners && listeners.length) {
+        listeners.forEach(cleanup => {
+          if (typeof cleanup === 'function') {
+            cleanup();
+          }
+        });
+      }
       
-      // Clean up typing timeout
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
     };
-  }, [recipientId, isAuthenticated, user]);
+  }, [normalizedRecipientId, isAuthenticated, user, initialized]);
 
   /**
    * Load messages for the current conversation
@@ -199,70 +329,113 @@ export const useChat = (recipientId) => {
    * @returns {Promise<Array>} - Loaded messages
    */
   const loadMessages = useCallback(async (forceRefresh = false) => {
-    if (!recipientId || !isAuthenticated || !user?._id) {
-      setLoading(false);
+    // Check for required data
+    if (!normalizedRecipientId || !isAuthenticated || !user?._id || !initialized) {
+      log.warn('Cannot load messages: Missing required data');
       return [];
     }
     
-    // Don't reload if already loading
+    // Skip if already loading and not forcing refresh
     if (loading && !forceRefresh) {
-      return [];
+      log.debug('Already loading messages, skipping duplicate request');
+      return messagesRef.current;
     }
     
-    // Set a timeout to ensure loading state doesn't get stuck
-    const timeoutId = setTimeout(() => {
-      if (mountedRef.current) {
-        log.warn('Message loading timeout reached. Resetting loading state.');
-        setLoading(false);
-        setError('Loading timed out. Please try again.');
-      }
-    }, 10000); // 10 second timeout
-    
+    // Set loading state
     setLoading(true);
     setError(null);
     
+    // Safety timeout to prevent stuck loading state
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current);
+    }
+    
+    loadingTimeoutRef.current = setTimeout(() => {
+      if (mountedRef.current && loading) {
+        log.warn('Message loading timeout reached');
+        setLoading(false);
+        setError('Loading timed out. Please try again.');
+      }
+    }, 15000); // 15 second timeout
+    
     try {
-      log.debug(`Loading messages with ${recipientId}`);
+      log.debug(`Loading messages for conversation with ${normalizedRecipientId}`);
       
-      // Check socket connection first
-      if (!chatService.isConnected()) {
-        log.warn('Socket not connected. Attempting to use API directly.');
+      // Try to get messages, with retry on failure
+      let loadedMessages;
+      try {
+        loadedMessages = await chatService.getMessages(normalizedRecipientId, 1, 20);
+      } catch (firstError) {
+        log.warn('First attempt to load messages failed, retrying:', firstError);
+        
+        // Wait a moment before retry
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        // Try again
+        loadedMessages = await chatService.getMessages(normalizedRecipientId, 1, 20);
       }
       
-      const loadedMessages = await chatService.getMessages(recipientId, 1, 20);
+      // Clear the timeout
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
       
-      // Clear the timeout since we got a response
-      clearTimeout(timeoutId);
-      
+      // Skip updates if unmounted
       if (!mountedRef.current) return [];
       
-      // Handle empty messages as a successful but empty result
-      setMessages(loadedMessages || []);
-      setHasMore((loadedMessages || []).length >= 20); // Assume there's more if we got a full page
+      // Ensure we have an array, even if empty
+      const messages = Array.isArray(loadedMessages) ? loadedMessages : [];
+      
+      // Reverse the order so newest messages are at the bottom
+      // Also, deduplicate messages by ID to prevent triplication
+      const uniqueMessages = [];
+      const seenIds = new Set();
+      
+      // Process messages to deduplicate
+      [...messages].reverse().forEach(msg => {
+        // Only add if we haven't seen this ID before
+        if (msg._id && !seenIds.has(msg._id)) {
+          uniqueMessages.push(msg);
+          seenIds.add(msg._id);
+        }
+      });
+      
+      // Update state with unique messages
+      setMessages(uniqueMessages);
+      setHasMore(uniqueMessages.length >= 20);
       setPage(1);
       setLoading(false);
       
-      return loadedMessages || [];
-    } catch (err) {
-      log.error(`Error loading messages:`, err);
+      log.debug(`Loaded ${messages.length} messages`);
+      return messages;
+    } catch (error) {
+      log.error('Failed to load messages:', error);
       
-      // Clear the timeout since we got a response
-      clearTimeout(timeoutId);
+      // Clear the timeout
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
       
+      // Skip updates if unmounted
       if (!mountedRef.current) return [];
       
-      setError(err.message || "Failed to load messages");
+      // Update error state
+      setError(error.message || 'Failed to load messages');
       setLoading(false);
+      
       return [];
     }
-  }, [recipientId, isAuthenticated, user, loading]);
+  }, [normalizedRecipientId, isAuthenticated, user, loading, initialized]);
 
   /**
    * Load more messages (pagination)
    * @returns {Promise<Array>} - Newly loaded messages
    */
   const loadMoreMessages = useCallback(async () => {
-    if (!recipientId || !isAuthenticated || loadingMore || !hasMore) {
+    // Check prerequisites
+    if (!normalizedRecipientId || !isAuthenticated || loadingMore || !hasMore || !initialized) {
       return [];
     }
     
@@ -272,44 +445,54 @@ export const useChat = (recipientId) => {
       const nextPage = page + 1;
       log.debug(`Loading more messages, page ${nextPage}`);
       
-      const moreMessages = await chatService.getMessages(recipientId, nextPage, 20);
+      const moreMessages = await chatService.getMessages(normalizedRecipientId, nextPage, 20);
       
+      // Skip updates if unmounted
       if (!mountedRef.current) return [];
       
-      if (moreMessages.length > 0) {
+      // Handle non-array response
+      const messages = Array.isArray(moreMessages) ? moreMessages : [];
+      
+      if (messages.length > 0) {
         setMessages(prev => {
-          // Combine and sort all messages, removing duplicates
+          // Combine messages, avoiding duplicates
           const combined = [...prev];
           
-          moreMessages.forEach(newMsg => {
-            // Check if message already exists
-            const exists = combined.some(m => m._id === newMsg._id);
-            if (!exists) {
+          // Reverse the order of messages so oldest are first
+          const reversedMessages = [...messages].reverse();
+          
+          reversedMessages.forEach(newMsg => {
+            // Skip if already exists
+            if (!combined.some(m => m._id === newMsg._id)) {
               combined.push(newMsg);
             }
           });
           
-          // Sort by creation date (newest first)
-          return combined.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          // Don't sort - maintain chronological order (oldest first, newest last)
+          return combined;
         });
         
         setPage(nextPage);
       }
       
-      setHasMore(moreMessages.length >= 20); // If we got a full page, assume more
+      // Update pagination state
+      setHasMore(messages.length >= 20);
       setLoadingMore(false);
       
-      return moreMessages;
-    } catch (err) {
-      log.error(`Error loading more messages:`, err);
+      return messages;
+    } catch (error) {
+      log.error('Failed to load more messages:', error);
       
+      // Skip updates if unmounted
       if (!mountedRef.current) return [];
       
-      setError(err.message || "Failed to load more messages");
+      // Update error state
+      setError(error.message || 'Failed to load more messages');
       setLoadingMore(false);
+      
       return [];
     }
-  }, [recipientId, isAuthenticated, loadingMore, hasMore, page]);
+  }, [normalizedRecipientId, isAuthenticated, loadingMore, hasMore, page, initialized]);
 
   /**
    * Send a message to the recipient
@@ -319,65 +502,119 @@ export const useChat = (recipientId) => {
    * @returns {Promise<Object>} - The sent message
    */
   const sendMessage = useCallback(async (content, type = 'text', metadata = null) => {
-    if (!recipientId || !isAuthenticated || !user?._id) {
-      log.error('Cannot send message: Missing recipient or not authenticated');
-      throw new Error('Cannot send message: Authentication required');
+    // Validate prerequisites
+    if (!normalizedRecipientId || !isAuthenticated || !user?._id || !initialized) {
+      const errMsg = 'Cannot send message: Missing required data';
+      log.error(errMsg);
+      throw new Error(errMsg);
     }
     
+    // Set sending state
     setSending(true);
     
     try {
-      log.debug(`Sending ${type} message to ${recipientId}`);
+      log.debug(`Sending ${type} message to ${normalizedRecipientId}`);
       
-      const message = await chatService.sendMessage(recipientId, content, type, metadata);
+      // Create a temporary ID for optimistic UI updates
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
       
+      // Create a temporary message for optimistic UI update
+      const tempMessage = {
+        _id: tempId,
+        tempId,
+        sender: user._id,
+        recipient: normalizedRecipientId,
+        content,
+        type,
+        metadata: metadata || {},
+        createdAt: new Date().toISOString(),
+        status: 'sending',
+        pending: true
+      };
+      
+      // Update UI optimistically - add to the end for newest last
+      // But first check if we already have a message with the same content to prevent duplication
+      setMessages(prev => {
+        // Prevent sending duplicate messages - check if we already have a message
+        // with identical content sent within the last 5 seconds
+        const now = new Date();
+        const recentDuplicates = prev.filter(m => 
+          m.content === tempMessage.content &&
+          m.sender === tempMessage.sender &&
+          m.recipient === tempMessage.recipient &&
+          now - new Date(m.createdAt) < 5000 // Within the last 5 seconds
+        );
+        
+        if (recentDuplicates.length > 0) {
+          log.debug("Skipping duplicate message send - already have same content");
+          return prev;
+        }
+        
+        return [...prev, tempMessage];
+      });
+      
+      // Send the actual message
+      const message = await chatService.sendMessage(
+        normalizedRecipientId, 
+        content, 
+        type, 
+        metadata,
+        tempId
+      );
+      
+      // Skip updates if unmounted
       if (!mountedRef.current) return message;
       
-      // Optimistically update UI
+      // Update the message in the UI
       setMessages(prev => {
-        // Check if temporary version exists
-        const tempIndex = prev.findIndex(m => m.tempId === message.tempMessageId);
+        // Find the temp message
+        const index = prev.findIndex(m => 
+          m.tempId === tempId || m._id === message._id
+        );
         
-        if (tempIndex >= 0) {
-          // Replace temp message
+        if (index >= 0) {
+          // Replace temp message with real one
           const updated = [...prev];
-          updated[tempIndex] = {
-            ...updated[tempIndex],
+          updated[index] = {
             ...message,
+            tempId,
             status: 'sent',
             pending: false
           };
           return updated;
         }
         
-        // Add as new message and sort
-        return [message, ...prev].sort((a, b) => 
-          new Date(b.createdAt) - new Date(a.createdAt)
-        );
+        // Don't add as new if not found - prevent duplication
+        log.debug("Message with tempId not found - this shouldn't happen normally");
+        return prev;
       });
       
+      // Reset sending state
       setSending(false);
+      
       return message;
-    } catch (err) {
-      log.error(`Error sending message:`, err);
+    } catch (error) {
+      log.error('Failed to send message:', error);
       
-      if (!mountedRef.current) {
-        throw err;
-      }
+      // Skip updates if unmounted
+      if (!mountedRef.current) throw error;
       
+      // Update error state
+      setError(error.message || 'Failed to send message');
       setSending(false);
-      throw err;
+      
+      throw error;
     }
-  }, [recipientId, isAuthenticated, user]);
+  }, [normalizedRecipientId, isAuthenticated, user, initialized]);
 
   /**
    * Send typing indicator to recipient
    */
   const sendTyping = useCallback(() => {
-    if (recipientId && isAuthenticated && chatService.isConnected()) {
-      chatService.sendTypingIndicator(recipientId);
+    if (normalizedRecipientId && isAuthenticated && initialized && chatService.isConnected()) {
+      chatService.sendTypingIndicator(normalizedRecipientId);
     }
-  }, [recipientId, isAuthenticated]);
+  }, [normalizedRecipientId, isAuthenticated, initialized]);
 
   /**
    * Manually refresh messages
@@ -393,20 +630,27 @@ export const useChat = (recipientId) => {
     setError(null);
   }, []);
 
+  // Return the hook API
   return {
+    // State
     messages,
     loading,
     sending,
     error,
     hasMore,
+    typingStatus,
+    isConnected,
+    initialized,
+    
+    // Actions
+    loadMessages,
     loadMoreMessages,
     sendMessage,
     sendTyping,
-    typingStatus,
     refresh,
-    resetError,
-    isConnected
+    resetError
   };
 };
 
+// Export the hook as default
 export default useChat;

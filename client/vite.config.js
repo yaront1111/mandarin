@@ -33,11 +33,13 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
+    cors: true,
     proxy: {
       "/api": {
         target: "http://localhost:5000",
         changeOrigin: true,
         secure: false,
+        rewrite: (path) => path,
       },
       "/uploads": {
         target: "http://localhost:5000",

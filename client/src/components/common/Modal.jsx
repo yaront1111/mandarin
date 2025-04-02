@@ -129,20 +129,18 @@ const Modal = ({
         aria-modal="true"
         aria-labelledby={title ? "modal-title" : undefined}
       >
-        {title && (
-          <div className={`modal-header ${headerClassName}`}>
-            <h2 className="modal-title" id="modal-title">{title}</h2>
-            {showCloseButton && (
-              <button 
-                className="modal-close"
-                onClick={onClose}
-                aria-label="Close modal"
-              >
-                <FaTimes />
-              </button>
-            )}
-          </div>
-        )}
+        <div className={`modal-header ${headerClassName}`}>
+          {title && <h2 className="modal-title" id="modal-title">{title}</h2>}
+          {showCloseButton && (
+            <button 
+              className="modal-close"
+              onClick={onClose}
+              aria-label="Close modal"
+            >
+              <FaTimes />
+            </button>
+          )}
+        </div>
         
         <div className={`modal-body ${bodyClassName}`}>
           {children}

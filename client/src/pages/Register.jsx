@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Link, useNavigate, useLocation } from "react-router-dom"
 import {
   FaUser,
@@ -16,10 +16,14 @@ import {
   FaFacebook,
   FaExclamationTriangle,
   FaCalendarAlt,
+  FaCamera,
+  FaImage,
+  FaTrash,
+  FaEdit,
 } from "react-icons/fa"
 import { useAuth } from "../context"
 import { toast } from "react-toastify"
-import "../styles/registration.css"
+import styles from "../styles/register.module.css"
 
 const Register = () => {
   const [currentStep, setCurrentStep] = useState(1)
@@ -40,7 +44,10 @@ const Register = () => {
     intoTags: [],
     turnOns: [],
     maritalStatus: "",
+    profilePhoto: null,
   })
+  const [previewImage, setPreviewImage] = useState(null)
+  const fileInputRef = useRef(null)
   const [showPassword, setShowPassword] = useState(false)
   const [formErrors, setFormErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -230,7 +237,7 @@ const Register = () => {
       setIsSubmitting(false)
 
       // Scroll to error message
-      const errorElement = document.querySelector(".alert-danger")
+      const errorElement = document.querySelector(`.${styles.alertDanger}`)
       if (errorElement) {
         errorElement.scrollIntoView({ behavior: "smooth", block: "start" })
       }
@@ -315,6 +322,13 @@ const Register = () => {
       }
 
       if (step === 3) {
+        // Add validation for profile photo
+        if (!formData.profilePhoto) {
+          errors.profilePhoto = "Please upload a profile photo"
+        }
+      }
+
+      if (step === 4) {
         // Add validation for marital status
         if (!formData.maritalStatus) {
           errors.maritalStatus = "Please select your marital status"
@@ -408,7 +422,7 @@ const Register = () => {
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors)
 
-      const firstErrorElement = document.querySelector(".error-message")
+      const firstErrorElement = document.querySelector(`.${styles.errorMessage}`)
       if (firstErrorElement) {
         firstErrorElement.scrollIntoView({ behavior: "smooth", block: "start" })
       }
@@ -543,6 +557,61 @@ const Register = () => {
       setFormErrors({ ...formErrors, maritalStatus: "" })
     }
   }
+  
+  // Handle photo upload
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg']
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a valid image file (JPEG, JPG or PNG)')
+      return
+    }
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size should be less than 5MB')
+      return
+    }
+    
+    // Update form data and preview
+    setFormData({
+      ...formData,
+      profilePhoto: file
+    })
+    
+    // Create and set preview URL
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setPreviewImage(reader.result)
+    }
+    reader.readAsDataURL(file)
+    
+    if (formErrors.profilePhoto) {
+      setFormErrors({ ...formErrors, profilePhoto: '' })
+    }
+  }
+  
+  // Remove uploaded photo
+  const handleRemovePhoto = () => {
+    setFormData({
+      ...formData,
+      profilePhoto: null
+    })
+    setPreviewImage(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+  
+  // Trigger file input click
+  const triggerFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click()
+    }
+  }
 
   const validateForm = useCallback(() => {
     const errors = {}
@@ -556,7 +625,7 @@ const Register = () => {
     const validationErrors = validateForm()
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
-      const firstErrorElement = document.querySelector(".error-message")
+      const firstErrorElement = document.querySelector(`.${styles.errorMessage}`)
       if (firstErrorElement) {
         firstErrorElement.scrollIntoView({ behavior: "smooth", block: "center" })
       }
@@ -608,18 +677,54 @@ const Register = () => {
       try {
         const success = await register(submissionData)
         if (success) {
+          // If there's a profile photo, upload it after successful registration
+          if (formData.profilePhoto) {
+            try {
+              // Create FormData object for file upload
+              const photoFormData = new FormData()
+              photoFormData.append('photo', formData.profilePhoto)
+              photoFormData.append('isPrivate', 'false') // Default to public profile photo
+              
+              // Get base URL from apiService
+              const baseURL = import.meta.env.VITE_API_URL || 
+                (window.location.hostname.includes("localhost") ? "http://localhost:5000/api" : "/api")
+              
+              // Send photo to the server
+              const response = await fetch(`${baseURL}/users/photos`, {
+                method: 'POST',
+                body: photoFormData,
+                headers: {
+                  'Authorization': `Bearer ${localStorage.getItem('token')}`, // Use stored token for authorization
+                  'x-auth-token': localStorage.getItem('token') // Include both headers for compatibility
+                }
+              })
+              
+              const result = await response.json()
+              
+              if (result.success) {
+                toast.success("Profile photo uploaded successfully")
+              } else {
+                toast.error("Failed to upload profile photo: " + (result.error || "Unknown error"))
+              }
+            } catch (photoErr) {
+              console.error("Error uploading photo:", photoErr)
+              toast.error("Failed to upload profile photo")
+            }
+          }
+          
           toast.success("Welcome to Mandarin! Your account has been created successfully.")
           navigate("/dashboard")
         }
       } catch (err) {
-        if (err.message === "User already exists") {
+        if (err.error === "User already exists" || err.code === "EMAIL_EXISTS" || 
+            (err.message && err.message.includes("already exists"))) {
           setFormErrors({
             email: "This email is already registered. Please log in or use a different email.",
             general: "An account with this email already exists. Would you like to log in instead?",
           })
 
           // Scroll to the error message
-          const errorElement = document.querySelector(".error-message")
+          const errorElement = document.querySelector(`.${styles.errorMessage}`)
           if (errorElement) {
             errorElement.scrollIntoView({ behavior: "smooth", block: "start" })
           }
@@ -650,23 +755,28 @@ const Register = () => {
     setShowPassword(!showPassword)
   }
 
-  // Render progress indicator with three steps
+  // Render progress indicator with four steps
   const renderProgress = () => (
-    <div className="registration-progress">
-      <div className="progress-steps d-flex justify-content-center align-items-center">
-        <div className={`progress-step ${currentStep >= 1 ? "active" : ""}`}>
-          <div className="step-circle">{currentStep > 1 ? <FaCheck /> : 1}</div>
-          <span className="step-label">Account</span>
+    <div className={styles.progressContainer}>
+      <div className={styles.progressSteps}>
+        <div className={`${styles.progressStep} ${currentStep >= 1 ? styles.active : ""}`}>
+          <div className={styles.stepCircle}>{currentStep > 1 ? <FaCheck /> : 1}</div>
+          <span className={styles.stepLabel}>Account</span>
         </div>
-        <div className="progress-line"></div>
-        <div className={`progress-step ${currentStep >= 2 ? "active" : ""}`}>
-          <div className="step-circle">{currentStep > 2 ? <FaCheck /> : 2}</div>
-          <span className="step-label">Profile</span>
+        <div className={styles.progressLine}></div>
+        <div className={`${styles.progressStep} ${currentStep >= 2 ? styles.active : ""}`}>
+          <div className={styles.stepCircle}>{currentStep > 2 ? <FaCheck /> : 2}</div>
+          <span className={styles.stepLabel}>Profile</span>
         </div>
-        <div className="progress-line"></div>
-        <div className={`progress-step ${currentStep >= 3 ? "active" : ""}`}>
-          <div className="step-circle">{currentStep > 3 ? <FaCheck /> : 3}</div>
-          <span className="step-label">Preferences</span>
+        <div className={styles.progressLine}></div>
+        <div className={`${styles.progressStep} ${currentStep >= 3 ? styles.active : ""}`}>
+          <div className={styles.stepCircle}>{currentStep > 3 ? <FaCheck /> : 3}</div>
+          <span className={styles.stepLabel}>Photo</span>
+        </div>
+        <div className={styles.progressLine}></div>
+        <div className={`${styles.progressStep} ${currentStep >= 4 ? styles.active : ""}`}>
+          <div className={styles.stepCircle}>{currentStep > 4 ? <FaCheck /> : 4}</div>
+          <span className={styles.stepLabel}>Preferences</span>
         </div>
       </div>
     </div>
@@ -675,86 +785,83 @@ const Register = () => {
   // Render step 1 content (Account Information)
   const renderStep1 = () => (
     <>
-      <div className="step-header text-center">
+      <div className={styles.stepHeader}>
         <h3>Create Your Account</h3>
-        <p className="text-light">Enter your basic information</p>
+        <p>Enter your basic information</p>
       </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="nickname">
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel} htmlFor="nickname">
           Nickname
         </label>
-        <div className="input-with-icon">
-          <FaUser className="field-icon" />
+        <div className={styles.inputWrapper}>
+          <FaUser className={styles.inputIcon} />
           <input
             type="text"
             id="nickname"
             name="nickname"
             placeholder="Choose a nickname"
-            className={`form-control ${formErrors.nickname ? "border-danger" : ""}`}
+            className={styles.input}
             value={formData.nickname}
             onChange={handleChange}
             maxLength={50}
-            aria-describedby="nickname-help"
           />
         </div>
         {formErrors.nickname ? (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.nickname}
           </p>
         ) : (
-          <small id="nickname-help" className="form-text text-muted">
+          <p className={styles.helpText}>
             Your public display name (can contain letters, numbers, and underscores)
-          </small>
+          </p>
         )}
       </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="email">
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel} htmlFor="email">
           Email Address
         </label>
-        <div className="input-with-icon">
-          <FaEnvelope className="field-icon" />
+        <div className={styles.inputWrapper}>
+          <FaEnvelope className={styles.inputIcon} />
           <input
             type="email"
             id="email"
             name="email"
             placeholder="Enter your email"
-            className={`form-control ${formErrors.email ? "border-danger" : ""}`}
+            className={styles.input}
             value={formData.email}
             onChange={handleChange}
-            aria-describedby="email-help"
           />
         </div>
         {formErrors.email ? (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.email}
           </p>
         ) : (
-          <small id="email-help" className="form-text text-muted">
+          <p className={styles.helpText}>
             We'll never share your email with anyone else
-          </small>
+          </p>
         )}
       </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="password">
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel} htmlFor="password">
           Password
         </label>
-        <div className="input-with-icon">
-          <FaLock className="field-icon" />
+        <div className={styles.inputWrapper}>
+          <FaLock className={styles.inputIcon} />
           <input
             type={showPassword ? "text" : "password"}
             id="password"
             name="password"
             placeholder="Create a password"
-            className={`form-control ${formErrors.password ? "border-danger" : ""}`}
+            className={styles.input}
             value={formData.password}
             onChange={handleChange}
-            aria-describedby="password-help"
           />
           <button
             type="button"
-            className="toggle-password"
+            className={styles.togglePassword}
             onClick={togglePasswordVisibility}
             tabIndex={-1}
             aria-label={showPassword ? "Hide password" : "Show password"}
@@ -763,41 +870,42 @@ const Register = () => {
           </button>
         </div>
         {formErrors.password ? (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.password}
           </p>
         ) : (
-          <small id="password-help" className="form-text text-muted">
+          <p className={styles.helpText}>
             Must be at least 8 characters with uppercase, lowercase, number, and special character
-          </small>
+          </p>
         )}
       </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="confirmPassword">
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel} htmlFor="confirmPassword">
           Confirm Password
         </label>
-        <div className="input-with-icon">
-          <FaLock className="field-icon" />
+        <div className={styles.inputWrapper}>
+          <FaLock className={styles.inputIcon} />
           <input
             type={showPassword ? "text" : "password"}
             id="confirmPassword"
             name="confirmPassword"
             placeholder="Confirm password"
-            className={`form-control ${formErrors.confirmPassword ? "border-danger" : ""}`}
+            className={styles.input}
             value={formData.confirmPassword}
             onChange={handleChange}
           />
         </div>
         {formErrors.confirmPassword && (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.confirmPassword}
           </p>
         )}
       </div>
-      <div className="form-actions d-flex justify-content-end mt-3">
-        <button type="button" className="btn btn-primary" onClick={handleNextStep} disabled={isSubmitting}>
+      <div className={styles.formActions}>
+        <div></div> {/* Empty div for flex spacing */}
+        <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleNextStep} disabled={isSubmitting}>
           Continue <FaArrowRight />
         </button>
       </div>
@@ -807,80 +915,76 @@ const Register = () => {
   // Render step 2 content (Profile Information)
   const renderStep2 = () => (
     <>
-      <div className="step-header text-center">
+      <div className={styles.stepHeader}>
         <h3>Tell Us About Yourself</h3>
-        <p className="text-light">Add some basic profile details</p>
+        <p>Add some basic profile details</p>
       </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="dateOfBirth">
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel} htmlFor="dateOfBirth">
           Date of Birth
         </label>
-        <div className="input-with-icon">
-          <FaCalendarAlt className="field-icon" />
+        <div className={styles.inputWrapper}>
+          <FaCalendarAlt className={styles.inputIcon} />
           <input
             type="date"
             id="dateOfBirth"
             name="dateOfBirth"
-            className={`form-control ${formErrors.dateOfBirth ? "border-danger" : ""}`}
+            className={styles.input}
             value={formData.dateOfBirth}
             onChange={handleChange}
             max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split("T")[0]}
-            aria-describedby="dob-help"
           />
         </div>
         {formErrors.dateOfBirth ? (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.dateOfBirth}
           </p>
         ) : (
-          <small id="dob-help" className="form-text text-muted">
+          <p className={styles.helpText}>
             You must be at least 18 years old to use this service
-          </small>
+          </p>
         )}
       </div>
 
-      <div className="form-group">
-        <label className="form-label">I am a</label>
-        <div className="d-flex gap-2 flex-wrap">
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel}>I am a</label>
+        <div className={styles.tagContainer}>
           {iAmOptions.map((option) => (
             <button
               key={option}
               type="button"
-              className={`interest-tag ${formData.iAm === option ? "selected" : ""} ${
-                formErrors.iAm && attemptedSubmit ? "error-border" : ""
-              }`}
+              className={`${styles.tag} ${formData.iAm === option ? styles.selected : ""}`}
               onClick={() => handleIAmSelection(option)}
             >
               {option.charAt(0).toUpperCase() + option.slice(1)}
-              {formData.iAm === option && <FaCheck className="tag-check" />}
+              {formData.iAm === option && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
         </div>
         {formErrors.iAm && (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.iAm}
           </p>
         )}
       </div>
 
-      <div className="form-group">
-        <label className="form-label" htmlFor="location">
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel} htmlFor="location">
           Location
         </label>
-        <div className="input-with-icon">
-          <FaMapMarkerAlt className="field-icon" />
+        <div className={styles.inputWrapper}>
+          <FaMapMarkerAlt className={styles.inputIcon} />
           <input
             type="text"
             id="location"
             name="location"
             placeholder="City, Country"
-            className={`form-control ${formErrors.location ? "border-danger" : ""}`}
+            className={styles.input}
             value={formData.location}
             onChange={handleLocationChange}
             maxLength={100}
-            aria-describedby="location-help"
             list="location-suggestions"
           />
           <datalist id="location-suggestions">
@@ -890,42 +994,111 @@ const Register = () => {
           </datalist>
         </div>
         {formErrors.location ? (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.location}
           </p>
         ) : (
-          <small id="location-help" className="form-text text-muted">
+          <p className={styles.helpText}>
             Your general location (e.g., Tel Aviv, Israel)
-          </small>
+          </p>
         )}
       </div>
-      <div className="form-actions d-flex justify-content-between mt-3">
-        <button type="button" className="btn btn-outline" onClick={handlePrevStep}>
+      <div className={styles.formActions}>
+        <button type="button" className={`${styles.button} ${styles.buttonOutline}`} onClick={handlePrevStep}>
           <FaArrowLeft /> Back
         </button>
-        <button type="button" className="btn btn-primary" onClick={handleNextStep} disabled={isSubmitting}>
+        <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleNextStep} disabled={isSubmitting}>
           Continue <FaArrowRight />
         </button>
       </div>
     </>
   )
 
-  // Render step 3 content (Preferences)
+  // Render step 3 content (Photo Upload)
   const renderStep3 = () => (
     <>
-      <div className="step-header text-center">
+      <div className={styles.stepHeader}>
+        <h3>Upload Your Photo</h3>
+        <p>Add a profile photo to improve your visibility</p>
+      </div>
+      
+      <div className={styles.photoUploadContainer}>
+        <div 
+          className={`${styles.photoUploadArea} ${previewImage ? styles.hasImage : ''}`}
+          onClick={triggerFileInput}
+        >
+          <input 
+            type="file"
+            ref={fileInputRef}
+            accept="image/jpeg,image/png,image/jpg" 
+            onChange={handlePhotoChange}
+            className="d-none"
+          />
+          
+          {previewImage ? (
+            <img src={previewImage} alt="Profile Preview" className={styles.profileImagePreview} />
+          ) : (
+            <>
+              <FaCamera className={styles.photoUploadIcon} />
+              <p className={styles.photoUploadText}>
+                Click to upload a profile photo
+              </p>
+            </>
+          )}
+        </div>
+        
+        <p className={styles.uploadGuidelines}>
+          Photos should be clear, recent and show your face. 
+          <br />Maximum size: 5MB. Formats: JPG, JPEG, PNG.
+        </p>
+        
+        {formErrors.profilePhoto && (
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
+            {formErrors.profilePhoto}
+          </p>
+        )}
+        
+        {previewImage && (
+          <div className={styles.photoActions}>
+            <button type="button" className={`${styles.photoActionButton} ${styles.changePhotoButton}`} onClick={triggerFileInput}>
+              <FaEdit /> Change Photo
+            </button>
+            <button type="button" className={`${styles.photoActionButton} ${styles.removePhotoButton}`} onClick={handleRemovePhoto}>
+              <FaTrash /> Remove
+            </button>
+          </div>
+        )}
+      </div>
+      
+      <div className={styles.formActions}>
+        <button type="button" className={`${styles.button} ${styles.buttonOutline}`} onClick={handlePrevStep} disabled={isSubmitting}>
+          <FaArrowLeft /> Back
+        </button>
+        <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleNextStep} disabled={isSubmitting}>
+          Continue <FaArrowRight />
+        </button>
+      </div>
+    </>
+  )
+  
+  // Render step 4 content (Preferences)
+  const renderStep4 = () => (
+    <>
+      <div className={styles.stepHeader}>
         <h3>Your Preferences</h3>
-        <p className="text-light">Tell us about yourself and what you're looking for</p>
+        <p>Tell us about yourself and what you're looking for</p>
       </div>
 
-      <div className="form-group">
-        <label className="form-label">Marital Status</label>
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel}>Marital Status</label>
         <select
-          className={`form-control ${formErrors.maritalStatus ? "border-danger" : ""}`}
+          className={styles.input}
           name="maritalStatus"
           value={formData.maritalStatus}
           onChange={handleMaritalStatusChange}
+          style={{ paddingLeft: "1rem" }}
         >
           <option value="">Select your status</option>
           {maritalStatusOptions.map((status) => (
@@ -935,170 +1108,184 @@ const Register = () => {
           ))}
         </select>
         {formErrors.maritalStatus && (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.maritalStatus}
           </p>
         )}
       </div>
 
-      <div className="form-group">
-        <label className="form-label">Looking For</label>
-        <small className="d-block text-muted mb-2">Select up to 3 options</small>
-        <div className="d-flex gap-2 flex-wrap">
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel}>Looking For</label>
+        <p className={styles.helpText}>Select up to 3 options</p>
+        <div className={styles.tagContainer}>
           {lookingForOptions.map((option) => (
             <button
               key={option}
               type="button"
-              className={`interest-tag ${formData.lookingFor.includes(option) ? "selected" : ""} ${
-                formErrors.lookingFor && attemptedSubmit ? "error-border" : ""
-              }`}
+              className={`${styles.tag} ${formData.lookingFor.includes(option) ? styles.selected : ""}`}
               onClick={() => toggleGoal(option)}
               disabled={!formData.lookingFor.includes(option) && formData.lookingFor.length >= 3}
             >
               {option.charAt(0).toUpperCase() + option.slice(1)}
-              {formData.lookingFor.includes(option) && <FaCheck className="tag-check" />}
+              {formData.lookingFor.includes(option) && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
         </div>
         {formErrors.lookingFor && (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.lookingFor}
           </p>
         )}
       </div>
 
-      <div className="form-group">
-        <label className="form-label">Interests</label>
-        <small className="d-block text-muted mb-2">Select up to 10 interests</small>
-        <div className="interests-grid">
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel}>Interests</label>
+        <p className={styles.helpText}>Select up to 10 interests</p>
+        <div className={styles.tagContainer}>
           {availableInterests.map((interest) => (
             <button
               key={interest}
               type="button"
-              className={`interest-tag ${formData.interests.includes(interest) ? "selected" : ""} ${
-                formErrors.interests && attemptedSubmit ? "error-border" : ""
-              }`}
+              className={`${styles.tag} ${formData.interests.includes(interest) ? styles.selected : ""}`}
               onClick={() => toggleInterest(interest)}
               disabled={!formData.interests.includes(interest) && formData.interests.length >= 10}
             >
               {interest}
-              {formData.interests.includes(interest) && <FaCheck className="tag-check" />}
+              {formData.interests.includes(interest) && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
         </div>
         {formErrors.interests && (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.interests}
           </p>
         )}
       </div>
 
-      <div className="form-group">
-        <label className="form-label">I'm into</label>
-        <small className="d-block text-muted mb-2">Select up to 20 tags</small>
-        <div className="interests-grid">
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel}>I'm into</label>
+        <p className={styles.helpText}>Select up to 20 tags</p>
+        <div className={styles.tagContainer}>
           {intoTagsOptions.map((tag) => (
             <button
               key={tag}
               type="button"
-              className={`interest-tag ${formData.intoTags.includes(tag) ? "selected" : ""} ${
-                formErrors.intoTags && attemptedSubmit ? "error-border" : ""
-              }`}
+              className={`${styles.tag} ${formData.intoTags.includes(tag) ? styles.selected : ""}`}
               onClick={() => toggleIntoTag(tag)}
               disabled={!formData.intoTags.includes(tag) && formData.intoTags.length >= 20}
             >
               {tag}
-              {formData.intoTags.includes(tag) && <FaCheck className="tag-check" />}
+              {formData.intoTags.includes(tag) && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
         </div>
         {formErrors.intoTags && (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.intoTags}
           </p>
         )}
       </div>
 
-      <div className="form-group">
-        <label className="form-label">It turns me on</label>
-        <small className="d-block text-muted mb-2">Select up to 20 tags</small>
-        <div className="interests-grid">
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel}>It turns me on</label>
+        <p className={styles.helpText}>Select up to 20 tags</p>
+        <div className={styles.tagContainer}>
           {turnOnsOptions.map((tag) => (
             <button
               key={tag}
               type="button"
-              className={`interest-tag ${formData.turnOns.includes(tag) ? "selected" : ""} ${
-                formErrors.turnOns && attemptedSubmit ? "error-border" : ""
-              }`}
+              className={`${styles.tag} ${formData.turnOns.includes(tag) ? styles.selected : ""}`}
               onClick={() => toggleTurnOn(tag)}
               disabled={!formData.turnOns.includes(tag) && formData.turnOns.length >= 20}
             >
               {tag}
-              {formData.turnOns.includes(tag) && <FaCheck className="tag-check" />}
+              {formData.turnOns.includes(tag) && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
         </div>
         {formErrors.turnOns && (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.turnOns}
           </p>
         )}
       </div>
 
-      <div className="form-group checkbox-group mt-3">
-        <label className={`checkbox-label ${formErrors.agreeTerms ? "error" : ""}`}>
-          <input type="checkbox" name="agreeTerms" checked={formData.agreeTerms} onChange={handleChange} />
-          <span style={{ marginLeft: "8px" }}>
-            I agree to the{" "}
-            <Link to="/terms" target="_blank" rel="noopener noreferrer">
-              Terms of Service
-            </Link>
-          </span>
+      <div className={styles.checkboxGroup}>
+        <label className={`${styles.checkboxLabel} ${formErrors.agreeTerms ? styles.checkboxLabelError : ""}`}>
+          <input 
+            type="checkbox" 
+            className={styles.checkbox} 
+            name="agreeTerms" 
+            checked={formData.agreeTerms} 
+            onChange={handleChange} 
+          />
+          I agree to the{" "}
+          <Link to="/terms" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>
+            Terms of Service
+          </Link>
         </label>
         {formErrors.agreeTerms && (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.agreeTerms}
           </p>
         )}
       </div>
-      <div className="form-group checkbox-group">
-        <label className={`checkbox-label ${formErrors.agreePrivacy ? "error" : ""}`}>
-          <input type="checkbox" name="agreePrivacy" checked={formData.agreePrivacy} onChange={handleChange} />
-          <span style={{ marginLeft: "8px" }}>
-            I agree to the{" "}
-            <Link to="/privacy" target="_blank" rel="noopener noreferrer">
-              Privacy Policy
-            </Link>
-          </span>
+
+      <div className={styles.checkboxGroup}>
+        <label className={`${styles.checkboxLabel} ${formErrors.agreePrivacy ? styles.checkboxLabelError : ""}`}>
+          <input 
+            type="checkbox" 
+            className={styles.checkbox} 
+            name="agreePrivacy" 
+            checked={formData.agreePrivacy} 
+            onChange={handleChange} 
+          />
+          I agree to the{" "}
+          <Link to="/privacy" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>
+            Privacy Policy
+          </Link>
         </label>
         {formErrors.agreePrivacy && (
-          <p className="error-message text-danger">
-            <FaExclamationTriangle className="me-1" />
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle />
             {formErrors.agreePrivacy}
           </p>
         )}
       </div>
-      <div className="form-group checkbox-group">
-        <label className="checkbox-label">
-          <input type="checkbox" name="newsletter" checked={formData.newsletter} onChange={handleChange} />
-          <span style={{ marginLeft: "8px" }}>I want to receive news and special offers (optional)</span>
+
+      <div className={styles.checkboxGroup}>
+        <label className={styles.checkboxLabel}>
+          <input 
+            type="checkbox" 
+            className={styles.checkbox} 
+            name="newsletter" 
+            checked={formData.newsletter} 
+            onChange={handleChange} 
+          />
+          I want to receive news and special offers (optional)
         </label>
       </div>
-      <div className="form-actions d-flex justify-content-between mt-3">
-        <button type="button" className="btn btn-outline" onClick={handlePrevStep} disabled={isSubmitting}>
+
+      <div className={styles.formActions}>
+        <button type="button" className={`${styles.button} ${styles.buttonOutline}`} onClick={handlePrevStep} disabled={isSubmitting}>
           <FaArrowLeft /> Back
         </button>
-        <button type="submit" className={`btn btn-primary ${isSubmitting ? "loading" : ""}`} disabled={isSubmitting}>
+        <button 
+          type="submit" 
+          className={`${styles.button} ${styles.buttonPrimary}`} 
+          disabled={isSubmitting}
+          onClick={handleSubmit}
+        >
           {isSubmitting ? (
             <>
-              <span className="spinner spinner-dark"></span>
-              <span style={{ marginLeft: "8px" }}>Creating account...</span>
+              <span className={styles.spinner}></span>
+              <span>Creating account...</span>
             </>
           ) : (
             <>
@@ -1119,61 +1306,59 @@ const Register = () => {
         return renderStep2()
       case 3:
         return renderStep3()
+      case 4:
+        return renderStep4()
       default:
         return null
     }
   }
 
   return (
-    <div className="auth-page register-page d-flex">
-      <div className="auth-container d-flex flex-column justify-content-center w-100">
-        <div className="container" style={{ maxWidth: "600px" }}>
-          <div className="card">
-            <div className="card-header text-center">
-              <Link to="/" className="logo">
-                Mandarin
-              </Link>
-              <h2 className="mb-1">Join Mandarin</h2>
-              <p className="text-light">Create your account in a few steps</p>
-            </div>
-            <div className="card-body">
-              {formErrors.general && (
-                <div className="alert alert-danger" role="alert">
-                  <FaExclamationTriangle className="me-2" />
-                  <p className="mb-0">{formErrors.general}</p>
-                </div>
-              )}
-              {renderProgress()}
-              <form className="mt-4" onSubmit={handleSubmit} noValidate>
-                {renderStepContent()}
-              </form>
-              {currentStep === 1 && (
-                <>
-                  <div className="auth-separator text-center mt-4 mb-2">
-                    <span>OR SIGN UP WITH</span>
-                  </div>
-                  <div className="d-flex flex-column gap-2">
-                    <button className="btn btn-outline d-flex align-items-center justify-content-center">
-                      <FaGoogle style={{ marginRight: "8px" }} />
-                      Sign up with Google
-                    </button>
-                    <button className="btn btn-outline d-flex align-items-center justify-content-center">
-                      <FaFacebook style={{ marginRight: "8px" }} />
-                      Sign up with Facebook
-                    </button>
-                  </div>
-                </>
-              )}
-              <div className="auth-footer text-center mt-4">
-                <p className="mb-0">
-                  Already have an account?{" "}
-                  <Link to="/login" className="text-primary">
-                    Sign In
-                  </Link>
-                </p>
-              </div>
-            </div>
+    <div className="auth-page register-page d-flex min-vh-100 bg-light-subtle">
+      <div className={styles.registerContainer}>
+        <div className={styles.gradientBar}></div>
+        
+        <div className="text-center mb-4">
+          <Link to="/" className={styles.pageTitle}>
+            Mandarin
+          </Link>
+          <p className={styles.subtitle}>Create your account in a few steps</p>
+        </div>
+
+        {formErrors.general && (
+          <div className={`${styles.alert} ${styles.alertDanger}`}>
+            <FaExclamationTriangle />
+            <p className="mb-0">{formErrors.general}</p>
           </div>
+        )}
+
+        {renderProgress()}
+
+        <form onSubmit={(e) => { e.preventDefault(); if (currentStep === 4) handleSubmit(); }}>
+          {renderStepContent()}
+        </form>
+
+        {currentStep === 1 && (
+          <>
+            <div className={styles.divider}>OR SIGN UP WITH</div>
+            <div className={styles.socialButtons}>
+              <button className={styles.socialButton}>
+                <FaGoogle className={styles.googleIcon} />
+                <span>Sign up with Google</span>
+              </button>
+              <button className={styles.socialButton}>
+                <FaFacebook className={styles.facebookIcon} />
+                <span>Sign up with Facebook</span>
+              </button>
+            </div>
+          </>
+        )}
+
+        <div className={styles.footer}>
+          Already have an account?{" "}
+          <Link to="/login" className={styles.footerLink}>
+            Sign In
+          </Link>
         </div>
       </div>
     </div>

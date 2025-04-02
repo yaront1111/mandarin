@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
-import { FaHeart, FaComment, FaUser, FaMapMarkerAlt, FaClock } from "react-icons/fa";
+import { FaHeart, FaComment, FaUser, FaMapMarkerAlt, FaClock, FaChevronDown, FaChevronUp } from "react-icons/fa";
 import { Avatar, Card, Button } from "./common";
 import { formatDate, normalizePhotoUrl, logger } from "../utils";
 import { withMemo } from "./common";
+import styles from "../styles/usercard.module.css";
 
 // Constants
 const TAG_TYPES = {
@@ -49,10 +50,20 @@ const UserCard = ({
   }, []);
 
   // Event handlers
-  const handleCardClick = useCallback(() => {
+  const handleCardClick = useCallback((e) => {
+    // Don't navigate if the click was on a button inside the card
+    if (e?.target?.closest('button')) {
+      console.log('Skipping card click - clicked on a button');
+      return;
+    }
+    
+    console.log('UserCard clicked:', user?._id, user?.nickname);
+    
     if (onClick) {
+      console.log('Using provided onClick handler');
       onClick();
     } else {
+      console.log('Navigating to user profile:', `/user/${user._id}`);
       navigate(`/user/${user._id}`);
     }
   }, [onClick, navigate, user?._id]);
@@ -75,9 +86,22 @@ const UserCard = ({
 
   const handleMessageClick = useCallback(
     (e) => {
+      // Ensure the event doesn't bubble up and trigger card click
       e.stopPropagation();
+      e.preventDefault();
+      
       if (onMessage) {
         onMessage(e, user);
+      } else {
+        // Create an embedded chat dialog with this user
+        const chatEvent = new CustomEvent('openChat', { 
+          detail: { recipient: user }
+        });
+        window.dispatchEvent(chatEvent);
+        
+        // Log the event to help debug
+        console.log('Dispatched openChat event with recipient:', user);
+        console.log('User data in event:', JSON.stringify(user));
       }
     },
     [onMessage, user],
@@ -95,8 +119,19 @@ const UserCard = ({
 
   // Memoized data calculations
   const profilePhotoUrl = useMemo(() => {
-    if (!user?.photos?.length) return null;
-    return user.photos[0]?.url;
+    if (!user?.photos?.length) return "/default-avatar.png";
+    
+    // Normalize the photo URL
+    const url = user.photos[0]?.url;
+    if (!url) return "/default-avatar.png";
+    
+    // If the URL is already formatted properly, use it
+    if (url.startsWith("http") || url.startsWith("/") && !url.startsWith("/public/")) {
+      return url;
+    }
+    
+    // Fix the path if needed
+    return url.startsWith("/public/") ? url.replace("/public/", "/") : url;
   }, [user?.photos]);
 
   const subtitle = useMemo(() => {
@@ -171,7 +206,7 @@ const UserCard = ({
       <button 
         onClick={handleLikeClick}
         aria-label={`${isLiked ? "Unlike" : "Like"} ${user.nickname}`}
-        className={`action-btn like-btn ${isLiked ? "active" : ""}`}
+        className={`${styles.actionBtn} ${styles.likeBtn} ${isLiked ? styles.active : ""}`}
       >
         <FaHeart size={18} />
         {isLiked ? 'Liked' : 'Like'}
@@ -179,7 +214,7 @@ const UserCard = ({
       <button
         onClick={handleMessageClick}
         aria-label={`Message ${user.nickname}`}
-        className="action-btn message-btn"
+        className={`${styles.actionBtn} ${styles.messageBtn}`}
       >
         <FaComment size={18} />
         Message
@@ -191,60 +226,63 @@ const UserCard = ({
   if (viewMode === "grid") {
     return (
       <Card
-        className="user-card"
+        className={styles.userCard}
         onClick={handleCardClick}
         hover={true}
-        headerClassName="user-card-header"
-        bodyClassName="user-card-body"
+        noPadding={true}
+        headerClassName={styles.cardHeader}
+        bodyClassName={styles.cardBody}
+        data-userid={user._id}
       >
         {/* User Photo */}
-        <div className="user-card-photo">
-          <Avatar
-            src={profilePhotoUrl}
-            alt={user.nickname}
-            size="large"
-            status={user.isOnline ? "online" : null}
-            showFallback={true}
-            statusPosition="top-right"
+        <div className={styles.cardPhoto}>
+          <img 
+            src={profilePhotoUrl || "/default-avatar.png"} 
+            alt={user.nickname} 
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = "/default-avatar.png";
+            }}
           />
+          {user.isOnline && <span className="status-indicator online"></span>}
         </div>
 
         {/* User Info */}
-        <div className="user-card-info">
+        <div className={styles.userInfo}>
           <div className="d-flex justify-content-between align-items-center mb-1">
-            <h3 className="user-card-name">
+            <h3 className={styles.userName}>
               {user.nickname}
-              {user.details?.age && <span>, {user.details.age}</span>}
+              {user.details?.age && <span className={styles.userAge}>, {user.details.age}</span>}
             </h3>
-            {hasUnreadMessages && <span className="unread-badge">{unreadMessageCount}</span>}
+            {hasUnreadMessages && <span className={styles.unreadBadge}>{unreadMessageCount}</span>}
           </div>
 
           {/* Last Active Status */}
-          <p className="user-card-last-active">
-            <FaClock style={{ marginRight: "4px", fontSize: "0.8em", opacity: 0.7 }} />
+          <p className={styles.lastActive}>
+            <FaClock className={styles.icon} />
             {lastActiveText}
           </p>
 
-          <p className="location">
-            <FaMapMarkerAlt className="location-icon" />
+          <p className={styles.location}>
+            <FaMapMarkerAlt className={styles.icon} />
             {user.details?.location || "Unknown location"}
           </p>
 
           {/* Extended Details Section */}
           {showExtendedDetails && (
-            <div className="user-tags-container extended-details-container">
-              <div className="extended-details-row">
+            <div className={styles.tagsContainer}>
+              <div className={styles.detailsRow}>
                 {extendedDetails.identity && (
-                  <div className="extended-detail-item">
-                    <span className="detail-label">I am:</span>
+                  <div className={styles.detailItem}>
+                    <span className={styles.detailLabel}>I am:</span>
                     <span
-                      className={`interest-tag identity-tag ${
+                      className={`${styles.tag} ${styles.identityTag} ${
                         extendedDetails.identity.toLowerCase().includes("woman")
-                          ? "identity-woman"
+                          ? styles.identityWoman
                           : extendedDetails.identity.toLowerCase().includes("man")
-                            ? "identity-man"
+                            ? styles.identityMan
                             : extendedDetails.identity.toLowerCase().includes("couple")
-                              ? "identity-couple"
+                              ? styles.identityCouple
                               : ""
                       }`}
                     >
@@ -254,21 +292,21 @@ const UserCard = ({
                 )}
                 
                 {tags.lookingFor.length > 0 && (
-                  <div className="extended-detail-item">
-                    <span className="detail-label">Into:</span>
-                    <span className={`interest-tag ${
+                  <div className={styles.detailItem}>
+                    <span className={styles.detailLabel}>Into:</span>
+                    <span className={`${styles.tag} ${
                       tags.lookingFor[0].toLowerCase().includes("women") || tags.lookingFor[0].toLowerCase().includes("woman")
-                        ? "identity-woman"
+                        ? styles.identityWoman
                         : tags.lookingFor[0].toLowerCase().includes("men") || tags.lookingFor[0].toLowerCase().includes("man")
-                          ? "identity-man"
+                          ? styles.identityMan
                           : tags.lookingFor[0].toLowerCase().includes("couple")
-                            ? "identity-couple"
-                            : "looking-for-tag"
+                            ? styles.identityCouple
+                            : styles.lookingForTag
                     }`}>
                       {tags.lookingFor[0]}
                     </span>
                     {tags.lookingFor.length > 1 && (
-                      <span className="more-count">+{tags.lookingFor.length - 1}</span>
+                      <span className={styles.moreCount}>+{tags.lookingFor.length - 1}</span>
                     )}
                   </div>
                 )}
@@ -278,12 +316,16 @@ const UserCard = ({
 
           {/* User Tags */}
           {showExtendedDetails && (
-            <div className="user-tags-container">
+            <div className={styles.tagsContainer}>
               {/* Show More/Less Toggle for all sections */}
               {(tags.lookingFor.length > 0 || tags.into.length > 0 || tags.interests.length > 0) && (
-                <div className="tags-toggle">
-                  <span className="tags-toggle-btn" onClick={toggleShowMoreSections}>
-                    {showMoreSections ? "Show less" : "Show more"}
+                <div className={styles.tagsToggle}>
+                  <span className={styles.toggleBtn} onClick={toggleShowMoreSections}>
+                    {showMoreSections ? (
+                      <>Show less <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
+                    ) : (
+                      <>Show more <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
+                    )}
                   </span>
                 </div>
               )}
@@ -293,24 +335,24 @@ const UserCard = ({
                 <>
                   {/* Interests */}
                   {tags.interests.length > 0 && (
-                    <div className="tag-category">
-                      <h4 className="tag-category-title">Interests</h4>
-                      <div className="user-interests">
+                    <div className={styles.tagCategory}>
+                      <h4 className={styles.categoryTitle}>Interests</h4>
+                      <div className={styles.interestTags}>
                         {(showAllTags ? tags.interests : tags.interests.slice(0, 3)).map((tag, idx) => (
-                          <span key={`interest-${idx}`} className={`interest-tag ${
+                          <span key={`interest-${idx}`} className={`${styles.tag} ${
                             tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
-                              ? "identity-woman"
+                              ? styles.identityWoman
                               : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
-                                ? "identity-man"
+                                ? styles.identityMan
                                 : tag.toLowerCase().includes("couple")
-                                  ? "identity-couple"
+                                  ? styles.identityCouple
                                   : ""
                           }`}>
                             {tag}
                           </span>
                         ))}
                         {tags.interests.length > 3 && !showAllTags && (
-                          <span className="interest-more" onClick={toggleShowAllTags}>
+                          <span className={styles.moreCount} onClick={toggleShowAllTags}>
                             +{tags.interests.length - 3}
                           </span>
                         )}
@@ -318,28 +360,26 @@ const UserCard = ({
                     </div>
                   )}
                 
-                  {/* Into section - moved to details row above */}
-
                   {/* Preferences section (formerly Into) */}
                   {tags.into.length > 0 && (
-                    <div className="tag-category">
-                      <h4 className="tag-category-title">Preferences</h4>
-                      <div className="user-interests">
+                    <div className={styles.tagCategory}>
+                      <h4 className={styles.categoryTitle}>Preferences</h4>
+                      <div className={styles.interestTags}>
                         {(showAllTags ? tags.into : tags.into.slice(0, 3)).map((tag, idx) => (
-                          <span key={`into-${idx}`} className={`interest-tag ${
+                          <span key={`into-${idx}`} className={`${styles.tag} ${
                             tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
-                              ? "identity-woman"
+                              ? styles.identityWoman
                               : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
-                                ? "identity-man"
+                                ? styles.identityMan
                                 : tag.toLowerCase().includes("couple")
-                                  ? "identity-couple"
-                                  : "into-tag"
+                                  ? styles.identityCouple
+                                  : styles.intoTag
                           }`}>
                             {tag}
                           </span>
                         ))}
                         {tags.into.length > 3 && !showAllTags && (
-                          <span className="interest-more" onClick={toggleShowAllTags}>
+                          <span className={styles.moreCount} onClick={toggleShowAllTags}>
                             +{tags.into.length - 3}
                           </span>
                         )}
@@ -349,9 +389,13 @@ const UserCard = ({
 
                   {/* Global More/Less Toggle for all tags */}
                   {(tags.lookingFor.length > 3 || tags.into.length > 3 || tags.interests.length > 3) && (
-                    <div className="tags-toggle">
-                      <span className="tags-toggle-btn" onClick={toggleShowAllTags}>
-                        {showAllTags ? "Show less tags" : "Show all tags"}
+                    <div className={styles.tagsToggle}>
+                      <span className={styles.toggleBtn} onClick={toggleShowAllTags}>
+                        {showAllTags ? (
+                          <>Show less tags <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
+                        ) : (
+                          <>Show all tags <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
+                        )}
                       </span>
                     </div>
                   )}
@@ -361,7 +405,7 @@ const UserCard = ({
           )}
 
           {/* Action Buttons */}
-          <div className="user-actions">{renderActionButtons()}</div>
+          <div className={styles.actions}>{renderActionButtons()}</div>
         </div>
       </Card>
     );
@@ -369,55 +413,56 @@ const UserCard = ({
 
   // List View Rendering
   return (
-    <div className="user-list-item" onClick={handleCardClick}>
+    <div className={styles.listItem} onClick={handleCardClick} data-userid={user._id}>
       {/* User Photo - List View */}
-      <div className="user-list-photo-container">
-        <Avatar
-          src={profilePhotoUrl}
-          alt={user.nickname}
-          size="medium"
-          status={user.isOnline ? "online" : null}
-          showFallback={true}
-          statusPosition="top-right"
+      <div className={styles.listPhotoContainer}>
+        <img 
+          src={profilePhotoUrl || "/default-avatar.png"} 
+          alt={user.nickname} 
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.src = "/default-avatar.png";
+          }}
         />
+        {user.isOnline && <span className="status-indicator online-small"></span>}
       </div>
 
       {/* User Info - List View */}
-      <div className="user-list-info">
-        <div className="user-list-header">
-          <h3 className="user-list-name">
+      <div className={styles.listInfo}>
+        <div className={styles.listHeader}>
+          <h3 className={styles.listName}>
             {user.nickname}
-            {user.details?.age && <span>, {user.details.age}</span>}
+            {user.details?.age && <span className={styles.userAge}>, {user.details.age}</span>}
           </h3>
-          {hasUnreadMessages && <span className="unread-badge">{unreadMessageCount}</span>}
+          {hasUnreadMessages && <span className={styles.unreadBadge}>{unreadMessageCount}</span>}
         </div>
 
         {/* Last Active Status */}
-        <p className="user-list-last-active">
-          <FaClock style={{ marginRight: "4px", fontSize: "0.8em", opacity: 0.7 }} />
+        <p className={styles.listLastActive}>
+          <FaClock className={styles.icon} />
           {lastActiveText}
         </p>
 
-        <p className="location">
-          <FaMapMarkerAlt className="location-icon" />
+        <p className={styles.location}>
+          <FaMapMarkerAlt className={styles.icon} />
           {user.details?.location || "Unknown location"}
         </p>
 
         {/* Extended Details - List View */}
         {showExtendedDetails && (
-          <div className="user-tags-container extended-details-container list-view">
-            <div className="extended-details-row">
+          <div className={styles.tagsContainer}>
+            <div className={styles.detailsRow}>
               {extendedDetails.identity && (
-                <div className="extended-detail-item">
-                  <span className="detail-label">I am:</span>
+                <div className={styles.detailItem}>
+                  <span className={styles.detailLabel}>I am:</span>
                   <span
-                    className={`interest-tag identity-tag ${
+                    className={`${styles.tag} ${styles.identityTag} ${
                       extendedDetails.identity.toLowerCase().includes("woman")
-                        ? "identity-woman"
+                        ? styles.identityWoman
                         : extendedDetails.identity.toLowerCase().includes("man")
-                          ? "identity-man"
+                          ? styles.identityMan
                           : extendedDetails.identity.toLowerCase().includes("couple")
-                            ? "identity-couple"
+                            ? styles.identityCouple
                             : ""
                     }`}
                   >
@@ -427,21 +472,21 @@ const UserCard = ({
               )}
               
               {tags.lookingFor.length > 0 && (
-                <div className="extended-detail-item">
-                  <span className="detail-label">Into:</span>
-                  <span className={`interest-tag ${
+                <div className={styles.detailItem}>
+                  <span className={styles.detailLabel}>Into:</span>
+                  <span className={`${styles.tag} ${
                     tags.lookingFor[0].toLowerCase().includes("women") || tags.lookingFor[0].toLowerCase().includes("woman")
-                      ? "identity-woman"
+                      ? styles.identityWoman
                       : tags.lookingFor[0].toLowerCase().includes("men") || tags.lookingFor[0].toLowerCase().includes("man")
-                        ? "identity-man"
+                        ? styles.identityMan
                         : tags.lookingFor[0].toLowerCase().includes("couple")
-                          ? "identity-couple"
-                          : "looking-for-tag"
+                          ? styles.identityCouple
+                          : styles.lookingForTag
                   }`}>
                     {tags.lookingFor[0]}
                   </span>
                   {tags.lookingFor.length > 1 && (
-                    <span className="more-count">+{tags.lookingFor.length - 1}</span>
+                    <span className={styles.moreCount}>+{tags.lookingFor.length - 1}</span>
                   )}
                 </div>
               )}
@@ -451,12 +496,16 @@ const UserCard = ({
 
         {/* User Tags - List View */}
         {showExtendedDetails && (
-          <div className="user-tags-container list-view">
+          <div className={styles.tagsContainer}>
             {/* Show More/Less Toggle for all sections */}
             {(tags.lookingFor.length > 0 || tags.into.length > 0 || tags.interests.length > 0) && (
-              <div className="tags-toggle">
-                <span className="tags-toggle-btn" onClick={toggleShowMoreSections}>
-                  {showMoreSections ? "Show less" : "Show more"}
+              <div className={styles.tagsToggle}>
+                <span className={styles.toggleBtn} onClick={toggleShowMoreSections}>
+                  {showMoreSections ? (
+                    <>Show less <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
+                  ) : (
+                    <>Show more <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
+                  )}
                 </span>
               </div>
             )}
@@ -466,24 +515,24 @@ const UserCard = ({
               <>
                 {/* Interests */}
                 {tags.interests.length > 0 && (
-                  <div className="tag-category">
-                    <h4 className="tag-category-title">Interests</h4>
-                    <div className="user-interests">
+                  <div className={styles.tagCategory}>
+                    <h4 className={styles.categoryTitle}>Interests</h4>
+                    <div className={styles.interestTags}>
                       {(showAllTags ? tags.interests : tags.interests.slice(0, 2)).map((tag, idx) => (
-                        <span key={`interest-${idx}`} className={`interest-tag ${
+                        <span key={`interest-${idx}`} className={`${styles.tag} ${
                           tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
-                            ? "identity-woman"
+                            ? styles.identityWoman
                             : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
-                              ? "identity-man"
+                              ? styles.identityMan
                               : tag.toLowerCase().includes("couple")
-                                ? "identity-couple"
+                                ? styles.identityCouple
                                 : ""
                         }`}>
                           {tag}
                         </span>
                       ))}
                       {tags.interests.length > 2 && !showAllTags && (
-                        <span className="interest-more" onClick={toggleShowAllTags}>
+                        <span className={styles.moreCount} onClick={toggleShowAllTags}>
                           +{tags.interests.length - 2}
                         </span>
                       )}
@@ -491,28 +540,26 @@ const UserCard = ({
                   </div>
                 )}
                 
-                {/* Into section - moved to details row above */}
-
                 {/* Preferences section (formerly Into) */}
                 {tags.into.length > 0 && (
-                  <div className="tag-category">
-                    <h4 className="tag-category-title">Preferences</h4>
-                    <div className="user-interests">
+                  <div className={styles.tagCategory}>
+                    <h4 className={styles.categoryTitle}>Preferences</h4>
+                    <div className={styles.interestTags}>
                       {(showAllTags ? tags.into : tags.into.slice(0, 2)).map((tag, idx) => (
-                        <span key={`into-${idx}`} className={`interest-tag ${
+                        <span key={`into-${idx}`} className={`${styles.tag} ${
                           tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
-                            ? "identity-woman"
+                            ? styles.identityWoman
                             : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
-                              ? "identity-man"
+                              ? styles.identityMan
                               : tag.toLowerCase().includes("couple")
-                                ? "identity-couple"
-                                : "into-tag"
+                                ? styles.identityCouple
+                                : styles.intoTag
                         }`}>
                           {tag}
                         </span>
                       ))}
                       {tags.into.length > 2 && !showAllTags && (
-                        <span className="interest-more" onClick={toggleShowAllTags}>
+                        <span className={styles.moreCount} onClick={toggleShowAllTags}>
                           +{tags.into.length - 2}
                         </span>
                       )}
@@ -522,9 +569,13 @@ const UserCard = ({
 
                 {/* Global More/Less Toggle for all tags */}
                 {(tags.lookingFor.length > 2 || tags.into.length > 2 || tags.interests.length > 2) && (
-                  <div className="tags-toggle">
-                    <span className="tags-toggle-btn" onClick={toggleShowAllTags}>
-                      {showAllTags ? "Show less tags" : "Show all tags"}
+                  <div className={styles.tagsToggle}>
+                    <span className={styles.toggleBtn} onClick={toggleShowAllTags}>
+                      {showAllTags ? (
+                        <>Show less tags <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
+                      ) : (
+                        <>Show all tags <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
+                      )}
                     </span>
                   </div>
                 )}
@@ -535,7 +586,7 @@ const UserCard = ({
       </div>
 
       {/* Action Buttons - List View */}
-      <div className="user-list-actions">{renderActionButtons()}</div>
+      <div className={styles.listActions}>{renderActionButtons()}</div>
     </div>
   );
 };

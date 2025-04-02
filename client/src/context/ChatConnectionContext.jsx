@@ -96,10 +96,74 @@ export const ChatConnectionProvider = ({ children }) => {
       }
     }
     
-    // Valid ID format check (ObjectId)
-    const validUserId = userId && /^[0-9a-fA-F]{24}$/.test(userId) 
-      ? userId 
-      : (process.env.NODE_ENV === "development" ? "5f50c31f72c5e315b4b3e1c5" : null);
+    // Use direct validation without external utilities
+    let validUserId;
+    try {
+      // Simple validation function
+      const isValidId = (id) => id && /^[0-9a-fA-F]{24}$/.test(id.toString());
+      
+      // Try multiple approaches to get a valid ID
+      
+      // 1. First try to clean up the existing ID
+      if (userId) {
+        // If it's already a valid string, use it directly
+        if (typeof userId === 'string' && isValidId(userId)) {
+          validUserId = userId;
+        } 
+        // If it's an object (like MongoDB ObjectId), try toString()
+        else if (typeof userId === 'object' && userId !== null) {
+          try {
+            const idString = userId.toString();
+            // Look for valid ObjectId format in the string
+            const match = idString.match(/([0-9a-fA-F]{24})/);
+            if (match && match[1]) {
+              validUserId = match[1];
+              log.debug(`Extracted ObjectId from complex object: ${validUserId}`);
+            }
+          } catch (err) {
+            log.error(`Failed to extract valid ID from object: ${err.message}`);
+          }
+        }
+      }
+      
+      // 2. If that fails, try getting from token
+      if (!validUserId || !isValidId(validUserId)) {
+        log.warn(`User has invalid ID: ${userId}, trying token-based ID`);
+        
+        // Extract directly from token
+        try {
+          const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+          if (token) {
+            const base64Url = token.split(".")[1];
+            const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+            const payload = JSON.parse(atob(base64));
+            
+            // Try various common JWT payload formats
+            const tokenId = payload.id || payload.sub || 
+                           (payload.user && (payload.user._id || payload.user.id));
+                           
+            if (tokenId && isValidId(tokenId)) {
+              validUserId = tokenId;
+              log.info(`Using ID from token payload: ${validUserId}`);
+            }
+          }
+        } catch (tokenErr) {
+          log.error(`Failed to extract ID from token: ${tokenErr.message}`);
+        }
+      }
+      
+      // 3. Last resort - use development fallback ID
+      if (!validUserId && process.env.NODE_ENV === "development") {
+        log.warn('Using fallback ID for development');
+        validUserId = "5f50c31f72c5e315b4b3e1c5";
+      }
+    } catch (error) {
+      log.error('Error validating user ID:', error);
+      // Fall back to simple regex validation
+      validUserId = userId && /^[0-9a-fA-F]{24}$/.test(userId) 
+        ? userId 
+        : (process.env.NODE_ENV === "development" ? "5f50c31f72c5e315b4b3e1c5" : null);
+    }
     
     if (!validUserId) {
       log.error(`Cannot initialize socket: Invalid user ID format: ${userId}`);

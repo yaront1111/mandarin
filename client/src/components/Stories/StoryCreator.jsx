@@ -1,11 +1,14 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect } from "react"
-import { FaTimes, FaCheck, FaSpinner, FaFont, FaPalette, FaImage, FaVideo } from "react-icons/fa"
+import { 
+  FaTimes, FaCheck, FaSpinner, FaFont, FaPalette, 
+  FaImage, FaVideo, FaInfoCircle
+} from "react-icons/fa"
 import { toast } from "react-toastify"
 import { useAuth } from "../../context"
 import { useStories } from "../../context/StoriesContext"
-import "../../styles/stories.css"
+import styles from "../../styles/stories.module.css"
 
 const BACKGROUND_OPTIONS = [
   { id: "gradient-1", name: "Sunset", style: "linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%)" },
@@ -80,13 +83,8 @@ const StoryCreator = ({ onClose, onSubmit }) => {
     setActiveTab(file.type.startsWith("image/") ? "image" : "video")
   }
 
-  // Trigger file input click
-  const handleUploadClick = (type) => {
-    if (fileInputRef.current && !isSubmitting && !isUploading) {
-      fileInputRef.current.accept = type === "image" ? "image/*" : "video/*"
-      fileInputRef.current.click()
-    }
-  }
+  // This function is no longer needed but kept for potential future use
+  const handleComingSoonTab = () => {}
 
   // Clear selected media
   const clearMedia = () => {
@@ -98,7 +96,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
     setActiveTab("text")
   }
 
-  // Handle story creation with improved error handling
+  // Handle text story creation with improved error handling
   const handleCreateStory = async () => {
     // Prevent duplicate submissions
     if (isSubmitting || isUploading) {
@@ -106,14 +104,9 @@ const StoryCreator = ({ onClose, onSubmit }) => {
       return
     }
 
-    // Validate based on media type
-    if (mediaType === "text" && !text.trim()) {
+    // Validate text content
+    if (!text.trim()) {
       toast.error("Please add some text to your story")
-      return
-    }
-
-    if ((mediaType === "image" || mediaType === "video") && !mediaFile) {
-      toast.error(`Please select a ${mediaType} file`)
       return
     }
 
@@ -128,37 +121,18 @@ const StoryCreator = ({ onClose, onSubmit }) => {
     setUploadProgress(0)
 
     try {
-      let storyData
-      let response
-
-      if (mediaType === "text") {
-        // For text stories
-        storyData = {
-          content: text.trim(),
-          text: text.trim(),
-          backgroundStyle: selectedBackground.style,
-          backgroundColor: selectedBackground.style,
-          fontStyle: selectedFont.style,
-          mediaType: "text",
-          type: "text",
-        }
-
-        response = await createStory(storyData, updateProgress)
-      } else {
-        // For image/video uploads, create FormData
-        const formData = new FormData()
-        formData.append("media", mediaFile)
-        formData.append("type", mediaType)
-        formData.append("mediaType", mediaType)
-
-        // Add optional caption if provided
-        if (text.trim()) {
-          formData.append("content", text.trim())
-          formData.append("text", text.trim())
-        }
-
-        response = await createStory(formData, updateProgress)
+      // Prepare text story data
+      const storyData = {
+        content: text.trim(),
+        text: text.trim(),
+        backgroundStyle: selectedBackground.style,
+        backgroundColor: selectedBackground.style,
+        fontStyle: selectedFont.style,
+        mediaType: "text",
+        type: "text",
       }
+
+      const response = await createStory(storyData, updateProgress)
 
       if (response && response.success) {
         toast.success("Story created successfully!")
@@ -215,6 +189,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
     return () => document.removeEventListener("keydown", handleEscKey)
   }, [onClose, isUploading, isSubmitting])
 
+
   return (
     <div className="story-creator-container">
       <div className="story-creator-overlay" onClick={isUploading || isSubmitting ? null : onClose}></div>
@@ -235,28 +210,13 @@ const StoryCreator = ({ onClose, onSubmit }) => {
           <div
             className="story-preview"
             ref={previewRef}
-            style={
-              mediaType === "text" ? { ...getBackgroundStyle(selectedBackground), ...getFontStyle(selectedFont) } : {}
-            }
+            style={{ ...getBackgroundStyle(selectedBackground), ...getFontStyle(selectedFont) }}
           >
-            {mediaType === "text" ? (
-              text ? (
-                <div className="story-text-content">{text}</div>
-              ) : (
-                <div className="story-placeholder">Type something amazing...</div>
-              )
-            ) : mediaPreview ? (
-              mediaType === "image" ? (
-                <img src={mediaPreview || "/placeholder.svg"} alt="Story preview" className="media-preview" />
-              ) : (
-                <video src={mediaPreview} className="media-preview" autoPlay muted loop />
-              )
+            {text ? (
+              <div className="story-text-content">{text}</div>
             ) : (
-              <div className="story-placeholder">Select a {mediaType} file...</div>
+              <div className="story-placeholder">Type something amazing...</div>
             )}
-
-            {/* Caption overlay for media stories */}
-            {(mediaType === "image" || mediaType === "video") && text && <div className="story-caption">{text}</div>}
           </div>
 
           {/* Tabs */}
@@ -277,57 +237,29 @@ const StoryCreator = ({ onClose, onSubmit }) => {
               <FaFont /> Text
             </button>
             <button
-              className={`tab-button ${activeTab === "image" ? "active" : ""}`}
+              className={`tab-button ${activeTab === "background" ? "active" : ""}`}
               onClick={(e) => {
                 e.stopPropagation();
                 if (!isSubmitting && !isUploading) {
-                  handleUploadClick("image");
+                  setActiveTab("background");
                 }
               }}
               disabled={isSubmitting || isUploading}
             >
-              <FaImage /> Image
+              <FaPalette /> Background
             </button>
             <button
-              className={`tab-button ${activeTab === "video" ? "active" : ""}`}
+              className={`tab-button ${activeTab === "font" ? "active" : ""}`}
               onClick={(e) => {
                 e.stopPropagation();
                 if (!isSubmitting && !isUploading) {
-                  handleUploadClick("video");
+                  setActiveTab("font");
                 }
               }}
               disabled={isSubmitting || isUploading}
             >
-              <FaVideo /> Video
+              <FaFont /> Font
             </button>
-            {mediaType === "text" && (
-              <button
-                className={`tab-button ${activeTab === "background" ? "active" : ""}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!isSubmitting && !isUploading) {
-                    setActiveTab("background");
-                  }
-                }}
-                disabled={isSubmitting || isUploading}
-              >
-                <FaPalette /> Background
-              </button>
-            )}
-            {mediaType === "text" && (
-              <button
-                className={`tab-button ${activeTab === "font" ? "active" : ""}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!isSubmitting && !isUploading) {
-                    setActiveTab("font");
-                  }
-                }}
-                disabled={isSubmitting || isUploading}
-              >
-                <FaFont /> Font
-              </button>
-            )}
           </div>
 
           {/* Hidden file input */}
@@ -341,76 +273,64 @@ const StoryCreator = ({ onClose, onSubmit }) => {
           />
 
           {/* Tab Content */}
-          <div className="tab-content">
-            {activeTab === "text" && (
+          {activeTab === "text" && (
+            <div className="tab-content">
               <div className="text-tab">
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder={mediaType === "text" ? "What's on your mind?" : "Add a caption (optional)"}
-                  maxLength={mediaType === "text" ? 150 : 100}
-                  rows={mediaType === "text" ? 3 : 2}
+                  placeholder="What's on your mind?"
+                  maxLength={150}
+                  rows={3}
                   disabled={isSubmitting || isUploading}
                 />
                 <small className="character-count">
-                  {text.length}/{mediaType === "text" ? 150 : 100}
+                  {text.length}/150
                 </small>
               </div>
-            )}
+            </div>
+          )}
 
-            {activeTab === "background" && mediaType === "text" && (
-              <div className="background-tab">
-                <div className="background-options">
-                  {BACKGROUND_OPTIONS.map((bg) => (
-                    <div
-                      key={bg.id}
-                      className={`background-option ${selectedBackground.id === bg.id ? "selected" : ""}`}
-                      style={getBackgroundStyle(bg)}
-                      onClick={() => {
-                        if (!isSubmitting && !isUploading) {
-                          setSelectedBackground(bg);
-                        }
-                      }}
-                      title={bg.name}
-                    />
-                  ))}
-                </div>
+          {activeTab === "background" && mediaType === "text" && (
+            <div className="tab-content">
+              <div className="background-options">
+                {BACKGROUND_OPTIONS.map((bg) => (
+                  <div
+                    key={bg.id}
+                    className={`background-option ${selectedBackground.id === bg.id ? "selected" : ""}`}
+                    style={getBackgroundStyle(bg)}
+                    onClick={() => {
+                      if (!isSubmitting && !isUploading) {
+                        setSelectedBackground(bg);
+                      }
+                    }}
+                    title={bg.name}
+                  />
+                ))}
               </div>
-            )}
+            </div>
+          )}
 
-            {activeTab === "font" && mediaType === "text" && (
-              <div className="font-tab">
-                <div className="font-options">
-                  {FONT_OPTIONS.map((font) => (
-                    <div
-                      key={font.id}
-                      className={`font-option ${selectedFont.id === font.id ? "selected" : ""}`}
-                      style={getFontStyle(font)}
-                      onClick={() => {
-                        if (!isSubmitting && !isUploading) {
-                          setSelectedFont(font);
-                        }
-                      }}
-                    >
-                      {font.name}
-                    </div>
-                  ))}
-                </div>
+          {activeTab === "font" && mediaType === "text" && (
+            <div className="tab-content">
+              <div className="font-options">
+                {FONT_OPTIONS.map((font) => (
+                  <div
+                    key={font.id}
+                    className={`font-option ${selectedFont.id === font.id ? "selected" : ""}`}
+                    style={getFontStyle(font)}
+                    onClick={() => {
+                      if (!isSubmitting && !isUploading) {
+                        setSelectedFont(font);
+                      }
+                    }}
+                  >
+                    {font.name}
+                  </div>
+                ))}
               </div>
-            )}
-
-            {(activeTab === "image" || activeTab === "video") && mediaPreview && (
-              <div className="media-tab">
-                <button
-                  className="clear-media-btn"
-                  onClick={clearMedia}
-                  disabled={isSubmitting || isUploading}
-                >
-                  Clear {mediaType}
-                </button>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {error && <div className="error-message">{error}</div>}
         </div>
@@ -430,8 +350,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
               disabled={
                 isUploading ||
                 isSubmitting ||
-                (mediaType === "text" && !text.trim()) ||
-                ((mediaType === "image" || mediaType === "video") && !mediaFile)
+                !text.trim()
               }
             >
               {isSubmitting ? (

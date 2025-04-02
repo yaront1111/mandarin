@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useStories } from "../../context"
 import StoryThumbnail from "./StoryThumbnail"
-import "../../styles/stories.css"
+import styles from "../../styles/stories.module.css"
 
 // Simple throttle function to limit function calls
 const throttle = (func, limit) => {
@@ -28,6 +28,26 @@ const StoriesCarousel = ({ onStoryClick }) => {
   const [loadAttempted, setLoadAttempted] = useState(false)
   const loadingRef = useRef(false)
   const carouselRef = useRef(null)
+
+  // Add some mock "coming soon" stories
+  const comingSoonStories = [
+    { 
+      _id: "coming-soon-video", 
+      mediaType: "video",
+      user: { 
+        _id: "video-user", 
+        nickname: "Video Stories" 
+      } 
+    },
+    { 
+      _id: "coming-soon-image", 
+      mediaType: "image",
+      user: { 
+        _id: "image-user", 
+        nickname: "Image Stories" 
+      } 
+    }
+  ];
 
   // Process stories to remove duplicates and ensure proper data structure
   useEffect(() => {
@@ -68,9 +88,12 @@ const StoriesCarousel = ({ onStoryClick }) => {
         }
       })
 
-      setProcessedStories(userStories)
+      // Add "coming soon" stories
+      const allStories = [...userStories, ...comingSoonStories];
+      setProcessedStories(allStories)
     } else {
-      setProcessedStories([])
+      // If no stories, just show the coming soon stories
+      setProcessedStories(comingSoonStories)
     }
   }, [stories])
 
@@ -135,7 +158,7 @@ const StoriesCarousel = ({ onStoryClick }) => {
   // Show loading state
   if ((loading || contextLoading) && !loadAttempted) {
     return (
-      <div className="stories-carousel-container">
+      <div className={styles.storiesCarouselContainer}>
         <div className="stories-carousel-loading">
           <div className="spinner"></div>
           <p>Loading stories...</p>
@@ -147,7 +170,7 @@ const StoriesCarousel = ({ onStoryClick }) => {
   // Show error state
   if (error) {
     return (
-      <div className="stories-carousel-container">
+      <div className={styles.storiesCarouselContainer}>
         <div className="stories-carousel-error">
           <p>{error}</p>
         </div>
@@ -155,27 +178,22 @@ const StoriesCarousel = ({ onStoryClick }) => {
     )
   }
 
-  // Show empty state
-  if (!processedStories || processedStories.length === 0) {
-    return (
-      <div className="stories-carousel-container">
-        <div className="stories-carousel-empty">
-          <p>No stories available</p>
-        </div>
-      </div>
-    )
-  }
+  // Skip empty state handling since we always have at least the coming soon stories
 
   // Render stories carousel
   return (
-    <div className="stories-carousel-container">
+    <div className={styles.storiesCarouselContainer}>
       {processedStories.length > 4 && (
-        <button className="carousel-nav-button left" onClick={() => scrollCarousel("left")} aria-label="Scroll left">
+        <button 
+          className={`${styles.carouselNavButton} ${styles.carouselNavButtonLeft}`} 
+          onClick={() => scrollCarousel("left")} 
+          aria-label="Scroll left"
+        >
           ‹
         </button>
       )}
 
-      <div className="stories-carousel" ref={carouselRef}>
+      <div className={styles.storiesCarousel} ref={carouselRef}>
         {processedStories.map((story) => (
           <StoryThumbnail
             key={story._id || `story-${Math.random()}`}
@@ -186,12 +204,17 @@ const StoriesCarousel = ({ onStoryClick }) => {
                 ? hasUnviewedStories(typeof story.user === "string" ? story.user : story.user._id)
                 : false
             }
+            mediaType={story.mediaType} // Pass media type for coming soon stories
           />
         ))}
       </div>
 
       {processedStories.length > 4 && (
-        <button className="carousel-nav-button right" onClick={() => scrollCarousel("right")} aria-label="Scroll right">
+        <button 
+          className={`${styles.carouselNavButton} ${styles.carouselNavButtonRight}`} 
+          onClick={() => scrollCarousel("right")} 
+          aria-label="Scroll right"
+        >
           ›
         </button>
       )}

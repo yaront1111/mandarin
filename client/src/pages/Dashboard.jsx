@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { FaSearch, FaThLarge, FaList, FaFilter, FaPlus, FaSpinner } from "react-icons/fa"
 import { toast } from "react-toastify"
-import { useAuth, useUser, useChat, useStories } from "../context"
+import { useAuth, useUser, useStories } from "../context"
 import EmbeddedChat from "../components/EmbeddedChat"
 import { Navbar } from "../components/LayoutComponents"
 import StoriesCarousel from "../components/Stories/StoriesCarousel"
@@ -12,6 +12,7 @@ import StoriesViewer from "../components/Stories/StoriesViewer"
 import StoryCreator from "../components/Stories/StoryCreator"
 import UserProfileModal from "../components/UserProfileModal"
 import UserCard from "../components/UserCard" // Import the enhanced UserCard component
+import styles from "../styles/dashboard.module.css" // Import the dashboard module CSS
 
 const Dashboard = () => {
   const navigate = useNavigate()
@@ -26,7 +27,8 @@ const Dashboard = () => {
     likesLoading, // Added from optimized UserContext
     getLikedUsers, // Add this to the destructured values
   } = useUser()
-  const { unreadMessages } = useChat()
+  // unreadMessages is no longer available from ChatContext
+  const unreadMessages = 0
   const { createStory } = useStories()
 
   // Infinite scrolling states
@@ -352,15 +354,16 @@ const Dashboard = () => {
   const isLoading = (loading || likesLoading) && page === 1 && !initialLoadComplete
 
   return (
-    <div className="app-container">
+    <div className={styles.dashboardPage}>
       <Navbar />
 
-      <main className="app-main">
-        <div className="dashboard">
+      <main className={styles.dashboardContent}>
+        <div className={styles.container}>
+          <div className={styles.gradientBar}></div>
           {/* Stories Section */}
-          <div className="stories-section">
-            <div className="stories-header">
-              <h2 className="stories-title">Stories</h2>
+          <div className={styles.storiesSection}>
+            <div className={styles.storiesHeader}>
+              <h2 className={styles.storiesTitle}>Stories</h2>
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() => !creatingStory && setShowStoryCreator(true)}
@@ -381,15 +384,15 @@ const Dashboard = () => {
           </div>
 
           {/* Content Header with Filters and View Toggle */}
-          <div className="dashboard-header">
+          <div className={styles.dashboardHeader}>
             <div>
-              <h1 className="dashboard-title">{activeTab === "discover" ? "Discover People" : "Your Matches"}</h1>
-              <p className="dashboard-subtitle">Find the perfect match for you</p>
+              <h1 className={styles.dashboardTitle}>{activeTab === "discover" ? "Discover People" : "Your Matches"}</h1>
+              <p className={styles.dashboardSubtitle}>Find the perfect match for you</p>
             </div>
-            <div className="dashboard-actions">
-              <div className="view-toggle">
+            <div className={styles.dashboardActions}>
+              <div className={styles.viewToggle}>
                 <button
-                  className={`view-toggle-button ${viewMode === "grid" ? "active" : ""}`}
+                  className={`${styles.viewToggleButton} ${viewMode === "grid" ? styles.active : ""}`}
                   onClick={() => setViewMode("grid")}
                   title="Grid View"
                   aria-label="Grid view"
@@ -397,7 +400,7 @@ const Dashboard = () => {
                   <FaThLarge />
                 </button>
                 <button
-                  className={`view-toggle-button ${viewMode === "list" ? "active" : ""}`}
+                  className={`${styles.viewToggleButton} ${viewMode === "list" ? styles.active : ""}`}
                   onClick={() => setViewMode("list")}
                   title="List View"
                   aria-label="List view"
@@ -406,7 +409,7 @@ const Dashboard = () => {
                 </button>
               </div>
               <button
-                className={`filter-button ${showFilters ? "active" : ""}`}
+                className={`${styles.filterButton} ${showFilters ? styles.active : ""}`}
                 onClick={() => setShowFilters(!showFilters)}
                 aria-expanded={showFilters}
                 aria-label="Toggle filters"
@@ -419,13 +422,13 @@ const Dashboard = () => {
 
           {/* Filter Panel */}
           {showFilters && (
-            <div className="filter-panel animate-fade-in">
+            <div className={`${styles.filterPanel} animate-fade-in`}>
               {/* Age Range Filter */}
-              <div className="filter-section">
+              <div className={styles.filterSection}>
                 <h3>Age Range</h3>
-                <div className="filter-options">
-                  <div className="range-slider">
-                    <div className="range-values">
+                <div className={styles.filterOptions}>
+                  <div className={styles.rangeSlider}>
+                    <div className={styles.rangeValues}>
                       <span>{filterValues.ageMin}</span>
                       <span>{filterValues.ageMax}</span>
                     </div>
@@ -440,7 +443,7 @@ const Dashboard = () => {
                           ageMin: Number.parseInt(e.target.value),
                         })
                       }
-                      className="range-input"
+                      className={styles.rangeInput}
                       aria-label="Minimum age"
                     />
                     <input
@@ -454,7 +457,7 @@ const Dashboard = () => {
                           ageMax: Number.parseInt(e.target.value),
                         })
                       }
-                      className="range-input"
+                      className={styles.rangeInput}
                       aria-label="Maximum age"
                     />
                   </div>
@@ -462,11 +465,11 @@ const Dashboard = () => {
               </div>
 
               {/* Distance Filter */}
-              <div className="filter-section">
+              <div className={styles.filterSection}>
                 <h3>Distance</h3>
-                <div className="filter-options">
-                  <div className="range-slider">
-                    <div className="range-value">
+                <div className={styles.filterOptions}>
+                  <div className={styles.rangeSlider}>
+                    <div className={styles.rangeValue}>
                       <span>{filterValues.distance} km</span>
                     </div>
                     <input
@@ -480,7 +483,7 @@ const Dashboard = () => {
                           distance: Number.parseInt(e.target.value),
                         })
                       }
-                      className="range-input"
+                      className={styles.rangeInput}
                       aria-label="Maximum distance"
                     />
                   </div>
@@ -488,10 +491,10 @@ const Dashboard = () => {
               </div>
 
               {/* Show Only Filters */}
-              <div className="filter-section">
+              <div className={styles.filterSection}>
                 <h3>Show Only</h3>
-                <div className="filter-options d-flex flex-column">
-                  <label className="filter-option">
+                <div className={`${styles.filterOptions} d-flex flex-column`}>
+                  <label className={styles.filterOption}>
                     <input
                       type="checkbox"
                       checked={filterValues.online}
@@ -505,7 +508,7 @@ const Dashboard = () => {
                     />
                     <span>Online Now</span>
                   </label>
-                  <label className="filter-option">
+                  <label className={styles.filterOption}>
                     <input
                       type="checkbox"
                       checked={filterValues.verified}
@@ -519,7 +522,7 @@ const Dashboard = () => {
                     />
                     <span>Verified Profiles</span>
                   </label>
-                  <label className="filter-option">
+                  <label className={styles.filterOption}>
                     <input
                       type="checkbox"
                       checked={filterValues.withPhotos}
@@ -537,13 +540,13 @@ const Dashboard = () => {
               </div>
 
               {/* Interests Filter */}
-              <div className="filter-section">
+              <div className={styles.filterSection}>
                 <h3>Interests</h3>
-                <div className="tags-container">
+                <div className={styles.tagsContainer}>
                   {availableInterests.map((interest) => (
                     <button
                       key={interest}
-                      className={`filter-tag ${filterValues.interests.includes(interest) ? "active" : ""}`}
+                      className={`${styles.filterTag} ${filterValues.interests.includes(interest) ? styles.active : ""}`}
                       onClick={() => toggleInterest(interest)}
                       aria-pressed={filterValues.interests.includes(interest)}
                     >
@@ -554,7 +557,7 @@ const Dashboard = () => {
               </div>
 
               {/* Filter Actions */}
-              <div className="filter-actions">
+              <div className={styles.filterActions}>
                 <button className="btn btn-outline" onClick={resetFilters} aria-label="Reset filters">
                   Reset
                 </button>
@@ -566,13 +569,13 @@ const Dashboard = () => {
           )}
 
           {/* Users Grid/List Display using enhanced UserCard component */}
-          <div className="users-section">
-            <div className={`users-${viewMode}`}>
+          <div className={styles.usersSection}>
+            <div className={viewMode === "grid" ? styles.usersGrid : styles.usersList}>
               {isLoading ? (
-              <div className="content-loader">
-                <div className="loading-container">
-                  <div className="spinner"></div>
-                  <p className="loading-text">Loading users...</p>
+              <div className={styles.contentLoader}>
+                <div className={styles.loadingContainer}>
+                  <div className={styles.spinner}></div>
+                  <p className={styles.loadingText}>Loading users...</p>
                 </div>
               </div>
             ) : sortedUsers.length > 0 ? (
@@ -584,7 +587,7 @@ const Dashboard = () => {
                   return (
                     <div
                       key={matchedUser._id}
-                      className="user-card-wrapper relative"
+                      className={styles.userCardWrapper}
                       ref={isLastElement ? lastUserElementRef : null}
                     >
                       <UserCard
@@ -604,19 +607,19 @@ const Dashboard = () => {
 
                 {/* Loading indicator at the bottom when loading more */}
                 {loadingMore && (
-                  <div className="content-loader" style={{minHeight: "100px"}}>
-                    <div className="loading-container">
-                      <div className="spinner"></div>
-                      <p className="loading-text">Loading more users...</p>
+                  <div className={styles.contentLoader} style={{minHeight: "100px"}}>
+                    <div className={styles.loadingContainer}>
+                      <div className={styles.spinner}></div>
+                      <p className={styles.loadingText}>Loading more users...</p>
                     </div>
                   </div>
                 )}
               </>
             ) : (
               // No Results Found
-              <div className="content-loader">
-                <div className="loading-container">
-                  <div className="no-results-icon">
+              <div className={styles.contentLoader}>
+                <div className={styles.loadingContainer}>
+                  <div className={styles.noResultsIcon}>
                     <FaSearch />
                   </div>
                   <h3>No matches found</h3>
@@ -636,7 +639,7 @@ const Dashboard = () => {
       {showChat && chatUser && (
         <>
           {/* Overlay to close chat */}
-          <div className="chat-overlay" onClick={closeChat}></div>
+          <div className={styles.chatOverlay} onClick={closeChat}></div>
           <EmbeddedChat recipient={chatUser} isOpen={showChat} onClose={closeChat} />
         </>
       )}

@@ -18,7 +18,10 @@ import {
   FaCheck,
   FaExclamationTriangle,
 } from "react-icons/fa"
-import { ThemeToggle } from "../components/theme-toggle.tsx"
+import { Navbar } from "../components/LayoutComponents"
+
+// Import CSS module
+import styles from "../styles/profile.module.css"
 
 // Import the normalizePhotoUrl utility
 import { normalizePhotoUrl } from "../utils/index.js"
@@ -159,7 +162,7 @@ const Profile = () => {
           location: user.details?.location || "",
           bio: user.details?.bio || "",
           interests: user.details?.interests || [],
-          // Change back to iAm
+          // Ensure these fields are properly read from user data
           iAm: user.details?.iAm || "",
           lookingFor: user.details?.lookingFor || [],
           intoTags: user.details?.intoTags || [],
@@ -380,7 +383,7 @@ const Profile = () => {
     const validationErrors = validateForm()
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
-      const firstErrorElement = document.querySelector(".error-message")
+      const firstErrorElement = document.querySelector(`.${styles.errorMessage}`)
       if (firstErrorElement) {
         firstErrorElement.scrollIntoView({ behavior: "smooth", block: "center" })
       }
@@ -389,6 +392,7 @@ const Profile = () => {
     setErrors({})
     setIsSubmitting(true)
     try {
+      // Ensure we're properly handling all fields, especially the newly moved ones
       const submissionData = {
         nickname: profileData.nickname.trim(),
         details: {
@@ -397,7 +401,7 @@ const Profile = () => {
           location: profileData.details.location.trim(),
           bio: profileData.details.bio ? profileData.details.bio.trim() : "",
           interests: Array.isArray(profileData.details.interests) ? profileData.details.interests : [],
-          // Change back to iAm
+          // Ensure iAm and maritalStatus (which were moved) are properly included
           iAm: profileData.details.iAm || "",
           lookingFor: Array.isArray(profileData.details.lookingFor) ? profileData.details.lookingFor : [],
           intoTags: Array.isArray(profileData.details.intoTags) ? profileData.details.intoTags : [],
@@ -405,10 +409,22 @@ const Profile = () => {
           maritalStatus: profileData.details.maritalStatus || "",
         },
       }
+      
       console.log("Submitting profile data:", submissionData)
       const updatedUser = await updateProfile(submissionData)
+      
       if (updatedUser) {
-        toast.success("Profile updated successfully")
+        console.log("Profile updated successfully, refreshing user data...");
+        
+        // After successful update, force a refresh of user data and wait for it to complete
+        const refreshResult = await refreshUserData(updatedUser._id);
+        
+        if (refreshResult) {
+          console.log("User data refresh successful");
+        } else {
+          console.warn("User data refresh may not have been complete, but continuing");
+        }
+
         setIsEditing(false)
       } else {
         throw new Error("Failed to update profile")
@@ -742,62 +758,28 @@ const Profile = () => {
 
   // Replace the profile rendering with this
   return (
-    <div className="modern-dashboard">
-      {/* Header */}
-      <header className="modern-header">
-        <div className="container d-flex justify-content-between align-items-center">
-          <div className="logo" style={{ cursor: "pointer" }} onClick={() => navigate("/dashboard")}>
-            Mandarin
-          </div>
-          <div className="d-none d-md-flex main-tabs">
-            <button className="tab-button" onClick={() => navigate("/dashboard")}>
-              Dashboard
-            </button>
-            <button className="tab-button" onClick={() => navigate("/messages")}>
-              Messages
-            </button>
-          </div>
-          <div className="header-actions d-flex align-items-center">
-            <ThemeToggle />
-            {user?.photos?.[0] ? (
-              <img
-                src={user.photos[0].url || "/placeholder.svg?height=32&width=32"}
-                alt={user.nickname}
-                className="user-avatar"
-                onClick={() => navigate("/profile")}
-              />
-            ) : (
-              <FaUserCircle className="user-avatar" style={{ fontSize: "32px" }} onClick={() => navigate("/profile")} />
-            )}
-          </div>
-        </div>
-      </header>
+    <div className={`${styles.profilePage} min-vh-100 w-100 overflow-hidden bg-light-subtle transition-all`}>
+      {/* Use Navbar from LayoutComponents */}
+      <Navbar />
 
       {/* Main Content */}
-      <main className="dashboard-content">
-        <div className="container" style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
+      <main className={`${styles.dashboardContent} py-5`}>
+        <div className="container max-w-xl mx-auto px-4 d-flex flex-column gap-5">
           {isLoading ? (
-            <div className="text-center py-5">
-              <div className="spinner spinner-large"></div>
-              <p className="mt-3">Loading your profile...</p>
+            <div className="d-flex flex-column align-items-center justify-content-center py-5 text-center">
+              <div className={`${styles.spinner} ${styles.spinnerLarge} text-primary mb-4`}></div>
+              <p className="text-opacity-70 font-weight-medium">Loading your profile...</p>
             </div>
           ) : (
             <>
               {/* Profile Photo Section */}
-              <div className="profile-photo-section text-center">
+              <div className={`${styles.photoSection} text-center bg-white shadow-lg rounded-lg border py-4 transform-gpu hover-shadow-xl transition-all`}>
                 {localPhotos.length > 0 && profilePhotoIndex >= 0 ? (
-                  <div style={{ position: "relative", display: "inline-block" }}>
+                  <div className={`${styles.profilePhotoWrapper} position-relative d-inline-block`}>
                     <img
                       src={localPhotos[profilePhotoIndex].url || "/placeholder.svg?height=200&width=200"}
                       alt="Profile"
-                      style={{
-                        width: "200px",
-                        height: "200px",
-                        objectFit: "cover",
-                        borderRadius: "50%",
-                        boxShadow: "0 6px 16px rgba(0, 0, 0, 0.1)",
-                        transition: "transform 0.3s ease",
-                      }}
+                      className={`${styles.profilePhoto} w-300px h-300px object-cover rounded-circle shadow-lg border-4 border-white transform-gpu transition-transform hover-scale`}
                       onLoad={() => {
                         // Clear loading state when image loads
                         if (localPhotos[profilePhotoIndex]?.isLoading) {
@@ -810,80 +792,32 @@ const Profile = () => {
                       }}
                     />
                     {localPhotos[profilePhotoIndex]?.isLoading && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          width: "100%",
-                          height: "100%",
-                          borderRadius: "50%",
-                          background: "rgba(255,255,255,0.7)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <div className="spinner"></div>
+                      <div className="position-absolute top-0 left-0 w-100 h-100 rounded-circle d-flex align-items-center justify-content-center bg-overlay-light">
+                        <div className={`${styles.spinner} ${styles.spinnerLarge}`}></div>
                       </div>
                     )}
                     {localPhotos[profilePhotoIndex].isPrivate && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          width: "100%",
-                          height: "100%",
-                          borderRadius: "50%",
-                          background: "rgba(0,0,0,0.4)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <FaLock style={{ fontSize: "32px", color: "#fff" }} />
+                      <div className="position-absolute top-0 left-0 w-100 h-100 rounded-circle d-flex align-items-center justify-content-center bg-overlay-dark">
+                        <FaLock className="text-3xl text-white" />
                       </div>
                     )}
-                    <div
-                      style={{
-                        position: "absolute",
-                        bottom: "0",
-                        left: "0",
-                        width: "100%",
-                        background: "rgba(0,0,0,0.6)",
-                        color: "white",
-                        padding: "4px",
-                        fontSize: "12px",
-                      }}
-                    >
+                    <div className="position-absolute bottom-0 left-0 w-100 py-1 bg-overlay-dark text-white text-xs rounded-bottom-circle">
                       Profile Photo
                     </div>
                   </div>
                 ) : (
-                  <div
-                    style={{
-                      width: "200px",
-                      height: "200px",
-                      borderRadius: "50%",
-                      background: "#f0f0f0",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      margin: "0 auto",
-                    }}
-                  >
-                    <FaUserCircle style={{ fontSize: "80px", color: "#ccc" }} />
+                  <div className="w-300px h-300px rounded-circle bg-light d-flex align-items-center justify-content-center mx-auto border-4 border-white">
+                    <FaUserCircle className="text-7xl text-gray-400" />
                   </div>
                 )}
 
                 {/* Photo Upload */}
-                <div style={{ marginTop: "16px" }}>
+                <div className="mt-4">
                   {isUploading ? (
-                    <div className="upload-progress-container" style={{ width: "200px", margin: "0 auto" }}>
-                      <div className="progress mb-2" style={{ height: "8px" }}>
+                    <div className="mx-auto w-200px">
+                      <div className="h-8px bg-gray-800 rounded-pill overflow-hidden mb-2">
                         <div
-                          className="progress-bar bg-primary"
+                          className="h-100 bg-primary transition-width"
                           role="progressbar"
                           style={{ width: `${uploadProgress}%` }}
                           aria-valuenow={uploadProgress}
@@ -891,16 +825,16 @@ const Profile = () => {
                           aria-valuemax="100"
                         ></div>
                       </div>
-                      <div className="text-center">Uploading... {uploadProgress}%</div>
+                      <div className="text-center text-opacity-70">Uploading... {uploadProgress}%</div>
                     </div>
                   ) : (
                     <button
-                      className="btn btn-outline"
+                      className="btn btn-outline-primary rounded-pill d-inline-flex align-items-center gap-2 hover-scale shadow-sm transition-all px-4 py-2"
                       onClick={triggerFileInput}
                       disabled={isProcessingPhoto}
                       aria-label="Add photo"
                     >
-                      <FaCamera style={{ marginRight: "4px" }} /> Add Photo
+                      <FaCamera /> <span>Add Photo</span>
                       <input
                         type="file"
                         ref={fileInputRef}
@@ -916,94 +850,35 @@ const Profile = () => {
 
               {/* Photo Gallery Section - Now with responsive grid */}
               {localPhotos.length > 0 && (
-                <div
-                  className="photo-gallery"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
-                    gap: "16px",
-                  }}
-                >
+                <div className={styles.photoGallery}>
                   {localPhotos.map((photo) => (
                     <div
                       key={photo._id}
-                      className="gallery-item"
+                      className={`${styles.galleryItem} ${photo.isProfile ? styles.profileGalleryItem : ''}`}
                       style={{
-                        position: "relative",
                         cursor: photo._id.toString().startsWith("temp-") ? "not-allowed" : "pointer",
-                        border: photo.isProfile ? "2px solid var(--primary)" : "2px solid transparent",
-                        borderRadius: "8px",
-                        overflow: "hidden",
-                        transition: "transform 0.3s ease",
-                        height: "100px",
                       }}
                       onClick={() => handleSetProfilePhoto(photo._id)}
                     >
                       <img
                         src={photo.url || "/placeholder.svg?height=100&width=100"}
                         alt={`Gallery`}
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        className={styles.galleryImage}
                       />
                       {photo.isLoading && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            width: "100%",
-                            height: "100%",
-                            background: "rgba(255,255,255,0.7)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <div className="spinner spinner-small"></div>
+                        <div className={styles.galleryItemLoading}>
+                          <div className={`${styles.spinner} ${styles.spinnerSmall}`}></div>
                         </div>
                       )}
                       {photo._id.toString().startsWith("temp-") && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            width: "100%",
-                            height: "100%",
-                            background: "rgba(0,0,0,0.3)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "white",
-                            fontSize: "10px",
-                            textAlign: "center",
-                            padding: "4px",
-                          }}
-                        >
+                        <div className={styles.galleryItemUploading}>
                           Uploading...
                         </div>
                       )}
-                      <div
-                        className="photo-controls"
-                        style={{
-                          position: "absolute",
-                          bottom: "0",
-                          left: "0",
-                          right: "0",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          padding: "4px",
-                          background: "rgba(0,0,0,0.5)",
-                        }}
-                      >
+                      <div className={styles.photoControls}>
                         <button
                           onClick={(e) => handleTogglePhotoPrivacy(photo._id, e)}
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            color: "white",
-                            cursor: photo._id.toString().startsWith("temp-") ? "not-allowed" : "pointer",
-                            padding: "2px",
-                          }}
+                          className={styles.photoControlBtn}
                           title={photo.isPrivate ? "Make public" : "Make private"}
                           disabled={isProcessingPhoto || photo.isLoading || photo._id.toString().startsWith("temp-")}
                           aria-label={photo.isPrivate ? "Make photo public" : "Make photo private"}
@@ -1020,13 +895,7 @@ const Profile = () => {
                               e.stopPropagation()
                               handleSetProfilePhoto(photo._id)
                             }}
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              color: "white",
-                              cursor: photo._id.toString().startsWith("temp-") ? "not-allowed" : "pointer",
-                              padding: "2px",
-                            }}
+                            className={styles.photoControlBtn}
                             title="Set as profile photo"
                             disabled={isProcessingPhoto || photo.isLoading || photo._id.toString().startsWith("temp-")}
                             aria-label="Set as profile photo"
@@ -1037,13 +906,7 @@ const Profile = () => {
                         {!photo.isProfile && (
                           <button
                             onClick={(e) => handleDeletePhoto(photo._id, e)}
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              color: "white",
-                              cursor: "pointer",
-                              padding: "2px",
-                            }}
+                            className={styles.photoControlBtn}
                             title="Delete photo"
                             disabled={isProcessingPhoto || photo.isLoading}
                             aria-label="Delete photo"
@@ -1053,18 +916,7 @@ const Profile = () => {
                         )}
                       </div>
                       {photo.isProfile && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: "0",
-                            left: "0",
-                            background: "var(--primary)",
-                            color: "white",
-                            fontSize: "10px",
-                            padding: "2px 4px",
-                            borderBottomRightRadius: "4px",
-                          }}
-                        >
+                        <div className={styles.profileBadge}>
                           Profile
                         </div>
                       )}
@@ -1072,19 +924,9 @@ const Profile = () => {
                   ))}
                   <button
                     type="button"
-                    className="gallery-item add"
+                    className={styles.addPhotoItem}
                     onClick={triggerFileInput}
                     disabled={isUploading || isProcessingPhoto}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: "#eaeaea",
-                      border: "2px dashed #ccc",
-                      borderRadius: "8px",
-                      cursor: "pointer",
-                      height: "100px",
-                    }}
                     aria-label="Add new photo"
                   >
                     <FaCamera style={{ fontSize: "24px", color: "#555" }} />
@@ -1092,38 +934,42 @@ const Profile = () => {
                 </div>
               )}
 
-              {/* Profile Information Section - Now with better responsive layout */}
-              <div className="profile-info">
-                <div className="profile-header d-flex justify-content-between align-items-center flex-wrap">
-                  <h2>My Profile</h2>
+              {/* Profile Information Section - Enhanced with utility classes */}
+              <div className={styles.profileInfo}>
+                <div className={styles.profileHeader}>
+                  <h2 className={styles.profileTitle}>My Profile</h2>
                   {!isEditing ? (
-                    <button className="btn btn-primary" onClick={() => setIsEditing(true)} aria-label="Edit profile">
-                      <FaEdit /> Edit
+                    <button 
+                      className={`${styles.btn} ${styles.btnPrimary}`}
+                      onClick={() => setIsEditing(true)} 
+                      aria-label="Edit profile"
+                    >
+                      <FaEdit /> <span>Edit</span>
                     </button>
                   ) : (
-                    <div className="d-flex" style={{ gap: "8px" }}>
+                    <div className={`${styles.flexDisplay} ${styles.gap2}`}>
                       <button
-                        className="btn btn-outline"
+                        className={`${styles.btn} ${styles.btnOutline}`}
                         onClick={handleCancelEdit}
                         disabled={isSubmitting}
                         aria-label="Cancel editing"
                       >
-                        <FaTimes /> Cancel
+                        <FaTimes /> <span>Cancel</span>
                       </button>
                       <button
-                        className="btn btn-primary"
+                        className={`${styles.btn} ${styles.btnPrimary}`}
                         onClick={handleSubmit}
                         disabled={isSubmitting}
                         aria-label="Save profile changes"
                       >
                         {isSubmitting ? (
                           <>
-                            <span className="spinner spinner-dark"></span>
-                            <span style={{ marginLeft: "8px" }}>Saving...</span>
+                            <span className={`${styles.spinner} ${styles.spinnerDark}`}></span>
+                            <span>Saving...</span>
                           </>
                         ) : (
                           <>
-                            <FaCheck /> Save
+                            <FaCheck /> <span>Save</span>
                           </>
                         )}
                       </button>
@@ -1132,25 +978,18 @@ const Profile = () => {
                 </div>
 
                 <form className="mt-4" onSubmit={handleSubmit}>
-                  <div className="info-section">
-                    <h3>Basic Information</h3>
-                    <div
-                      className="info-grid"
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-                        gap: "16px",
-                      }}
-                    >
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="nickname">
+                  <div className={`${styles.infoSection} animate-fade-in`}>
+                    <h3 className={styles.sectionTitle}>Basic Information</h3>
+                    <div className={styles.infoGrid}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel} htmlFor="nickname">
                           Nickname
                         </label>
                         <input
                           type="text"
                           id="nickname"
                           name="nickname"
-                          className={`form-control ${errors.nickname ? "border-danger" : ""}`}
+                          className={`${styles.formControl} ${errors.nickname ? styles.borderDanger : ''}`}
                           value={profileData.nickname}
                           onChange={handleChange}
                           disabled={!isEditing}
@@ -1159,21 +998,21 @@ const Profile = () => {
                           aria-describedby={errors.nickname ? "nickname-error" : undefined}
                         />
                         {errors.nickname && (
-                          <p id="nickname-error" className="error-message" style={{ color: "red", marginTop: "4px" }}>
-                            <FaExclamationTriangle style={{ marginRight: "4px" }} />
+                          <p id="nickname-error" className={styles.errorMessage}>
+                            <FaExclamationTriangle className="mr-1" />
                             {errors.nickname}
                           </p>
                         )}
                       </div>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="details.age">
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel} htmlFor="details.age">
                           Age
                         </label>
                         <input
                           type="number"
                           id="details.age"
                           name="details.age"
-                          className={`form-control ${errors.age ? "border-danger" : ""}`}
+                          className={`${styles.formControl} ${errors.age ? styles.borderDanger : ''}`}
                           value={profileData.details.age}
                           onChange={handleChange}
                           disabled={!isEditing}
@@ -1183,21 +1022,21 @@ const Profile = () => {
                           aria-describedby={errors.age ? "age-error" : undefined}
                         />
                         {errors.age && (
-                          <p id="age-error" className="error-message" style={{ color: "red", marginTop: "4px" }}>
-                            <FaExclamationTriangle style={{ marginRight: "4px" }} />
+                          <p id="age-error" className={styles.errorMessage}>
+                            <FaExclamationTriangle className="mr-1" />
                             {errors.age}
                           </p>
                         )}
                       </div>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="details.location">
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel} htmlFor="details.location">
                           Location
                         </label>
                         <input
                           type="text"
                           id="details.location"
                           name="details.location"
-                          className={`form-control ${errors.location ? "border-danger" : ""}`}
+                          className={`${styles.formControl} ${errors.location ? styles.borderDanger : ''}`}
                           value={profileData.details.location}
                           onChange={handleChange}
                           disabled={!isEditing}
@@ -1206,267 +1045,226 @@ const Profile = () => {
                           aria-describedby={errors.location ? "location-error" : undefined}
                         />
                         {errors.location && (
-                          <p id="location-error" className="error-message" style={{ color: "red", marginTop: "4px" }}>
-                            <FaExclamationTriangle style={{ marginRight: "4px" }} />
+                          <p id="location-error" className={styles.errorMessage}>
+                            <FaExclamationTriangle className="mr-1" />
                             {errors.location}
                           </p>
                         )}
                       </div>
                     </div>
+                    
+                    <div className={styles.mt4}>
+                      <label className={styles.formLabel}>I am a</label>
+                      <div className={`${styles.flexDisplay} ${styles.flexWrap} ${styles.gap2}`}>
+                        {iAmOptions.map((option) => {
+                          const identityClass = 
+                            option === "woman" ? styles["identity-woman"] : 
+                            option === "man" ? styles["identity-man"] : 
+                            option === "couple" ? styles["identity-couple"] : "";
+                            
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              className={`${styles.interestTag} ${profileData.details.iAm === option ? `${styles.selected} ${identityClass}` : identityClass}`}
+                              onClick={() => isEditing && handleIAmSelection(option)}
+                              disabled={!isEditing}
+                              aria-pressed={profileData.details.iAm === option}
+                            >
+                              {option.charAt(0).toUpperCase() + option.slice(1)}
+                              {profileData.details.iAm === option && <FaCheck style={{ marginLeft: "4px" }} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {!profileData.details.iAm && !isEditing && (
+                        <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>Not specified</p>
+                      )}
+                    </div>
+                    
+                    <div className={styles.mt4}>
+                      <label className={styles.formLabel}>Marital Status</label>
+                      <div className={`${styles.flexDisplay} ${styles.flexWrap} ${styles.gap2}`}>
+                        {maritalStatusOptions.map((status) => (
+                          <button
+                            key={status}
+                            type="button"
+                            className={`${styles.interestTag} ${profileData.details.maritalStatus === status ? styles.selected : ''}`}
+                            onClick={() => isEditing && handleMaritalStatusSelection(status)}
+                            disabled={!isEditing}
+                            aria-pressed={profileData.details.maritalStatus === status}
+                          >
+                            {status}
+                            {profileData.details.maritalStatus === status && <FaCheck style={{ marginLeft: "4px" }} />}
+                          </button>
+                        ))}
+                      </div>
+                      {!profileData.details.maritalStatus && !isEditing && (
+                        <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>Not specified</p>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="info-section">
-                    <h3>About Me</h3>
+                  <div className={styles.infoSection}>
+                    <h3 className={styles.sectionTitle}>About Me</h3>
                     <textarea
                       name="details.bio"
-                      rows="4"
-                      className={`form-control ${errors.bio ? "border-danger" : ""}`}
+                      rows="5"
+                      className={`${styles.formControl} ${styles.textArea} ${errors.bio ? styles.borderDanger : ''}`}
                       value={profileData.details.bio || ""}
                       onChange={handleChange}
                       disabled={!isEditing}
-                      style={{ resize: "vertical" }}
                       maxLength={500}
                       placeholder={isEditing ? "Tell others about yourself..." : "No bio provided"}
                       aria-invalid={errors.bio ? "true" : "false"}
                       aria-describedby={errors.bio ? "bio-error" : undefined}
                     />
                     {errors.bio && (
-                      <p id="bio-error" className="error-message" style={{ color: "red", marginTop: "4px" }}>
+                      <p id="bio-error" className={styles.errorMessage}>
                         <FaExclamationTriangle style={{ marginRight: "4px" }} />
                         {errors.bio}
                       </p>
                     )}
                     {isEditing && (
-                      <div className="text-muted mt-1" style={{ fontSize: "0.8rem", textAlign: "right" }}>
+                      <div className={`${styles.textMuted} ${styles.textRight} ${styles.mt1}`}>
                         {profileData.details.bio ? profileData.details.bio.length : 0}/500
                       </div>
                     )}
                   </div>
 
-                  <div className="info-section">
-                    <h3>Interests</h3>
+                  <div className={styles.infoSection}>
+                    <h3 className={styles.sectionTitle}>Interests</h3>
                     {isEditing && (
-                      <div className="text-muted mb-2" style={{ fontSize: "0.8rem" }}>
+                      <div className={`${styles.textMuted} ${styles.mb2}`}>
                         Select up to 10 interests
                       </div>
                     )}
-                    <div className="interests-tags" style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                    <div className={styles.interestsTags}>
                       {availableInterests.map((interest) => {
-                        const isSelected = profileData.details.interests.includes(interest)
+                        const isSelected = profileData.details.interests.includes(interest);
                         return (
                           <button
                             key={interest}
                             type="button"
-                            className={`interest-tag ${isSelected ? "selected" : ""}`}
+                            className={`${styles.interestTag} ${isSelected ? styles.selected : ''}`}
                             onClick={() => isEditing && toggleInterest(interest)}
                             disabled={!isEditing || (!isSelected && profileData.details.interests.length >= 10)}
-                            style={{
-                              padding: "4px 12px",
-                              borderRadius: "20px",
-                              backgroundColor: isSelected ? "var(--primary)" : "var(--light)",
-                              color: isSelected ? "#fff" : "var(--text-medium)",
-                              border: "none",
-                              cursor: isEditing ? "pointer" : "default",
-                              transition: "all 0.3s ease",
-                            }}
                             aria-pressed={isSelected}
                             aria-label={`Interest: ${interest}`}
                           >
                             {interest}
                             {isSelected && <FaCheck style={{ marginLeft: "4px" }} />}
                           </button>
-                        )
+                        );
                       })}
                     </div>
                     {profileData.details.interests.length === 0 && !isEditing && (
-                      <p className="text-muted fst-italic mt-2">No interests selected</p>
+                      <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>No interests selected</p>
                     )}
                   </div>
 
-                  <div className="info-section">
-                    <h3>I am a</h3>
-                    <div className="d-flex flex-wrap gap-2">
-                      {iAmOptions.map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          className={`interest-tag ${profileData.details.iAm === option ? "selected" : ""}`}
-                          onClick={() => isEditing && handleIAmSelection(option)}
-                          disabled={!isEditing}
-                          style={{
-                            padding: "4px 12px",
-                            borderRadius: "20px",
-                            backgroundColor: profileData.details.iAm === option ? "var(--primary)" : "var(--light)",
-                            color: profileData.details.iAm === option ? "#fff" : "var(--text-medium)",
-                            border: "none",
-                            cursor: isEditing ? "pointer" : "default",
-                            transition: "all 0.3s ease",
-                          }}
-                          aria-pressed={profileData.details.iAm === option}
-                        >
-                          {option.charAt(0).toUpperCase() + option.slice(1)}
-                          {profileData.details.iAm === option && <FaCheck style={{ marginLeft: "4px" }} />}
-                        </button>
-                      ))}
-                    </div>
-                    {!profileData.details.iAm && !isEditing && (
-                      <p className="text-muted fst-italic mt-2">Not specified</p>
-                    )}
-                  </div>
-
-                  <div className="info-section">
-                    <h3>Marital Status</h3>
-                    <div className="d-flex flex-wrap gap-2">
-                      {maritalStatusOptions.map((status) => (
-                        <button
-                          key={status}
-                          type="button"
-                          className={`interest-tag ${profileData.details.maritalStatus === status ? "selected" : ""}`}
-                          onClick={() => isEditing && handleMaritalStatusSelection(status)}
-                          disabled={!isEditing}
-                          style={{
-                            padding: "4px 12px",
-                            borderRadius: "20px",
-                            backgroundColor:
-                              profileData.details.maritalStatus === status ? "var(--primary)" : "var(--light)",
-                            color: profileData.details.maritalStatus === status ? "#fff" : "var(--text-medium)",
-                            border: "none",
-                            cursor: isEditing ? "pointer" : "default",
-                            transition: "all 0.3s ease",
-                          }}
-                          aria-pressed={profileData.details.maritalStatus === status}
-                        >
-                          {status}
-                          {profileData.details.maritalStatus === status && <FaCheck style={{ marginLeft: "4px" }} />}
-                        </button>
-                      ))}
-                    </div>
-                    {!profileData.details.maritalStatus && !isEditing && (
-                      <p className="text-muted fst-italic mt-2">Not specified</p>
-                    )}
-                  </div>
-
-                  <div className="info-section">
-                    <h3>Looking For</h3>
+                  <div className={styles.infoSection}>
+                    <h3 className={styles.sectionTitle}>Looking For</h3>
                     {isEditing && (
-                      <div className="text-muted mb-2" style={{ fontSize: "0.8rem" }}>
+                      <div className={`${styles.textMuted} ${styles.mb2}`}>
                         Select up to 3 options
                       </div>
                     )}
-                    <div className="d-flex flex-wrap gap-2">
-                      {lookingForOptions.map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          className={`interest-tag ${profileData.details.lookingFor.includes(option) ? "selected" : ""}`}
-                          onClick={() => isEditing && toggleLookingFor(option)}
-                          disabled={
-                            !isEditing ||
-                            (!profileData.details.lookingFor.includes(option) &&
-                              profileData.details.lookingFor.length >= 3)
-                          }
-                          style={{
-                            padding: "4px 12px",
-                            borderRadius: "20px",
-                            backgroundColor: profileData.details.lookingFor.includes(option)
-                              ? "var(--primary)"
-                              : "var(--light)",
-                            color: profileData.details.lookingFor.includes(option) ? "#fff" : "var(--text-medium)",
-                            border: "none",
-                            cursor: isEditing ? "pointer" : "default",
-                            transition: "all 0.3s ease",
-                          }}
-                          aria-pressed={profileData.details.lookingFor.includes(option)}
-                        >
-                          {option.charAt(0).toUpperCase() + option.slice(1)}
-                          {profileData.details.lookingFor.includes(option) && <FaCheck style={{ marginLeft: "4px" }} />}
-                        </button>
-                      ))}
+                    <div className={styles.interestsTags}>
+                      {lookingForOptions.map((option) => {
+                        const isSelected = profileData.details.lookingFor.includes(option);
+                        // Gender-based styling
+                        const identityClass = 
+                          option.toLowerCase().includes("women") || option.toLowerCase().includes("woman") ? styles["identity-woman"] : 
+                          option.toLowerCase().includes("men") || option.toLowerCase().includes("man") ? styles["identity-man"] : 
+                          option.toLowerCase().includes("couple") ? styles["identity-couple"] : "";
+                          
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            className={`${styles.interestTag} ${isSelected ? `${styles.selected} ${identityClass}` : identityClass}`}
+                            onClick={() => isEditing && toggleLookingFor(option)}
+                            disabled={
+                              !isEditing ||
+                              (!isSelected && profileData.details.lookingFor.length >= 3)
+                            }
+                            aria-pressed={isSelected}
+                          >
+                            {option.charAt(0).toUpperCase() + option.slice(1)}
+                            {isSelected && <FaCheck style={{ marginLeft: "4px" }} />}
+                          </button>
+                        );
+                      })}
                     </div>
                     {profileData.details.lookingFor.length === 0 && !isEditing && (
-                      <p className="text-muted fst-italic mt-2">Not specified</p>
+                      <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>Not specified</p>
                     )}
                   </div>
 
-                  <div className="info-section">
-                    <h3>I'm Into</h3>
+                  <div className={styles.infoSection}>
+                    <h3 className={styles.sectionTitle}>I'm Into</h3>
                     {isEditing && (
-                      <div className="text-muted mb-2" style={{ fontSize: "0.8rem" }}>
+                      <div className={`${styles.textMuted} ${styles.mb2}`}>
                         Select up to 20 tags
                       </div>
                     )}
-                    <div className="interests-tags" style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                      {intoTagsOptions.map((tag) => (
-                        <button
-                          key={tag}
-                          type="button"
-                          className={`interest-tag ${profileData.details.intoTags.includes(tag) ? "selected" : ""}`}
-                          onClick={() => isEditing && toggleIntoTag(tag)}
-                          disabled={
-                            !isEditing ||
-                            (!profileData.details.intoTags.includes(tag) && profileData.details.intoTags.length >= 20)
-                          }
-                          style={{
-                            padding: "4px 12px",
-                            borderRadius: "20px",
-                            backgroundColor: profileData.details.intoTags.includes(tag)
-                              ? "var(--primary)"
-                              : "var(--light)",
-                            color: profileData.details.intoTags.includes(tag) ? "#fff" : "var(--text-medium)",
-                            border: "none",
-                            cursor: isEditing ? "pointer" : "default",
-                            transition: "all 0.3s ease",
-                          }}
-                          aria-pressed={profileData.details.intoTags.includes(tag)}
-                        >
-                          {tag}
-                          {profileData.details.intoTags.includes(tag) && <FaCheck style={{ marginLeft: "4px" }} />}
-                        </button>
-                      ))}
+                    <div className={styles.interestsTags}>
+                      {intoTagsOptions.map((tag) => {
+                        const isSelected = profileData.details.intoTags.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            className={`${styles.interestTag} ${isSelected ? styles.selected : ""}`}
+                            onClick={() => isEditing && toggleIntoTag(tag)}
+                            disabled={
+                              !isEditing ||
+                              (!isSelected && profileData.details.intoTags.length >= 20)
+                            }
+                            aria-pressed={isSelected}
+                          >
+                            {tag}
+                            {isSelected && <FaCheck style={{ marginLeft: "4px" }} />}
+                          </button>
+                        );
+                      })}
                     </div>
                     {profileData.details.intoTags.length === 0 && !isEditing && (
-                      <p className="text-muted fst-italic mt-2">No tags selected</p>
+                      <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>No tags selected</p>
                     )}
                   </div>
 
-                  <div className="info-section">
-                    <h3>It Turns Me On</h3>
+                  <div className={styles.infoSection}>
+                    <h3 className={styles.sectionTitle}>It Turns Me On</h3>
                     {isEditing && (
-                      <div className="text-muted mb-2" style={{ fontSize: "0.8rem" }}>
+                      <div className={`${styles.textMuted} ${styles.mb2}`}>
                         Select up to 20 tags
                       </div>
                     )}
-                    <div className="interests-tags" style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                      {turnOnsOptions.map((tag) => (
-                        <button
-                          key={tag}
-                          type="button"
-                          className={`interest-tag ${profileData.details.turnOns.includes(tag) ? "selected" : ""}`}
-                          onClick={() => isEditing && toggleTurnOn(tag)}
-                          disabled={
-                            !isEditing ||
-                            (!profileData.details.turnOns.includes(tag) && profileData.details.turnOns.length >= 20)
-                          }
-                          style={{
-                            padding: "4px 12px",
-                            borderRadius: "20px",
-                            backgroundColor: profileData.details.turnOns.includes(tag)
-                              ? "var(--primary)"
-                              : "var(--light)",
-                            color: profileData.details.turnOns.includes(tag) ? "#fff" : "var(--text-medium)",
-                            border: "none",
-                            cursor: isEditing ? "pointer" : "default",
-                            transition: "all 0.3s ease",
-                          }}
-                          aria-pressed={profileData.details.turnOns.includes(tag)}
-                        >
-                          {tag}
-                          {profileData.details.turnOns.includes(tag) && <FaCheck style={{ marginLeft: "4px" }} />}
-                        </button>
-                      ))}
+                    <div className={styles.interestsTags}>
+                      {turnOnsOptions.map((tag) => {
+                        const isSelected = profileData.details.turnOns.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            className={`${styles.interestTag} ${isSelected ? styles.selected : ""}`}
+                            onClick={() => isEditing && toggleTurnOn(tag)}
+                            disabled={
+                              !isEditing ||
+                              (!isSelected && profileData.details.turnOns.length >= 20)
+                            }
+                            aria-pressed={isSelected}
+                          >
+                            {tag}
+                            {isSelected && <FaCheck style={{ marginLeft: "4px" }} />}
+                          </button>
+                        );
+                      })}
                     </div>
                     {profileData.details.turnOns.length === 0 && !isEditing && (
-                      <p className="text-muted fst-italic mt-2">No tags selected</p>
+                      <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>No tags selected</p>
                     )}
                   </div>
                 </form>

@@ -154,6 +154,11 @@ const userSchema = new Schema(
           message: "Cannot have more than 20 'turn ons' tags",
         },
       },
+      maritalStatus: {
+        type: String,
+        enum: ["Single", "Married", "Divorced", "Separated", "Widowed", "In a relationship", "It's complicated", "Open relationship", "Polyamorous", ""],
+        default: "",
+      },
     },
     photos: [photoSchema],
     isOnline: {
