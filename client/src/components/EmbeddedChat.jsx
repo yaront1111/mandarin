@@ -147,12 +147,45 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
       setLoadingTimeout(false);
     }
     
+    // Fallback timeout to prevent permanent loading state (force timeout after 15 seconds)
+    const fallbackTimeout = setTimeout(() => {
+      if (loading) {
+        log.warn("Force loading timeout after 15 seconds");
+        setLoadingTimeout(true);
+        
+        // Force loading to false after 20 seconds total if still loading
+        setTimeout(() => {
+          if (loading) {
+            log.error("Forcing exit from loading state after 20s");
+            
+            // Display error message as a system message
+            const errorMessage = {
+              _id: generateUniqueId(),
+              sender: "system",
+              content: "Failed to load messages. Please try refreshing.",
+              createdAt: new Date().toISOString(),
+              type: "system",
+              error: true
+            };
+            
+            setMessagesData(prev => [errorMessage, ...prev]);
+            
+            // Force refresh button to appear
+            if (refresh) {
+              refresh();
+            }
+          }
+        }, 5000);
+      }
+    }, 15000);
+    
     return () => {
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
       }
+      clearTimeout(fallbackTimeout);
     };
-  }, [loading, loadingTimeout]);
+  }, [loading, loadingTimeout, refresh]);
 
   // Handle incoming video calls
   useEffect(() => {
@@ -1146,13 +1179,33 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
                   : "Loading messages..."}
               </p>
               {loadingTimeout && (
-                <button 
-                  className={styles.refreshButton} 
-                  onClick={() => refresh()}
-                  aria-label="Retry loading messages"
-                >
-                  Retry
-                </button>
+                <div className={styles.loadingActions}>
+                  <button 
+                    className={styles.refreshButton} 
+                    onClick={() => refresh()}
+                    aria-label="Retry loading messages"
+                  >
+                    Retry
+                  </button>
+                  <button 
+                    className={styles.resetButton} 
+                    onClick={() => {
+                      // Force refresh the entire chat
+                      if (socketService && socketService.reconnect) {
+                        socketService.reconnect();
+                        toast.info("Reconnecting...");
+                        setTimeout(() => {
+                          refresh();
+                        }, 1000);
+                      } else {
+                        refresh();
+                      }
+                    }}
+                    aria-label="Force reconnect"
+                  >
+                    Reconnect
+                  </button>
+                </div>
               )}
             </div>
           ) : error ? (

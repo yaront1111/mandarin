@@ -31,7 +31,7 @@ import { useNavigate } from "react-router-dom"
 import { Modal, Button, Avatar, LoadingSpinner } from "./common"
 // Import hooks and utilities
 import { useApi, useMounted } from "../hooks"
-import { formatDate, logger, markUrlAsFailed } from "../utils"
+import { formatDate, logger, markUrlAsFailed, normalizePhotoUrl } from "../utils"
 
 /**
  * UserProfileModal component displays a user's profile information
@@ -890,7 +890,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     profileUser.photos[activePhotoIndex] && (
                       <div className={styles.imageContainer}>
                         <img
-                          src={profileUser.photos[activePhotoIndex].url}
+                          src={normalizePhotoUrl(profileUser.photos[activePhotoIndex].url)}
                           alt={`${profileUser.nickname}'s photo`}
                           className={styles.galleryImage}
                           onError={() => handleImageError(profileUser.photos[activePhotoIndex]._id)}
@@ -952,7 +952,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                           </div>
                         ) : (
                           <img 
-                            src={photo.url}
+                            src={normalizePhotoUrl(photo.url)}
                             alt={`${profileUser.nickname} ${index + 1}`}
                             className={styles.thumbnailImg}
                             onError={() => handleImageError(photo._id)}
@@ -967,7 +967,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               <div className={styles.gallery}>
                 <Avatar
                   size="xlarge"
-                  placeholder="/default-avatar.png"
+                  placeholder={normalizePhotoUrl("/default-avatar.png")}
                   alt={profileUser.nickname}
                   status={profileUser.isOnline ? "online" : null}
                 />

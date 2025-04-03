@@ -405,7 +405,7 @@ export const AuthProvider = ({ children }) => {
             }
           }
           setLoading(false)
-          return true
+          return response // Return the full response including the token
         } else {
           setError(response.error || "Registration failed")
           setLoading(false)

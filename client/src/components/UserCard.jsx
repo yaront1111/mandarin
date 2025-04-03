@@ -125,13 +125,8 @@ const UserCard = ({
     const url = user.photos[0]?.url;
     if (!url) return "/default-avatar.png";
     
-    // If the URL is already formatted properly, use it
-    if (url.startsWith("http") || url.startsWith("/") && !url.startsWith("/public/")) {
-      return url;
-    }
-    
-    // Fix the path if needed
-    return url.startsWith("/public/") ? url.replace("/public/", "/") : url;
+    // Use the normalizePhotoUrl utility function
+    return normalizePhotoUrl(url);
   }, [user?.photos]);
 
   const subtitle = useMemo(() => {
@@ -423,6 +418,7 @@ const UserCard = ({
             e.target.onerror = null;
             e.target.src = "/default-avatar.png";
           }}
+          className={styles.listPhoto}
         />
         {user.isOnline && <span className="status-indicator online-small"></span>}
       </div>

@@ -168,40 +168,85 @@ const NotificationsComponent = ({
     }
   }, [refreshNotifications])
 
+  // Create a ref to store the previous connection state that persists between renders
+  const previousConnectedRef = useRef(socketConnected);
+  
+  // Add a connection state flag to avoid false disconnection messages
+  const [connectionState, setConnectionState] = useState(socketConnected ? "connected" : "disconnected");
+  
+  // Force socket check on component mount
+  useEffect(() => {
+    // Check actual socket connection status directly
+    const checkSocketStatus = async () => {
+      try {
+        if (socketService && socketService.socket) {
+          // Get real connection status from the socket service
+          const isActuallyConnected = socketService.isConnected();
+          log.debug(`Initial socket check - Connected: ${isActuallyConnected}`);
+          
+          // If state doesn't match reality, fix it
+          if (socketConnected !== isActuallyConnected) {
+            log.warn(`Socket connection state mismatch. Context: ${socketConnected}, Actual: ${isActuallyConnected}`);
+            // The actual connection status will be picked up by the context eventually
+          }
+        }
+      } catch (err) {
+        log.error("Error checking socket status:", err);
+      }
+    };
+    
+    checkSocketStatus();
+  }, [socketConnected]);
+
   // Monitor socket connection status and refresh when reconnected
   useEffect(() => {
-    let previousConnected = socketConnected
-
+    log.debug(`Socket connection change detected - previous: ${previousConnectedRef.current}, current: ${socketConnected}`);
+    
+    // Update connection state for UI
+    setConnectionState(socketConnected ? "connected" : "disconnected");
+    
     // If socket reconnects, refresh notifications
-    if (socketConnected && !previousConnected) {
-      refreshNotifications()
-      lastRefreshRef.current = Date.now()
+    if (socketConnected && !previousConnectedRef.current) {
+      log.debug("Socket reconnected - refreshing notifications");
+      refreshNotifications();
+      lastRefreshRef.current = Date.now();
     }
 
     // If socket disconnects, set up polling fallback
-    if (!socketConnected && previousConnected) {
+    if (!socketConnected && previousConnectedRef.current) {
+      log.debug("Socket disconnected - setting up polling fallback");
+      
       // Set up a polling mechanism when socket is disconnected
-      const pollInterval = 60000 // 1 minute
+      const pollInterval = 60000; // 1 minute
 
       const pollForUpdates = () => {
-        refreshNotifications()
-        lastRefreshRef.current = Date.now()
+        // Check if socket is still disconnected before polling
+        if (!socketService.isConnected()) {
+          log.debug("Polling for notifications while socket is disconnected");
+          refreshNotifications();
+          lastRefreshRef.current = Date.now();
 
-        // Schedule next poll
-        refreshTimeoutRef.current = setTimeout(pollForUpdates, pollInterval)
-      }
+          // Only schedule next poll if socket is still disconnected
+          refreshTimeoutRef.current = setTimeout(pollForUpdates, pollInterval);
+        } else {
+          log.debug("Socket reconnected during polling cycle, stopping poll");
+        }
+      };
 
       // Start polling after a short delay
-      refreshTimeoutRef.current = setTimeout(pollForUpdates, 5000)
+      refreshTimeoutRef.current = setTimeout(pollForUpdates, 5000);
     }
 
-    previousConnected = socketConnected
+    // Update the ref at the end of the effect to track changes
+    previousConnectedRef.current = socketConnected;
 
+    // Clean up polling timers when component unmounts or socket reconnects
     return () => {
       if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current)
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
       }
-    }
+    };
   }, [socketConnected, refreshNotifications])
 
   // Scroll to top when new notifications arrive
@@ -438,10 +483,26 @@ const NotificationsComponent = ({
           )}
         </div>
 
-        {!socketConnected && (
+        {connectionState === "disconnected" && (
           <div className="notification-connection-status">
             <span className="dot disconnected"></span>
             <small>Real-time updates disconnected</small>
+            <Button
+              onClick={() => {
+                log.debug("Manual reconnect requested");
+                // Try to reconnect socket
+                if (socketService && socketService.socket) {
+                  socketService.reconnect();
+                  toast.info("Attempting to reconnect...");
+                }
+              }}
+              variant="secondary"
+              size="small"
+              icon={<FaSyncAlt />}
+              className="reconnect-btn"
+            >
+              Reconnect
+            </Button>
           </div>
         )}
       </div>
@@ -457,8 +518,9 @@ const NotificationsComponent = ({
             {activeFilter !== "all" && <span className="notification-filter-indicator">({activeFilter})</span>}
 
             {/* Connection indicator */}
-            <div className="notification-connection-indicator">
-              <span className={`connection-dot ${socketConnected ? "connected" : "disconnected"}`}></span>
+            <div className="notification-connection-indicator" title={connectionState === "connected" ? "Connected" : "Disconnected - Notifications will be updated via polling"}>
+              <span className={`connection-dot ${connectionState === "connected" ? "connected" : "disconnected"}`}></span>
+              {connectionState === "disconnected" && <small className="connection-status-text">Offline</small>}
             </div>
           </div>
 

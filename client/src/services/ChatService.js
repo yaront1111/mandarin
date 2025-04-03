@@ -104,7 +104,7 @@ class ChatService {
       // If we still don't have a valid ID, log an error
       if (!validUserId) {
         log.error('Cannot initialize chat service: no valid user ID available');
-        return;
+        return Promise.reject(new Error('Cannot initialize chat service: no valid user ID available'));
       }
 
       // Create a user object with the valid ID
@@ -121,6 +121,16 @@ class ChatService {
       this.user = validatedUser;
       this.initialized = true;
       
+      // Initialize socket service if needed
+      if (!socketService.isConnected() && validUserId) {
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        if (token) {
+          log.debug(`Initializing socket with validated user ID: ${validUserId}`);
+          console.log(`Initializing socket with validated user ID: ${validUserId}`);
+          socketService.init(validUserId, token);
+        }
+      }
+      
       // Listen for relevant socket events
       this._setupSocketListeners();
       
@@ -134,28 +144,27 @@ class ChatService {
       log.warn('Falling back to original user object without validation');
       console.warn('Falling back to original user object without validation');
       
+      // Use any ID we can find
+      validUserId = user._id || user.id;
+      
+      // Initialize socket service if needed with the original user id
+      if (!socketService.isConnected() && validUserId) {
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        if (token) {
+          log.debug(`Initializing socket with original user ID: ${validUserId}`);
+          console.log(`Initializing socket with original user ID: ${validUserId}`);
+          socketService.init(validUserId, token);
+        }
+      }
+      
       this.user = user;
       this.initialized = true;
-      validUserId = user._id;
       
       // Still listen for socket events even in fallback mode
       this._setupSocketListeners();
       
       return Promise.resolve(true);
     }
-
-    // Initialize socket service if needed
-    if (!socketService.isConnected() && validUserId) {
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      if (token) {
-        log.debug(`Initializing socket with validated user ID: ${validUserId}`);
-        console.log(`Initializing socket with validated user ID: ${validUserId}`);
-        socketService.init(validUserId, token);
-      }
-    }
-    
-    // Return the promise
-    return Promise.resolve(true);
   }
 
   /**

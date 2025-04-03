@@ -192,6 +192,12 @@ export const normalizePhotoUrl = (url) => {
     const path = url.startsWith("/uploads") ? url : `/uploads${url.startsWith("/") ? "" : "/"}${url}`;
     result = `${window.location.origin}${path}`;
   }
+  // Handle uploads directory paths with or without leading /
+  else if (url.includes("uploads/") || url.startsWith("/uploads/")) {
+    // Make sure the URL is absolute
+    const path = url.startsWith("/") ? url : `/${url}`;
+    result = `${window.location.origin}${path}`;
+  }
   else {
     // Make sure all URLs are absolute
     if (url.startsWith('/')) {

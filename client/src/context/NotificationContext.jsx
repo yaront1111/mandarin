@@ -211,8 +211,25 @@ export const NotificationProvider = ({ children }) => {
       console.log("Socket disconnected, setting up polling for notifications")
 
       const pollingTimer = setInterval(async () => {
-        console.log("Polling for new notifications")
-        await fetchNotifications()
+        // Double-check if socket is actually still disconnected
+        if (socketService.socket && !socketService.isConnected()) {
+          console.log("Socket still disconnected - polling for new notifications")
+          await fetchNotifications()
+          
+          // Try to trigger socket reconnection
+          try {
+            if (socketService.reconnectAttempts < socketService.maxReconnectAttempts) {
+              console.log("Attempting to reconnect socket during polling cycle")
+              socketService.reconnect()
+            }
+          } catch (err) {
+            console.error("Error attempting reconnect during polling:", err)
+          }
+        } else if (socketService.isConnected()) {
+          // Socket is connected according to the service, but our state doesn't match
+          console.log("Socket appears to be reconnected but state hasn't updated")
+          setSocketConnected(true)
+        }
       }, pollInterval)
 
       return () => clearInterval(pollingTimer)

@@ -355,8 +355,11 @@ export const useChat = (recipientId = null) => {
         log.warn('Message loading timeout reached');
         setLoading(false);
         setError('Loading timed out. Please try again.');
+        
+        // Return empty messages array rather than hanging
+        return [];
       }
-    }, 15000); // 15 second timeout
+    }, 10000); // Reduced to 10 seconds for better user experience
     
     try {
       log.debug(`Loading messages for conversation with ${normalizedRecipientId}`);

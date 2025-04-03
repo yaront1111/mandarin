@@ -675,8 +675,11 @@ const Register = () => {
       }
 
       try {
-        const success = await register(submissionData)
-        if (success) {
+        const result = await register(submissionData)
+        if (result && result.token) {
+          // Store the token returned from registration
+          const token = result.token;
+          
           // If there's a profile photo, upload it after successful registration
           if (formData.profilePhoto) {
             try {
@@ -689,22 +692,23 @@ const Register = () => {
               const baseURL = import.meta.env.VITE_API_URL || 
                 (window.location.hostname.includes("localhost") ? "http://localhost:5000/api" : "/api")
               
-              // Send photo to the server
+              // Send photo to the server with the token we just got
               const response = await fetch(`${baseURL}/users/photos`, {
                 method: 'POST',
                 body: photoFormData,
                 headers: {
-                  'Authorization': `Bearer ${localStorage.getItem('token')}`, // Use stored token for authorization
-                  'x-auth-token': localStorage.getItem('token') // Include both headers for compatibility
+                  'Authorization': `Bearer ${token}`, // Use the token we just received
+                  'x-auth-token': token // Include both headers for compatibility
                 }
               })
               
-              const result = await response.json()
+              const photoResult = await response.json()
               
-              if (result.success) {
+              if (photoResult.success) {
                 toast.success("Profile photo uploaded successfully")
               } else {
-                toast.error("Failed to upload profile photo: " + (result.error || "Unknown error"))
+                console.error("Photo upload failed:", photoResult)
+                toast.error("Failed to upload profile photo: " + (photoResult.error || "Unknown error"))
               }
             } catch (photoErr) {
               console.error("Error uploading photo:", photoErr)
