@@ -147,37 +147,53 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
       setLoadingTimeout(false);
     }
     
-    // Fallback timeout to prevent permanent loading state (force timeout after 15 seconds)
+    // Fallback timeout to prevent permanent loading state (force timeout after 10 seconds)
     const fallbackTimeout = setTimeout(() => {
       if (loading) {
-        log.warn("Force loading timeout after 15 seconds");
+        log.warn("Force loading timeout after 10 seconds");
         setLoadingTimeout(true);
         
-        // Force loading to false after 20 seconds total if still loading
+        // Force loading to false after 15 seconds total if still loading
         setTimeout(() => {
           if (loading) {
-            log.error("Forcing exit from loading state after 20s");
+            log.error("Forcing exit from loading state after 15s");
             
             // Display error message as a system message
             const errorMessage = {
               _id: generateUniqueId(),
               sender: "system",
-              content: "Failed to load messages. Please try refreshing.",
+              content: "Failed to load messages. Trying to recover...",
               createdAt: new Date().toISOString(),
               type: "system",
               error: true
             };
             
-            setMessagesData(prev => [errorMessage, ...prev]);
+            setMessagesData(prev => [errorMessage, ...(Array.isArray(prev) ? prev : [])]);
             
-            // Force refresh button to appear
-            if (refresh) {
-              refresh();
+            // Try to create an empty message list to recover 
+            if (messagesData.length === 0) {
+              setMessagesData([{
+                _id: generateUniqueId(),
+                sender: "system",
+                content: "No messages found. You can start a new conversation.",
+                createdAt: new Date().toISOString(),
+                type: "system"
+              }]);
+            }
+            
+            // Attempt reconnection
+            if (socketService && socketService.isConnected && !socketService.isConnected()) {
+              log.info("Attempting socket reconnection after timeout");
+              try {
+                socketService.reconnect();
+              } catch (err) {
+                log.error("Reconnection attempt failed:", err);
+              }
             }
           }
         }, 5000);
       }
-    }, 15000);
+    }, 10000); // Reduced from 15s to 10s
     
     return () => {
       if (loadingTimeoutRef.current) {
@@ -185,7 +201,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
       }
       clearTimeout(fallbackTimeout);
     };
-  }, [loading, loadingTimeout, refresh]);
+  }, [loading, loadingTimeout, messagesData.length]);
 
   // Handle incoming video calls
   useEffect(() => {
@@ -292,7 +308,10 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
       
       // Filter out messages with duplicate IDs
       const uniqueMessages = hookMessages.filter(message => {
-        if (!message || (!message._id && !message.tempId)) return false;
+        if (!message || (!message._id && !message.tempId)) {
+          log.warn(`Found invalid message object in hookMessages:`, message);
+          return false;
+        }
         
         const msgId = message._id || message.tempId;
         
@@ -307,15 +326,30 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
         return true;
       });
       
+      // Normalize all message objects to ensure they have necessary fields
+      const normalizedMessages = uniqueMessages.map(msg => {
+        // Basic message structure validation
+        return {
+          ...msg,
+          _id: msg._id || msg.tempId || `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          sender: msg.sender || "unknown",
+          content: msg.content || "",
+          createdAt: msg.createdAt || new Date().toISOString(),
+          type: msg.type || "text"
+        };
+      });
+      
       // Only update if the count changed
       if (uniqueMessages.length !== hookMessages.length) {
         log.debug(`Filtered out ${hookMessages.length - uniqueMessages.length} duplicate messages`);
       }
       
-      setMessagesData(uniqueMessages);
-      log.debug(`Received ${uniqueMessages.length} unique messages from hook`);
+      setMessagesData(normalizedMessages);
+      log.debug(`Received ${normalizedMessages.length} normalized messages from hook`);
     } else {
       log.warn(`Received non-array messages from hook: ${typeof hookMessages}`);
+      // Initialize with empty array to prevent undefined errors
+      setMessagesData([]);
     }
     
     // If loading completes but we have no messages, that's okay - just not an error state
@@ -1258,10 +1292,28 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
                 )}
               </div>
             </div>
-          ) : !initialized ? (
+          ) : !initialized || (!isConnected && !messagesData.length) ? (
             <div className={styles.loadingMessages}>
               <div className={styles.spinner}></div>
-              <p>Initializing chat...</p>
+              <p>{!initialized ? "Initializing chat..." : "Trying to reconnect..."}</p>
+              <div className={styles.errorActions}>
+                <button 
+                  onClick={() => {
+                    // Force reconnection
+                    if (socketService && socketService.reconnect) {
+                      socketService.reconnect();
+                      toast.info("Attempting to reconnect...");
+                      setTimeout(() => refresh(), 1500);
+                    } else {
+                      refresh();
+                    }
+                  }} 
+                  className={styles.retryButton}
+                  aria-label="Force reconnection"
+                >
+                  Reconnect
+                </button>
+              </div>
             </div>
           ) : !messagesData || messagesData.length === 0 ? (
             <div className={styles.noMessages}>

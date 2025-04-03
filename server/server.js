@@ -193,6 +193,45 @@ app.get("/api/check-file", (req, res) => {
   });
 });
 
+// Special diagnostic endpoint for conversations
+app.get("/api/diagnostic/conversations", (req, res) => {
+  // Extract token from authorization header
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  
+  logger.info('Diagnostic conversations endpoint called', { 
+    hasToken: !!token,
+    userAgent: req.headers['user-agent'] || 'unknown'
+  });
+  
+  // Return mock conversations data for testing
+  return res.status(200).json({
+    success: true,
+    message: "This is a diagnostic endpoint to test if conversations API is accessible",
+    data: [
+      {
+        user: {
+          _id: "diagnostic1",
+          nickname: "Test User 1",
+          photo: null,
+          isOnline: true,
+          lastActive: new Date()
+        },
+        lastMessage: {
+          _id: "msg1",
+          sender: "diagnostic1",
+          recipient: "current-user",
+          type: "text",
+          content: "Hello, this is a test message from diagnostics",
+          createdAt: new Date()
+        },
+        unreadCount: 1,
+        updatedAt: new Date()
+      }
+    ]
+  });
+});
+
 // Add request ID to each request for logging
 app.use((req, res, next) => {
   req.id = Date.now().toString(36) + Math.random().toString(36).substr(2);

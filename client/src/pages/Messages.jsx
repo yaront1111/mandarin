@@ -477,7 +477,7 @@ const MessagesPage = () => {
       setLoading(false);
       setError('Loading conversations timed out. Please try again.');
       initialLoadAttemptedRef.current = false;
-    }, 15000);
+    }, 12000); // Reduced from 15s to 12s
 
     setLoading(true);
     setError(null);
@@ -515,9 +515,11 @@ const MessagesPage = () => {
       // Clear timeout
       clearTimeout(timeoutId);
       
-      // Fall back to direct API call if ChatService fails
+      // Multi-level fallback approach - try different endpoints
+      
+      // First fallback: Direct API call to standard endpoint
       try {
-        log.info("Falling back to direct API call for conversations");
+        log.info("Fallback 1: Using direct API call for conversations");
         const response = await api.get("/messages/conversations");
         
         if (response && response.success) {
@@ -535,8 +537,83 @@ const MessagesPage = () => {
           throw new Error(response?.error || "Failed to load conversations");
         }
       } catch (fallbackErr) {
-        log.error("API fallback also failed:", fallbackErr);
+        log.error("First API fallback failed:", fallbackErr);
         
+        // Second fallback: Try special diagnostic endpoint with direct fetch
+        try {
+          log.info("Fallback 2: Trying diagnostic endpoint with direct fetch");
+          
+          // Use direct fetch to bypass API service which might have issues
+          const response = await fetch('/api/diagnostic/conversations', {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token') || sessionStorage.getItem('token') || ''}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          const diagnosticResponse = await response.json();
+          
+          if (diagnosticResponse && diagnosticResponse.success) {
+            const diagnosticData = Array.isArray(diagnosticResponse.data) ? diagnosticResponse.data : [];
+            log.info(`Diagnostic endpoint returned ${diagnosticData.length} test conversations`);
+            
+            // If we received diagnostic data, use it
+            if (diagnosticData.length > 0) {
+              setConversations(diagnosticData);
+              applyFiltersToConversations(diagnosticData, searchQuery, filters);
+              setLoading(false);
+              setRetryCount(0);
+              initialLoadCompletedRef.current = true;
+              
+              // Add a notification that we're using test data
+              toast.info("Using test data for conversations. Refresh to try loading real data.");
+              
+              return diagnosticData;
+            }
+          }
+          
+          // If diagnostic endpoint didn't help, throw error for final fallback
+          throw new Error("Diagnostic endpoint did not provide usable data");
+        } catch (diagnosticErr) {
+          log.error("Second API fallback (diagnostic) also failed:", diagnosticErr);
+          
+          // Third and final fallback: Create mock data
+          // This ensures the UI is never stuck in a loading state
+          if (retryCount >= 2) {
+            log.info("Fallback 3: Creating mock conversation data after multiple failures");
+            const mockData = [
+              {
+                _id: "fallback1",
+                user: {
+                  _id: "mock-user-1",
+                  nickname: "Support",
+                  isOnline: true,
+                  photos: []
+                },
+                lastMessage: {
+                  content: "The server appears to be offline. Please try refreshing the page later.",
+                  createdAt: new Date(),
+                  sender: "mock-user-1"
+                },
+                unreadCount: 1
+              }
+            ];
+            
+            setConversations(mockData);
+            applyFiltersToConversations(mockData, searchQuery, filters);
+            setLoading(false);
+            initialLoadCompletedRef.current = true;
+            
+            // Show error notification but proceed with mock data
+            toast.error("Could not load real conversations. Using fallback data.", {
+              autoClose: 7000
+            });
+            
+            return mockData;
+          }
+        }
+        
+        // If all fallbacks failed and we're not at max retry count
         setError(err.message || fallbackErr.message || "Failed to load conversations");
         setLoading(false);
 
@@ -581,6 +658,47 @@ const MessagesPage = () => {
           log.info(`Initial conversations load for user ${user._id}`);
           initialLoadAttemptedRef.current = true;
           
+          // Check if chat service is initialized
+          if (!chatInitialized) {
+            log.info("Waiting for chat service to initialize before loading conversations");
+            try {
+              // Wait for chat service to initialize with timeout
+              let attempts = 0;
+              const maxAttempts = 3;
+              
+              while (!chatService.isReady() && attempts < maxAttempts) {
+                attempts++;
+                log.info(`Attempt ${attempts} to initialize chat service`);
+                
+                try {
+                  // Try to initialize chat service
+                  await chatService.initialize(user);
+                  if (chatService.isReady()) {
+                    setChatInitialized(true);
+                    setSocketConnected(chatService.isConnected());
+                    log.info("Chat service initialized successfully");
+                    break;
+                  }
+                } catch (err) {
+                  log.error(`Chat initialization attempt ${attempts} failed:`, err);
+                }
+                
+                // Wait before next attempt
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+              
+              if (!chatService.isReady() && attempts >= maxAttempts) {
+                // Force initialization successful to continue even without a socket
+                log.warn("Forcing initialization state to continue with API fallback");
+                setChatInitialized(true);
+              }
+            } catch (err) {
+              log.error("Failed to initialize chat service:", err);
+              // Continue anyway, as we'll fall back to direct API calls
+              setChatInitialized(true);
+            }
+          }
+          
           // Add a small safety delay to ensure auth is fully processed
           await new Promise(resolve => setTimeout(resolve, 500));
           
@@ -602,8 +720,63 @@ const MessagesPage = () => {
       if (isMounted && loading) {
         log.warn("Safety timeout triggered - forcing loading state reset");
         setLoading(false);
+        
+        // Force conversations load even if stuck
+        if (initialLoadAttemptedRef.current && !initialLoadCompletedRef.current && isAuthenticated && user?._id) {
+          log.warn("Forcing conversations load after timeout");
+          
+          // Use mock data directly instead of trying API calls that might fail
+          log.info("Using mock data to recover from stuck loading state");
+          const mockData = [
+            {
+              _id: "fallback1",
+              user: {
+                _id: "mock-user-1",
+                nickname: "Support",
+                isOnline: true,
+                photos: []
+              },
+              lastMessage: {
+                content: "The server appears to be experiencing issues. Try refreshing the page.",
+                createdAt: new Date().toISOString(),
+                sender: "mock-user-1"
+              },
+              unreadCount: 1
+            }
+          ];
+          
+          setConversations(mockData);
+          setFilteredConversations(mockData);
+          setLoading(false);
+          initialLoadCompletedRef.current = true;
+          
+          // Try diagnostic endpoint in the background
+          try {
+            // Use direct fetch to bypass API service which might have issues
+            fetch('/api/diagnostic/conversations', {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token') || sessionStorage.getItem('token') || ''}`,
+                'Content-Type': 'application/json'
+              }
+            })
+            .then(res => res.json())
+            .then(diagnosticResponse => {
+              if (diagnosticResponse && diagnosticResponse.success && 
+                  Array.isArray(diagnosticResponse.data) && diagnosticResponse.data.length > 0) {
+                log.info("Diagnostic endpoint returned valid data, updating UI");
+                setConversations(diagnosticResponse.data);
+                setFilteredConversations(diagnosticResponse.data);
+              }
+            })
+            .catch(diagnosticErr => {
+              log.error("Diagnostic endpoint also failed:", diagnosticErr);
+            });
+          } catch (fetchErr) {
+            log.error("Error setting up diagnostic fetch:", fetchErr);
+          }
+        }
       }
-    }, 20000);
+    }, 15000); // Reduced to 15 seconds for faster recovery
     
     // Cleanup function
     return () => {
@@ -616,7 +789,7 @@ const MessagesPage = () => {
       
       clearTimeout(safetyTimeoutId);
     };
-  }, [authChecked, isAuthenticated, user, getConversations, loading]);
+  }, [authChecked, isAuthenticated, user, getConversations, loading, api, chatInitialized]);
 
   // Monitor scroll position to show/hide scroll to top button
   useEffect(() => {

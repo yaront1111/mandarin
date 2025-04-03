@@ -62,6 +62,16 @@ export const useChat = (recipientId = null) => {
             isAuthenticated
           });
           
+          // Check if already initialized
+          if (chatService.isReady() && chatService.user?._id === user._id) {
+            console.log("Chat service already initialized with correct user!");
+            if (mountedRef.current) {
+              setInitialized(true);
+              setIsConnected(chatService.isConnected());
+            }
+            return;
+          }
+          
           // Initialize chat service with user data
           await chatService.initialize(user);
           
@@ -83,7 +93,13 @@ export const useChat = (recipientId = null) => {
               
               retryTimeoutId = setTimeout(initChat, delay);
             } else {
-              setError("Failed to initialize chat. Please refresh and try again.");
+              // After max retries, force initialization state to true and try to work with API fallbacks
+              console.warn("Max retries reached. Forcing initialization state to continue with API fallbacks");
+              
+              if (mountedRef.current) {
+                setInitialized(true);
+                setError("Chat service initialization failed. Some features may be limited.");
+              }
             }
           }
         }
@@ -96,6 +112,15 @@ export const useChat = (recipientId = null) => {
     };
     
     initChat();
+
+    // Safety timeout - force init state to true after 8 seconds regardless 
+    // to prevent UI from being permanently stuck in loading
+    const safetyTimeoutId = setTimeout(() => {
+      if (mountedRef.current && !initialized) {
+        console.warn("Safety timeout hit - forcing initialization state to true");
+        setInitialized(true);
+      }
+    }, 8000);
 
     // Cleanup function with retry timeout clearance
     return () => {
@@ -115,6 +140,8 @@ export const useChat = (recipientId = null) => {
         clearTimeout(retryTimeoutId);
       }
       
+      clearTimeout(safetyTimeoutId);
+      
       // Clear event listeners
       if (listenerCleanupRef.current) {
         listenerCleanupRef.current.forEach(cleanup => {
@@ -125,7 +152,7 @@ export const useChat = (recipientId = null) => {
         listenerCleanupRef.current = null;
       }
     };
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, initialized]);
 
   // Setup event listeners for the current conversation
   useEffect(() => {

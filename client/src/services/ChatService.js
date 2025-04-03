@@ -335,9 +335,51 @@ class ChatService {
     console.log(`ChatService state: initialized=${this.initialized}, user ID=${this.user?._id}`);
     
     if (!this.initialized || !this.user?._id) {
-      log.warn('Attempted to get messages without initialization');
-      console.warn('ChatService not initialized or missing user ID, returning empty array');
-      return [];
+      log.warn('Attempted to get messages without initialization, attempting auto-initialization');
+      console.warn('ChatService not initialized or missing user ID, trying to auto-initialize');
+      
+      try {
+        // Try to auto-initialize with user info from token
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        if (token) {
+          try {
+            // Extract user ID from token
+            const base64Url = token.split(".")[1];
+            const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+            const payload = JSON.parse(atob(base64));
+            
+            const userId = payload.id || payload.sub || 
+                         (payload.user && (payload.user._id || payload.user.id));
+                         
+            if (userId) {
+              log.info(`Auto-initializing chat service with user ID from token: ${userId}`);
+              
+              // Create a minimal user object and initialize
+              const minimalUser = { _id: userId, id: userId };
+              await this.initialize(minimalUser);
+              
+              if (this.initialized) {
+                log.info('Auto-initialization successful, proceeding with message fetch');
+              } else {
+                log.error('Auto-initialization failed');
+                return [];
+              }
+            } else {
+              log.error('No valid user ID in token, cannot auto-initialize');
+              return [];
+            }
+          } catch (err) {
+            log.error(`Auto-initialization failed: ${err.message}`);
+            return [];
+          }
+        } else {
+          log.error('No token available for auto-initialization');
+          return [];
+        }
+      } catch (err) {
+        log.error(`Error during auto-initialization: ${err.message}`);
+        return [];
+      }
     }
 
     // Validate recipient ID
@@ -412,9 +454,18 @@ class ChatService {
       }
       
       // Guard against null or undefined response data
-      const messages = Array.isArray(response.data) ? response.data : [];
+      let messages = Array.isArray(response.data) ? response.data : [];
       log.debug(`Loaded ${messages.length} messages from server`);
       console.log(`Loaded ${messages.length} messages from server:`, messages);
+      
+      // Fix any message objects that might be missing required fields
+      messages = messages.map(msg => {
+        // Ensure each message has all required fields
+        if (!msg._id) msg._id = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        if (!msg.createdAt) msg.createdAt = new Date().toISOString();
+        if (msg.type === 'text' && !msg.content) msg.content = '';
+        return msg;
+      });
       
       // Update cache with server data
       this.messageCache.set(recipientId, messages);
@@ -864,7 +915,37 @@ class ChatService {
   async getConversations() {
     if (!this.initialized || !this.user?._id) {
       log.warn('Attempted to get conversations without initialization');
-      return [];
+      try {
+        // Try to auto-initialize
+        log.info('Attempting auto-initialization before getting conversations');
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        if (token) {
+          try {
+            // Extract user ID from token
+            const base64Url = token.split(".")[1];
+            const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+            const payload = JSON.parse(atob(base64));
+            
+            const userId = payload.id || payload.sub || 
+                         (payload.user && (payload.user._id || payload.user.id));
+                         
+            if (userId) {
+              log.info(`Auto-initializing chat service for conversations with ID: ${userId}`);
+              const minimalUser = { _id: userId, id: userId };
+              await this.initialize(minimalUser);
+            }
+          } catch (err) {
+            log.error('Auto-initialization failed:', err);
+          }
+        }
+      } catch (autoInitErr) {
+        log.error('Auto-initialization attempt failed:', autoInitErr);
+      }
+      
+      // If still not initialized, give up
+      if (!this.initialized || !this.user?._id) {
+        return [];
+      }
     }
     
     // Create a promise with timeout
@@ -885,7 +966,21 @@ class ChatService {
       if (!response || !response.success) {
         const error = response?.error || 'Failed to load conversations';
         log.error(`API error loading conversations: ${error}`);
-        return []; // Return empty array instead of throwing
+        
+        // Try the diagnostic endpoint before giving up
+        try {
+          log.info('Trying diagnostic conversations endpoint as fallback');
+          const diagnosticResponse = await apiService.get('/diagnostic/conversations');
+          
+          if (diagnosticResponse && diagnosticResponse.success && Array.isArray(diagnosticResponse.data)) {
+            log.info(`Loaded ${diagnosticResponse.data.length} diagnostic conversations`);
+            return diagnosticResponse.data;
+          }
+        } catch (diagnosticErr) {
+          log.error('Diagnostic endpoint also failed:', diagnosticErr);
+        }
+        
+        return []; // Return empty array as last resort
       }
       
       // Guard against null or undefined response data
@@ -895,6 +990,20 @@ class ChatService {
       return conversations;
     } catch (err) {
       log.error('Error fetching conversations:', err);
+      
+      // Try the diagnostic endpoint as fallback
+      try {
+        log.info('Trying diagnostic conversations endpoint as fallback after error');
+        const diagnosticResponse = await apiService.get('/diagnostic/conversations');
+        
+        if (diagnosticResponse && diagnosticResponse.success && Array.isArray(diagnosticResponse.data)) {
+          log.info(`Loaded ${diagnosticResponse.data.length} diagnostic conversations`);
+          return diagnosticResponse.data;
+        }
+      } catch (diagnosticErr) {
+        log.error('Diagnostic endpoint fallback failed:', diagnosticErr);
+      }
+      
       // Don't throw, return empty array to gracefully handle errors
       return [];
     }
