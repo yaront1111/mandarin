@@ -115,12 +115,37 @@ requiredDirs.forEach((dir) => {
   logger.info(`  - ${dir} directory: ${path.join(uploadsBasePath, dir)}`);
 });
 
-// Serve static files for uploads
+// Serve static files for uploads - with better error handling
 app.use(
   "/uploads",
   (req, res, next) => {
     logger.debug(`Upload request for: ${req.path}`);
-    next();
+    
+    // Get the full file path
+    const fullPath = path.join(uploadsBasePath, req.path);
+    
+    // Check if the path is attempting directory traversal
+    if (!fullPath.startsWith(uploadsBasePath)) {
+      logger.warn(`Blocked potential path traversal attempt: ${req.path}`);
+      return res.status(403).sendFile(path.join(__dirname, "public", "default-avatar.png"));
+    }
+    
+    // Add a CORS header for images specifically to fix 403 issues when accessed directly
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    
+    // Check if the file exists before attempting to serve it
+    fs.stat(fullPath, (err, stats) => {
+      if (err || !stats.isFile()) {
+        logger.debug(`File not found: ${fullPath}`);
+        // For missing profile images, return the default avatar instead of 404
+        if (req.path.includes('/images/') || req.path.includes('/photos/')) {
+          return res.sendFile(path.join(__dirname, "public", "default-avatar.png"));
+        }
+      }
+      // Continue to static file middleware
+      next();
+    });
   },
   express.static(uploadsBasePath, {
     maxAge: "1d",
@@ -128,6 +153,12 @@ app.use(
     lastModified: true,
     index: false,
     dotfiles: "ignore",
+    fallthrough: true,
+    setHeaders: (res) => {
+      // Add CORS headers for all static files in uploads directory
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    }
   })
 );
 
