@@ -115,7 +115,7 @@ requiredDirs.forEach((dir) => {
   logger.info(`  - ${dir} directory: ${path.join(uploadsBasePath, dir)}`);
 });
 
-// Serve static files for uploads - with better error handling
+// Serve static files for uploads - with enhanced error handling and caching
 app.use(
   "/uploads",
   (req, res, next) => {
@@ -130,9 +130,17 @@ app.use(
       return res.status(403).sendFile(path.join(__dirname, "public", "default-avatar.png"));
     }
     
-    // Add a CORS header for images specifically to fix 403 issues when accessed directly
+    // Add comprehensive CORS headers to fix 403 issues when accessed directly from browser
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.set('Cross-Origin-Embedder-Policy', 'credentialless');
+    res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
+    
+    // For preflight OPTIONS requests, respond immediately with success
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
     
     // Check if the file exists before attempting to serve it
     fs.stat(fullPath, (err, stats) => {
@@ -140,6 +148,9 @@ app.use(
         logger.debug(`File not found: ${fullPath}`);
         // For missing profile images, return the default avatar instead of 404
         if (req.path.includes('/images/') || req.path.includes('/photos/')) {
+          // Set cache headers for default avatar too
+          res.set('Cache-Control', 'public, max-age=86400'); // 1 day
+          res.set('Expires', new Date(Date.now() + 86400000).toUTCString());
           return res.sendFile(path.join(__dirname, "public", "default-avatar.png"));
         }
       }
@@ -154,43 +165,181 @@ app.use(
     index: false,
     dotfiles: "ignore",
     fallthrough: true,
-    setHeaders: (res) => {
+    setHeaders: (res, path) => {
       // Add CORS headers for all static files in uploads directory
       res.set('Access-Control-Allow-Origin', '*');
       res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.set('Cross-Origin-Embedder-Policy', 'credentialless');
+      
+      // Set cache headers based on file type
+      if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        // Longer cache for images
+        res.set('Cache-Control', 'public, max-age=86400'); // 1 day
+        res.set('Expires', new Date(Date.now() + 86400000).toUTCString());
+      } else {
+        // Shorter cache for other files
+        res.set('Cache-Control', 'public, max-age=3600'); // 1 hour
+        res.set('Expires', new Date(Date.now() + 3600000).toUTCString());
+      }
     }
   })
 );
 
-// Diagnostic endpoint to check file existence
+// Enhanced diagnostic endpoint to check file existence
 app.get("/api/check-file", (req, res) => {
   const filePath = req.query.path;
   if (!filePath) {
     return res.status(400).json({ success: false, error: "No file path provided" });
   }
-  const fullPath = path.join(uploadsBasePath, filePath);
-  if (!fullPath.startsWith(uploadsBasePath)) {
+  
+  // Add CORS headers to ensure this endpoint is accessible
+  res.set('Access-Control-Allow-Origin', '*');
+  
+  // Process absolute paths (starting with /) differently
+  let fullPath;
+  if (filePath.startsWith('/uploads/')) {
+    // This is likely a URL path from client
+    fullPath = path.join(process.cwd(), filePath);
+  } else {
+    // Assume it's a relative path within uploads
+    fullPath = path.join(uploadsBasePath, filePath);
+  }
+  
+  // Prevent directory traversal
+  if (!fullPath.startsWith(process.cwd())) {
     return res.status(403).json({ success: false, error: "Invalid file path" });
   }
+  
   fs.stat(fullPath, (err, stats) => {
     if (err) {
-      return res.json({
-        success: false,
-        error: err.message,
-        exists: false,
-        requestedPath: filePath,
-        fullPath: fullPath,
-      });
+      // Try to handle common client-side URL formats
+      if (filePath.includes('/api/avatar/')) {
+        // This is an avatar URL, extract the ID
+        const idMatch = filePath.match(/\/api\/avatar[s]?\/([^/]+)/);
+        const userId = idMatch ? idMatch[1] : null;
+        
+        return res.json({
+          success: false,
+          error: err.message,
+          exists: false,
+          requestedPath: filePath,
+          fullPath: fullPath,
+          suggestion: userId ? 
+            `This appears to be an avatar URL. Try accessing /api/avatar/${userId} directly.` :
+            "This appears to be an avatar URL. Check the user ID in the URL."
+        });
+      } else if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        // This is an image file, might be in a different location
+        const filename = path.basename(filePath);
+        return res.json({
+          success: false,
+          error: err.message,
+          exists: false,
+          requestedPath: filePath,
+          fullPath: fullPath,
+          suggestion: `This appears to be an image file. It might be in a different location or have a different filename. The filename ${filename} was not found at the specified path.`
+        });
+      } else {
+        return res.json({
+          success: false,
+          error: err.message,
+          exists: false,
+          requestedPath: filePath,
+          fullPath: fullPath
+        });
+      }
     }
+    
+    // File exists - return more detailed info
+    let mime = "application/octet-stream"; // Default MIME type
+    const ext = path.extname(fullPath).toLowerCase();
+    if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+    else if (ext === '.png') mime = 'image/png';
+    else if (ext === '.gif') mime = 'image/gif';
+    else if (ext === '.webp') mime = 'image/webp';
+    else if (ext === '.svg') mime = 'image/svg+xml';
+    
+    // Create a direct URL that should work to access this file
+    let directUrl = "";
+    if (fullPath.includes('/uploads/')) {
+      const uploadsMatch = fullPath.match(/\/uploads\/(.+)$/);
+      if (uploadsMatch) {
+        directUrl = `/uploads/${uploadsMatch[1]}`;
+      }
+    }
+    
     return res.json({
       success: true,
       exists: true,
       isDirectory: stats.isDirectory(),
       size: stats.size,
+      lastModified: stats.mtime,
+      created: stats.birthtime,
+      mime: mime,
       requestedPath: filePath,
       fullPath: fullPath,
+      directUrl: directUrl,
+      corsUrl: `/api/avatar/file/${path.basename(fullPath)}` // Special CORS-enabled URL
     });
   });
+});
+
+// Add a diagnostic image access endpoint that always adds correct CORS headers
+app.get("/api/image-access/:filename", (req, res) => {
+  const filename = req.params.filename;
+  
+  // Set comprehensive CORS headers
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.set('Cross-Origin-Embedder-Policy', 'credentialless');
+  res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
+  
+  // Handle OPTIONS requests for CORS preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  
+  // Set cache headers
+  res.set('Cache-Control', 'public, max-age=86400'); // 1 day
+  res.set('Expires', new Date(Date.now() + 86400000).toUTCString());
+  
+  if (!filename) {
+    return res.status(400).json({ success: false, error: "No filename provided" });
+  }
+  
+  // Try to find the file in various image directories
+  const possiblePaths = [
+    path.join(uploadsBasePath, "images", filename),
+    path.join(uploadsBasePath, "photos", filename),
+    path.join(uploadsBasePath, "profiles", filename),
+    path.join(uploadsBasePath, "stories", filename)
+  ];
+  
+  for (const filePath of possiblePaths) {
+    if (fs.existsSync(filePath)) {
+      // Set appropriate content type based on file extension
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.jpg' || ext === '.jpeg') {
+        res.set('Content-Type', 'image/jpeg');
+      } else if (ext === '.png') {
+        res.set('Content-Type', 'image/png');
+      } else if (ext === '.gif') {
+        res.set('Content-Type', 'image/gif');
+      } else if (ext === '.webp') {
+        res.set('Content-Type', 'image/webp');
+      } else if (ext === '.svg') {
+        res.set('Content-Type', 'image/svg+xml');
+      }
+      
+      logger.debug(`Serving image via diagnostic endpoint: ${filePath}`);
+      return res.sendFile(filePath);
+    }
+  }
+  
+  // If file not found, return the default avatar
+  logger.warn(`Image not found in diagnostic endpoint: ${filename}`);
+  return res.sendFile(path.join(__dirname, "public", "default-avatar.png"));
 });
 
 // Special diagnostic endpoint for conversations

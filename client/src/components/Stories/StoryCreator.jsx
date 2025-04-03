@@ -2,13 +2,12 @@
 
 import { useState, useRef, useCallback, useEffect } from "react"
 import { 
-  FaTimes, FaCheck, FaSpinner, FaFont, FaPalette, 
-  FaImage, FaVideo, FaInfoCircle
+  FaTimes, FaCheck, FaSpinner, FaFont, FaPalette
 } from "react-icons/fa"
 import { toast } from "react-toastify"
 import { useAuth } from "../../context"
 import { useStories } from "../../context/StoriesContext"
-import styles from "../../styles/stories.module.css"
+import styles from "../../styles/StoryCreator.module.css"
 
 const BACKGROUND_OPTIONS = [
   { id: "gradient-1", name: "Sunset", style: "linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%)" },
@@ -39,62 +38,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState("")
   const [activeTab, setActiveTab] = useState("text")
-  const [mediaFile, setMediaFile] = useState(null)
-  const [mediaPreview, setMediaPreview] = useState(null)
-  const [mediaType, setMediaType] = useState("text")
   const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const previewRef = useRef(null)
-  const fileInputRef = useRef(null)
-
-  // Handle file selection
-  const handleFileChange = (e) => {
-    if (isSubmitting || isUploading) return
-
-    const file = e.target.files[0]
-    if (!file) return
-
-    // Validate file type
-    if (file.type.startsWith("image/")) {
-      setMediaType("image")
-    } else if (file.type.startsWith("video/")) {
-      setMediaType("video")
-    } else {
-      toast.error("Unsupported file type. Please upload an image or video.")
-      return
-    }
-
-    // Validate file size (10MB max)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("File is too large. Maximum size is 10MB.")
-      return
-    }
-
-    setMediaFile(file)
-
-    // Create preview URL
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      setMediaPreview(reader.result)
-    }
-    reader.readAsDataURL(file)
-
-    // Switch to appropriate tab
-    setActiveTab(file.type.startsWith("image/") ? "image" : "video")
-  }
-
-  // This function is no longer needed but kept for potential future use
-  const handleComingSoonTab = () => {}
-
-  // Clear selected media
-  const clearMedia = () => {
-    if (isSubmitting || isUploading) return
-
-    setMediaFile(null)
-    setMediaPreview(null)
-    setMediaType("text")
-    setActiveTab("text")
-  }
 
   // Handle text story creation with improved error handling
   const handleCreateStory = async () => {
@@ -144,13 +88,11 @@ const StoryCreator = ({ onClose, onSubmit }) => {
         onClose?.()
       } else {
         setError(response?.message || "Failed to create story")
-        // Don't close on error
       }
     } catch (error) {
       console.error("Error creating story:", error)
       setError(error.message || "An error occurred")
       toast.error(error.message || "An error occurred")
-      // Don't close on error
     } finally {
       setIsUploading(false)
       setIsSubmitting(false)
@@ -189,191 +131,142 @@ const StoryCreator = ({ onClose, onSubmit }) => {
     return () => document.removeEventListener("keydown", handleEscKey)
   }, [onClose, isUploading, isSubmitting])
 
-
   return (
-    <div className="story-creator-container">
-      <div className="story-creator-overlay" onClick={isUploading || isSubmitting ? null : onClose}></div>
-      <div className="story-creator">
-        <div className="creator-header">
-          <h2>Create Story</h2>
+    <div className={styles.container}>
+      <div
+        className={styles.overlay}
+        onClick={isUploading || isSubmitting ? undefined : onClose}
+      />
+      <div className={styles.modal}>
+        <div className={styles.header}>
+          <h2 className={styles.title}>Create Story</h2>
           <button
-            className="close-button"
-            onClick={isUploading || isSubmitting ? null : onClose}
+            className={styles.closeButton}
+            onClick={isUploading || isSubmitting ? undefined : onClose}
             disabled={isUploading || isSubmitting}
+            aria-label="Close"
           >
             <FaTimes />
           </button>
         </div>
 
-        <div className="creator-content">
-          {/* Story Preview */}
-          <div
-            className="story-preview"
-            ref={previewRef}
-            style={{ ...getBackgroundStyle(selectedBackground), ...getFontStyle(selectedFont) }}
-          >
-            {text ? (
-              <div className="story-text-content">{text}</div>
-            ) : (
-              <div className="story-placeholder">Type something amazing...</div>
-            )}
-          </div>
-
-          {/* Tabs */}
-          <div className="story-creator-tabs">
-            <button
-              className={`tab-button ${activeTab === "text" ? "active" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!isSubmitting && !isUploading) {
-                  setActiveTab("text");
-                  setMediaType("text");
-                  setMediaFile(null);
-                  setMediaPreview(null);
-                }
-              }}
-              disabled={isSubmitting || isUploading}
+        <div className={styles.content}>
+          <div className={styles.previewContainer}>
+            <div
+              className={styles.preview}
+              style={{ ...getBackgroundStyle(selectedBackground), ...getFontStyle(selectedFont) }}
             >
-              <FaFont /> Text
-            </button>
-            <button
-              className={`tab-button ${activeTab === "background" ? "active" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!isSubmitting && !isUploading) {
-                  setActiveTab("background");
-                }
-              }}
-              disabled={isSubmitting || isUploading}
-            >
-              <FaPalette /> Background
-            </button>
-            <button
-              className={`tab-button ${activeTab === "font" ? "active" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!isSubmitting && !isUploading) {
-                  setActiveTab("font");
-                }
-              }}
-              disabled={isSubmitting || isUploading}
-            >
-              <FaFont /> Font
-            </button>
-          </div>
-
-          {/* Hidden file input */}
-          <input
-            type="file"
-            ref={fileInputRef}
-            style={{ display: "none" }}
-            onChange={handleFileChange}
-            accept="image/*,video/*"
-            disabled={isSubmitting || isUploading}
-          />
-
-          {/* Tab Content */}
-          {activeTab === "text" && (
-            <div className="tab-content">
-              <div className="text-tab">
-                <textarea
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder="What's on your mind?"
-                  maxLength={150}
-                  rows={3}
-                  disabled={isSubmitting || isUploading}
-                />
-                <small className="character-count">
-                  {text.length}/150
-                </small>
-              </div>
+              {text ? (
+                <div className={styles.textContent}>{text}</div>
+              ) : (
+                <div className={styles.placeholder}>Type something amazing...</div>
+              )}
             </div>
-          )}
+          </div>
 
-          {activeTab === "background" && mediaType === "text" && (
-            <div className="tab-content">
-              <div className="background-options">
-                {BACKGROUND_OPTIONS.map((bg) => (
-                  <div
-                    key={bg.id}
-                    className={`background-option ${selectedBackground.id === bg.id ? "selected" : ""}`}
-                    style={getBackgroundStyle(bg)}
-                    onClick={() => {
-                      if (!isSubmitting && !isUploading) {
-                        setSelectedBackground(bg);
-                      }
-                    }}
-                    title={bg.name}
+          <div className={styles.editorContainer}>
+            <div className={styles.tabs}>
+              <button
+                className={`${styles.tabButton} ${activeTab === "text" ? styles.activeTab : ""}`}
+                onClick={() => setActiveTab("text")}
+                disabled={isSubmitting || isUploading}
+              >
+                <span style={{ fontSize: '20px' }}>A</span> Text
+              </button>
+              <button
+                className={`${styles.tabButton} ${activeTab === "background" ? styles.activeTab : ""}`}
+                onClick={() => setActiveTab("background")}
+                disabled={isSubmitting || isUploading}
+              >
+                <FaPalette /> Background
+              </button>
+            </div>
+
+            {activeTab === "text" && (
+              <div className={styles.tabContent}>
+                <div className={styles.textTab}>
+                  <textarea
+                    className={styles.textarea}
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="What's on your mind?"
+                    maxLength={150}
+                    disabled={isSubmitting || isUploading}
                   />
-                ))}
+                  <small className={styles.characterCount}>
+                    {text.length}/150
+                  </small>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {activeTab === "font" && mediaType === "text" && (
-            <div className="tab-content">
-              <div className="font-options">
-                {FONT_OPTIONS.map((font) => (
-                  <div
-                    key={font.id}
-                    className={`font-option ${selectedFont.id === font.id ? "selected" : ""}`}
-                    style={getFontStyle(font)}
-                    onClick={() => {
-                      if (!isSubmitting && !isUploading) {
-                        setSelectedFont(font);
-                      }
-                    }}
-                  >
-                    {font.name}
-                  </div>
-                ))}
+            {activeTab === "background" && (
+              <div className={styles.tabContent}>
+                <div className={styles.backgroundOptions}>
+                  {BACKGROUND_OPTIONS.map((bg) => (
+                    <div
+                      key={bg.id}
+                      className={`${styles.backgroundOption} ${selectedBackground.id === bg.id ? styles.selected : ""}`}
+                      style={getBackgroundStyle(bg)}
+                      onClick={() => {
+                        if (!isSubmitting && !isUploading) {
+                          setSelectedBackground(bg);
+                        }
+                      }}
+                      title={bg.name}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {error && <div className="error-message">{error}</div>}
+            {error && <div className={styles.errorMessage}>{error}</div>}
+          </div>
         </div>
 
-        <div className="creator-footer">
+        <div className={styles.footer}>
           {isUploading ? (
-            <div className="upload-progress">
-              <div className="progress-bar-container">
-                <div className="progress-bar" style={{ width: `${uploadProgress}%` }}></div>
+            <div className={styles.uploadProgress}>
+              <div className={styles.progressBarContainer}>
+                <div
+                  className={styles.progressBar}
+                  style={{ width: `${uploadProgress}%` }}
+                />
               </div>
               <span>{uploadProgress}%</span>
             </div>
           ) : (
-            <button
-              className="btn btn-primary create-button"
-              onClick={handleCreateStory}
-              disabled={
-                isUploading ||
-                isSubmitting ||
-                !text.trim()
-              }
-            >
-              {isSubmitting ? (
-                <>
-                  <FaSpinner className="spinner-icon" />
-                  <span>Creating...</span>
-                </>
-              ) : (
-                <>
-                  <FaCheck />
-                  <span>Create Story</span>
-                </>
-              )}
-            </button>
+            <>
+              <button
+                className={`${styles.button} ${styles.outlineButton}`}
+                onClick={onClose}
+                disabled={isUploading || isSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className={`${styles.button} ${styles.primaryButton}`}
+                onClick={handleCreateStory}
+                disabled={
+                  isUploading ||
+                  isSubmitting ||
+                  !text.trim()
+                }
+              >
+                {isSubmitting ? (
+                  <>
+                    <FaSpinner className={styles.spinner} />
+                    <span>Creating...</span>
+                  </>
+                ) : (
+                  <>
+                    <FaCheck />
+                    <span>Create Story</span>
+                  </>
+                )}
+              </button>
+            </>
           )}
-
-          <button
-            className="btn btn-outline cancel-button"
-            onClick={onClose}
-            disabled={isUploading || isSubmitting}
-          >
-            Cancel
-          </button>
         </div>
       </div>
     </div>

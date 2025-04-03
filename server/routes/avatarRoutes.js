@@ -37,6 +37,11 @@ const serveInlineFallbackAvatar = (res) => {
 router.get('/health', (req, res) => {
   console.log(`Avatar route health check called at: ${new Date().toISOString()}`);
   logger.info(`Avatar route health check called at: ${new Date().toISOString()}`);
+  
+  // Add CORS headers to ensure this endpoint is accessible
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  
   return res.status(200).json({
     status: 'ok',
     route: 'avatar',
@@ -87,6 +92,28 @@ router.get("/:userId", async (req, res) => {
     const { userId } = req.params;
 
     log.debug(`Avatar request for userId: ${userId}`);
+    
+    // Set CORS headers for direct image access first thing
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.set('Cross-Origin-Embedder-Policy', 'credentialless');
+    
+    // Set default cache headers - will apply unless overridden
+    res.set('Cache-Control', 'public, max-age=86400'); // 1 day
+    res.set('Expires', new Date(Date.now() + 86400000).toUTCString());
+    
+    // Handle OPTIONS requests for CORS preflight
+    if (req.method === 'OPTIONS') {
+      res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
+      return res.status(204).end();
+    }
+
+    // Check if userId is valid to prevent unnecessary DB queries
+    if (!userId || userId.length < 5) {
+      log.warn(`Invalid userId format in request: ${userId}`);
+      return res.sendFile(path.join(__dirname, "..", "public", "default-avatar.png"));
+    }
 
     // First check if user exists and has photos
     const user = await User.findById(userId).select("photos");
@@ -111,9 +138,19 @@ router.get("/:userId", async (req, res) => {
         log.debug(`Trying direct path: ${fullPath}`);
         
         if (fs.existsSync(fullPath)) {
-          // Set cache headers
-          res.setHeader("Cache-Control", "public, max-age=86400"); // 1 day cache
-          res.setHeader("Expires", new Date(Date.now() + 86400000).toUTCString());
+          // Set appropriate content type based on file extension
+          const ext = path.extname(fullPath).toLowerCase();
+          if (ext === '.jpg' || ext === '.jpeg') {
+            res.set('Content-Type', 'image/jpeg');
+          } else if (ext === '.png') {
+            res.set('Content-Type', 'image/png');
+          } else if (ext === '.gif') {
+            res.set('Content-Type', 'image/gif');
+          } else if (ext === '.webp') {
+            res.set('Content-Type', 'image/webp');
+          } else if (ext === '.svg') {
+            res.set('Content-Type', 'image/svg+xml');
+          }
           
           log.debug(`Serving full path avatar: ${fullPath}`);
           return res.sendFile(fullPath);
@@ -136,9 +173,19 @@ router.get("/:userId", async (req, res) => {
         
         for (const filePath of possiblePaths) {
           if (fs.existsSync(filePath)) {
-            // Set cache headers
-            res.setHeader("Cache-Control", "public, max-age=86400"); // 1 day cache
-            res.setHeader("Expires", new Date(Date.now() + 86400000).toUTCString());
+            // Set appropriate content type based on file extension
+            const ext = path.extname(filePath).toLowerCase();
+            if (ext === '.jpg' || ext === '.jpeg') {
+              res.set('Content-Type', 'image/jpeg');
+            } else if (ext === '.png') {
+              res.set('Content-Type', 'image/png');
+            } else if (ext === '.gif') {
+              res.set('Content-Type', 'image/gif');
+            } else if (ext === '.webp') {
+              res.set('Content-Type', 'image/webp');
+            } else if (ext === '.svg') {
+              res.set('Content-Type', 'image/svg+xml');
+            }
             
             log.debug(`Found and serving file at: ${filePath}`);
             return res.sendFile(filePath);
@@ -158,27 +205,31 @@ router.get("/:userId", async (req, res) => {
 
     if (fs.existsSync(legacyFilePath)) {
       log.debug(`Serving legacy avatar path for user ${userId}`);
-      // Set cache headers
-      res.setHeader("Cache-Control", "public, max-age=86400"); // 1 day
-      res.setHeader("Expires", new Date(Date.now() + 86400000).toUTCString());
-
+      res.set('Content-Type', 'image/jpeg');
       return res.sendFile(legacyFilePath);
     }
 
     // If no avatar found, send default avatar - try various formats and locations
     const possiblePaths = [
       path.join(__dirname, "..", "public", "default-avatar1.png"),
+      path.join(__dirname, "..", "public", "default-avatar.png"),
       path.join(__dirname, "..", "public", "default-avatar.svg"),
       path.join(process.cwd(), "public", "default-avatar1.png"),
+      path.join(process.cwd(), "public", "default-avatar.png"),
       path.join(process.cwd(), "public", "default-avatar.svg"),
-      path.join(process.cwd(), "..", "client", "public", "default-avatar1.png")
+      path.join(process.cwd(), "..", "client", "public", "default-avatar1.png"),
+      path.join(process.cwd(), "..", "client", "public", "default-avatar.png")
     ];
     
     for (const filePath of possiblePaths) {
       if (fs.existsSync(filePath)) {
-        // If this is an SVG file, set the right content type
+        // Set appropriate content type based on file extension
         if (filePath.endsWith('.svg')) {
-          res.setHeader('Content-Type', 'image/svg+xml');
+          res.set('Content-Type', 'image/svg+xml');
+        } else if (filePath.endsWith('.png')) {
+          res.set('Content-Type', 'image/png');
+        } else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+          res.set('Content-Type', 'image/jpeg');
         }
         
         log.debug(`Serving default avatar from: ${filePath} for user ${userId}`);
@@ -192,8 +243,26 @@ router.get("/:userId", async (req, res) => {
 
   } catch (err) {
     log.error(`Error fetching avatar for user ${req.params.userId}: ${err.message}`, { stack: err.stack });
-    // Avoid sending detailed server errors to client in production if possible
-    res.status(500).json({ success: false, error: "Server error fetching avatar" });
+    
+    // Add CORS headers even in error case
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    
+    // Try to serve default avatar instead of sending JSON error
+    try {
+      const defaultAvatarPath = path.join(__dirname, "..", "public", "default-avatar.png");
+      if (fs.existsSync(defaultAvatarPath)) {
+        log.debug("Serving default avatar after error");
+        res.set('Content-Type', 'image/png');
+        return res.sendFile(defaultAvatarPath);
+      } else {
+        // If no default avatar, use the inline fallback
+        return serveInlineFallbackAvatar(res);
+      }
+    } catch (fallbackErr) {
+      // If everything fails, return the JSON error
+      return res.status(500).json({ success: false, error: "Server error fetching avatar" });
+    }
   }
 });
 
@@ -201,52 +270,138 @@ router.get("/:userId", async (req, res) => {
 router.get("/", (req, res) => {
   log.debug("Default avatar route called without userId");
   
-  // Send the default avatar
-  const defaultAvatarPath = path.join(__dirname, "..", "public", "default-avatar1.png");
-  const clientDefaultAvatarPath = path.join(process.cwd(), "..", "client", "public", "default-avatar1.png");
+  // Set CORS headers for direct image access
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.set('Cross-Origin-Embedder-Policy', 'credentialless');
   
-  if (fs.existsSync(defaultAvatarPath)) {
-    log.debug("Serving default avatar from server public dir");
-    return res.sendFile(defaultAvatarPath);
-  } else if (fs.existsSync(clientDefaultAvatarPath)) {
-    log.debug("Serving default avatar from client public dir");
-    return res.sendFile(clientDefaultAvatarPath);
+  // Set cache headers
+  res.set('Cache-Control', 'public, max-age=86400'); // 1 day
+  res.set('Expires', new Date(Date.now() + 86400000).toUTCString());
+  
+  // Handle OPTIONS requests for CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
+    return res.status(204).end();
   }
   
-  // If no default avatar found, send a 404
-  return res.status(404).json({ 
-    success: false, 
-    error: "Default avatar not found" 
-  });
-});
-
-// Add a catchall route for debugging
-router.get("*", (req, res, next) => {
-  const path = req.path;
-  log.debug(`Uncaught avatar route: ${path}`);
-  
-  // If this is a standard avatar route, let it pass through to the userId handler
-  if (path.match(/^\/[a-f0-9]{24}$/i)) {
-    return next();
-  }
-  
-  // For any unknown route, just serve the default avatar
-  log.warn(`Unknown avatar route requested: ${path}, serving default avatar`);
-  
-  // Try to serve the default avatar from various paths
+  // Try multiple paths for the default avatar
   const possiblePaths = [
     path.join(__dirname, "..", "public", "default-avatar1.png"),
+    path.join(__dirname, "..", "public", "default-avatar.png"),
     path.join(__dirname, "..", "public", "default-avatar.svg"),
     path.join(process.cwd(), "public", "default-avatar1.png"),
+    path.join(process.cwd(), "public", "default-avatar.png"),
     path.join(process.cwd(), "public", "default-avatar.svg"),
-    path.join(process.cwd(), "..", "client", "public", "default-avatar1.png")
+    path.join(process.cwd(), "..", "client", "public", "default-avatar1.png"),
+    path.join(process.cwd(), "..", "client", "public", "default-avatar.png")
   ];
   
   for (const filePath of possiblePaths) {
     if (fs.existsSync(filePath)) {
-      // If this is an SVG file, set the right content type
+      // Set appropriate content type based on file extension
       if (filePath.endsWith('.svg')) {
-        res.setHeader('Content-Type', 'image/svg+xml');
+        res.set('Content-Type', 'image/svg+xml');
+      } else if (filePath.endsWith('.png')) {
+        res.set('Content-Type', 'image/png');
+      } else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+        res.set('Content-Type', 'image/jpeg');
+      }
+      
+      log.debug(`Serving default avatar from: ${filePath}`);
+      return res.sendFile(filePath);
+    }
+  }
+  
+  // If no default avatar file found, use the inline fallback
+  log.warn("No default avatar file found, using inline SVG fallback");
+  return serveInlineFallbackAvatar(res);
+});
+
+// Add a catchall route for debugging
+router.get("*", (req, res, next) => {
+  const reqPath = req.path;
+  log.debug(`Uncaught avatar route: ${reqPath}`);
+  
+  // Set CORS headers for direct image access in all cases
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.set('Cross-Origin-Embedder-Policy', 'credentialless');
+  
+  // Set cache headers
+  res.set('Cache-Control', 'public, max-age=86400'); // 1 day
+  res.set('Expires', new Date(Date.now() + 86400000).toUTCString());
+  
+  // Handle OPTIONS requests for CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
+    return res.status(204).end();
+  }
+  
+  // If this is a standard avatar route with MongoDB ID format, let it pass through to the userId handler
+  if (reqPath.match(/^\/[a-f0-9]{24}$/i)) {
+    return next();
+  }
+  
+  // Check if this is a filename-like request (might be a direct image URL)
+  if (reqPath.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+    log.debug(`Possible direct image reference: ${reqPath}`);
+    // Try to find it in uploads directories
+    const filename = reqPath.split('/').pop();
+    const possibleImagePaths = [
+      path.join(process.cwd(), "uploads", "images", filename),
+      path.join(process.cwd(), "uploads", "photos", filename),
+      path.join(process.cwd(), "uploads", "profiles", filename)
+    ];
+    
+    for (const filePath of possibleImagePaths) {
+      if (fs.existsSync(filePath)) {
+        // Set appropriate content type based on file extension
+        const ext = path.extname(filePath).toLowerCase();
+        if (ext === '.jpg' || ext === '.jpeg') {
+          res.set('Content-Type', 'image/jpeg');
+        } else if (ext === '.png') {
+          res.set('Content-Type', 'image/png');
+        } else if (ext === '.gif') {
+          res.set('Content-Type', 'image/gif');
+        } else if (ext === '.webp') {
+          res.set('Content-Type', 'image/webp');
+        } else if (ext === '.svg') {
+          res.set('Content-Type', 'image/svg+xml');
+        }
+        
+        log.debug(`Found and serving direct image reference: ${filePath}`);
+        return res.sendFile(filePath);
+      }
+    }
+  }
+  
+  // For any unknown route, just serve the default avatar
+  log.warn(`Unknown avatar route requested: ${reqPath}, serving default avatar`);
+  
+  // Try to serve the default avatar from various paths
+  const possiblePaths = [
+    path.join(__dirname, "..", "public", "default-avatar1.png"),
+    path.join(__dirname, "..", "public", "default-avatar.png"),
+    path.join(__dirname, "..", "public", "default-avatar.svg"),
+    path.join(process.cwd(), "public", "default-avatar1.png"),
+    path.join(process.cwd(), "public", "default-avatar.png"),
+    path.join(process.cwd(), "public", "default-avatar.svg"),
+    path.join(process.cwd(), "..", "client", "public", "default-avatar1.png"),
+    path.join(process.cwd(), "..", "client", "public", "default-avatar.png")
+  ];
+  
+  for (const filePath of possiblePaths) {
+    if (fs.existsSync(filePath)) {
+      // Set appropriate content type based on file extension
+      if (filePath.endsWith('.svg')) {
+        res.set('Content-Type', 'image/svg+xml');
+      } else if (filePath.endsWith('.png')) {
+        res.set('Content-Type', 'image/png');
+      } else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+        res.set('Content-Type', 'image/jpeg');
       }
       
       log.debug(`Serving default avatar from: ${filePath}`);
