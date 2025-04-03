@@ -46,7 +46,8 @@ const generateUniqueId = () => {
   // Increment the counter for each call to ensure uniqueness
   // even if called multiple times in the same millisecond
   idCounter++; 
-  return `system-${Date.now()}-${idCounter}-${Math.random().toString(36).substring(2, 9)}`;
+  // Use a combination of timestamp, counter, and random string
+  return `system-${Date.now()}-${idCounter}-${Math.random().toString(36).substring(2, 15)}`;
 }
 
 /**
@@ -761,7 +762,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
       
       // Add a system message with unique ID
       const systemMessage = {
-        _id: `system-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        _id: generateUniqueId(),
         sender: "system",
         content: `You started a video call with ${recipient.nickname}.`,
         createdAt: new Date().toISOString(),
@@ -812,7 +813,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
 
     // Add a system message instead of toast
     const systemMessage = {
-      _id: Date.now().toString(),
+      _id: generateUniqueId(),
       sender: "system",
       content: `Video call with ${recipient.nickname} ended.`,
       createdAt: new Date().toISOString(),

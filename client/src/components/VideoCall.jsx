@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   FaMicrophone,
   FaMicrophoneSlash,
@@ -9,18 +9,261 @@ import {
   FaCompressAlt,
   FaSpinner,
   FaUndo,
+  FaSignal
 } from "react-icons/fa";
 import socketService from "../services/socketService.jsx";
 import { toast } from "react-toastify";
 import { logger } from "../utils";
 
-// Create a logger for this component
 const log = logger.create("VideoCall");
 
-/**
- * VideoCall component for WebRTC video calls
- * Provides a complete video calling interface with local and remote video streams
- */
+// --- Configuration Constants ---
+const ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun.stunprotocol.org:3478" },
+  { urls: "stun:stun.voip.blackberry.com:3478" },
+  { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:stun3.l.google.com:19302" },
+  { urls: "stun:stun4.l.google.com:19302" },
+  // Add TURN servers here for production environments
+];
+
+const PEER_CONNECTION_CONFIG = {
+  iceServers: ICE_SERVERS,
+  iceCandidatePoolSize: 10,
+  iceTransportPolicy: "all",
+  bundlePolicy: "max-bundle",
+  rtcpMuxPolicy: "require",
+  sdpSemantics: "unified-plan",
+};
+
+const VIDEO_CONSTRAINTS = {
+  width: { ideal: 640, max: 1280 },
+  height: { ideal: 480, max: 720 },
+  frameRate: { ideal: 24, max: 30 },
+};
+
+const AUDIO_CONSTRAINTS = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+};
+
+const MAX_RETRY_COUNT = 3;
+const SIGNALLING_TIMEOUT = 20000; // 20 seconds
+const CONNECTION_TIMEOUT = 30000; // 30 seconds
+const RECONNECT_DELAY = 2000; // 2 seconds
+const STATS_INTERVAL = 5000; // 5 seconds
+const AUDIO_METER_INTERVAL = 100; // 100ms for audio level updates
+
+// --- Helper Functions ---
+const getCandidateFingerprint = (candidate) => {
+  if (!candidate) return "";
+  if (typeof candidate === "string") return candidate;
+  return [candidate.candidate, candidate.sdpMid, candidate.sdpMLineIndex].join("|");
+};
+
+const getSignalId = (signal) => {
+  if (!signal || !signal.type) return `invalid-${Date.now()}`;
+  if (signal.type === "ice-candidate") {
+    return `ice-${getCandidateFingerprint(signal.candidate)}`;
+  } else if (signal.type === "offer" || signal.type === "answer") {
+    // Use SDP fingerprint for uniqueness
+    const sdpFingerprint = signal.sdp?.sdp?.slice(0, 150) || signal.sdp?.slice(0, 150) || "";
+    return `${signal.type}-${sdpFingerprint}`;
+  }
+  return `${signal.type}-${Date.now()}`;
+};
+
+const formatDuration = (seconds) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+};
+
+const getConnectionQuality = (peerConnection) => {
+  if (!peerConnection) return "unknown";
+
+  const iceState = peerConnection.iceConnectionState;
+  const connState = peerConnection.connectionState;
+
+  if (connState === "failed" || iceState === "failed") return "poor";
+  if (connState === "disconnected" || iceState === "disconnected") return "poor";
+  if (connState === "connecting" || iceState === "checking") return "fair";
+  if (connState === "connected" && iceState === "connected") return "good";
+  if (connState === "connected" && iceState === "completed") return "excellent";
+
+  return "unknown";
+};
+
+const formatErrorMessage = (error) => {
+  if (!error) return null;
+
+  // Simple string contains check
+  if (typeof error === "string") {
+    if (error.includes("Permission denied")) {
+      return "Camera or microphone access was denied. Please check browser permissions.";
+    }
+    if (error.includes("NotFoundError") || error.includes("Devices not found")) {
+      return "Camera or microphone not found. Please check if they are connected and enabled.";
+    }
+    if (error.includes("timed out")) {
+      return "Connection timed out. Please check your network connection.";
+    }
+    if (error.includes("Could not access")) {
+      return "Unable to access camera or microphone. Please check connections and browser permissions.";
+    }
+    if (error.includes("multiple attempts")) {
+      return "Connection failed after several attempts. Please check your network or try again later.";
+    }
+    if (error.includes("Failed to set remote answer sdp: Called in wrong state")) {
+      return "Connection synchronization error. Attempting to recover...";
+    }
+    if (error.includes("Failed to execute 'addIceCandidate'")) {
+      return "Network negotiation issue occurred. Attempting to continue...";
+    }
+  }
+
+  return `An unexpected error occurred${error ? `: ${error.toString().split(":")[0]}` : ""}. Please try again.`;
+};
+
+// Canvas visualization helper functions
+const drawConnectionQuality = (canvas, quality) => {
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Set colors based on quality
+  let color = "#aaaaaa"; // unknown - gray
+  let barCount = 0;
+
+  switch(quality) {
+    case "excellent":
+      color = "#4caf50"; // green
+      barCount = 4;
+      break;
+    case "good":
+      color = "#8bc34a"; // light green
+      barCount = 3;
+      break;
+    case "fair":
+      color = "#ffc107"; // yellow
+      barCount = 2;
+      break;
+    case "poor":
+      color = "#f44336"; // red
+      barCount = 1;
+      break;
+    default:
+      barCount = 0;
+  }
+
+  // Draw bars
+  const barWidth = Math.floor(canvas.width / 5);
+  const barMargin = Math.floor(barWidth / 4);
+  const fullWidth = barWidth - barMargin;
+
+  ctx.fillStyle = color;
+
+  for (let i = 0; i < 4; i++) {
+    const height = Math.floor(canvas.height * (0.4 + (i * 0.2)));
+    const x = i * barWidth;
+    const y = canvas.height - height;
+
+    // Draw filled or empty bar
+    if (i < barCount) {
+      ctx.fillRect(x, y, fullWidth, height);
+    } else {
+      ctx.strokeStyle = "#888888";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, fullWidth, height);
+    }
+  }
+};
+
+const drawAudioLevel = (canvas, level) => {
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Normalize level to 0-1
+  const normalizedLevel = Math.min(1, Math.max(0, level));
+
+  // Draw gradient background
+  const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
+  gradient.addColorStop(0, "#4caf50");    // Green at bottom
+  gradient.addColorStop(0.5, "#ffeb3b");  // Yellow in middle
+  gradient.addColorStop(1, "#f44336");    // Red at top
+
+  ctx.fillStyle = gradient;
+
+  // Draw meter
+  const height = Math.round(canvas.height * normalizedLevel);
+  ctx.fillRect(0, canvas.height - height, canvas.width, height);
+
+  // Draw level ticks
+  ctx.fillStyle = "#222";
+  for (let i = 0; i <= 10; i++) {
+    const y = canvas.height - (i * canvas.height / 10);
+    const tickWidth = i % 5 === 0 ? 10 : 5;
+    ctx.fillRect(0, y, tickWidth, 1);
+  }
+};
+
+const drawPlaceholderVideo = (canvas, text) => {
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw dark background
+  ctx.fillStyle = "#222";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw text
+  ctx.fillStyle = "#fff";
+  ctx.font = "20px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text || "Video Off", canvas.width / 2, canvas.height / 2);
+
+  // Draw camera icon
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2;
+  const iconSize = 50;
+  const x = (canvas.width - iconSize) / 2;
+  const y = (canvas.height - iconSize) / 2 - 40;
+
+  // Simple camera shape
+  ctx.beginPath();
+  ctx.rect(x, y, iconSize, iconSize * 0.7);
+  ctx.stroke();
+
+  // Lens
+  ctx.beginPath();
+  ctx.arc(x + iconSize/2, y + iconSize*0.35, iconSize*0.25, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Diagonal line for "camera off"
+  ctx.beginPath();
+  ctx.moveTo(x - 5, y - 5);
+  ctx.lineTo(x + iconSize + 5, y + iconSize * 0.7 + 5);
+  ctx.stroke();
+};
+
+// VideoCall Component
 const VideoCall = ({
   isActive,
   userId,
@@ -29,16 +272,39 @@ const VideoCall = ({
   isIncoming = false,
   callId = null,
 }) => {
-  // Refs for video elements and connection
+  // --- Refs ---
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const qualityCanvasRef = useRef(null);
+  const localAudioCanvasRef = useRef(null);
+  const remoteAudioCanvasRef = useRef(null);
+  const localPlaceholderRef = useRef(null);
+  const remotePlaceholderRef = useRef(null);
+
   const localStreamRef = useRef(null);
   const peerConnectionRef = useRef(null);
+  const audioAnalyserRef = useRef(null);
+  const audioDataRef = useRef(null);
+  const remoteAudioAnalyserRef = useRef(null);
+  const remoteAudioDataRef = useRef(null);
+
   const signallingTimeoutRef = useRef(null);
+  const connectionTimeoutRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const candidateFlushTimeoutRef = useRef(null);
+  const statsIntervalRef = useRef(null);
+  const audioMeterIntervalRef = useRef(null);
+
+  // Queues & State Tracking
   const iceCandidateQueueRef = useRef([]);
-  
-  // State for UI and call control
+  const processedCandidatesRef = useRef(new Set());
+  const processedSignalsRef = useRef(new Set());
+  const incomingSignalQueueRef = useRef([]);
+  const negotiationInProgressRef = useRef(false);
+  const isMountedRef = useRef(false);
+  const connectionCompletedRef = useRef(false);
+
+  // --- State ---
   const [isConnecting, setIsConnecting] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   const [isLocalMuted, setIsLocalMuted] = useState(false);
@@ -50,1360 +316,1455 @@ const VideoCall = ({
   const [retryCount, setRetryCount] = useState(0);
   const [callDuration, setCallDuration] = useState(0);
   const [showControls, setShowControls] = useState(true);
+  const [connectionQuality, setConnectionQuality] = useState("unknown");
+  const [localAudioLevel, setLocalAudioLevel] = useState(0);
+  const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
+  const [videoStats, setVideoStats] = useState({
+    resolution: "",
+    frameRate: 0,
+    bitrate: 0
+  });
 
-  // Constants
-  const MAX_RETRY_COUNT = 3;
-  const SIGNALLING_TIMEOUT = 15000;
-  const ICE_SERVERS = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-  ];
+  // --- WebRTC Core Logic ---
 
-  // Start the call by initializing media and connections
-  useEffect(() => {
-    // Only run if the call is active
-    if (!isActive) return;
+  // Initialize local media (camera/microphone)
+  const initializeMedia = useCallback(async () => {
+    log.debug("Initializing local media...");
+    setIsConnecting(true);
+    setConnectionError(null);
 
-    log.debug(`Initializing video call with ${recipientId}`);
-    
-    let mounted = true;
-    
-    const initializeMediaAndConnection = async () => {
-      try {
-        setIsConnecting(true);
-        setConnectionError(null);
-        
-        // Initialize local media
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true
-        });
-        
-        if (!mounted) {
-          // Clean up if component unmounted during initialization
-          stream.getTracks().forEach(track => track.stop());
-          return;
-        }
-        
-        // Store the stream for later use
-        localStreamRef.current = stream;
-        
-        // Display local video
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-          localVideoRef.current.muted = true; // Mute local video to prevent echo
-        }
-        
-        // Initialize peer connection
-        await createPeerConnection();
-        
-        // Start signaling with the remote peer
-        startSignaling();
-        
-      } catch (err) {
-        log.error("Error initializing media:", err);
-        setConnectionError(`Failed to access camera or microphone: ${err.message}`);
-        setIsConnecting(false);
+    // If stream already exists, reuse it
+    if (localStreamRef.current) {
+      log.debug("Reusing existing media stream.");
+      if (localVideoRef.current && localVideoRef.current.srcObject !== localStreamRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current;
       }
-    };
-    
-    initializeMediaAndConnection();
-    
-    // Set up a timer to track call duration
-    const durationTimer = setInterval(() => {
-      setCallDuration(prev => prev + 1);
-    }, 1000);
-    
-    // Clean up on unmount
-    return () => {
-      mounted = false;
-      clearInterval(durationTimer);
-      closeConnection();
-    };
-  }, [isActive, recipientId, userId, isIncoming, callId]);
 
-  // Function to flush queued ICE candidates
-  const flushIceCandidates = () => {
-    if (iceCandidateQueueRef.current && iceCandidateQueueRef.current.length > 0) {
-      log.debug(`Flushing ${iceCandidateQueueRef.current.length} queued ICE candidates`);
-      
-      // Check connection and signaling state
-      if (peerConnectionRef.current) {
-        const signalingState = peerConnectionRef.current.signalingState;
-        const connectionState = peerConnectionRef.current.connectionState || 'unknown';
-        const iceConnectionState = peerConnectionRef.current.iceConnectionState || 'unknown';
-        
-        log.debug(`Connection state before flushing: signaling=${signalingState}, connection=${connectionState}, ice=${iceConnectionState}`);
-        
-        // Only proceed if we have a valid connection
-        const validSignalingStates = ["have-local-offer", "have-remote-offer", "stable"];
-        
-        // Clone the queue to avoid mutation issues during processing
-        const candidatesToProcess = [...iceCandidateQueueRef.current];
-        iceCandidateQueueRef.current = [];
-        
-        // Separate local candidates (to send) from remote candidates (to add)
-        const localCandidates = candidatesToProcess.filter(c => !c.isRemote);
-        const remoteCandidates = candidatesToProcess.filter(c => c.isRemote);
-        
-        log.debug(`Processing ${localCandidates.length} local and ${remoteCandidates.length} remote candidates`);
-        
-        // Process remote candidates first (apply them to our local connection)
-        let remoteProcessed = 0;
-        
-        if (remoteCandidates.length > 0 && 
-            (signalingState === "have-remote-offer" || signalingState === "have-local-pranswer" || signalingState === "stable")) {
-            
-          // Process remote candidates first
-          remoteCandidates.forEach((candidate, index) => {
-            // Clone and remove our marker property
-            const { isRemote, ...cleanCandidate } = candidate;
-            
-            peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(cleanCandidate))
-              .then(() => {
-                remoteProcessed++;
-                if (remoteProcessed === remoteCandidates.length) {
-                  log.debug(`Successfully processed all ${remoteProcessed} remote ICE candidates`);
-                }
-              })
-              .catch(err => {
-                log.error(`Error adding remote ICE candidate: ${err.message}`);
-                // If still failing, re-queue for later
-                if (!iceCandidateQueueRef.current) {
-                  iceCandidateQueueRef.current = [];
-                }
-                iceCandidateQueueRef.current.push(candidate);
-              });
-          });
-        } else if (remoteCandidates.length > 0) {
-          log.warn(`Cannot process remote candidates in state: ${signalingState}, re-queueing`);
-          // Put back in the queue
-          if (!iceCandidateQueueRef.current) {
-            iceCandidateQueueRef.current = [];
-          }
-          iceCandidateQueueRef.current.push(...remoteCandidates);
-        }
-        
-        // Process local candidates (send them to the remote peer)
-        if (localCandidates.length > 0 && validSignalingStates.includes(signalingState)) {
-          // Send candidates with a small delay between each to prevent flooding
-          let sentCount = 0;
-          
-          // Sort candidates by priority (send host candidates first)
-          localCandidates.sort((a, b) => {
-            // Try to prioritize host candidates (local network)
-            const aIsHost = a.candidate && a.candidate.includes('host');
-            const bIsHost = b.candidate && b.candidate.includes('host');
-            
-            if (aIsHost && !bIsHost) return -1;
-            if (!aIsHost && bIsHost) return 1;
-            return 0;
-          });
-          
-          // Send candidates with a small delay between them
-          localCandidates.forEach((candidate, index) => {
-            setTimeout(() => {
-              if (peerConnectionRef.current) {
-                socketService.emit("videoSignal", {
-                  recipientId,
-                  signal: {
-                    type: "ice-candidate",
-                    candidate
-                  },
-                  from: {
-                    userId,
-                    callId
-                  }
-                });
-                sentCount++;
-                
-                // Log completion
-                if (index === localCandidates.length - 1) {
-                  log.debug(`Sent ${sentCount} local ICE candidates`);
-                }
-              }
-            }, index * 30); // 30ms delay between candidates
-          });
-        } else if (localCandidates.length > 0) {
-          log.warn(`Cannot send local candidates in state: ${signalingState}, re-queueing`);
-          // Put back in the queue
-          if (!iceCandidateQueueRef.current) {
-            iceCandidateQueueRef.current = [];
-          }
-          iceCandidateQueueRef.current.push(...localCandidates);
-          
-          // Schedule another flush attempt
-          setTimeout(flushIceCandidates, 1000);
-        }
-      } else {
-        log.warn("Cannot flush ICE candidates: peer connection not initialized");
-        // Don't lose the candidates, put them back
-        if (iceCandidateQueueRef.current.length === 0) {
-          iceCandidateQueueRef.current = [...iceCandidateQueueRef.current];
-        }
+      // Setup audio visualization for existing stream
+      if (!audioAnalyserRef.current && localStreamRef.current.getAudioTracks().length > 0) {
+        setupAudioVisualization();
       }
-    }
-  };
 
-  // Create a peer connection for WebRTC
-  const createPeerConnection = async () => {
-    try {
-      // Create a new RTCPeerConnection
-      const pc = new RTCPeerConnection({
-        iceServers: ICE_SERVERS
-      });
-      
-      // Add local tracks to the peer connection
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => {
-          pc.addTrack(track, localStreamRef.current);
-        });
-      }
-      
-      // Handle incoming remote tracks
-      pc.ontrack = handleRemoteTrack;
-      
-      // Handle ICE candidates
-      pc.onicecandidate = handleICECandidate;
-      
-      // Handle connection state changes
-      pc.onconnectionstatechange = () => {
-        log.debug(`Connection state changed: ${pc.connectionState}`);
-        
-        switch (pc.connectionState) {
-          case "connecting":
-            // Attempt to flush candidates regularly during connecting phase
-            flushIceCandidates();
-            
-            // Schedule additional flushes during the connecting phase
-            // This helps ensure candidates get through even with network delays
-            const flushInterval = setInterval(() => {
-              if (peerConnectionRef.current && peerConnectionRef.current.connectionState === "connecting") {
-                log.debug("Scheduled flush during connecting phase");
-                flushIceCandidates();
-              } else {
-                clearInterval(flushInterval);
-              }
-            }, 1000); // Flush every second while connecting
-            
-            // Auto-clear after 10 seconds to avoid memory leaks
-            setTimeout(() => clearInterval(flushInterval), 10000);
-            break;
-            
-          case "connected":
-            setIsConnected(true);
-            setIsConnecting(false);
-            log.info("Peer connection established successfully");
-            
-            // Log successful connection details
-            logConnectionStats();
-            
-            // Final flush of any remaining candidates
-            flushIceCandidates();
-            break;
-            
-          case "disconnected":
-            setIsConnected(false);
-            log.warn(`Peer connection disconnected`);
-            
-            // Try sending any remaining candidates in case that helps
-            flushIceCandidates();
-            
-            // Attempt recovery for disconnected state
-            setTimeout(() => {
-              if (peerConnectionRef.current && peerConnectionRef.current.connectionState === "disconnected") {
-                log.debug("Still disconnected after delay, attempting recovery");
-                attemptConnectionRecovery();
-              }
-            }, 2000);
-            break;
-            
-          case "failed":
-            setIsConnected(false);
-            log.error(`Peer connection failed`);
-            
-            // Get diagnostic info
-            logConnectionStats();
-            
-            // Attempt more aggressive reconnection for failed state
-            attemptReconnect();
-            break;
-            
-          case "closed":
-            setIsConnected(false);
-            log.info("Peer connection closed");
-            break;
-        }
-      };
-      
-      // Handle ICE connection state changes
-      pc.oniceconnectionstatechange = () => {
-        const state = pc.iceConnectionState;
-        log.debug(`ICE connection state changed: ${state}`);
-        
-        switch (state) {
-          case "checking":
-            // During checking, flush candidates to increase chances of finding a path
-            flushIceCandidates();
-            break;
-            
-          case "connected":
-          case "completed":
-            // Successfully connected
-            log.debug(`ICE connection ${state}`);
-            
-            // If we're completed, we can log what candidate pair was selected
-            if (state === "completed") {
-              logSelectedCandidatePair();
-            }
-            break;
-            
-          case "failed":
-            log.error("ICE connection failed, attempting to restart ICE");
-            
-            // Log failure diagnostics
-            logConnectionStats();
-            
-            // Try to restart ICE
-            pc.restartIce();
-            
-            // If we have unflushed candidates, try sending them
-            flushIceCandidates();
-            break;
-            
-          case "disconnected":
-            log.warn("ICE connection disconnected");
-            // Sometimes disconnected is temporary, wait a bit before reacting
-            setTimeout(() => {
-              if (peerConnectionRef.current && 
-                  peerConnectionRef.current.iceConnectionState === "disconnected") {
-                log.debug("Still disconnected after delay, flushing candidates");
-                flushIceCandidates();
-              }
-            }, 1000);
-            break;
-        }
-      };
-      
-      // Also track ICE gathering state
-      pc.onicegatheringstatechange = () => {
-        const state = pc.iceGatheringState;
-        log.debug(`ICE gathering state changed: ${state}`);
-        
-        if (state === "complete") {
-          // We've finished gathering candidates, so flush any that haven't been sent
-          log.debug("ICE gathering complete, flushing all candidates");
-          flushIceCandidates();
-        }
-      };
-      
-      // Store the peer connection for later use
-      peerConnectionRef.current = pc;
-      
-      log.debug("Peer connection created successfully");
-      
-    } catch (err) {
-      log.error("Error creating peer connection:", err);
-      setConnectionError(`Failed to create connection: ${err.message}`);
-      setIsConnecting(false);
-    }
-  };
-
-  // Start the signaling process for WebRTC
-  const startSignaling = async () => {
-    // Clear any existing timeout
-    if (signallingTimeoutRef.current) {
-      clearTimeout(signallingTimeoutRef.current);
-    }
-    
-    // Set a timeout for signaling
-    signallingTimeoutRef.current = setTimeout(() => {
-      if (!isConnected) {
-        log.error("Signaling timeout reached");
-        setConnectionError("Connection timed out. The other person may be having connection issues.");
-        setIsConnecting(false);
-      }
-    }, SIGNALLING_TIMEOUT);
-    
-    try {
-      if (!peerConnectionRef.current) {
-        throw new Error("Peer connection not initialized");
-      }
-      
-      // Check current state before proceeding
-      const currentState = peerConnectionRef.current.signalingState;
-      log.debug(`Current signaling state before starting: ${currentState}`);
-      
-      if (isIncoming) {
-        // For incoming calls, wait for an offer before creating an answer
-        // We won't create an answer now - we'll wait for the offer to arrive
-        log.debug("Waiting for offer (this is an incoming call)");
-        
-        // If the call is incoming but we haven't received an offer yet,
-        // we'll emit a special message to request an offer
-        socketService.emit("videoSignal", {
-          recipientId,
-          signal: {
-            type: "request-offer",
-          },
-          from: {
-            userId,
-            callId
-          }
-        });
-      } else {
-        // For outgoing calls, create an offer
-        if (currentState === "stable") {
-          log.debug("Creating offer for outgoing call");
-          await createOffer();
-        } else {
-          log.warn(`Cannot create offer in state: ${currentState}, waiting for state to stabilize`);
-          // Wait a bit and try again if needed
-          setTimeout(() => {
-            if (peerConnectionRef.current && peerConnectionRef.current.signalingState === "stable") {
-              createOffer().catch(err => {
-                log.error("Delayed offer creation error:", err);
-              });
-            }
-          }, 1000);
-        }
-      }
-    } catch (err) {
-      log.error("Error in signaling process:", err);
-      setConnectionError(`Signaling error: ${err.message}`);
-      setIsConnecting(false);
-    }
-  };
-
-  // Create an offer for outgoing calls
-  const createOffer = async () => {
-    try {
-      if (!peerConnectionRef.current) return;
-      
-      // Log current state before creating offer
-      const currentState = peerConnectionRef.current.signalingState;
-      log.debug(`Current signaling state before creating offer: ${currentState}`);
-      
-      // Only create offer in the right state
-      if (currentState !== 'stable') {
-        log.error(`Cannot create offer in state: ${currentState}`);
-        return Promise.reject(new Error(`Cannot create offer in state: ${currentState}`));
-      }
-      
-      // Create an offer with modern options
-      const offerOptions = {
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: true,
-        iceRestart: peerConnectionRef.current.iceConnectionState === 'failed'
-      };
-      
-      // Create the offer
-      const offer = await peerConnectionRef.current.createOffer(offerOptions);
-      
-      // Set the local description
-      await peerConnectionRef.current.setLocalDescription(offer);
-      
-      log.debug("Offer created and set as local description");
-      
-      // Now that local description is set, we can flush any queued ICE candidates
-      flushIceCandidates();
-      
-      // Send the offer to the recipient via socket
-      socketService.emit("videoSignal", {
-        recipientId,
-        signal: {
-          type: "offer",
-          sdp: offer
-        },
-        from: {
-          userId,
-          callId
-        }
-      });
-      
-      log.debug("Offer sent to recipient");
-      
-      // Return a resolved promise so callers can chain operations
-      return Promise.resolve();
-    } catch (err) {
-      log.error("Error creating offer:", err);
-      return Promise.reject(err);
-    }
-  };
-
-  // Create an answer for incoming calls
-  const createAnswer = async () => {
-    try {
-      if (!peerConnectionRef.current) return;
-      
-      // Check signaling state before creating answer
-      const currentState = peerConnectionRef.current.signalingState;
-      log.debug(`Current signaling state before creating answer: ${currentState}`);
-      
-      // Only create answer in the correct state
-      if (currentState !== 'have-remote-offer') {
-        log.error(`Cannot create answer in state: ${currentState}`);
-        
-        // If we're in a stable state and need to create an answer,
-        // it probably means we need an offer first
-        if (currentState === 'stable') {
-          log.debug("In stable state but need to create answer - requesting offer");
-          
-          // Request an offer from the other peer
-          socketService.emit("videoSignal", {
-            recipientId,
-            signal: {
-              type: "request-offer"
-            },
-            from: {
-              userId,
-              callId
-            }
-          });
-        } else {
-          setConnectionError(`Cannot create answer in state: ${currentState}`);
-        }
-        
-        return;
-      }
-      
-      // Create an answer
-      log.debug("Creating answer - signaling state is have-remote-offer");
-      const answer = await peerConnectionRef.current.createAnswer();
-      
-      // Set the local description
-      await peerConnectionRef.current.setLocalDescription(answer);
-      
-      log.debug("Answer created and set as local description");
-      
-      // Now that local description is set, we can flush ICE candidates
-      flushIceCandidates();
-      
-      // Send the answer to the recipient via socket
-      socketService.emit("videoSignal", {
-        recipientId,
-        signal: {
-          type: "answer",
-          sdp: answer
-        },
-        from: {
-          userId,
-          callId
-        }
-      });
-      
-      log.debug("Answer sent to caller");
-      
-      // Return a resolved promise so callers can chain operations
-      return Promise.resolve();
-    } catch (err) {
-      log.error("Error creating answer:", err);
-      
-      // If we get a state error, try to recover
-      if (err.message && err.message.includes("state")) {
-        log.debug("Attempting to recover from state error");
-        
-        // Request a new offer
-        socketService.emit("videoSignal", {
-          recipientId,
-          signal: {
-            type: "request-offer"
-          },
-          from: {
-            userId,
-            callId
-          }
-        });
-        
-        // Return a rejected promise
-        return Promise.reject(err);
-      } else {
-        throw err;
-      }
-    }
-  };
-
-  // Handle ICE candidates
-  const handleICECandidate = (event) => {
-    if (event.candidate) {
-      // Analyze the candidate type
-      const candidateType = analyzeCandidate(event.candidate);
-      log.debug(`New ICE candidate generated: ${candidateType}`);
-      
-      // Check if we're in a valid state to send ICE candidates
-      const canSendNow = canSendIceCandidate();
-      
-      if (canSendNow) {
-        // Log sending of candidate
-        log.debug(`Sending ICE candidate immediately: ${candidateType}`);
-        
-        // Send the ICE candidate to the recipient via socket
-        socketService.emit("videoSignal", {
-          recipientId,
-          signal: {
-            type: "ice-candidate",
-            candidate: event.candidate
-          },
-          from: {
-            userId,
-            callId
-          }
-        });
-      } else {
-        // Queue the candidate for later
-        log.debug(`Queueing ICE candidate: ${candidateType}`);
-        
-        // Ensure the queue exists
-        if (!iceCandidateQueueRef.current) {
-          iceCandidateQueueRef.current = [];
-        }
-        
-        // Queue the candidate
-        iceCandidateQueueRef.current.push(event.candidate);
-        
-        // If we have too many queued candidates, trim the queue more aggressively
-        if (iceCandidateQueueRef.current.length > 20) {
-          log.warn("ICE candidate queue is getting large, trimming more aggressively");
-          
-          // Separate local and remote candidates
-          const localCandidates = iceCandidateQueueRef.current.filter(c => !c.isRemote);
-          const remoteCandidates = iceCandidateQueueRef.current.filter(c => c.isRemote);
-          
-          // Find host candidates (most important for local network)
-          const localHostCandidates = localCandidates.filter(c => 
-            c.candidate && c.candidate.includes("host")).slice(0, 5);
-          const remoteHostCandidates = remoteCandidates.filter(c => 
-            c.candidate && c.candidate.includes("host")).slice(0, 5);
-            
-          // Get a few most recent non-host candidates of each type
-          const localRecentCandidates = localCandidates
-            .filter(c => !c.candidate || !c.candidate.includes("host"))
-            .slice(-5);
-          const remoteRecentCandidates = remoteCandidates
-            .filter(c => !c.candidate || !c.candidate.includes("host"))
-            .slice(-5);
-            
-          // Combine all selected candidates
-          iceCandidateQueueRef.current = [
-            ...localHostCandidates,
-            ...remoteHostCandidates,
-            ...localRecentCandidates,
-            ...remoteRecentCandidates
-          ];
-          
-          log.debug(`Aggressively trimmed ICE queue to ${iceCandidateQueueRef.current.length} candidates`);
-        }
-      }
-    }
-  };
-  
-  // Helper to determine if we can send an ICE candidate immediately
-  const canSendIceCandidate = () => {
-    if (!peerConnectionRef.current) return false;
-    
-    const signalingState = peerConnectionRef.current.signalingState;
-    const connectionState = peerConnectionRef.current.connectionState || 'unknown';
-    const iceConnectionState = peerConnectionRef.current.iceConnectionState || 'unknown';
-    
-    // Valid signaling states for sending ICE candidates
-    const validSignalingStates = ["have-local-offer", "have-remote-offer", "stable"];
-    
-    // Only send if:
-    // 1. We're in a valid signaling state AND
-    // 2. Either the connection is not new or we're in stable signaling state
-    return (
-      validSignalingStates.includes(signalingState) && 
-      (connectionState !== "new" || signalingState === "stable")
-    );
-  };
-  
-  // Helper to analyze ICE candidate types
-  const analyzeCandidate = (candidate) => {
-    if (!candidate || !candidate.candidate) return "unknown";
-    
-    const candidateStr = candidate.candidate;
-    
-    if (candidateStr.includes("host")) return "host";
-    if (candidateStr.includes("srflx")) return "srflx (server reflexive)";
-    if (candidateStr.includes("prflx")) return "prflx (peer reflexive)";
-    if (candidateStr.includes("relay")) return "relay (TURN)";
-    
-    return "unknown";
-  };
-
-  // Handle incoming remote tracks
-  const handleRemoteTrack = (event) => {
-    log.debug("Received remote track");
-    
-    if (remoteVideoRef.current && event.streams && event.streams[0]) {
-      log.debug("Setting remote video stream");
-      remoteVideoRef.current.srcObject = event.streams[0];
-      setIsConnected(true);
-      setIsConnecting(false);
-    }
-  };
-
-  // Handle incoming signals from socket
-  useEffect(() => {
-    if (!isActive) return;
-    
-    log.debug("Setting up socket signal handlers");
-    
-    // Handle incoming video signals
-    const handleVideoSignal = (data) => {
-      // Make sure the signal is from the recipient
-      if (data.userId !== recipientId) return;
-      
-      log.debug(`Received signal of type: ${data.signal?.type}`);
-      
-      if (!peerConnectionRef.current) {
-        log.error("Received signal but peer connection is not initialized");
-        return;
-      }
-      
-      try {
-        const signal = data.signal;
-        
-        if (signal.type === "request-offer") {
-          // The other peer is requesting an offer from us
-          log.debug("Received request for offer, creating one");
-          
-          // Only create an offer if we're in a stable state
-          if (peerConnectionRef.current.signalingState === "stable") {
-            createOffer().catch(err => {
-              log.error("Error creating offer after request:", err);
-            });
-          } else {
-            log.warn(`Cannot create offer in state: ${peerConnectionRef.current.signalingState}`);
-            // Try resetting the connection
-            peerConnectionRef.current.close();
-            createPeerConnection().then(() => {
-              createOffer().catch(err => {
-                log.error("Error creating offer after reset:", err);
-              });
-            });
-          }
-        }
-        else if (signal.type === "offer") {
-          log.debug("Processing incoming offer");
-          
-          // Check connection state before applying the offer
-          const currentState = peerConnectionRef.current.signalingState;
-          log.debug(`Current signaling state before processing offer: ${currentState}`);
-          
-          if (currentState === "have-local-offer") {
-            // We're in a glare situation (both sides created offers)
-            // Follow the perfect negotiation pattern based on polite/impolite peers
-            // For simplicity, let's assume the caller is always the "impolite" peer
-            const isPolite = isIncoming; // Incoming call means we're the polite peer
-            
-            if (isPolite) {
-              log.debug("Rollback local description due to glare situation");
-              try {
-                // Rollback by closing and recreating the connection
-                if (peerConnectionRef.current) {
-                  peerConnectionRef.current.close();
-                  createPeerConnection().then(() => {
-                    // Process the offer with the new connection
-                    peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(signal.sdp))
-                      .then(() => createAnswer())
-                      .catch(err => {
-                        log.error("Error processing offer after reset:", err);
-                        setConnectionError(`Error processing offer: ${err.message}`);
-                      });
-                  });
-                  return;
-                }
-              } catch (err) {
-                log.error("Error during rollback:", err);
-                setConnectionError(`Error during signaling: ${err.message}`);
-                return;
-              }
-            } else {
-              // Impolite peer ignores the offer
-              log.debug("Ignoring offer as impolite peer in glare situation");
-              return;
-            }
-          } else if (currentState !== "stable") {
-            log.warn(`Unexpected signaling state ${currentState}, attempting to reset connection`);
-            // Close and recreate the peer connection
-            if (peerConnectionRef.current) {
-              peerConnectionRef.current.close();
-              createPeerConnection().then(() => {
-                // Try again with the new connection
-                peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(signal.sdp))
-                  .then(() => createAnswer())
-                  .catch(err => {
-                    log.error("Error processing offer after reset:", err);
-                    setConnectionError(`Error processing offer: ${err.message}`);
-                  });
-              });
-              return;
-            }
-          }
-          
-          // Set the remote description
-          try {
-            // In stable state, we can directly apply the offer
-            if (currentState === "stable") {
-              log.debug("Processing offer in stable state");
-              
-              // Set remote description and create answer in sequence
-              peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(signal.sdp))
-                .then(() => {
-                  log.debug("Remote offer set successfully, flushing any queued ICE candidates");
-                  
-                  // First flush any remote candidates that were waiting for the remote description
-                  flushIceCandidates();
-                  
-                  // Small delay to ensure state transition is complete
-                  setTimeout(() => {
-                    if (peerConnectionRef.current.signalingState === "have-remote-offer") {
-                      log.debug("State is now have-remote-offer, creating answer");
-                      createAnswer()
-                        .then(() => {
-                          log.debug("Answer created and sent, flushing any candidates collected during process");
-                          // Flush again in case new candidates were generated
-                          setTimeout(flushIceCandidates, 100);
-                        })
-                        .catch(err => {
-                          log.error("Error creating answer after delay:", err);
-                        });
-                    } else {
-                      log.warn(`Cannot create answer - unexpected state after offer: ${peerConnectionRef.current.signalingState}`);
-                    }
-                  }, 200);
-                })
-                .catch(err => {
-                  log.error("Error setting remote description:", err);
-                  setConnectionError(`Error processing offer: ${err.message}`);
-                });
-            } else {
-              log.warn(`Not processing offer in state: ${currentState}`);
-              
-              // Try resetting the connection to get back to a stable state
-              peerConnectionRef.current.close();
-              createPeerConnection().then(() => {
-                log.debug("Connection reset, trying to process offer");
-                
-                // Set remote description on the new connection
-                peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(signal.sdp))
-                  .then(() => {
-                    if (peerConnectionRef.current.signalingState === "have-remote-offer") {
-                      return createAnswer();
-                    }
-                  })
-                  .catch(err => {
-                    log.error("Error after connection reset:", err);
-                    setConnectionError(`Error after reset: ${err.message}`);
-                  });
-              });
-            }
-          } catch (err) {
-            log.error("Critical error in offer handling:", err);
-            setConnectionError(`Critical error: ${err.message}`);
-          }
-        }
-        else if (signal.type === "answer") {
-          log.debug("Processing incoming answer");
-          
-          // Check connection state before applying the answer
-          const currentState = peerConnectionRef.current.signalingState;
-          log.debug(`Current signaling state before processing answer: ${currentState}`);
-          
-          // Only apply answer if we're in have-local-offer state
-          if (currentState !== "have-local-offer") {
-            log.warn(`Cannot set remote answer in state: ${currentState}, ignoring`);
-            return;
-          }
-          
-          // Set the remote description
-          peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(signal.sdp))
-            .then(() => {
-              log.debug("Remote answer set successfully, flushing any queued candidates");
-              // Now that we have set the remote description, we can flush any queued candidates
-              setTimeout(flushIceCandidates, 100);
-            })
-            .catch(err => {
-              log.error("Error processing answer:", err);
-              setConnectionError(`Error processing answer: ${err.message}`);
-            });
-        }
-        else if (signal.type === "ice-candidate") {
-          // Analyze the incoming candidate
-          const candidateType = analyzeCandidate(signal.candidate);
-          log.debug(`Processing incoming ICE candidate: ${candidateType}`);
-          
-          try {
-            // Check if we can process the candidate right now
-            const signalingState = peerConnectionRef.current.signalingState;
-            const connectionState = peerConnectionRef.current.connectionState || 'unknown';
-            const iceConnectionState = peerConnectionRef.current.iceConnectionState || 'unknown';
-            
-            log.debug(`State before adding ICE candidate: signaling=${signalingState}, connection=${connectionState}, ice=${iceConnectionState}`);
-            
-            // Before trying to add candidates, check if remote description is null
-            const hasRemoteDescription = peerConnectionRef.current.remoteDescription !== null;
-            
-            if (!hasRemoteDescription) {
-              log.warn("Cannot add ICE candidate: Remote description is null");
-              
-              // Queue only a limited number of candidates when remote description is null
-              if (!iceCandidateQueueRef.current) {
-                iceCandidateQueueRef.current = [];
-              }
-              
-              // We use a special property to mark this as a remote candidate
-              const remoteCandidate = { ...signal.candidate, isRemote: true };
-              
-              // Only queue if we don't have too many candidates already
-              if (iceCandidateQueueRef.current.filter(c => c.isRemote).length < 20) {
-                iceCandidateQueueRef.current.push(remoteCandidate);
-                log.debug(`Queued remote ICE candidate (${candidateType}) for when remote description is set`);
-              } else if (signal.candidate.candidate && signal.candidate.candidate.includes("host")) {
-                // Always keep host candidates as they're most likely to work for local connections
-                iceCandidateQueueRef.current.push(remoteCandidate);
-                log.debug(`Queued host remote ICE candidate despite queue size`);
-              } else {
-                log.debug(`Discarded remote ICE candidate (${candidateType}) due to queue size`);
-              }
-              
-              return;
-            }
-            
-            // If we have a remote description, check if we're in an appropriate state to add the candidate
-            if (signalingState === "have-remote-offer" || 
-                signalingState === "have-local-pranswer" || 
-                signalingState === "stable") {
-              
-              // Create ICE candidate and add it
-              try {
-                const candidate = new RTCIceCandidate(signal.candidate);
-                await peerConnectionRef.current.addIceCandidate(candidate);
-                log.debug(`Successfully added ICE candidate: ${candidateType}`);
-              } catch (err) {
-                log.error(`Error adding ICE candidate: ${err.message}`);
-                
-                // If error is about remote description, queue it despite our earlier check
-                // This can happen if the remote description was set but is not fully processed
-                if (err.message.includes("setRemoteDescription") || 
-                    err.message.includes("remote description")) {
-                  
-                  // Only queue if we don't have too many candidates already
-                  if (!iceCandidateQueueRef.current) {
-                    iceCandidateQueueRef.current = [];
-                  }
-                  
-                  if (iceCandidateQueueRef.current.filter(c => c.isRemote).length < 10) {
-                    // We use a special property to mark this as a remote candidate
-                    const remoteCandidate = { ...signal.candidate, isRemote: true };
-                    iceCandidateQueueRef.current.push(remoteCandidate);
-                    log.debug(`Error occurred, will retry adding this candidate once remote description is fully processed`);
-                  }
-                }
-              }
-            } else {
-              log.warn(`Cannot add ICE candidate in state: ${signalingState}, queueing for later`);
-              
-              // Queue only a limited number of candidates
-              if (!iceCandidateQueueRef.current) {
-                iceCandidateQueueRef.current = [];
-              }
-              
-              // We use a special property to mark this as a remote candidate
-              const remoteCandidate = { ...signal.candidate, isRemote: true };
-              
-              // Only queue if we don't have too many candidates already or it's a host candidate
-              if (iceCandidateQueueRef.current.filter(c => c.isRemote).length < 10 || 
-                 (signal.candidate.candidate && signal.candidate.candidate.includes("host"))) {
-                iceCandidateQueueRef.current.push(remoteCandidate);
-              }
-            }
-          } catch (err) {
-            log.error("Critical error processing ICE candidate:", err);
-          }
-        }
-      } catch (err) {
-        log.error("Error processing signal:", err);
-      }
-    };
-    
-    // Handle media control signals
-    const handleMediaControl = (data) => {
-      // Make sure the signal is from the recipient
-      if (data.userId !== recipientId) return;
-      
-      log.debug(`Received media control: ${data.type} - muted: ${data.muted}`);
-      
-      if (data.type === "audio") {
-        setIsRemoteMuted(data.muted);
-      } else if (data.type === "video") {
-        setIsRemoteVideoOff(data.muted);
-      }
-    };
-    
-    // Handle hangup signals
-    const handleHangup = (data) => {
-      // Make sure the signal is from the recipient
-      if (data.userId !== recipientId) return;
-      
-      log.debug("Received hangup signal");
-      
-      // End the call
-      if (onEndCall) {
-        onEndCall();
-      }
-    };
-    
-    // Handle error signals
-    const handleVideoError = (data) => {
-      log.error("Received video error signal:", data.error);
-      setConnectionError(`Connection error: ${data.error}`);
-      setIsConnecting(false);
-    };
-    
-    // Register the event listeners
-    const videoSignalListener = socketService.on("videoSignal", handleVideoSignal);
-    const mediaControlListener = socketService.on("videoMediaControl", handleMediaControl);
-    const hangupListener = socketService.on("videoHangup", handleHangup);
-    const errorListener = socketService.on("videoError", handleVideoError);
-    
-    // Clean up on unmount
-    return () => {
-      videoSignalListener();
-      mediaControlListener();
-      hangupListener();
-      errorListener();
-    };
-  }, [isActive, recipientId, userId, onEndCall, callId]);
-
-  // Log connection statistics for debugging
-  const logConnectionStats = async () => {
-    try {
-      if (!peerConnectionRef.current) return;
-      
-      log.debug("Getting connection stats...");
-      
-      const stats = await peerConnectionRef.current.getStats();
-      let importantStats = {
-        networkType: "unknown",
-        localCandidateType: "unknown",
-        remoteCandidateType: "unknown",
-        roundTripTime: "unknown",
-        packetsLost: 0,
-        localAddress: "unknown",
-        remoteAddress: "unknown"
-      };
-      
-      // Process the stats
-      stats.forEach(stat => {
-        if (stat.type === 'transport') {
-          importantStats.networkType = stat.networkType || "unknown";
-        } else if (stat.type === 'candidate-pair' && stat.state === 'succeeded') {
-          importantStats.roundTripTime = stat.currentRoundTripTime ? 
-            `${(stat.currentRoundTripTime * 1000).toFixed(2)}ms` : "unknown";
-        } else if (stat.type === 'local-candidate') {
-          importantStats.localCandidateType = stat.candidateType || "unknown";
-          importantStats.localAddress = stat.address ? 
-            `${stat.address}:${stat.port}` : "unknown";
-        } else if (stat.type === 'remote-candidate') {
-          importantStats.remoteCandidateType = stat.candidateType || "unknown";
-          importantStats.remoteAddress = stat.address ? 
-            `${stat.address}:${stat.port}` : "unknown";
-        } else if (stat.type === 'inbound-rtp' && stat.packetsLost) {
-          importantStats.packetsLost += stat.packetsLost;
-        }
-      });
-      
-      log.debug("Connection stats:", JSON.stringify(importantStats, null, 2));
-    } catch (err) {
-      log.error("Error getting connection stats:", err);
-    }
-  };
-  
-  // Log the selected ICE candidate pair
-  const logSelectedCandidatePair = async () => {
-    try {
-      if (!peerConnectionRef.current) return;
-      
-      const stats = await peerConnectionRef.current.getStats();
-      let selectedPair = null;
-      let localCandidate = null;
-      let remoteCandidate = null;
-      
-      // Find the selected candidate pair
-      stats.forEach(stat => {
-        if (stat.type === 'candidate-pair' && stat.selected) {
-          selectedPair = stat;
-        } else if (stat.type === 'local-candidate') {
-          localCandidate = stat;
-        } else if (stat.type === 'remote-candidate') {
-          remoteCandidate = stat;
-        }
-      });
-      
-      if (selectedPair && localCandidate && remoteCandidate) {
-        log.info(`Selected ICE candidate pair: 
-          Local: ${localCandidate.candidateType} (${localCandidate.protocol}) 
-          Remote: ${remoteCandidate.candidateType} (${remoteCandidate.protocol})
-          RTT: ${selectedPair.currentRoundTripTime ? 
-            (selectedPair.currentRoundTripTime * 1000).toFixed(2) + 'ms' : 'unknown'}
-        `);
-      } else {
-        log.warn("Could not find selected ICE candidate pair");
-      }
-    } catch (err) {
-      log.error("Error getting selected candidate pair:", err);
-    }
-  };
-  
-  // Less aggressive connection recovery for temporary issues
-  const attemptConnectionRecovery = () => {
-    log.debug("Attempting connection recovery without full reconnect");
-    
-    try {
-      if (!peerConnectionRef.current) return;
-      
-      // Log current state
-      const signalingState = peerConnectionRef.current.signalingState;
-      const connectionState = peerConnectionRef.current.connectionState;
-      const iceConnectionState = peerConnectionRef.current.iceConnectionState;
-      
-      log.debug(`Recovery - Current state: signaling=${signalingState}, connection=${connectionState}, ice=${iceConnectionState}`);
-      
-      // Try to restart ICE if the connection exists
-      if (iceConnectionState === "disconnected" || iceConnectionState === "failed") {
-        log.debug("Trying to restart ICE negotiation");
-        peerConnectionRef.current.restartIce();
-        
-        // For disconnected state, try flushing candidates again
-        flushIceCandidates();
-        
-        // If not in a stable state, try to recover with a new offer
-        if (signalingState === "stable" && !isIncoming) {
-          log.debug("Creating recovery offer");
-          createOffer().catch(err => {
-            log.error("Error creating recovery offer:", err);
-          });
-        }
-      }
-    } catch (err) {
-      log.error("Error during connection recovery:", err);
-      // Fall back to full reconnect if recovery fails
-      attemptReconnect();
-    }
-  };
-  
-  // Full reconnect attempt for failed connections
-  const attemptReconnect = () => {
-    if (retryCount >= MAX_RETRY_COUNT) {
-      log.error(`Max retry count (${MAX_RETRY_COUNT}) reached`);
-      setConnectionError("Failed to establish connection after multiple attempts.");
-      setIsConnecting(false);
       return;
     }
-    
-    // Clear any existing timeout
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
-    
-    setIsConnecting(true);
-    setRetryCount(prev => prev + 1);
-    
-    log.debug(`Attempting full reconnect (attempt ${retryCount + 1}/${MAX_RETRY_COUNT})`);
-    
-    reconnectTimeoutRef.current = setTimeout(() => {
-      // Save ICE candidates that might be useful
-      const savedCandidates = iceCandidateQueueRef.current || [];
-      
-      // Close the existing connection
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-        peerConnectionRef.current = null;
-      }
-      
-      // Create a new peer connection
-      createPeerConnection().then(() => {
-        // Restore any ICE candidates that might still be useful
-        // (particularly useful for host candidates)
-        const hostCandidates = savedCandidates.filter(c => 
-          c && c.candidate && c.candidate.includes("host"));
-          
-        if (hostCandidates.length > 0) {
-          log.debug(`Restoring ${hostCandidates.length} host candidates from old connection`);
-          iceCandidateQueueRef.current = hostCandidates;
-        }
-        
-        // Start signaling again
-        startSignaling();
-      }).catch(err => {
-        log.error("Error during reconnection:", err);
-        setConnectionError(`Reconnection failed: ${err.message}`);
-        setIsConnecting(false);
-      });
-    }, 2000); // Wait 2 seconds before reconnecting
-  };
 
-  // Close the connection and clean up
-  const closeConnection = () => {
-    log.debug("Closing connection");
-    
-    // Clear any timeouts
-    if (signallingTimeoutRef.current) {
-      clearTimeout(signallingTimeoutRef.current);
+    try {
+      let stream = null;
+
+      try {
+        log.debug("Requesting user media with video and audio constraints.");
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: VIDEO_CONSTRAINTS,
+          audio: AUDIO_CONSTRAINTS
+        });
+        log.debug("Acquired video and audio stream.");
+        setIsLocalMuted(false);
+        setIsLocalVideoOff(false);
+      } catch (err) {
+        log.warn(`Media acquisition with audio+video failed: ${err.message}. Trying fallbacks.`);
+
+        // Fallback 1: Video only
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: VIDEO_CONSTRAINTS });
+          setIsLocalMuted(true);
+          setIsLocalVideoOff(false);
+          toast.warning("Microphone access failed. You are muted.");
+          log.warn("Acquired video-only stream.");
+        } catch (err2) {
+          log.warn(`Video-only acquisition failed: ${err2.message}. Trying audio only.`);
+
+          // Fallback 2: Audio only
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS });
+            setIsLocalMuted(false);
+            setIsLocalVideoOff(true);
+            toast.warning("Camera access failed. Using audio only.");
+            log.warn("Acquired audio-only stream.");
+          } catch (err3) {
+            log.error(`All media acquisition attempts failed: ${err3.message}`);
+            throw new Error("Could not access camera or microphone. Check connections & browser permissions.");
+          }
+        }
+      }
+
+      if (!stream) {
+        throw new Error("Media stream acquisition failed unexpectedly.");
+      }
+
+      localStreamRef.current = stream;
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        localVideoRef.current.muted = true; // Mute local playback to prevent echo
+
+        // If video is disabled, show placeholder canvas
+        if (stream.getVideoTracks().length === 0 || !stream.getVideoTracks()[0].enabled) {
+          setIsLocalVideoOff(true);
+          if (localPlaceholderRef.current) {
+            drawPlaceholderVideo(localPlaceholderRef.current, "Camera Off");
+          }
+        }
+      }
+
+      // Setup audio visualization
+      if (stream.getAudioTracks().length > 0) {
+        setupAudioVisualization();
+      }
+
+      log.info("Media initialized successfully.");
+    } catch (err) {
+      log.error("Media initialization failed:", err);
+      setConnectionError(`Media Error: ${err.message}`);
+      setIsConnecting(false);
+      throw err;
     }
-    
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
+  }, []);
+
+  // Setup audio visualization with Web Audio API
+  const setupAudioVisualization = useCallback(() => {
+    if (!localStreamRef.current || !localStreamRef.current.getAudioTracks().length) {
+      return;
     }
-    
-    // Stop all tracks in the local stream
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-      localStreamRef.current = null;
+
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+      // Local audio analyzer
+      const localSource = audioContext.createMediaStreamSource(localStreamRef.current);
+      const localAnalyser = audioContext.createAnalyser();
+      localAnalyser.fftSize = 256;
+      localSource.connect(localAnalyser);
+
+      audioAnalyserRef.current = localAnalyser;
+      audioDataRef.current = new Uint8Array(localAnalyser.frequencyBinCount);
+
+      // Remote audio will be set up when remote stream is received
+
+      // Start audio level monitoring
+      if (audioMeterIntervalRef.current) {
+        clearInterval(audioMeterIntervalRef.current);
+      }
+
+      audioMeterIntervalRef.current = setInterval(() => {
+        updateAudioLevels();
+      }, AUDIO_METER_INTERVAL);
+
+      log.debug("Audio visualization setup complete");
+    } catch (err) {
+      log.warn("Could not setup audio visualization:", err);
     }
-    
-    // Close the peer connection
+  }, []);
+
+  // Update audio level meters
+  const updateAudioLevels = useCallback(() => {
+    // Update local audio level
+    if (audioAnalyserRef.current && audioDataRef.current && !isLocalMuted) {
+      audioAnalyserRef.current.getByteFrequencyData(audioDataRef.current);
+
+      // Calculate average volume level
+      const average = Array.from(audioDataRef.current)
+        .reduce((sum, value) => sum + value, 0) / audioDataRef.current.length;
+
+      // Normalize to 0-1 range
+      const normalizedLevel = average / 255;
+      setLocalAudioLevel(normalizedLevel);
+
+      // Draw on canvas
+      if (localAudioCanvasRef.current) {
+        drawAudioLevel(localAudioCanvasRef.current, normalizedLevel);
+      }
+    } else if (isLocalMuted && localAudioCanvasRef.current) {
+      // Show muted state
+      drawAudioLevel(localAudioCanvasRef.current, 0);
+      setLocalAudioLevel(0);
+    }
+
+    // Update remote audio level
+    if (remoteAudioAnalyserRef.current && remoteAudioDataRef.current && !isRemoteMuted) {
+      remoteAudioAnalyserRef.current.getByteFrequencyData(remoteAudioDataRef.current);
+
+      // Calculate average volume level
+      const average = Array.from(remoteAudioDataRef.current)
+        .reduce((sum, value) => sum + value, 0) / remoteAudioDataRef.current.length;
+
+      // Normalize to 0-1 range
+      const normalizedLevel = average / 255;
+      setRemoteAudioLevel(normalizedLevel);
+
+      // Draw on canvas
+      if (remoteAudioCanvasRef.current) {
+        drawAudioLevel(remoteAudioCanvasRef.current, normalizedLevel);
+      }
+    } else if (isRemoteMuted && remoteAudioCanvasRef.current) {
+      // Show muted state
+      drawAudioLevel(remoteAudioCanvasRef.current, 0);
+      setRemoteAudioLevel(0);
+    }
+  }, [isLocalMuted, isRemoteMuted]);
+
+  // Flush queued remote ICE candidates after remote description is set
+  const flushCandidateQueue = useCallback(async () => {
+    if (!peerConnectionRef.current) {
+      return;
+    }
+
+    if (candidateFlushTimeoutRef.current) {
+      clearTimeout(candidateFlushTimeoutRef.current);
+      candidateFlushTimeoutRef.current = null;
+    }
+
+    if (!peerConnectionRef.current.remoteDescription) {
+      log.debug("Remote description not set yet, delaying candidate flush");
+      candidateFlushTimeoutRef.current = setTimeout(flushCandidateQueue, 500);
+      return;
+    }
+
+    const queue = [...iceCandidateQueueRef.current];
+    iceCandidateQueueRef.current = [];
+
+    if (queue.length > 0) {
+      log.debug(`Flushing ${queue.length} queued ICE candidates.`);
+    }
+
+    for (const candidate of queue) {
+      try {
+        const fingerprint = getCandidateFingerprint(candidate);
+
+        if (!processedCandidatesRef.current.has(fingerprint)) {
+          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          processedCandidatesRef.current.add(fingerprint);
+          log.debug("Added queued ICE candidate:", candidate.candidate?.slice(0, 50));
+        } else {
+          log.debug("Skipping already processed queued ICE candidate.");
+        }
+      } catch (err) {
+        log.error("Error adding queued ICE candidate:", err);
+
+        if (err.name === "OperationError" || err.message.includes("prerequisite")) {
+          iceCandidateQueueRef.current.push(candidate);
+        }
+      }
+    }
+
+    if (iceCandidateQueueRef.current.length > 0 && !candidateFlushTimeoutRef.current) {
+      log.warn(`Re-scheduling flush for ${iceCandidateQueueRef.current.length} candidates.`);
+      candidateFlushTimeoutRef.current = setTimeout(flushCandidateQueue, 1000);
+    }
+  }, []);
+
+  // Flush signals that arrived before the peer connection was ready
+  const flushIncomingSignalQueue = useCallback(() => {
+    if (incomingSignalQueueRef.current.length > 0) {
+      log.debug(`Flushing ${incomingSignalQueueRef.current.length} queued incoming signals`);
+
+      const queue = [...incomingSignalQueueRef.current];
+      incomingSignalQueueRef.current = [];
+
+      queue.forEach(data => {
+        handleVideoSignal(data);
+      });
+    }
+  }, []);
+
+  // Handle local ICE candidates gathering
+  const handleICECandidate = useCallback((event) => {
+    if (event.candidate && peerConnectionRef.current) {
+      const fingerprint = getCandidateFingerprint(event.candidate);
+
+      if (processedCandidatesRef.current.has(fingerprint)) {
+        log.debug("Skipping duplicate local ICE candidate.");
+        return;
+      }
+
+      processedCandidatesRef.current.add(fingerprint);
+      log.debug("Gathered local ICE candidate:", event.candidate.candidate?.slice(0, 50));
+
+      socketService.emit("videoSignal", {
+        recipientId,
+        signal: { type: "ice-candidate", candidate: event.candidate.toJSON() },
+        from: { userId, callId },
+      });
+    } else if (!event.candidate) {
+      log.debug("ICE gathering complete for this phase.");
+    }
+  }, [recipientId, userId, callId]);
+
+  // Handle remote tracks
+  const handleRemoteTrack = useCallback((event) => {
+    log.debug("Received remote track:", event.track?.kind, "Stream ID:", event.streams[0]?.id);
+
+    try {
+      if (!event.streams || event.streams.length === 0) {
+        log.warn("Remote track received without a stream.");
+        return;
+      }
+
+      const stream = event.streams[0];
+
+      // Setup remote audio visualization if it's an audio track
+      if (event.track.kind === "audio" && !remoteAudioAnalyserRef.current) {
+        try {
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          const remoteSource = audioContext.createMediaStreamSource(stream);
+          const remoteAnalyser = audioContext.createAnalyser();
+          remoteAnalyser.fftSize = 256;
+          remoteSource.connect(remoteAnalyser);
+
+          remoteAudioAnalyserRef.current = remoteAnalyser;
+          remoteAudioDataRef.current = new Uint8Array(remoteAnalyser.frequencyBinCount);
+
+          log.debug("Remote audio visualization setup complete");
+        } catch (err) {
+          log.warn("Could not setup remote audio visualization:", err);
+        }
+      }
+
+      // Attach stream to the remote video element if not already set
+      if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== stream) {
+        log.info("Attaching remote stream to video element.");
+        remoteVideoRef.current.srcObject = stream;
+
+        // Make sure we mark connection as established
+        connectionCompletedRef.current = true;
+        setIsConnected(true);
+        setIsConnecting(false);
+        setConnectionError(null);
+        setRetryCount(0);
+
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+        }
+
+        log.info("Connection established with media stream.");
+      }
+
+      // Update remote status based on track's initial muted state
+      if (event.track.kind === "audio") {
+        const initialMuted = event.track.muted || !event.track.enabled;
+        setIsRemoteMuted(initialMuted);
+
+        event.track.onmute = () => {
+          log.debug("Remote audio muted");
+          setIsRemoteMuted(true);
+        };
+
+        event.track.onunmute = () => {
+          log.debug("Remote audio unmuted");
+          setIsRemoteMuted(false);
+        };
+
+        event.track.onended = () => {
+          log.warn("Remote audio track ended");
+          setIsRemoteMuted(true);
+        };
+      } else if (event.track.kind === "video") {
+        const initialMuted = event.track.muted || !event.track.enabled;
+        setIsRemoteVideoOff(initialMuted);
+
+        // If video is disabled, show placeholder
+        if (initialMuted && remotePlaceholderRef.current) {
+          drawPlaceholderVideo(remotePlaceholderRef.current, "Remote Camera Off");
+        }
+
+        event.track.onmute = () => {
+          log.debug("Remote video disabled");
+          setIsRemoteVideoOff(true);
+          if (remotePlaceholderRef.current) {
+            drawPlaceholderVideo(remotePlaceholderRef.current, "Remote Camera Off");
+          }
+        };
+
+        event.track.onunmute = () => {
+          log.debug("Remote video enabled");
+          setIsRemoteVideoOff(false);
+        };
+
+        event.track.onended = () => {
+          log.warn("Remote video track ended");
+          setIsRemoteVideoOff(true);
+          if (remotePlaceholderRef.current) {
+            drawPlaceholderVideo(remotePlaceholderRef.current, "Remote Video Ended");
+          }
+        };
+      }
+    } catch (err) {
+      log.error("Error handling remote track:", err);
+    }
+  }, []);
+
+  // Handle connection state changes
+  const handleConnectionStateChange = useCallback(() => {
+    if (!peerConnectionRef.current) return;
+    const pc = peerConnectionRef.current;
+
+    log.debug("RTCPeerConnection state changed:", pc.connectionState);
+    const quality = getConnectionQuality(pc);
+    setConnectionQuality(quality);
+
+    // Update quality canvas
+    if (qualityCanvasRef.current) {
+      drawConnectionQuality(qualityCanvasRef.current, quality);
+    }
+
+    switch (pc.connectionState) {
+      case "connected":
+        // Force UI update when connection is established
+        log.info("Connection state connected - Updating UI");
+        connectionCompletedRef.current = true;
+        setIsConnected(true);
+        setIsConnecting(false);
+        setConnectionError(null);
+        negotiationInProgressRef.current = false;
+        setRetryCount(0);
+
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+        }
+
+        flushCandidateQueue();
+        break;
+
+      case "disconnected":
+        log.warn("Connection state disconnected");
+        // Don't immediately update UI, wait to see if it recovers
+        setTimeout(() => {
+          if (isMountedRef.current &&
+              peerConnectionRef.current?.connectionState === "disconnected") {
+            log.warn("Connection still disconnected after grace period");
+            setIsConnected(false);
+          }
+        }, 3000);
+        break;
+
+      case "failed":
+        log.error("Connection state failed");
+        setIsConnected(false);
+        setIsConnecting(false);
+        setConnectionError("Connection failed. Please retry.");
+        attemptReconnect(createPeerConnection, startSignaling);
+        break;
+
+      case "closed":
+        log.info("Connection state closed");
+        setIsConnected(false);
+        setIsConnecting(false);
+        break;
+
+      case "connecting":
+        log.debug("Connection state connecting");
+        if (!isConnected) {
+          setIsConnecting(true);
+        }
+        break;
+
+      case "new":
+        log.debug("Connection state new");
+        if (!isConnected) {
+          setIsConnecting(true);
+        }
+        break;
+    }
+  }, [flushCandidateQueue, isConnected]);
+
+  // Handle ICE connection state changes
+  const handleICEConnectionStateChange = useCallback(() => {
+    if (!peerConnectionRef.current) return;
+    const pc = peerConnectionRef.current;
+
+    log.debug("ICE connection state changed:", pc.iceConnectionState);
+    const quality = getConnectionQuality(pc);
+    setConnectionQuality(quality);
+
+    // Update quality canvas
+    if (qualityCanvasRef.current) {
+      drawConnectionQuality(qualityCanvasRef.current, quality);
+    }
+
+    switch (pc.iceConnectionState) {
+      case "connected":
+      case "completed":
+        // Force UI update
+        log.info(`ICE connection ${pc.iceConnectionState} - Updating UI`);
+        connectionCompletedRef.current = true;
+        setIsConnected(true);
+        setIsConnecting(false);
+        setConnectionError(null);
+        flushCandidateQueue();
+        break;
+
+      case "failed":
+        log.error("ICE connection failed");
+        setIsConnected(false);
+        setConnectionError("Network connection failed.");
+        attemptConnectionRecovery(createOffer);
+        break;
+
+      case "disconnected":
+        log.warn("ICE connection disconnected, attempting recovery");
+        setTimeout(() => {
+          if (isMountedRef.current &&
+              peerConnectionRef.current?.iceConnectionState === "disconnected") {
+            attemptConnectionRecovery(createOffer);
+          }
+        }, 1500);
+        break;
+    }
+  }, [flushCandidateQueue]);
+
+  // Create and configure the RTCPeerConnection
+  const createPeerConnection = useCallback(async () => {
+    log.debug("Attempting to create new RTCPeerConnection");
+
+    // Clean up any existing connection
     if (peerConnectionRef.current) {
+      log.warn("Closing existing peer connection before creating a new one.");
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
-  };
 
-  // Toggle local audio
-  const toggleMute = () => {
-    if (localStreamRef.current) {
-      const audioTracks = localStreamRef.current.getAudioTracks();
-      
-      if (audioTracks.length > 0) {
-        const newMuteState = !isLocalMuted;
-        audioTracks[0].enabled = !newMuteState;
-        setIsLocalMuted(newMuteState);
-        
-        // Notify the other peer about the audio state change
-        socketService.emit("videoMediaControl", {
-          recipientId,
-          type: "audio",
-          muted: newMuteState
+    // Reset state
+    processedCandidatesRef.current.clear();
+    processedSignalsRef.current.clear();
+    iceCandidateQueueRef.current = [];
+    incomingSignalQueueRef.current = [];
+    negotiationInProgressRef.current = false;
+
+    try {
+      const pc = new RTCPeerConnection(PEER_CONNECTION_CONFIG);
+      log.debug("RTCPeerConnection created with config:", PEER_CONNECTION_CONFIG);
+
+      // Add local media tracks
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => {
+          try {
+            pc.addTrack(track, localStreamRef.current);
+            log.debug(`Added local ${track.kind} track to peer connection.`);
+          } catch (trackError) {
+            log.error(`Failed to add ${track.kind} track:`, trackError);
+          }
         });
-        
-        log.debug(`Local audio ${newMuteState ? 'muted' : 'unmuted'}`);
+      } else {
+        log.warn("No local stream available when creating peer connection.");
+        throw new Error("Local media stream missing.");
       }
-    }
-  };
 
-  // Toggle local video
-  const toggleVideo = () => {
-    if (localStreamRef.current) {
-      const videoTracks = localStreamRef.current.getVideoTracks();
-      
-      if (videoTracks.length > 0) {
-        const newVideoState = !isLocalVideoOff;
-        videoTracks[0].enabled = !newVideoState;
-        setIsLocalVideoOff(newVideoState);
-        
-        // Notify the other peer about the video state change
-        socketService.emit("videoMediaControl", {
-          recipientId,
-          type: "video",
-          muted: newVideoState
+      // Setup event listeners
+      pc.ontrack = handleRemoteTrack;
+      pc.onicecandidate = handleICECandidate;
+      pc.onconnectionstatechange = handleConnectionStateChange;
+      pc.oniceconnectionstatechange = handleICEConnectionStateChange;
+
+      // Additional state monitoring
+      pc.onicegatheringstatechange = () => {
+        log.debug("ICE gathering state:", pc.iceGatheringState);
+
+        if (pc.iceGatheringState === "complete") {
+          flushCandidateQueue();
+        }
+      };
+
+      pc.onsignalingstatechange = () => {
+        log.debug("Signaling state changed:", pc.signalingState);
+        negotiationInProgressRef.current = (pc.signalingState !== "stable");
+      };
+
+      pc.onnegotiationneeded = () => {
+        log.debug("Negotiation needed event fired. Current state:", pc.signalingState);
+      };
+
+      peerConnectionRef.current = pc;
+      log.info("Peer connection created and listeners attached successfully.");
+
+      // Process any signals that arrived before PC was ready
+      flushIncomingSignalQueue();
+
+      return pc;
+    } catch (err) {
+      log.error("Fatal error creating peer connection:", err);
+      setConnectionError(`Failed to initialize connection: ${err.message}`);
+      setIsConnecting(false);
+      throw err;
+    }
+  }, [
+    handleRemoteTrack,
+    handleICECandidate,
+    handleConnectionStateChange,
+    handleICEConnectionStateChange,
+    flushCandidateQueue,
+    flushIncomingSignalQueue
+  ]);
+
+  // Create an offer
+  const createOffer = useCallback(async (options = {}) => {
+    if (!peerConnectionRef.current) {
+      log.error("Cannot create offer: Peer connection does not exist.");
+      return;
+    }
+
+    const pc = peerConnectionRef.current;
+
+    // Prevent offer creation if state is not stable or negotiation is ongoing
+    if (pc.signalingState !== "stable") {
+      log.warn(`Cannot create offer in signaling state: ${pc.signalingState}. Aborting.`);
+      return;
+    }
+
+    if (negotiationInProgressRef.current) {
+      log.warn("Negotiation already in progress, skipping offer creation.");
+      return;
+    }
+
+    try {
+      negotiationInProgressRef.current = true;
+      log.debug("Creating offer...");
+
+      // Options: iceRestart can be used for recovery
+      const offerOptions = {
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+        iceRestart: options?.iceRestart || false,
+      };
+
+      const offer = await pc.createOffer(offerOptions);
+
+      // Check state again before setting local description
+      if (pc.signalingState !== "stable") {
+        log.warn(`Signaling state changed to ${pc.signalingState} during offer creation. Aborting.`);
+        negotiationInProgressRef.current = false;
+        return;
+      }
+
+      await pc.setLocalDescription(offer);
+      log.debug("Offer created and set as local description.");
+
+      // Send the offer via signaling
+      const signalPayload = { type: "offer", sdp: pc.localDescription };
+      const signalId = getSignalId(signalPayload);
+      processedSignalsRef.current.add(signalId);
+
+      socketService.emit("videoSignal", {
+        recipientId,
+        signal: signalPayload,
+        from: { userId, callId },
+      });
+
+      log.debug("Offer sent to remote peer.");
+      flushCandidateQueue();
+    } catch (err) {
+      log.error("Error creating or setting offer:", err);
+      setConnectionError(`Signaling Error: ${err.message}`);
+      negotiationInProgressRef.current = false;
+      attemptConnectionRecovery(createOffer);
+    }
+  }, [recipientId, userId, callId, flushCandidateQueue]);
+
+  // Create an answer
+  const createAnswer = useCallback(async () => {
+    if (!peerConnectionRef.current) {
+      log.error("Cannot create answer: Peer connection does not exist.");
+      return;
+    }
+
+    const pc = peerConnectionRef.current;
+
+    // Should only create answer if we have a remote offer
+    if (pc.signalingState !== "have-remote-offer") {
+      log.warn(`Cannot create answer in signaling state: ${pc.signalingState}. Aborting.`);
+      return;
+    }
+
+    try {
+      negotiationInProgressRef.current = true;
+      log.debug("Creating answer...");
+
+      const answer = await pc.createAnswer();
+
+      // Check state again before setting local description
+      if (pc.signalingState !== "have-remote-offer") {
+        log.warn(`Signaling state changed to ${pc.signalingState} during answer creation. Aborting.`);
+        negotiationInProgressRef.current = false;
+        return;
+      }
+
+      await pc.setLocalDescription(answer);
+      log.debug("Answer created and set as local description.");
+
+      // Send the answer via signaling
+      const signalPayload = { type: "answer", sdp: pc.localDescription };
+      const signalId = getSignalId(signalPayload);
+      processedSignalsRef.current.add(signalId);
+
+      socketService.emit("videoSignal", {
+        recipientId,
+        signal: signalPayload,
+        from: { userId, callId },
+      });
+
+      log.debug("Answer sent to remote peer.");
+      flushCandidateQueue();
+    } catch (err) {
+      log.error("Error creating or setting answer:", err);
+      setConnectionError(`Signaling Error: ${err.message}`);
+      negotiationInProgressRef.current = false;
+      attemptConnectionRecovery(createOffer);
+    }
+  }, [recipientId, userId, callId, flushCandidateQueue, createOffer]);
+
+  // Socket signal handler for incoming WebRTC signaling messages
+  const handleVideoSignal = useCallback((data) => {
+    // Basic validation
+    if (!data || !data.signal || !data.signal.type || !data.userId) {
+      log.warn("Received invalid signal data structure.");
+      return;
+    }
+
+    // Ignore signals not from expected recipient
+    if (data.userId !== recipientId) {
+      log.debug(`Ignoring signal from unexpected user: ${data.userId}`);
+      return;
+    }
+
+    const signal = data.signal;
+    const signalType = signal.type;
+    log.debug(`Received '${signalType}' signal from ${data.userId}`);
+
+    // If peer connection isn't ready yet, queue the signal
+    if (!peerConnectionRef.current) {
+      log.warn(`Peer connection not ready. Queuing '${signalType}' signal.`);
+      incomingSignalQueueRef.current.push(data);
+      return;
+    }
+
+    const pc = peerConnectionRef.current;
+    const currentState = pc.signalingState;
+    log.debug(`Processing '${signalType}'. Current state: ${currentState}. Negotiation: ${negotiationInProgressRef.current}`);
+
+    // Prevent processing duplicate signals
+    const signalId = getSignalId(signal);
+    if (processedSignalsRef.current.has(signalId)) {
+      log.debug(`Ignoring duplicate '${signalType}' signal (ID: ${signalId.substring(0, 50)}...)`);
+      return;
+    }
+
+    try {
+      switch (signalType) {
+        case "request-offer":
+          log.debug("Received request-offer signal.");
+          if (currentState === "stable" && !negotiationInProgressRef.current) {
+            createOffer().catch(err => log.error("Error creating offer:", err));
+          } else {
+            log.warn(`Cannot create offer now upon request. State: ${currentState}, Negotiation: ${negotiationInProgressRef.current}`);
+          }
+          break;
+
+        case "offer":
+          log.debug("Processing received offer.");
+          processedSignalsRef.current.add(signalId);
+
+          // Offer/Answer Collision (Glare) Handling
+          const isMakingOffer = negotiationInProgressRef.current && currentState === "have-local-offer";
+
+          if (isMakingOffer) {
+            log.warn("Offer collision detected (both peers sending offers).");
+            // Use user IDs as tie-breaker. Higher ID accepts offer
+            const politePeer = userId > recipientId;
+
+            if (politePeer) {
+              log.debug("This peer is polite. Rolling back local offer and accepting remote offer.");
+              negotiationInProgressRef.current = false;
+
+              // Handle rollback case with promise chain instead of await
+              pc.setLocalDescription({ type: "rollback" })
+                .then(() => pc.setRemoteDescription(new RTCSessionDescription(signal.sdp)))
+                .then(() => {
+                  flushCandidateQueue();
+                  return createAnswer();
+                })
+                .catch(err => {
+                  log.error("Error handling polite offer collision:", err);
+                });
+            } else {
+              log.debug("This peer is impolite. Ignoring remote offer, expecting peer to accept ours.");
+              // Do nothing, other side should accept our offer
+            }
+          }
+          // Regular Offer Handling
+          else if (currentState === "stable" || currentState === "have-remote-offer") {
+            // Replace await with promise chain
+            pc.setRemoteDescription(new RTCSessionDescription(signal.sdp))
+              .then(() => {
+                log.debug("Remote offer set successfully.");
+                flushCandidateQueue();
+
+                // Create answer if state is now have-remote-offer
+                if (pc.signalingState === "have-remote-offer") {
+                  return createAnswer();
+                } else {
+                  log.warn(`State after setting remote offer is ${pc.signalingState}, not creating answer yet.`);
+                }
+              })
+              .catch(err => {
+                log.error("Error setting remote description:", err);
+                setConnectionError(`Signaling Error: ${err.message}`);
+              });
+          } else {
+            log.error(`Cannot handle offer in unexpected state: ${currentState}.`);
+            attemptConnectionRecovery(createOffer);
+          }
+          break;
+
+        case "answer":
+          log.debug("Processing received answer.");
+
+          if (currentState === "have-local-offer") {
+            processedSignalsRef.current.add(signalId);
+
+            // Replace await with promise chain
+            pc.setRemoteDescription(new RTCSessionDescription(signal.sdp))
+              .then(() => {
+                log.debug("Remote answer set successfully. Connection should establish soon.");
+                negotiationInProgressRef.current = false;
+                flushCandidateQueue();
+              })
+              .catch(err => {
+                log.error("Error setting remote answer description:", err);
+                setConnectionError(`Signaling Error: ${err.message}`);
+              });
+          } else {
+            log.warn(`Received answer in unexpected state: ${currentState}. Ignoring.`);
+            // This could be a late/duplicate answer
+          }
+          break;
+
+        case "ice-candidate":
+          if (!signal.candidate) {
+            log.debug("Received empty ICE candidate signal (end of candidates).");
+            return;
+          }
+
+          const candidate = new RTCIceCandidate(signal.candidate);
+          const fingerprint = getCandidateFingerprint(candidate);
+
+          if (processedCandidatesRef.current.has(fingerprint)) {
+            log.debug("Skipping duplicate remote ICE candidate.");
+            return;
+          }
+
+          // Queue if remote description not yet set
+          if (!pc.remoteDescription) {
+            log.debug("Queuing remote ICE candidate (no remote description yet).");
+            iceCandidateQueueRef.current.push(candidate);
+          } else {
+            // Replace await with promise chain
+            pc.addIceCandidate(candidate)
+              .then(() => {
+                processedCandidatesRef.current.add(fingerprint);
+                log.debug("Added remote ICE candidate:", candidate.candidate?.slice(0, 50));
+              })
+              .catch(err => {
+                log.error("Error adding remote ICE candidate:", err);
+                // Only re-queue if we think it might succeed later
+                if (pc.signalingState !== 'closed') {
+                  iceCandidateQueueRef.current.push(candidate);
+                }
+              });
+          }
+          break;
+
+        default:
+          log.warn(`Received unknown signal type: ${signalType}`);
+      }
+    } catch (err) {
+      log.error(`Error processing signal type ${signalType}:`, err);
+      setConnectionError(`Signaling Error: ${err.message}`);
+      negotiationInProgressRef.current = false;
+      attemptConnectionRecovery(createOffer);
+    }
+  }, [
+    recipientId,
+    userId,
+    callId,
+    createOffer,
+    createAnswer,
+    flushCandidateQueue
+  ]);
+
+  // Attempt less disruptive recovery (ICE Restart)
+  const attemptConnectionRecovery = useCallback((createOfferFunc) => {
+    if (!peerConnectionRef.current || !isMountedRef.current) return;
+    const pc = peerConnectionRef.current;
+
+    log.warn("Attempting connection recovery (ICE Restart).");
+
+    // Update UI to show recovery attempt
+    setConnectionQuality(getConnectionQuality(pc));
+
+    if (qualityCanvasRef.current) {
+      drawConnectionQuality(qualityCanvasRef.current, "poor");
+    }
+
+    // Check if ICE restart is supported and needed
+    if (
+      typeof pc.restartIce === "function" &&
+      (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed")
+    ) {
+      log.debug("Performing ICE restart.");
+      negotiationInProgressRef.current = false;
+      pc.restartIce();
+
+      // An offer might need to be created after ICE restart
+      if (!isIncoming && pc.signalingState === 'stable') {
+        log.debug("Initiator attempting offer creation after ICE restart.");
+
+        setTimeout(() => {
+          if (isMountedRef.current &&
+              peerConnectionRef.current?.signalingState === 'stable') {
+            createOfferFunc({ iceRestart: true })
+              .catch(e => log.error("Error creating recovery offer:", e));
+          }
+        }, 500);
+      }
+    } else {
+      log.warn(`ICE restart not applicable or supported. State: ${pc.iceConnectionState}. Attempting full reconnect.`);
+      attemptReconnect(createPeerConnection, startSignaling);
+    }
+  }, [isIncoming]);
+
+  // Attempt full reconnection (create new PeerConnection)
+  const attemptReconnect = useCallback((createPC, startSig) => {
+    if (!isMountedRef.current) return;
+
+    if (retryCount >= MAX_RETRY_COUNT) {
+      log.error("Max reconnection attempts reached. Giving up.");
+      setConnectionError(
+        "Failed to establish connection after multiple attempts. Please check network or try again later."
+      );
+      setIsConnecting(false);
+      return;
+    }
+
+    // Avoid scheduling multiple reconnects
+    if (reconnectTimeoutRef.current) {
+      log.debug("Reconnect attempt already scheduled.");
+      return;
+    }
+
+    setIsConnecting(true);
+    setIsConnected(false);
+    setRetryCount(prev => prev + 1);
+
+    const currentAttempt = retryCount + 1;
+    log.warn(`Attempting full reconnect (${currentAttempt}/${MAX_RETRY_COUNT}) in ${RECONNECT_DELAY}ms...`);
+
+    setConnectionError(`Connection lost. Attempting to reconnect (${currentAttempt}/${MAX_RETRY_COUNT})...`);
+
+    reconnectTimeoutRef.current = setTimeout(async () => {
+      reconnectTimeoutRef.current = null;
+
+      if (!isMountedRef.current) return;
+
+      log.debug(`Executing reconnect attempt ${currentAttempt}`);
+
+      try {
+        // Create a completely new peer connection
+        await createPC();
+
+        if (!isMountedRef.current) return;
+
+        // Re-initialize signaling
+        await startSig();
+        log.info(`Reconnect attempt ${currentAttempt} initiated signaling.`);
+      } catch (err) {
+        log.error(`Error during reconnection attempt ${currentAttempt}:`, err);
+        setConnectionError(`Reconnection failed: ${err.message}`);
+        setIsConnecting(false);
+
+        // Schedule next retry if applicable
+        if (currentAttempt < MAX_RETRY_COUNT) {
+          attemptReconnect(createPC, startSig);
+        } else {
+          log.error("Final reconnection attempt failed.");
+          setConnectionError("Failed to reconnect. Please try again later.");
+        }
+      }
+    }, RECONNECT_DELAY);
+  }, [retryCount]);
+
+  // Start the signaling process
+  const startSignaling = useCallback(async () => {
+    log.debug(`Starting signaling. Role: ${isIncoming ? "Callee (Incoming)" : "Caller (Outgoing)"}`);
+
+    if (signallingTimeoutRef.current) {
+      clearTimeout(signallingTimeoutRef.current);
+    }
+
+    // Timeout for the signaling phase
+    signallingTimeoutRef.current = setTimeout(() => {
+      if (isMountedRef.current && !isConnected && isConnecting) {
+        log.error("Signaling timeout reached. Connection failed.");
+        setConnectionError(
+          "Connection timed out. Peer might be offline or network issues."
+        );
+        setIsConnecting(false);
+      }
+    }, SIGNALLING_TIMEOUT);
+
+    try {
+      if (!peerConnectionRef.current) {
+        throw new Error("Peer connection not initialized before starting signaling.");
+      }
+
+      if (isIncoming) {
+        // Callee waits for an offer
+        log.debug("Incoming call: Waiting for offer from caller.");
+      } else {
+        // Caller initiates by creating an offer
+        log.debug("Outgoing call: Creating initial offer.");
+        await createOffer();
+      }
+    } catch (err) {
+      log.error("Error during signaling initiation:", err);
+      setConnectionError(`Signaling Error: ${err.message}`);
+      setIsConnecting(false);
+    }
+  }, [isIncoming, createOffer, isConnected, isConnecting]);
+
+  // Gather WebRTC stats for debugging and quality monitoring
+  const getConnectionStats = useCallback(async () => {
+    if (!peerConnectionRef.current || !isConnected) return;
+
+    try {
+      const statsReport = await peerConnectionRef.current.getStats();
+
+      // Extract useful stats
+      let inboundVideo = null;
+      let inboundAudio = null;
+      let outboundVideo = null;
+      let candidatePair = null;
+
+      statsReport.forEach(report => {
+        if (report.type === 'inbound-rtp' && report.kind === 'video') {
+          inboundVideo = report;
+        }
+        if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+          inboundAudio = report;
+        }
+        if (report.type === 'outbound-rtp' && report.kind === 'video') {
+          outboundVideo = report;
+        }
+        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+          candidatePair = report;
+        }
+      });
+
+      // Update video stats
+      if (inboundVideo) {
+        const width = inboundVideo.frameWidth || 0;
+        const height = inboundVideo.frameHeight || 0;
+        const fps = Math.round(inboundVideo.framesPerSecond || 0);
+
+        setVideoStats({
+          resolution: width && height ? `${width}x${height}` : "",
+          frameRate: fps,
+          bitrate: Math.round((inboundVideo.bytesReceived || 0) / 1024 / 8) // kbps
         });
-        
-        log.debug(`Local video ${newVideoState ? 'disabled' : 'enabled'}`);
       }
-    }
-  };
 
-  // Handle ending the call
-  const handleEndCall = () => {
-    // Notify the other peer about the hangup
-    socketService.emit("videoHangup", {
-      recipientId
-    });
-    
-    // Call the onEndCall callback
+      // Update connection quality based on stats
+      if (candidatePair && inboundVideo) {
+        // Quality formula based on multiple factors
+        const rtt = candidatePair.currentRoundTripTime || 0;
+        const packetsLost = inboundVideo.packetsLost || 0;
+        const packetsReceived = inboundVideo.packetsReceived || 1;
+        const lossRate = packetsLost / (packetsLost + packetsReceived);
+        const jitter = inboundVideo.jitter || 0;
+
+        let quality = "unknown";
+
+        if (rtt < 0.1 && lossRate < 0.01 && jitter < 0.01) {
+          quality = "excellent";
+        } else if (rtt < 0.3 && lossRate < 0.05 && jitter < 0.03) {
+          quality = "good";
+        } else if (rtt < 0.5 && lossRate < 0.1 && jitter < 0.05) {
+          quality = "fair";
+        } else {
+          quality = "poor";
+        }
+
+        setConnectionQuality(quality);
+
+        // Update quality visualization
+        if (qualityCanvasRef.current) {
+          drawConnectionQuality(qualityCanvasRef.current, quality);
+        }
+      }
+    } catch (err) {
+      log.warn("Error getting WebRTC stats:", err);
+    }
+  }, [isConnected]);
+
+  // Clean up connection resources
+  const closeConnection = useCallback(() => {
+    log.info("Closing VideoCall connection and cleaning up resources.");
+
+    // Clear all timeouts and intervals
+    if (signallingTimeoutRef.current) clearTimeout(signallingTimeoutRef.current);
+    if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
+    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+    if (candidateFlushTimeoutRef.current) clearTimeout(candidateFlushTimeoutRef.current);
+    if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
+    if (audioMeterIntervalRef.current) clearInterval(audioMeterIntervalRef.current);
+
+    signallingTimeoutRef.current = null;
+    connectionTimeoutRef.current = null;
+    reconnectTimeoutRef.current = null;
+    candidateFlushTimeoutRef.current = null;
+    statsIntervalRef.current = null;
+    audioMeterIntervalRef.current = null;
+
+    // Stop local media tracks
+    if (localStreamRef.current) {
+      log.debug("Stopping local media tracks.");
+      localStreamRef.current.getTracks().forEach((track) => {
+        track.stop();
+      });
+      localStreamRef.current = null;
+    }
+
+    // Clean up audio analyzers
+    audioAnalyserRef.current = null;
+    audioDataRef.current = null;
+    remoteAudioAnalyserRef.current = null;
+    remoteAudioDataRef.current = null;
+
+    // Detach streams from video elements
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+
+    // Close peer connection
+    if (peerConnectionRef.current) {
+      log.debug("Closing RTCPeerConnection.");
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+
+    // Clear other refs
+    iceCandidateQueueRef.current = [];
+    incomingSignalQueueRef.current = [];
+    processedCandidatesRef.current.clear();
+    processedSignalsRef.current.clear();
+    negotiationInProgressRef.current = false;
+    connectionCompletedRef.current = false;
+
+    log.debug("VideoCall cleanup complete.");
+  }, []);
+
+  // Media control functions
+  const toggleMute = useCallback(() => {
+    if (!localStreamRef.current) return;
+
+    const audioTracks = localStreamRef.current.getAudioTracks();
+    if (audioTracks.length > 0) {
+      const newMuteState = !isLocalMuted;
+      audioTracks[0].enabled = !newMuteState;
+      setIsLocalMuted(newMuteState);
+
+      // Update canvas
+      if (localAudioCanvasRef.current) {
+        drawAudioLevel(localAudioCanvasRef.current, newMuteState ? 0 : localAudioLevel);
+      }
+
+      log.debug(`Local audio ${newMuteState ? "muted" : "unmuted"}.`);
+
+      // Notify remote peer
+      socketService.emit("videoMediaControl", {
+        recipientId,
+        type: "audio",
+        muted: newMuteState,
+      });
+    } else {
+      log.warn("Attempted to toggle mute but no local audio track found.");
+    }
+  }, [isLocalMuted, recipientId, localAudioLevel]);
+
+  const toggleVideo = useCallback(() => {
+    if (!localStreamRef.current) return;
+
+    const videoTracks = localStreamRef.current.getVideoTracks();
+    if (videoTracks.length > 0) {
+      const newVideoState = !isLocalVideoOff;
+      videoTracks[0].enabled = !newVideoState;
+      setIsLocalVideoOff(newVideoState);
+
+      // Update placeholder
+      if (localPlaceholderRef.current) {
+        if (newVideoState) {
+          drawPlaceholderVideo(localPlaceholderRef.current, "Camera Off");
+        }
+      }
+
+      log.debug(`Local video ${newVideoState ? "disabled" : "enabled"}.`);
+
+      // Notify remote peer
+      socketService.emit("videoMediaControl", {
+        recipientId,
+        type: "video",
+        muted: newVideoState,
+      });
+    } else {
+      log.warn("Attempted to toggle video but no local video track found.");
+    }
+  }, [isLocalVideoOff, recipientId]);
+
+  const handleEndCall = useCallback(() => {
+    log.info("User initiated end call.");
+
+    socketService.emit("videoHangup", { recipientId });
+
     if (onEndCall) {
       onEndCall();
     }
-  };
+  }, [recipientId, onEndCall]);
 
-  // Toggle fullscreen mode
-  const toggleFullscreen = () => {
+  const toggleFullscreen = useCallback(() => {
     const container = document.querySelector(".video-container");
-    
     if (!container) return;
-    
+
     if (!document.fullscreenElement) {
-      container.requestFullscreen().catch(err => {
-        toast.error(`Error entering fullscreen: ${err.message}`);
-      });
-      setIsFullscreen(true);
+      container.requestFullscreen()
+        .then(() => setIsFullscreen(true))
+        .catch((err) => toast.error(`Could not enter fullscreen: ${err.message}`));
     } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
+      document.exitFullscreen()
+        .then(() => setIsFullscreen(false));
     }
-  };
+  }, []);
 
-  // Format the call duration time
-  const formatDuration = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
+  // --- Effects ---
 
-  // Format connection error messages for display
-  const formatErrorMessage = (error) => {
-    if (!error) return null;
-    
-    // Common error messages and their user-friendly versions
-    const errorMap = {
-      'Failed to access camera or microphone: Permission denied': 'Camera or microphone access was denied. Please check your browser permissions.',
-      'Failed to access camera or microphone: NotFoundError': 'Could not find a camera or microphone. Please check your device.',
-      'Connection timed out': 'Connection timed out. The other person may be having connection issues.',
-    };
-    
-    // Return the mapped error or the original error if no mapping exists
-    return errorMap[error] || error;
-  };
-
-  // Show/hide controls based on mouse movement
+  // Effect to manage component mount state
   useEffect(() => {
-    let controlsTimeout;
-    
+    isMountedRef.current = true;
+    log.debug("VideoCall component mounted.");
+
+    return () => {
+      isMountedRef.current = false;
+      log.debug("VideoCall component unmounting.");
+      closeConnection();
+    };
+  }, [closeConnection]);
+
+  // Effect for setting up and initializing the call
+  useEffect(() => {
+    if (isActive && isMountedRef.current) {
+      log.info("VideoCall activated. Initializing...");
+
+      // Reset connection state
+      connectionCompletedRef.current = false;
+
+      // Set overall connection timeout
+      connectionTimeoutRef.current = setTimeout(() => {
+        if (isMountedRef.current && !connectionCompletedRef.current) {
+          log.error("Overall connection timeout reached.");
+          setConnectionError("Connection failed to establish after 30 seconds.");
+          setIsConnecting(false);
+        }
+      }, CONNECTION_TIMEOUT);
+
+      // Initialization sequence
+      const initializeCall = async () => {
+        try {
+          setConnectionError(null);
+          setIsConnecting(true);
+          setRetryCount(0);
+
+          await initializeMedia();
+          if (!isMountedRef.current) return;
+
+          await createPeerConnection();
+          if (!isMountedRef.current) return;
+
+          await startSignaling();
+          if (!isMountedRef.current) return;
+
+          log.info("Call initialization sequence completed.");
+        } catch (err) {
+          log.error("Error during call initialization sequence:", err);
+          setIsConnecting(false);
+          setConnectionError(`Setup failed: ${err.message}`);
+        }
+      };
+
+      initializeCall();
+
+      // Set up stats gathering interval
+      statsIntervalRef.current = setInterval(() => {
+        getConnectionStats();
+      }, STATS_INTERVAL);
+
+      // Start call duration timer
+      const durationInterval = setInterval(() => {
+        setCallDuration((prev) => prev + 1);
+      }, 1000);
+
+      // Return cleanup function
+      return () => {
+        log.info("VideoCall deactivated or unmounting. Cleaning up active call.");
+        clearInterval(durationInterval);
+        if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
+        if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
+        closeConnection();
+        setCallDuration(0);
+      };
+    } else if (!isActive && peerConnectionRef.current) {
+      // If call becomes inactive, ensure cleanup
+      log.info("VideoCall deactivated. Performing cleanup.");
+      closeConnection();
+
+      // Reset state for potential reactivation
+      setIsConnected(false);
+      setIsConnecting(false);
+      setConnectionError(null);
+      setRetryCount(0);
+      setCallDuration(0);
+    }
+  }, [
+    isActive,
+    initializeMedia,
+    createPeerConnection,
+    startSignaling,
+    closeConnection,
+    getConnectionStats
+  ]);
+
+  // Effect for setting up socket event listeners
+  useEffect(() => {
+    if (!isActive) return;
+
+    log.debug("Setting up socket listeners for VideoCall");
+
+    // Socket event handlers
+    const handleVideoSignalEvent = (data) => handleVideoSignal(data);
+
+    const handleHangup = (data) => {
+      if (data.userId === recipientId) {
+        log.info("Received hangup signal from peer.");
+        toast.info("The other user has ended the call.");
+        if (onEndCall) onEndCall();
+      }
+    };
+
+    const handleMediaControl = (data) => {
+      if (data.userId === recipientId) {
+        log.debug(`Received media control from peer: ${data.type} = ${data.muted}`);
+        if (data.type === "audio") {
+          setIsRemoteMuted(data.muted);
+          if (remoteAudioCanvasRef.current) {
+            drawAudioLevel(remoteAudioCanvasRef.current, data.muted ? 0 : remoteAudioLevel);
+          }
+        }
+        if (data.type === "video") {
+          setIsRemoteVideoOff(data.muted);
+          if (data.muted && remotePlaceholderRef.current) {
+            drawPlaceholderVideo(remotePlaceholderRef.current, "Remote Camera Off");
+          }
+        }
+      }
+    };
+
+    const handleErrorSignal = (data) => {
+      log.error("Received error signal from peer or server:", data?.error);
+      setConnectionError(`Remote Error: ${data?.error || 'Unknown issue'}`);
+      setIsConnecting(false);
+    };
+
+    // Register event listeners
+    const listeners = [
+      socketService.on("videoSignal", handleVideoSignalEvent),
+      socketService.on("videoHangup", handleHangup),
+      socketService.on("videoMediaControl", handleMediaControl),
+      socketService.on("videoError", handleErrorSignal),
+    ];
+
+    // Return cleanup function
+    return () => {
+      log.debug("Removing socket listeners for VideoCall");
+      listeners.forEach(removeListener => removeListener());
+    };
+  }, [isActive, recipientId, onEndCall, handleVideoSignal, remoteAudioLevel]);
+
+  // Effect for showing/hiding controls on mouse movement
+  useEffect(() => {
+    let controlsTimeout = null;
+
     const handleMouseMove = () => {
       setShowControls(true);
-      
-      clearTimeout(controlsTimeout);
-      
+      if (controlsTimeout) clearTimeout(controlsTimeout);
       controlsTimeout = setTimeout(() => {
-        setShowControls(false);
+        if (isMountedRef.current) setShowControls(false);
       }, 3000);
     };
-    
-    const videoContainer = document.querySelector(".video-container");
-    
-    if (videoContainer) {
-      videoContainer.addEventListener("mousemove", handleMouseMove);
+
+    const container = document.querySelector(".video-container");
+    if (container) {
+      container.addEventListener("mousemove", handleMouseMove);
+      handleMouseMove(); // Initially show controls
     }
-    
+
     return () => {
-      clearTimeout(controlsTimeout);
-      
-      if (videoContainer) {
-        videoContainer.removeEventListener("mousemove", handleMouseMove);
-      }
+      if (controlsTimeout) clearTimeout(controlsTimeout);
+      container?.removeEventListener("mousemove", handleMouseMove);
     };
   }, []);
 
-  // Main render method
+  // Effect for initializing canvas elements and updates
+  useEffect(() => {
+    // Initialize quality canvas
+    if (qualityCanvasRef.current) {
+      drawConnectionQuality(qualityCanvasRef.current, connectionQuality);
+    }
+
+    // Initialize audio level canvases
+    if (localAudioCanvasRef.current) {
+      drawAudioLevel(localAudioCanvasRef.current, isLocalMuted ? 0 : localAudioLevel);
+    }
+
+    if (remoteAudioCanvasRef.current) {
+      drawAudioLevel(remoteAudioCanvasRef.current, isRemoteMuted ? 0 : remoteAudioLevel);
+    }
+
+    // Initialize video placeholders if needed
+    if (isLocalVideoOff && localPlaceholderRef.current) {
+      drawPlaceholderVideo(localPlaceholderRef.current, "Camera Off");
+    }
+
+    if (isRemoteVideoOff && remotePlaceholderRef.current) {
+      drawPlaceholderVideo(remotePlaceholderRef.current, "Remote Camera Off");
+    }
+  }, [
+    connectionQuality,
+    localAudioLevel,
+    remoteAudioLevel,
+    isLocalMuted,
+    isRemoteMuted,
+    isLocalVideoOff,
+    isRemoteVideoOff
+  ]);
+
+  // Debug effect to log connection state changes
+  useEffect(() => {
+    log.debug(
+      `Connection status changed - connected: ${isConnected}, connecting: ${isConnecting}, error: ${connectionError || "none"}`
+    );
+  }, [isConnected, isConnecting, connectionError]);
+
+  // --- Render ---
   return (
     <div className="video-call">
       <div className="video-container" onMouseMove={() => setShowControls(true)}>
-        {/* Remote video (large) */}
+        {/* Remote video */}
         <div className="remote-video-wrapper">
           <video
             ref={remoteVideoRef}
@@ -1411,44 +1772,83 @@ const VideoCall = ({
             autoPlay
             playsInline
           />
-          
-          {/* Show camera/mic off indicators for remote video */}
+
+          {/* Remote video placeholder when video is off */}
           {isRemoteVideoOff && (
-            <div className="video-off-indicator">
-              <FaVideoSlash />
-              <span>Camera Off</span>
+            <canvas
+              ref={remotePlaceholderRef}
+              className="video-placeholder remote-video-placeholder"
+              width="640"
+              height="480"
+            ></canvas>
+          )}
+
+          {/* Connection quality indicator */}
+          <div className="connection-quality-indicator">
+            <canvas
+              ref={qualityCanvasRef}
+              width="100"
+              height="30"
+              className={`quality-canvas ${connectionQuality}`}
+            ></canvas>
+            <span className="quality-text">{connectionQuality}</span>
+          </div>
+
+          {/* Remote audio level indicator */}
+          <div className="remote-audio-indicator">
+            <canvas
+              ref={remoteAudioCanvasRef}
+              width="15"
+              height="80"
+              className="audio-level-canvas"
+            ></canvas>
+          </div>
+
+          {/* Remote audio/video status indicators */}
+          {isRemoteMuted && !isConnecting && !connectionError && (
+            <div className="audio-off-indicator remote-audio-off">
+              <FaMicrophoneSlash aria-label="Remote peer muted" />
             </div>
           )}
-          
-          {isRemoteMuted && (
-            <div className="audio-off-indicator">
-              <FaMicrophoneSlash />
-            </div>
-          )}
-          
-          {/* Connection state indicators */}
-          {isConnecting && (
+
+          {/* Connecting indicator - only show when connecting and not connected */}
+          {isConnecting && !isConnected && (
             <div className="connecting-indicator">
-              <FaSpinner className="spin" />
+              <FaSpinner className="spin" aria-hidden="true" />
               <span>Connecting...</span>
+              {retryCount > 0 && (
+                <span className="retry-count">Attempt {retryCount}/{MAX_RETRY_COUNT}</span>
+              )}
             </div>
           )}
-          
-          {connectionError && (
+
+          {/* Error message overlay */}
+          {connectionError && !isConnecting && (
             <div className="error-indicator">
               <div className="error-message">
                 <span>{formatErrorMessage(connectionError)}</span>
-                {retryCount < MAX_RETRY_COUNT && (
-                  <button className="retry-button" onClick={attemptReconnect}>
+                {retryCount < MAX_RETRY_COUNT && !isConnected && (
+                  <button
+                    className="retry-button"
+                    onClick={() => attemptReconnect(createPeerConnection, startSignaling)}
+                    aria-label="Retry connection"
+                  >
                     <FaUndo /> Retry
                   </button>
                 )}
+                <button
+                  className="error-end-call-button"
+                  onClick={handleEndCall}
+                  aria-label="End Call"
+                >
+                  <FaPhoneSlash /> End Call
+                </button>
               </div>
             </div>
           )}
         </div>
-        
-        {/* Local video (small overlay) */}
+
+        {/* Local video */}
         <div className="local-video-wrapper">
           <video
             ref={localVideoRef}
@@ -1457,64 +1857,99 @@ const VideoCall = ({
             playsInline
             muted
           />
-          
-          {/* Show camera off indicator for local video */}
+
+          {/* Local video placeholder when video is off */}
           {isLocalVideoOff && (
-            <div className="local-video-off">
-              <FaVideoSlash />
-            </div>
+            <canvas
+              ref={localPlaceholderRef}
+              className="video-placeholder local-video-placeholder"
+              width="160"
+              height="120"
+            ></canvas>
+          )}
+
+          {/* Local audio level indicator */}
+          <div className="local-audio-indicator">
+            <canvas
+              ref={localAudioCanvasRef}
+              width="10"
+              height="60"
+              className="audio-level-canvas"
+            ></canvas>
+          </div>
+        </div>
+
+        {/* Call info display */}
+        <div className="call-info">
+          <span className="call-duration" aria-label={`Call duration: ${formatDuration(callDuration)}`}>
+            {formatDuration(callDuration)}
+          </span>
+
+          {isConnected && videoStats.resolution && (
+            <span className="video-stats">
+              {videoStats.resolution} • {videoStats.frameRate} fps
+            </span>
           )}
         </div>
-        
-        {/* Call duration display */}
-        <div className="call-duration">
-          {formatDuration(callDuration)}
-        </div>
-        
-        {/* Call controls */}
-        <div className={`call-controls ${showControls ? 'visible' : 'hidden'}`}>
+
+        {/* Call control buttons */}
+        <div className={`call-controls ${showControls ? "visible" : "hidden"}`}>
           <button
-            className={`control-button ${isLocalMuted ? 'active' : ''}`}
+            className={`control-button ${isLocalMuted ? "active" : ""}`}
             onClick={toggleMute}
-            title={isLocalMuted ? "Unmute" : "Mute"}
+            aria-label={isLocalMuted ? "Unmute Microphone" : "Mute Microphone"}
+            aria-pressed={isLocalMuted}
           >
             {isLocalMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
           </button>
-          
+
           <button
-            className={`control-button ${isLocalVideoOff ? 'active' : ''}`}
+            className={`control-button ${isLocalVideoOff ? "active" : ""}`}
             onClick={toggleVideo}
-            title={isLocalVideoOff ? "Turn Camera On" : "Turn Camera Off"}
+            aria-label={isLocalVideoOff ? "Turn Camera On" : "Turn Camera Off"}
+            aria-pressed={isLocalVideoOff}
           >
             {isLocalVideoOff ? <FaVideoSlash /> : <FaVideo />}
           </button>
-          
+
           <button
             className="control-button end-call"
             onClick={handleEndCall}
-            title="End Call"
+            aria-label="End Call"
           >
             <FaPhoneSlash />
           </button>
-          
+
           <button
-            className={`control-button ${isFullscreen ? 'active' : ''}`}
+            className={`control-button ${isFullscreen ? "active" : ""}`}
             onClick={toggleFullscreen}
-            title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+            aria-label={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+            aria-pressed={isFullscreen}
           >
             {isFullscreen ? <FaCompressAlt /> : <FaExpandAlt />}
           </button>
+
+          <button
+            className="control-button quality-button"
+            aria-label="Show connection quality"
+          >
+            <FaSignal />
+            <span className={`quality-dot ${connectionQuality}`}></span>
+          </button>
         </div>
       </div>
-      
+
+      {/* Styles */}
       <style jsx="true">{`
         .video-call {
           width: 100%;
           height: 100%;
           position: relative;
-          background-color: #000;
+          background-color: #1a1a1a;
           overflow: hidden;
           border-radius: 8px;
+          color: #fff;
+          font-family: system-ui, -apple-system, sans-serif;
         }
         
         .video-container {
@@ -1526,11 +1961,13 @@ const VideoCall = ({
           justify-content: center;
         }
         
+        /* Remote Video Styles */
         .remote-video-wrapper {
           width: 100%;
           height: 100%;
           position: relative;
           overflow: hidden;
+          background-color: #222;
         }
         
         .remote-video {
@@ -1540,19 +1977,189 @@ const VideoCall = ({
           background-color: #222;
         }
         
-        .local-video-wrapper {
+        /* Video Placeholders */
+        .video-placeholder {
           position: absolute;
-          width: 25%;
-          max-width: 180px;
-          min-width: 120px;
-          aspect-ratio: 4/3;
+          top: 0;
+          left: 0;
+          background-color: rgba(0, 0, 0, 0.8);
+        }
+        
+        .remote-video-placeholder {
+          width: 100%;
+          height: 100%;
+          z-index: 5;
+        }
+        
+        /* Connection Quality Indicator */
+        .connection-quality-indicator {
+          position: absolute;
+          top: 20px;
+          right: 20px;
+          display: flex;
+          align-items: center;
+          background-color: rgba(0, 0, 0, 0.6);
+          padding: 5px 10px;
+          border-radius: 12px;
+          z-index: 25;
+          backdrop-filter: blur(3px);
+        }
+        
+        .quality-canvas {
+          margin-right: 8px;
+        }
+        
+        .quality-text {
+          font-size: 12px;
+          font-weight: 500;
+          text-transform: capitalize;
+        }
+        
+        /* Audio Level Indicators */
+        .remote-audio-indicator {
+          position: absolute;
           bottom: 20px;
           right: 20px;
+          z-index: 15;
+          background-color: rgba(0, 0, 0, 0.6);
+          padding: 5px;
+          border-radius: 8px;
+          backdrop-filter: blur(3px);
+        }
+        
+        .local-audio-indicator {
+          position: absolute;
+          bottom: 5px;
+          right: 5px;
+          z-index: 15;
+          background-color: rgba(0, 0, 0, 0.6);
+          padding: 3px;
+          border-radius: 5px;
+          backdrop-filter: blur(3px);
+        }
+        
+        .audio-level-canvas {
+          display: block;
+        }
+        
+        /* Indicator Styles for Video/Audio State */
+        .connecting-indicator,
+        .error-indicator {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background-color: rgba(0, 0, 0, 0.75);
+          z-index: 20;
+          backdrop-filter: blur(4px);
+        }
+        
+        .connecting-indicator {
+          gap: 15px;
+          color: #fff;
+          font-size: 1.1em;
+        }
+        
+        .spin {
+          animation: spin 1.2s infinite linear;
+          font-size: 3em;
+          color: #4a90e2;
+        }
+        
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        
+        .retry-count {
+          font-size: 0.9em;
+          opacity: 0.8;
+        }
+        
+        .error-indicator {
+          pointer-events: auto;
+        }
+        
+        .error-message {
+          background-color: rgba(220, 53, 69, 0.9);
+          padding: 20px 25px;
+          border-radius: 8px;
+          max-width: 85%;
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+          font-size: 0.95em;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        .retry-button,
+        .error-end-call-button {
+          background-color: rgba(255, 255, 255, 0.2);
+          border: none;
+          border-radius: 5px;
+          color: #fff;
+          padding: 10px 15px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          margin: 0 auto;
+          transition: background-color 0.2s, transform 0.2s;
+          font-size: 0.9em;
+          font-weight: 500;
+        }
+        
+        .retry-button:hover {
+          background-color: rgba(255, 255, 255, 0.3);
+          transform: translateY(-2px);
+        }
+        
+        .error-end-call-button {
+          background-color: rgba(150, 40, 50, 0.9);
+        }
+        
+        .error-end-call-button:hover {
+          background-color: rgba(180, 45, 55, 1);
+          transform: translateY(-2px);
+        }
+        
+        .audio-off-indicator {
+          position: absolute;
+          top: 20px;
+          right: 90px;
+          background-color: rgba(0, 0, 0, 0.6);
+          color: #dc3545;
+          padding: 8px;
+          border-radius: 50%;
+          z-index: 10;
+          font-size: 1.2em;
+          backdrop-filter: blur(3px);
+        }
+        
+        /* Local Video */
+        .local-video-wrapper {
+          position: absolute;
+          width: clamp(120px, 20%, 180px);
+          aspect-ratio: 4/3;
+          bottom: 20px;
+          left: 20px;
           border-radius: 8px;
           overflow: hidden;
-          border: 2px solid #fff;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+          border: 2px solid rgba(255, 255, 255, 0.5);
+          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
           z-index: 10;
+          transition: transform 0.3s ease;
+        }
+        
+        .local-video-wrapper:hover {
+          transform: scale(1.05);
         }
         
         .local-video {
@@ -1560,23 +2167,38 @@ const VideoCall = ({
           height: 100%;
           object-fit: cover;
           background-color: #333;
-          transform: scaleX(-1); /* Mirror local video */
+          transform: scaleX(-1); /* Mirror local view */
         }
         
-        .local-video-off {
-          position: absolute;
-          top: 0;
-          left: 0;
+        .local-video-placeholder {
           width: 100%;
           height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background-color: rgba(0, 0, 0, 0.7);
-          color: #fff;
-          font-size: 24px;
+          z-index: 5;
         }
         
+        /* Call Info */
+        .call-info {
+          position: absolute;
+          top: 20px;
+          left: 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+          background-color: rgba(0, 0, 0, 0.6);
+          padding: 8px 14px;
+          border-radius: 15px;
+          font-size: 0.9em;
+          font-weight: 500;
+          z-index: 20;
+          backdrop-filter: blur(3px);
+        }
+        
+        .video-stats {
+          font-size: 0.75em;
+          opacity: 0.8;
+        }
+        
+        /* Controls */
         .call-controls {
           position: absolute;
           bottom: 20px;
@@ -1584,43 +2206,49 @@ const VideoCall = ({
           transform: translateX(-50%);
           display: flex;
           gap: 16px;
-          background-color: rgba(0, 0, 0, 0.6);
-          padding: 12px 16px;
+          background-color: rgba(0, 0, 0, 0.7);
+          padding: 12px 20px;
           border-radius: 32px;
-          transition: opacity 0.3s ease;
+          transition: opacity 0.4s ease, transform 0.4s ease;
           z-index: 20;
+          backdrop-filter: blur(10px);
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
         }
         
         .call-controls.visible {
           opacity: 1;
+          transform: translateX(-50%) translateY(0);
         }
         
         .call-controls.hidden {
           opacity: 0;
+          transform: translateX(-50%) translateY(80px);
+          pointer-events: none;
         }
         
         .control-button {
-          width: 48px;
-          height: 48px;
+          width: 52px;
+          height: 52px;
           border-radius: 50%;
           border: none;
-          background-color: rgba(255, 255, 255, 0.2);
+          background-color: rgba(255, 255, 255, 0.15);
           color: #fff;
-          font-size: 18px;
+          font-size: 1.2em;
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: pointer;
           transition: all 0.2s ease;
+          position: relative;
         }
         
         .control-button:hover {
-          background-color: rgba(255, 255, 255, 0.3);
-          transform: scale(1.05);
+          background-color: rgba(255, 255, 255, 0.25);
+          transform: translateY(-3px);
         }
         
         .control-button.active {
-          background-color: #dc3545;
+          background-color: #4a90e2;
         }
         
         .control-button.end-call {
@@ -1631,126 +2259,51 @@ const VideoCall = ({
           background-color: #c82333;
         }
         
-        .call-duration {
+        .quality-dot {
           position: absolute;
-          top: 20px;
-          left: 20px;
-          background-color: rgba(0, 0, 0, 0.6);
-          color: #fff;
-          padding: 4px 8px;
-          border-radius: 12px;
-          font-size: 14px;
-          font-weight: 500;
-          z-index: 20;
-        }
-        
-        .connecting-indicator {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          background-color: rgba(0, 0, 0, 0.7);
-          color: #fff;
-          z-index: 15;
-        }
-        
-        .connecting-indicator span {
-          margin-top: 10px;
-          font-size: 16px;
-        }
-        
-        .spin {
-          animation: spin 1s infinite linear;
-          font-size: 32px;
-        }
-        
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        
-        .error-indicator {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background-color: rgba(0, 0, 0, 0.7);
-          color: #fff;
-          z-index: 15;
-        }
-        
-        .error-message {
-          background-color: rgba(220, 53, 69, 0.8);
-          padding: 16px 20px;
-          border-radius: 8px;
-          max-width: 80%;
-          text-align: center;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        
-        .retry-button {
-          background-color: rgba(255, 255, 255, 0.2);
-          border: none;
-          border-radius: 4px;
-          color: #fff;
-          padding: 8px 12px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          margin: 0 auto;
-          transition: background-color 0.2s;
-        }
-        
-        .retry-button:hover {
-          background-color: rgba(255, 255, 255, 0.3);
-        }
-        
-        .video-off-indicator {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          color: #fff;
-          font-size: 48px;
-          background-color: rgba(0, 0, 0, 0.5);
-          padding: 20px;
+          bottom: 3px;
+          right: 3px;
+          width: 8px;
+          height: 8px;
           border-radius: 50%;
-          width: 120px;
-          height: 120px;
+          background-color: #aaa;
         }
         
-        .video-off-indicator span {
-          font-size: 14px;
-          margin-top: 8px;
+        .quality-dot.excellent {
+          background-color: #4caf50;
         }
         
-        .audio-off-indicator {
-          position: absolute;
-          top: 20px;
-          right: 20px;
-          background-color: rgba(0, 0, 0, 0.6);
-          color: #dc3545;
-          padding: 8px;
-          border-radius: 50%;
-          z-index: 10;
-          font-size: 18px;
+        .quality-dot.good {
+          background-color: #8bc34a;
+        }
+        
+        .quality-dot.fair {
+          background-color: #ffc107;
+        }
+        
+        .quality-dot.poor {
+          background-color: #f44336;
+        }
+        
+        /* Connection Quality Text Colors */
+        .quality-text.excellent,
+        .connection-quality.excellent {
+          color: #4caf50;
+        }
+        
+        .quality-text.good,
+        .connection-quality.good {
+          color: #8bc34a;
+        }
+        
+        .quality-text.fair,
+        .connection-quality.fair {
+          color: #ffc107;
+        }
+        
+        .quality-text.poor,
+        .connection-quality.poor {
+          color: #f44336;
         }
       `}</style>
     </div>
