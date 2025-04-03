@@ -583,7 +583,7 @@ const MessagesPage = () => {
             log.info("Fallback 3: Creating mock conversation data after multiple failures");
             const mockData = [
               {
-                _id: "fallback1",
+                _id: `fallback1-${Date.now()}`, // Add timestamp to ensure unique ID
                 user: {
                   _id: "mock-user-1",
                   nickname: "Support",
@@ -592,7 +592,7 @@ const MessagesPage = () => {
                 },
                 lastMessage: {
                   content: "The server appears to be offline. Please try refreshing the page later.",
-                  createdAt: new Date(),
+                  createdAt: new Date().toISOString(),
                   sender: "mock-user-1"
                 },
                 unreadCount: 1
@@ -729,7 +729,7 @@ const MessagesPage = () => {
           log.info("Using mock data to recover from stuck loading state");
           const mockData = [
             {
-              _id: "fallback1",
+              _id: `fallback1-${Date.now()}`, // Add timestamp to ensure unique ID
               user: {
                 _id: "mock-user-1",
                 nickname: "Support",
