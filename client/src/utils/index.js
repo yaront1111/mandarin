@@ -198,6 +198,11 @@ export const normalizePhotoUrl = (url) => {
     const path = url.startsWith("/") ? url : `/${url}`;
     result = `${window.location.origin}${path}`;
   }
+  // Special case for direct filename format (timestamp-random.png)
+  else if (/^\d+-\d+.*\.(jpg|jpeg|png|gif|webp)$/i.test(url)) {
+    // This is likely a direct filename from the server, treat as image in uploads
+    result = `${window.location.origin}/uploads/images/${url}`;
+  }
   else {
     // Make sure all URLs are absolute
     if (url.startsWith('/')) {
