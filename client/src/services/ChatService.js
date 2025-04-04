@@ -778,6 +778,8 @@ class ChatService {
    * Get all conversations for current user
    * @returns {Promise<Array>} - Array of conversations
    */
+// Inside ChatService class...
+
   async getConversations() {
     log.debug("ChatService.getConversations called");
     const now = Date.now();
@@ -788,63 +790,67 @@ class ChatService {
       return this.conversationsCache;
     }
 
-    // Auto-initialization check (simplified)
+    // Auto-initialization check
      if (!this.isReady()) {
       log.warn('ChatService not ready in getConversations, attempting auto-init...');
       await this.initialize(this.user || {});
       if (!this.isReady()) {
          log.error('Auto-initialization failed in getConversations, cannot fetch.');
-         // **MODIFIED:** Return empty array instead of trying direct API without init
          return [];
       }
        log.info('Auto-initialization successful in getConversations');
     }
 
-
+    // *** CORRECTED PROMISE HANDLING ***
     const fetchAttempts = [
-      this._getConversationsDirectAPI(), // Use direct fetch as primary
-      apiService.get('/messages/conversations').then(r => r?.success && Array.isArray(r.data) ? r.data : Promise.reject('Invalid API response')),
-      // Removed diagnostic endpoint unless needed: apiService.get('/diagnostic/conversations').then(r => r?.success && Array.isArray(r.data) ? r.data : Promise.reject('Invalid diagnostic response'))
+      this._getConversationsDirectAPI(), // Primary attempt
+      apiService.get('/messages/conversations').then(r => { // Secondary attempt
+          if (r?.success && Array.isArray(r.data)) return r.data;
+          // Throw an error or specific object to indicate non-critical failure
+          throw new Error('Regular API failed or returned invalid data');
+      })
+      // Add other attempts here if needed, ensuring they throw on failure
     ];
 
     try {
-      log.debug('Attempting conversation fetch methods in parallel');
-      // Use Promise.any to get the first successful result
-      const result = await Promise.any(fetchAttempts.map(p => p.catch(e => e))); // Wrap in catch to prevent Promise.any rejecting early
+      log.debug('Attempting conversation fetch methods using Promise.any');
 
-       // Filter out errors and find first valid result
-      const validResult = result.find(r => Array.isArray(r));
+      // Promise.any resolves with the value of the first promise that fulfills.
+      // It rejects with AggregateError if ALL promises reject.
+      const firstSuccessfulResult = await Promise.any(fetchAttempts);
 
-      if (validResult) {
-        log.info(`Successfully loaded ${validResult.length} conversations`);
-        this.conversationsCache = validResult;
+      // If we reach here, at least one promise fulfilled.
+      // We expect the result to be an array.
+      if (Array.isArray(firstSuccessfulResult)) {
+        log.info(`Successfully loaded ${firstSuccessfulResult.length} conversations via Promise.any`);
+        this.conversationsCache = firstSuccessfulResult;
         this.lastConversationsFetchTime = now;
-        return validResult;
+        return firstSuccessfulResult;
       } else {
-         // All attempts failed or returned invalid data
-         log.warn('All conversation fetch attempts failed or returned invalid data.');
-         // Fallback to potentially stale cache if available
-         if (this.conversationsCache) {
-             log.warn(`Returning potentially stale cached conversations (${this.conversationsCache.length}) as fallback.`);
-             return this.conversationsCache;
-         }
-         // **MODIFIED:** No mock fallback, return empty array
-         log.error("No conversations loaded and no cache available.");
-         return [];
-      }
-    } catch (aggregateError) {
-       // This catch block might not be reached often with .map(p => p.catch())
-       log.error('All conversation fetch attempts failed:', aggregateError);
-        // Fallback to potentially stale cache if available
+        // This case should be rare if promises resolve correctly with arrays
+        log.warn('Promise.any resolved but the result was not an array:', firstSuccessfulResult);
+        // Fallback to cache if available
         if (this.conversationsCache) {
-             log.warn(`Returning potentially stale cached conversations (${this.conversationsCache.length}) on error.`);
+             log.warn(`Returning potentially stale cached conversations (${this.conversationsCache.length}) after unexpected Promise.any result.`);
              return this.conversationsCache;
          }
-       // **MODIFIED:** No mock fallback, return empty array
-       return [];
-    }
-  }
+        log.error("No conversations loaded (unexpected Promise.any result type) and no cache available.");
+        return [];
+      }
 
+    } catch (aggregateError) {
+      // This block catches AggregateError if ALL fetchAttempts promises rejected.
+      log.error('All conversation fetch attempts failed:', aggregateError);
+      // Fallback to potentially stale cache if available
+      if (this.conversationsCache) {
+           log.warn(`Returning potentially stale cached conversations (${this.conversationsCache.length}) as fallback after all fetches failed.`);
+           return this.conversationsCache;
+       }
+      // No cache available, return empty array (mock fallback was removed)
+      log.error("No conversations loaded and no cache available after all fetches failed.");
+      return [];
+    }
+  } // end getConversations
   /**
    * Create mock conversations for fallback - **REMOVED for production**
    * @returns {Array} Mock conversation data
