@@ -259,27 +259,20 @@ const Messages = () => {
     };
   }, [activeConversation, currentUser?._id, isCallActive]);
 
-  // Handle mock users and invalid IDs
+  // Handle invalid IDs (mock user check removed)
   useEffect(() => {
     if (chatInitializedRef.current && targetUserIdParam && conversations.length > 0) {
-      // Check if targetUserIdParam is a mock user ID
-      const isMockUser = targetUserIdParam.includes('mock-user');
-
-      if (isMockUser) {
-        console.warn('Mock user IDs are not supported');
-        navigate('/messages', { replace: true });
-        toast.warning('Test users are not available in this environment');
-        return;
-      }
+      // --- MOCK USER CHECK REMOVED ---
+      // Original check was here to navigate away if targetUserIdParam included 'mock-user'
 
       const conversation = conversations.find((c) => c.user._id === targetUserIdParam);
       if (conversation && (!activeConversation || activeConversation.user._id !== conversation.user._id)) {
         selectConversation(conversation);
-      } else if (!conversation) {
-        loadUserDetails(targetUserIdParam);
+      } else if (!conversation && targetUserIdParam !== currentUser?._id) { // Check added to prevent loading self
+          loadUserDetails(targetUserIdParam);
       }
     }
-  }, [targetUserIdParam, conversations, chatInitializedRef.current, navigate]);
+  }, [targetUserIdParam, conversations, chatInitializedRef.current, navigate, currentUser?._id, activeConversation]); // Added dependencies
 
   // Load messages when active conversation changes
   useEffect(() => {
@@ -319,13 +312,12 @@ const Messages = () => {
 
       setConversations(filteredConversations);
 
-      if (targetUserIdParam && !activeConversation) {
-        const convo = filteredConversations.find((c) => c.user._id === targetUserIdParam);
-        if (convo) selectConversation(convo);
-        else if (targetUserIdParam !== currentUser._id) { // Don't try to load details if it's the current user
-          loadUserDetails(targetUserIdParam);
-        }
-      }
+      // Logic to select conversation based on targetUserIdParam is now handled in the other useEffect
+      // We still might need to load details if the param ID isn't in the fetched list
+       if (targetUserIdParam && !filteredConversations.find((c) => c.user._id === targetUserIdParam) && targetUserIdParam !== currentUser._id) {
+         loadUserDetails(targetUserIdParam);
+       }
+
     } catch (err) {
       console.error("Error fetching conversations:", err);
       setError("Failed to load conversations");
@@ -334,22 +326,13 @@ const Messages = () => {
   };
 
   const loadUserDetails = async (idToLoad) => {
-    if (!idToLoad) return;
-
-    // Don't try to load details for your own user ID
-    if (idToLoad === currentUser?._id) {
-      console.warn('Attempted to load own user details as a conversation');
-      return;
+    if (!idToLoad || idToLoad === currentUser?._id) {
+        console.warn('Attempted to load own user details or null ID');
+        return;
     }
 
-    // Check if it's a mock user ID
-    if (idToLoad.includes('mock-user')) {
-      console.warn('Attempted to load mock user details:', idToLoad);
-      toast.warning('Test users are not available in this environment');
-      navigate("/messages", { replace: true });
-      setMessagesLoading(false);
-      return;
-    }
+    // --- MOCK USER CHECK REMOVED ---
+    // Original check was here to prevent loading mock user details
 
     try {
       setMessagesLoading(true);
@@ -357,12 +340,13 @@ const Messages = () => {
       const isValidId = /^[0-9a-fA-F]{24}$/.test(idToLoad); // Test for MongoDB ObjectId format
 
       if (!isValidId) {
-        throw new Error("Invalid user ID format");
+        // If ID format is invalid, stop here. Previously mock users were caught earlier.
+        console.error("Invalid user ID format:", idToLoad);
+        toast.error("Invalid User ID provided.");
+        navigate("/messages", { replace: true });
+        throw new Error("Invalid user ID format"); // Throw error to be caught below
       }
 
-      // Get auth token from the same place the app stores it
-      // This assumes the app uses a token-based authentication
-      // If the app uses a different auth mechanism, adjust this accordingly
       const token = chatService.getAuthToken?.() ||
                    localStorage.getItem('token') ||
                    sessionStorage.getItem('token') ||
@@ -371,10 +355,8 @@ const Messages = () => {
 
       if (!token) {
         console.warn("No authentication token found");
-        // Continue anyway - the app might have a different auth mechanism
       }
 
-      // Try to use the app's API to get user details
       const headers = {
         'Content-Type': 'application/json'
       };
@@ -386,35 +368,13 @@ const Messages = () => {
       const response = await fetch(`/api/users/${idToLoad}`, { headers });
 
       if (!response.ok) {
-        // If user details API fails, we'll create a minimal user object with the ID
-        // This allows conversations to work even if user details can't be fetched
-        const fallbackUser = {
-          _id: idToLoad,
-          nickname: `User ${idToLoad.substring(0, 6)}...`,
-          photo: null,
-          isOnline: false
-        };
-
-        const newConvo = {
-          user: fallbackUser,
-          lastMessage: null,
-          unreadCount: 0,
-        };
-
-        setConversations((prev) =>
-          prev.find((c) => c.user._id === idToLoad) ? prev : [newConvo, ...prev]
-        );
-
-        setActiveConversation(newConvo);
-        setMessages([]);
-
-        if (response.status === 401) {
-          console.warn("Authentication issue with user API. Using fallback user data.");
-        } else {
-          console.warn(`API error ${response.status}. Using fallback user data.`);
-        }
-
-        return;
+          // Handle actual API errors (e.g., 404 Not Found if the ID is valid format but doesn't exist)
+          console.warn(`API error ${response.status} fetching user ${idToLoad}.`);
+          // Decide how to handle - maybe show error, maybe fallback like before?
+          // For now, let's just navigate away and show an error
+          toast.error(`Could not find or load user details (Error: ${response.status}).`);
+          navigate("/messages", { replace: true });
+          throw new Error(`User API request failed with status ${response.status}`);
       }
 
       const result = await response.json();
@@ -447,43 +407,42 @@ const Messages = () => {
       let errorMessage = "Could not load user details.";
 
       if (err.message === "Invalid user ID format") {
-        errorMessage = "Invalid user ID format.";
+        errorMessage = "Invalid user ID provided."; // Already toasted above
+      } else if (err.message.includes("failed with status")) {
+         errorMessage = `Could not retrieve user information. ${err.message}`;
       }
 
-      toast.error(errorMessage);
-      setError(`Could not find user ${idToLoad}. ${err.message}`);
-      navigate("/messages", { replace: true });
+      setError(errorMessage); // Set component error state
+      // Navigation might have happened already depending on where error occurred
+      if (!err.message.includes("Invalid user ID format") && !err.message.includes("failed with status")) {
+         // Only navigate if not already handled
+         navigate("/messages", { replace: true });
+      }
     } finally {
       setMessagesLoading(false);
     }
   };
 
   const loadMessages = async (partnerUserId) => {
-    if (!currentUser?._id || !partnerUserId) return;
-
-    // Skip loading for own user ID
-    if (partnerUserId === currentUser._id) {
-      console.warn('Attempted to load messages with yourself');
-      setMessages([]);
-      setMessagesLoading(false);
-      return;
+    if (!currentUser?._id || !partnerUserId || partnerUserId === currentUser._id) {
+        console.warn('Attempted to load messages with self or invalid partner ID');
+        setMessages([]);
+        setMessagesLoading(false);
+        return;
     }
 
-    // Skip loading for mock users
-    if (partnerUserId.includes('mock-user')) {
-      console.warn('Attempted to load messages for mock user:', partnerUserId);
-      setMessages([]);
-      setMessagesLoading(false);
-      return;
-    }
+    // --- MOCK USER CHECK REMOVED ---
+    // Original check was here to prevent loading messages for mock users
 
     // Validate user ID format
     const isValidId = /^[0-9a-fA-F]{24}$/.test(partnerUserId); // Test for MongoDB ObjectId format
     if (!isValidId) {
-      console.error(`Invalid user ID format: ${partnerUserId}`);
-      toast.error("Invalid user ID format");
+      console.error(`Invalid partner user ID format: ${partnerUserId}`);
+      toast.error("Cannot load messages: Invalid user ID format");
       setMessages([]);
       setMessagesLoading(false);
+      // Consider navigating away or showing a persistent error in the chat window
+      setError("Cannot load messages for this user (Invalid ID).");
       return;
     }
 
@@ -491,9 +450,11 @@ const Messages = () => {
     try {
       const messagesData = await chatService.getMessages(partnerUserId);
       setMessages(messagesData.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)));
+      setError(null); // Clear previous errors if messages load successfully
     } catch (err) {
       console.error("Error fetching messages:", err);
-      toast.error("Failed to load messages");
+      toast.error(`Failed to load messages: ${err.message || 'Server error'}`);
+      setError(`Failed to load messages. ${err.message || ''}`); // Show error in chat window
       setMessages([]);
     } finally {
       setMessagesLoading(false);
@@ -510,10 +471,11 @@ const Messages = () => {
       return;
     }
 
-    // Check for mock users or invalid IDs
+    // Check for invalid ID format (mock user check removed)
     const partnerId = activeConversation.user._id;
-    if (partnerId.includes('mock-user') || !/^[0-9a-fA-F]{24}$/.test(partnerId)) {
-      toast.error("Cannot send messages to test users");
+    if (!/^[0-9a-fA-F]{24}$/.test(partnerId)) { // Keep ObjectId format check
+      toast.error("Cannot send message: Invalid recipient ID format.");
+      console.error("Attempted to send message to invalid ID format:", partnerId);
       return;
     }
 
@@ -535,7 +497,8 @@ const Messages = () => {
       updateConversationList(sentMessage);
     } catch (err) {
       console.error("Error sending message:", err);
-      toast.error("Failed to send message.");
+      toast.error(`Failed to send message: ${err.message || 'Please try again.'}`);
+      // Optionally, add the failed message back to the input or show an error indicator
     } finally {
       setIsSending(false);
     }
@@ -551,10 +514,11 @@ const Messages = () => {
       return;
     }
 
-    // Check for mock users or invalid IDs
+    // Check for invalid ID format (mock user check removed)
     const partnerId = activeConversation.user._id;
-    if (partnerId.includes('mock-user') || !/^[0-9a-fA-F]{24}$/.test(partnerId)) {
-      toast.error("Cannot send winks to test users");
+     if (!/^[0-9a-fA-F]{24}$/.test(partnerId)) { // Keep ObjectId format check
+      toast.error("Cannot send wink: Invalid recipient ID format.");
+      console.error("Attempted to send wink to invalid ID format:", partnerId);
       return;
     }
 
@@ -575,7 +539,7 @@ const Messages = () => {
       updateConversationList(sentMessage);
     } catch (err) {
       console.error("Error sending wink:", err);
-      toast.error("Failed to send wink.");
+      toast.error(`Failed to send wink: ${err.message || 'Please try again.'}`);
     } finally {
       setIsSending(false);
     }
@@ -644,10 +608,11 @@ const Messages = () => {
       return;
     }
 
-    // Check for mock users or invalid IDs
+    // Check for invalid ID format (mock user check removed)
     const partnerId = activeConversation.user._id;
-    if (partnerId.includes('mock-user') || !/^[0-9a-fA-F]{24}$/.test(partnerId)) {
-      toast.error("Cannot send files to test users");
+     if (!/^[0-9a-fA-F]{24}$/.test(partnerId)) { // Keep ObjectId format check
+      toast.error("Cannot send file: Invalid recipient ID format.");
+      console.error("Attempted to send file to invalid ID format:", partnerId);
       return;
     }
 
@@ -704,7 +669,7 @@ const Messages = () => {
         toast.success("File sent successfully");
       } catch (uploadError) {
         clearInterval(progressInterval);
-        throw uploadError;
+        throw uploadError; // Rethrow to be caught by outer catch
       }
 
       // Clear the attachment
@@ -777,6 +742,23 @@ const Messages = () => {
       return;
     }
 
+    // Add check for valid partner ID format before initiating call
+    const partnerId = activeConversation.user._id;
+    if (!/^[0-9a-fA-F]{24}$/.test(partnerId)) {
+      const errorMessage = {
+        _id: generateUniqueId(),
+        sender: "system",
+        content: "Cannot start call: Invalid recipient ID.",
+        createdAt: new Date().toISOString(),
+        type: "system",
+        error: true
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+      console.error("Cannot initiate call - invalid recipient ID:", partnerId);
+      return;
+    }
+
+
     try {
       const infoMessage = {
         _id: generateUniqueId(),
@@ -809,6 +791,17 @@ const Messages = () => {
         .catch(err => {
           console.error("Call initiation error:", err);
           // We don't close the call UI as it's already opened
+           const errorMessage = {
+              _id: generateUniqueId(),
+              sender: "system",
+              content: `Call failed to initiate: ${err.message || 'Unknown error'}`,
+              createdAt: new Date().toISOString(),
+              type: "system",
+              error: true
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+          // Maybe reset call state here? Depends on desired UX.
+          // setIsCallActive(false);
         });
     } catch (error) {
       console.error("Video call initiation error:", error);
@@ -822,6 +815,7 @@ const Messages = () => {
         error: true
       };
       setMessages((prev) => [...prev, errorMessage]);
+      setIsCallActive(false); // Reset call state on synchronous error
     }
   };
 
@@ -829,9 +823,15 @@ const Messages = () => {
   const handleEndCall = () => {
     // Send hangup signal if we have an active call
     if (isCallActive && activeConversation) {
-      socketService.emit("videoHangup", {
-        recipientId: activeConversation.user._id
-      });
+      // Check partner ID format before emitting hangup
+      const partnerId = activeConversation.user._id;
+       if (/^[0-9a-fA-F]{24}$/.test(partnerId)) {
+            socketService.emit("videoHangup", {
+                recipientId: partnerId
+            });
+       } else {
+           console.warn("Cannot emit hangup for invalid partner ID:", partnerId);
+       }
     }
 
     // Reset call states
@@ -860,6 +860,13 @@ const Messages = () => {
     const partnerId = newMessage.sender === currentUser._id ? newMessage.recipient : newMessage.sender;
     if (partnerId === currentUser._id) return;
 
+    // Added check: Don't update list if partnerId format is invalid (relevant if received msg has bad ID somehow)
+    if (!/^[0-9a-fA-F]{24}$/.test(partnerId)) {
+        console.warn("Received message with invalid partner ID format, not updating conversation list:", partnerId);
+        return;
+    }
+
+
     setConversations((prev) => {
       let updatedConvo = prev.find((c) => c.user._id === partnerId);
       if (updatedConvo) {
@@ -867,19 +874,25 @@ const Messages = () => {
         if (newMessage.sender !== currentUser._id && (!activeConversation || activeConversation.user._id !== partnerId))
           updatedConvo.unreadCount = (updatedConvo.unreadCount || 0) + 1;
         else if (activeConversation && activeConversation.user._id === partnerId)
-          updatedConvo.unreadCount = 0;
+          updatedConvo.unreadCount = 0; // Reset unread count if it's the active chat
+        // Ensure the updated conversation moves to the top
         return [updatedConvo, ...prev.filter((c) => c.user._id !== partnerId)];
       } else {
+        // Need to fetch user details if it's a truly new conversation partner
+        // For simplicity here, we use basic info from the message, but ideally fetch full details
         const newConvo = {
           user: {
             _id: partnerId,
             nickname: newMessage.senderName || `User ${partnerId.substring(0, 6)}`,
             photo: newMessage.senderPhoto || null,
-            isOnline: false,
+            // isOnline status would ideally come from presence system or user details fetch
+            isOnline: false, // Default to offline until confirmed otherwise
+            accountTier: "FREE" // Default or fetch
           },
           lastMessage: newMessage,
           unreadCount: newMessage.sender !== currentUser._id ? 1 : 0,
         };
+         // Add the new conversation to the top
         return [newConvo, ...prev];
       }
     });
@@ -889,16 +902,17 @@ const Messages = () => {
     // Skip for self-conversations
     if (partnerUserId === currentUser?._id) return;
 
-    // Skip for mock users or invalid IDs
-    if (partnerUserId.includes('mock-user') || !/^[0-9a-fA-F]{24}$/.test(partnerUserId)) {
+    // Check for invalid ID format (mock user check removed)
+    if (!/^[0-9a-fA-F]{24}$/.test(partnerUserId)) { // Keep ObjectId format check
+      console.warn("Attempted to mark conversation read for invalid ID format:", partnerUserId);
       return;
     }
 
     const convoIndex = conversations.findIndex((c) => c.user._id === partnerUserId);
     if (convoIndex !== -1 && conversations[convoIndex].unreadCount > 0) {
-      chatService.markConversationRead(partnerUserId);
+      chatService.markConversationRead(partnerUserId); // Assuming this handles errors internally
       setConversations((prev) =>
-        prev.map((c) => (c.user._id === partnerUserId ? { ...c, unreadCount: 0 } : c))
+        prev.map((c, index) => (index === convoIndex ? { ...c, unreadCount: 0 } : c))
       );
     }
   };
@@ -906,15 +920,24 @@ const Messages = () => {
   // Debounced sending of typing indicator
   const sendTypingIndicator = useCallback(() => {
     if (activeConversation && chatService.isConnected && chatService.isConnected() && currentUser?._id) {
-      chatService.sendTypingIndicator(activeConversation.user._id);
+        // Add ID format check before sending typing indicator
+        const partnerId = activeConversation.user._id;
+        if (/^[0-9a-fA-F]{24}$/.test(partnerId)) {
+            chatService.sendTypingIndicator(partnerId);
+        } else {
+            console.warn("Cannot send typing indicator for invalid partner ID:", partnerId);
+        }
     }
   }, [activeConversation, currentUser?._id]);
 
   const handleMessageInputChange = (e) => {
     setMessageInput(e.target.value);
     if (e.target.value.trim() && activeConversation) {
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => sendTypingIndicator(), 300);
+      // Send typing indicator only if partner ID is valid
+      if (/^[0-9a-fA-F]{24}$/.test(activeConversation.user._id)) {
+         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+         typingTimeoutRef.current = setTimeout(() => sendTypingIndicator(), 300);
+      }
     }
     e.target.style.height = "auto";
     e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
@@ -928,7 +951,8 @@ const Messages = () => {
       } else {
         handleSendMessage();
       }
-      e.target.style.height = "auto";
+      // Reset height after sending
+      if(e.target) e.target.style.height = "auto";
     }
   };
 
@@ -942,9 +966,18 @@ const Messages = () => {
       return;
     }
 
+    // Add check for valid ID format before selecting
+    if (!/^[0-9a-fA-F]{24}$/.test(conversation.user._id)) {
+        toast.error("Cannot select conversation: Invalid user ID.");
+        console.error("Attempted to select conversation with invalid ID:", conversation.user._id);
+        return;
+    }
+
+
     setActiveConversation(conversation);
-    setError(null);
+    setError(null); // Clear errors when selecting a valid conversation
     markConversationAsRead(conversation.user._id);
+    // Don't navigate here, let the useEffect handle navigation based on URL param
   };
 
   // Toggle sidebar for mobile view
@@ -979,35 +1012,34 @@ const Messages = () => {
     );
   }
 
-  if (error) {
-    return (
-      <div className={styles.appWrapper}>
-        <Navbar />
-        <div className={styles.errorContainer}>
-          <h3>Error</h3>
-          <p>{error}</p>
-          {!isAuthenticated ? (
-            <button onClick={() => navigate("/login")} className={styles.btnPrimary}>Login</button>
-          ) : (
-            <button onClick={() => window.location.reload()} className={styles.btnPrimary}>Retry</button>
-          )}
-        </div>
-      </div>
-    );
-  }
+  // Render component-level error (e.g., init failed, login required)
+   if (!isAuthenticated && !authLoading) { // Show login prompt if not authenticated and not loading
+     return (
+       <div className={styles.appWrapper}>
+         <Navbar />
+         <div className={styles.errorContainer}>
+           <p>Please log in to view and send messages.</p>
+           <button onClick={() => navigate("/login")} className={styles.btnPrimary}>Login</button>
+         </div>
+       </div>
+     );
+   }
 
-  if (!isAuthenticated) {
-    return (
-      <div className={styles.appWrapper}>
-        <Navbar />
-        <div className={styles.errorContainer}>
-          <p>Please log in to view and send messages.</p>
-          <button onClick={() => navigate("/login")} className={styles.btnPrimary}>Login</button>
-        </div>
-      </div>
-    );
-  }
+   // Use the 'error' state for general errors after initial load/auth
+   if (error && !activeConversation) { // Show general error if no conversation selected
+     return (
+       <div className={styles.appWrapper}>
+         <Navbar />
+         <div className={styles.errorContainer}>
+           <h3>Error</h3>
+           <p>{error}</p>
+           <button onClick={() => window.location.reload()} className={styles.btnPrimary}>Retry</button>
+         </div>
+       </div>
+     );
+   }
 
+  // Main UI Render
   return (
     <div className={styles.appWrapper}>
       <Navbar />
@@ -1023,49 +1055,56 @@ const Messages = () => {
             )}
           </div>
 
-          {conversations.length === 0 ? (
+          {conversations.length === 0 && !componentLoading ? ( // Added !componentLoading check
             <div className={styles.noConversations}>
               <FaEnvelope size={32} />
               <p>No conversations yet.</p>
             </div>
           ) : (
             <div className={styles.conversationsList}>
-              {conversations.map((convo) => (
-                <div
-                  key={convo.user._id}
-                  className={`${styles.conversationItem} 
-                    ${activeConversation?.user._id === convo.user._id ? styles.active : ''}
-                    ${convo.unreadCount > 0 ? styles.unread : ''}`}
-                  onClick={() => selectConversation(convo)}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className={styles.avatarContainer}>
-                    <Avatar
-                      src={convo.user.photo}
-                      alt={convo.user.nickname}
-                      size="medium"
-                    />
-                    {convo.user.isOnline && <span className={`${styles.statusIndicator} ${styles.online}`}></span>}
-                  </div>
+              {conversations.map((convo) => {
+                  // Added safety check for valid convo structure
+                   if (!convo || !convo.user || !convo.user._id) {
+                      console.warn("Skipping rendering invalid conversation item:", convo);
+                      return null;
+                   }
+                   return (
+                     <div
+                       key={convo.user._id}
+                       className={`${styles.conversationItem}
+                         ${activeConversation?.user._id === convo.user._id ? styles.active : ''}
+                         ${convo.unreadCount > 0 ? styles.unread : ''}`}
+                       onClick={() => selectConversation(convo)} // selectConversation now has ID check
+                       role="button"
+                       tabIndex={0}
+                     >
+                       <div className={styles.avatarContainer}>
+                         <Avatar
+                           src={convo.user.photo}
+                           alt={convo.user.nickname}
+                           size="medium"
+                         />
+                         {convo.user.isOnline && <span className={`${styles.statusIndicator} ${styles.online}`}></span>}
+                       </div>
 
-                  <div className={styles.conversationInfo}>
-                    <div className={styles.conversationName}>
-                      <span>{convo.user.nickname}</span>
-                      {convo.unreadCount > 0 && <span className={styles.unreadBadge}>{convo.unreadCount}</span>}
-                    </div>
-                    <div className={styles.conversationPreview}>
-                      {convo.lastMessage ? formatMessagePreview(convo.lastMessage, currentUser._id) : "No messages yet"}
-                    </div>
-                  </div>
+                       <div className={styles.conversationInfo}>
+                         <div className={styles.conversationName}>
+                           <span>{convo.user.nickname || 'Unknown User'}</span>
+                           {convo.unreadCount > 0 && <span className={styles.unreadBadge}>{convo.unreadCount}</span>}
+                         </div>
+                         <div className={styles.conversationPreview}>
+                           {convo.lastMessage ? formatMessagePreview(convo.lastMessage, currentUser._id) : "No messages yet"}
+                         </div>
+                       </div>
 
-                  {convo.lastMessage?.createdAt && (
-                    <div className={styles.conversationTime}>
-                      {formatDate(convo.lastMessage.createdAt, { showRelative: true })}
-                    </div>
-                  )}
-                </div>
-              ))}
+                       {convo.lastMessage?.createdAt && (
+                         <div className={styles.conversationTime}>
+                           {formatDate(convo.lastMessage.createdAt, { showRelative: true })}
+                         </div>
+                       )}
+                     </div>
+                   );
+                 })}
             </div>
           )}
         </div>
@@ -1075,60 +1114,61 @@ const Messages = () => {
           {activeConversation ? (
             <>
               <div className={styles.chatHeader}>
-                <div className={styles.chatUser}>
-                  {mobileView && (
-                    <button className={styles.backButton} onClick={toggleSidebar}>
-                      &larr;
-                    </button>
-                  )}
-
-                  <div className={styles.avatarContainer}>
-                    <Avatar
-                      src={activeConversation.user.photo}
-                      alt={activeConversation.user.nickname}
-                      size="medium"
-                    />
-                    {activeConversation.user.isOnline && (
-                      <span className={`${styles.statusIndicator} ${styles.online}`}></span>
-                    )}
-                  </div>
-
-                  <div className={styles.chatUserDetails}>
-                    <h3>{activeConversation.user.nickname}</h3>
-                    <span className={activeConversation.user.isOnline ? `${styles.statusText} ${styles.online}` : `${styles.statusText} ${styles.offline}`}>
-                      {activeConversation.user.isOnline ? "Online" : "Offline"}
-                    </span>
-                  </div>
-
-                  <div className={styles.chatActions}>
-                    {/* Video call button */}
-                    {currentUser?.accountTier !== "FREE" && (
-                      <>
-                        {isCallActive ? (
-                          <button
-                            className={styles.actionButton}
-                            onClick={handleEndCall}
-                            title="End call"
-                          >
-                            <FaPhoneSlash />
-                          </button>
-                        ) : (
-                          <button
-                            className={styles.actionButton}
-                            onClick={handleVideoCall}
-                            title={activeConversation.user.isOnline ? "Start Video Call" : `${activeConversation.user.nickname} is offline`}
-                            disabled={!activeConversation.user.isOnline}
-                          >
-                            <FaVideo />
-                          </button>
-                        )}
-                      </>
-                    )}
-                    <button className={styles.actionButton}>
-                      <FaEllipsisH />
-                    </button>
-                  </div>
-                </div>
+                 {/* Added safety check for activeConversation structure */}
+                 {activeConversation.user && activeConversation.user._id ? (
+                     <div className={styles.chatUser}>
+                         {mobileView && (
+                             <button className={styles.backButton} onClick={toggleSidebar}>
+                                 &larr;
+                             </button>
+                         )}
+                         <div className={styles.avatarContainer}>
+                             <Avatar
+                                 src={activeConversation.user.photo}
+                                 alt={activeConversation.user.nickname}
+                                 size="medium"
+                             />
+                             {activeConversation.user.isOnline && (
+                                 <span className={`${styles.statusIndicator} ${styles.online}`}></span>
+                             )}
+                         </div>
+                         <div className={styles.chatUserDetails}>
+                             <h3>{activeConversation.user.nickname || 'Unknown User'}</h3>
+                             <span className={activeConversation.user.isOnline ? `${styles.statusText} ${styles.online}` : `${styles.statusText} ${styles.offline}`}>
+                                 {activeConversation.user.isOnline ? "Online" : "Offline"}
+                             </span>
+                         </div>
+                         <div className={styles.chatActions}>
+                             {currentUser?.accountTier !== "FREE" && (
+                                 <>
+                                     {isCallActive ? (
+                                         <button
+                                             className={styles.actionButton}
+                                             onClick={handleEndCall}
+                                             title="End call"
+                                         >
+                                             <FaPhoneSlash />
+                                         </button>
+                                     ) : (
+                                         <button
+                                             className={styles.actionButton}
+                                             onClick={handleVideoCall} // Video call function now checks ID format
+                                             title={activeConversation.user.isOnline ? "Start Video Call" : `${activeConversation.user.nickname} is offline`}
+                                             disabled={!activeConversation.user.isOnline || !/^[0-9a-fA-F]{24}$/.test(activeConversation.user._id)} // Disable if offline or invalid ID
+                                         >
+                                             <FaVideo />
+                                         </button>
+                                     )}
+                                 </>
+                             )}
+                             <button className={styles.actionButton}>
+                                 <FaEllipsisH />
+                             </button>
+                         </div>
+                     </div>
+                 ) : (
+                     <div className={styles.chatUser}>Loading user...</div> // Placeholder if somehow activeConversation is bad
+                 )}
               </div>
 
               {/* Premium upgrade banner */}
@@ -1175,22 +1215,26 @@ const Messages = () => {
                       className={styles.declineCallBtn}
                       onClick={() => {
                         // Decline the call
-                        socketService.answerVideoCall(
-                          incomingCall.callerId,
-                          false,
-                          incomingCall.callId
-                        );
-
-                        // Add a system message
-                        const systemMessage = {
-                          _id: generateUniqueId(),
-                          sender: "system",
-                          content: `You declined a video call from ${activeConversation.user.nickname}.`,
-                          createdAt: new Date().toISOString(),
-                          type: "system",
-                        };
-
-                        setMessages((prev) => [...prev, systemMessage]);
+                        // Check caller ID format before answering
+                         if (incomingCall.callerId && /^[0-9a-fA-F]{24}$/.test(incomingCall.callerId)) {
+                             socketService.answerVideoCall(
+                                 incomingCall.callerId,
+                                 false,
+                                 incomingCall.callId
+                             );
+                             // Add a system message
+                             const systemMessage = {
+                                 _id: generateUniqueId(),
+                                 sender: "system",
+                                 content: `You declined a video call from ${activeConversation.user.nickname}.`,
+                                 createdAt: new Date().toISOString(),
+                                 type: "system",
+                             };
+                             setMessages((prev) => [...prev, systemMessage]);
+                         } else {
+                              console.error("Cannot decline call: Invalid caller ID format", incomingCall.callerId);
+                              toast.error("Error declining call (Invalid ID).");
+                         }
                         setIncomingCall(null);
                       }}
                     >
@@ -1200,25 +1244,30 @@ const Messages = () => {
                       className={styles.acceptCallBtn}
                       onClick={() => {
                         // Accept the call
-                        socketService.answerVideoCall(
-                          incomingCall.callerId,
-                          true,
-                          incomingCall.callId
-                        );
-
-                        // Add a system message
-                        const systemMessage = {
-                          _id: generateUniqueId(),
-                          sender: "system",
-                          content: `You accepted a video call from ${activeConversation.user.nickname}.`,
-                          createdAt: new Date().toISOString(),
-                          type: "system",
-                        };
-
-                        setMessages((prev) => [...prev, systemMessage]);
-
-                        // Activate the call
-                        setIsCallActive(true);
+                        // Check caller ID format before answering
+                         if (incomingCall.callerId && /^[0-9a-fA-F]{24}$/.test(incomingCall.callerId)) {
+                             socketService.answerVideoCall(
+                                 incomingCall.callerId,
+                                 true,
+                                 incomingCall.callId
+                             );
+                             // Add a system message
+                             const systemMessage = {
+                                 _id: generateUniqueId(),
+                                 sender: "system",
+                                 content: `You accepted a video call from ${activeConversation.user.nickname}.`,
+                                 createdAt: new Date().toISOString(),
+                                 type: "system",
+                             };
+                             setMessages((prev) => [...prev, systemMessage]);
+                             // Activate the call
+                             setIsCallActive(true);
+                             setIncomingCall(null); // Clear incoming call state
+                         } else {
+                             console.error("Cannot accept call: Invalid caller ID format", incomingCall.callerId);
+                             toast.error("Error accepting call (Invalid ID).");
+                             setIncomingCall(null); // Still clear incoming call state on error
+                         }
                       }}
                     >
                       <FaVideo /> Accept
@@ -1232,7 +1281,15 @@ const Messages = () => {
                   <div className={styles.messagesLoading}>
                     <LoadingSpinner size="medium" text="Loading messages..." centered />
                   </div>
-                ) : Object.entries(groupedMessages).length === 0 ? (
+                ) : error ? ( // Display error within the message area if one exists for the active chat
+                    <div className={styles.noMessages}>
+                        <div className={`${styles.noMessagesContent} ${styles.errorContent}`}>
+                            <p>Error:</p>
+                            <p>{error}</p>
+                            <button onClick={() => loadMessages(activeConversation.user._id)} className={styles.btnSecondary}>Retry Loading Messages</button>
+                        </div>
+                    </div>
+                 ) : Object.entries(groupedMessages).length === 0 ? (
                   <div className={styles.noMessages}>
                     <div className={styles.noMessagesContent}>
                       <FaEnvelope size={40} />
@@ -1248,20 +1305,31 @@ const Messages = () => {
                       </div>
 
                       {msgs.map((msg) => {
+                        // Safety check for message structure
+                        if (!msg || (!msg._id && !msg.tempId)) {
+                            console.warn("Skipping rendering invalid message:", msg);
+                            return null;
+                        }
+
                         const isFromMe = msg.sender === currentUser._id;
                         let statusIndicator = null;
 
                         if (isFromMe) {
+                          // Assuming read status comes from backend
                           statusIndicator = msg.read ? <FaCheckDouble size={12} /> : <FaCheck size={12} />;
+                          // Could add a pending indicator for !msg._id && msg.tempId
+                          if (!msg._id && msg.tempId) {
+                              // statusIndicator = <FaSpinner size={10} className="fa-spin" />; // Example pending
+                          }
                         }
 
                         return (
                           <div
                             key={msg._id || msg.tempId}
-                            className={`${styles.messageBubble} 
+                            className={`${styles.messageBubble}
                               ${isFromMe ? styles.sent : styles.received}
                               ${msg.type === "system" ? styles.systemMessage : ""}
-                              ${msg.error ? styles.error : ''}
+                              ${msg.error ? styles.error : ''} // Keep error styling for system messages
                               ${msg.type === "wink" ? styles.winkMessage : ""}`}
                           >
                             {msg.type === "system" ? (
@@ -1280,11 +1348,11 @@ const Messages = () => {
                                   {isFromMe && <span className={styles.statusIndicator}>{statusIndicator}</span>}
                                 </span>
                               </div>
-                            ) : msg.type === "file" ? (
+                            ) : msg.type === "file" && msg.metadata ? ( // Added check for metadata
                               <div className={styles.fileMessage}>
-                                {msg.metadata?.fileType?.startsWith("image/") ? (
+                                {msg.metadata.fileType?.startsWith("image/") ? (
                                   <img
-                                    src={msg.metadata.fileUrl || "/placeholder.svg"}
+                                    src={msg.metadata.fileUrl || "/placeholder.svg"} // Use placeholder if URL missing
                                     alt={msg.metadata.fileName || "Image"}
                                     className={styles.imageAttachment}
                                     onError={(e) => {
@@ -1294,20 +1362,23 @@ const Messages = () => {
                                   />
                                 ) : (
                                   <div className={styles.fileAttachment}>
-                                    {getFileIcon(msg.metadata?.fileType)}
-                                    <span className={styles.fileName}>{msg.metadata?.fileName || "File"}</span>
+                                    {getFileIcon(msg.metadata.fileType)}
+                                    <span className={styles.fileName}>{msg.metadata.fileName || "File"}</span>
                                     <span className={styles.fileSize}>
-                                      {msg.metadata?.fileSize ? `(${Math.round(msg.metadata.fileSize / 1024)} KB)` : ""}
+                                      {msg.metadata.fileSize ? `(${Math.round(msg.metadata.fileSize / 1024)} KB)` : ""}
                                     </span>
-                                    <a
-                                      href={msg.metadata?.fileUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className={styles.downloadLink}
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      Download
-                                    </a>
+                                    {/* Make download conditional on having a URL */}
+                                    {msg.metadata.fileUrl && (
+                                         <a
+                                             href={msg.metadata.fileUrl}
+                                             target="_blank"
+                                             rel="noopener noreferrer"
+                                             className={styles.downloadLink}
+                                             onClick={(e) => e.stopPropagation()}
+                                         >
+                                             Download
+                                         </a>
+                                     )}
                                   </div>
                                 )}
                                 <span className={styles.messageTime}>
@@ -1315,9 +1386,9 @@ const Messages = () => {
                                   {isFromMe && <span className={styles.statusIndicator}>{statusIndicator}</span>}
                                 </span>
                               </div>
-                            ) : (
+                            ) : ( // Default to text message
                               <>
-                                <div className={styles.messageContent}>{msg.content}</div>
+                                <div className={styles.messageContent}>{msg.content || ''}</div>
                                 <div className={styles.messageMeta}>
                                   <span className={styles.messageTime}>
                                     {formatDate(msg.createdAt, { showTime: true, showDate: false })}
@@ -1335,6 +1406,7 @@ const Messages = () => {
 
                 {typingUser && (
                   <div className={styles.typingIndicator}>
+                    {/* Could add user nickname: {activeConversation?.user?.nickname} is typing... */}
                     <div className={styles.dot}></div>
                     <div className={styles.dot}></div>
                     <div className={styles.dot}></div>
@@ -1414,7 +1486,8 @@ const Messages = () => {
                   onChange={handleMessageInputChange}
                   onKeyPress={handleKeyPress}
                   rows={1}
-                  disabled={currentUser?.accountTier === "FREE"}
+                  // Disable input if sending, uploading, or if account tier is FREE (unless it's exactly the wink emoji)
+                  disabled={isSending || isUploading || (currentUser?.accountTier === "FREE" && messageInput !== '😉')}
                   title={currentUser?.accountTier === "FREE" ? "Upgrade to send text messages" : "Type a message"}
                 />
 
@@ -1422,7 +1495,8 @@ const Messages = () => {
                   type="button"
                   className={styles.attachButton}
                   onClick={handleFileAttachment}
-                  disabled={currentUser?.accountTier === "FREE"}
+                  // Disable attachment if sending, uploading, or FREE tier
+                  disabled={isSending || isUploading || currentUser?.accountTier === "FREE"}
                   title={currentUser?.accountTier === "FREE" ? "Upgrade to send files" : "Attach File"}
                 >
                   <FaPaperclip />
@@ -1439,7 +1513,7 @@ const Messages = () => {
                 <button
                   type="button"
                   className={styles.winkButton}
-                  onClick={handleSendWink}
+                  onClick={handleSendWink} // Wink function now checks ID format
                   disabled={isSending || isUploading}
                   title="Send Wink"
                 >
@@ -1447,8 +1521,9 @@ const Messages = () => {
                 </button>
 
                 <button
-                  onClick={attachment ? handleSendAttachment : handleSendMessage}
+                  onClick={attachment ? handleSendAttachment : handleSendMessage} // Send functions now check ID format
                   className={`${styles.sendButton} ${!messageInput.trim() && !attachment ? styles.disabled : ''}`}
+                  // Disable send if nothing to send, or already sending/uploading
                   disabled={(!messageInput.trim() && !attachment) || isSending || isUploading}
                 >
                   {isSending || isUploading ? <FaSpinner className="fa-spin" /> : <FaPaperPlane />}
@@ -1461,6 +1536,8 @@ const Messages = () => {
                 <FaEnvelope size={48} />
                 <h3>Your Messages</h3>
                 <p>Select a conversation from the list to start chatting.</p>
+                {/* Optionally show general error here too if needed */}
+                {error && <p className={styles.errorMessage}>{error}</p>}
               </div>
             </div>
           )}
@@ -1468,14 +1545,14 @@ const Messages = () => {
       </div>
 
       {/* Video Call Overlay */}
-      {isCallActive && activeConversation && (
+      {isCallActive && activeConversation && activeConversation.user && activeConversation.user._id && /^[0-9a-fA-F]{24}$/.test(activeConversation.user._id) && ( // Add checks before rendering video call
         <div className={styles.videoCallOverlay}>
           <VideoCall
             isActive={isCallActive}
             userId={currentUser?._id}
             recipientId={activeConversation.user._id}
             onEndCall={handleEndCall}
-            isIncoming={incomingCall !== null}
+            isIncoming={incomingCall !== null && incomingCall.callerId === activeConversation.user._id} // Ensure incoming call matches active chat
             callId={incomingCall?.callId}
           />
         </div>
