@@ -9,7 +9,8 @@ import {
   FaCompressAlt,
   FaSpinner,
   FaUndo,
-  FaSignal
+  FaSignal,
+  FaExclamationTriangle
 } from "react-icons/fa";
 import socketService from "../services/socketService.jsx";
 import { toast } from "react-toastify";
@@ -26,13 +27,23 @@ const ICE_SERVERS = [
   { urls: "stun:stun2.l.google.com:19302" },
   { urls: "stun:stun3.l.google.com:19302" },
   { urls: "stun:stun4.l.google.com:19302" },
-  // Add TURN servers here for production environments
+  // TURN servers for production - Replace with your actual TURN servers
+  {
+    urls: "turn:turn.example.org:3478",
+    username: "turnuser",
+    credential: "turnpassword"
+  },
+  {
+    urls: "turn:turn.example.org:443?transport=tcp", // TCP fallback
+    username: "turnuser",
+    credential: "turnpassword"
+  }
 ];
 
 const PEER_CONNECTION_CONFIG = {
   iceServers: ICE_SERVERS,
   iceCandidatePoolSize: 10,
-  iceTransportPolicy: "all",
+  iceTransportPolicy: "all", // Consider "relay" for TURN-only in challenging networks
   bundlePolicy: "max-bundle",
   rtcpMuxPolicy: "require",
   sdpSemantics: "unified-plan",
@@ -56,6 +67,7 @@ const CONNECTION_TIMEOUT = 30000; // 30 seconds
 const RECONNECT_DELAY = 2000; // 2 seconds
 const STATS_INTERVAL = 5000; // 5 seconds
 const AUDIO_METER_INTERVAL = 100; // 100ms for audio level updates
+const UNANSWERED_CALL_TIMEOUT = 45000; // 45 seconds for unanswered calls
 
 // --- Helper Functions ---
 const getCandidateFingerprint = (candidate) => {
@@ -109,7 +121,7 @@ const formatErrorMessage = (error) => {
       return "Camera or microphone not found. Please check if they are connected and enabled.";
     }
     if (error.includes("timed out")) {
-      return "Connection timed out. Please check your network connection.";
+      return "Connection timed out. The other user may be offline.";
     }
     if (error.includes("Could not access")) {
       return "Unable to access camera or microphone. Please check connections and browser permissions.";
@@ -122,6 +134,9 @@ const formatErrorMessage = (error) => {
     }
     if (error.includes("Failed to execute 'addIceCandidate'")) {
       return "Network negotiation issue occurred. Attempting to continue...";
+    }
+    if (error.includes("No answer")) {
+      return "No answer from the recipient. They may be away or unable to accept calls right now.";
     }
   }
 
@@ -271,6 +286,7 @@ const VideoCall = ({
   onEndCall,
   isIncoming = false,
   callId = null,
+  recipientName = "User", // Add recipient name for better UX
 }) => {
   // --- Refs ---
   const localVideoRef = useRef(null);
@@ -294,6 +310,7 @@ const VideoCall = ({
   const candidateFlushTimeoutRef = useRef(null);
   const statsIntervalRef = useRef(null);
   const audioMeterIntervalRef = useRef(null);
+  const unansweredCallTimeoutRef = useRef(null);
 
   // Queues & State Tracking
   const iceCandidateQueueRef = useRef([]);
@@ -303,6 +320,7 @@ const VideoCall = ({
   const negotiationInProgressRef = useRef(false);
   const isMountedRef = useRef(false);
   const connectionCompletedRef = useRef(false);
+  const callAnsweredRef = useRef(false);
 
   // --- State ---
   const [isConnecting, setIsConnecting] = useState(true);
@@ -324,6 +342,7 @@ const VideoCall = ({
     frameRate: 0,
     bitrate: 0
   });
+  const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
 
   // --- WebRTC Core Logic ---
 
@@ -626,14 +645,21 @@ const VideoCall = ({
 
         // Make sure we mark connection as established
         connectionCompletedRef.current = true;
+        callAnsweredRef.current = true;
         setIsConnected(true);
         setIsConnecting(false);
+        setIsWaitingForResponse(false);
         setConnectionError(null);
         setRetryCount(0);
 
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
           connectionTimeoutRef.current = null;
+        }
+
+        if (unansweredCallTimeoutRef.current) {
+          clearTimeout(unansweredCallTimeoutRef.current);
+          unansweredCallTimeoutRef.current = null;
         }
 
         log.info("Connection established with media stream.");
@@ -712,8 +738,10 @@ const VideoCall = ({
         // Force UI update when connection is established
         log.info("Connection state connected - Updating UI");
         connectionCompletedRef.current = true;
+        callAnsweredRef.current = true;
         setIsConnected(true);
         setIsConnecting(false);
+        setIsWaitingForResponse(false);
         setConnectionError(null);
         negotiationInProgressRef.current = false;
         setRetryCount(0);
@@ -721,6 +749,11 @@ const VideoCall = ({
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
           connectionTimeoutRef.current = null;
+        }
+
+        if (unansweredCallTimeoutRef.current) {
+          clearTimeout(unansweredCallTimeoutRef.current);
+          unansweredCallTimeoutRef.current = null;
         }
 
         flushCandidateQueue();
@@ -788,8 +821,10 @@ const VideoCall = ({
         // Force UI update
         log.info(`ICE connection ${pc.iceConnectionState} - Updating UI`);
         connectionCompletedRef.current = true;
+        callAnsweredRef.current = true;
         setIsConnected(true);
         setIsConnecting(false);
+        setIsWaitingForResponse(false);
         setConnectionError(null);
         flushCandidateQueue();
         break;
@@ -952,13 +987,39 @@ const VideoCall = ({
 
       log.debug("Offer sent to remote peer.");
       flushCandidateQueue();
+
+      // If caller, set a flag to show we're waiting for the call to be answered
+      if (!isIncoming && !callAnsweredRef.current) {
+        setIsWaitingForResponse(true);
+
+        // Set timeout for unanswered call
+        if (unansweredCallTimeoutRef.current) {
+          clearTimeout(unansweredCallTimeoutRef.current);
+        }
+
+        unansweredCallTimeoutRef.current = setTimeout(() => {
+          if (!callAnsweredRef.current && isMountedRef.current) {
+            log.warn("Call went unanswered for too long. Ending call attempt.");
+            setConnectionError("No answer from the recipient. They may be away or unable to accept calls right now.");
+            setIsConnecting(false);
+            setIsWaitingForResponse(false);
+
+            // Auto-hang up after timeout
+            if (onEndCall) {
+              setTimeout(() => {
+                if (isMountedRef.current) onEndCall();
+              }, 5000);
+            }
+          }
+        }, UNANSWERED_CALL_TIMEOUT);
+      }
     } catch (err) {
       log.error("Error creating or setting offer:", err);
       setConnectionError(`Signaling Error: ${err.message}`);
       negotiationInProgressRef.current = false;
       attemptConnectionRecovery(createOffer);
     }
-  }, [recipientId, userId, callId, flushCandidateQueue]);
+  }, [recipientId, userId, callId, flushCandidateQueue, isIncoming]);
 
   // Create an answer
   const createAnswer = useCallback(async () => {
@@ -1004,13 +1065,18 @@ const VideoCall = ({
 
       log.debug("Answer sent to remote peer.");
       flushCandidateQueue();
+
+      // Mark the call as answered when we send an answer
+      if (isIncoming) {
+        callAnsweredRef.current = true;
+      }
     } catch (err) {
       log.error("Error creating or setting answer:", err);
       setConnectionError(`Signaling Error: ${err.message}`);
       negotiationInProgressRef.current = false;
       attemptConnectionRecovery(createOffer);
     }
-  }, [recipientId, userId, callId, flushCandidateQueue, createOffer]);
+  }, [recipientId, userId, callId, flushCandidateQueue, createOffer, isIncoming]);
 
   // Socket signal handler for incoming WebRTC signaling messages
   const handleVideoSignal = useCallback((data) => {
@@ -1062,6 +1128,15 @@ const VideoCall = ({
         case "offer":
           log.debug("Processing received offer.");
           processedSignalsRef.current.add(signalId);
+
+          // If receiving an offer, the other party is online and responding
+          if (!isIncoming) {
+            setIsWaitingForResponse(false);
+            if (unansweredCallTimeoutRef.current) {
+              clearTimeout(unansweredCallTimeoutRef.current);
+              unansweredCallTimeoutRef.current = null;
+            }
+          }
 
           // Offer/Answer Collision (Glare) Handling
           const isMakingOffer = negotiationInProgressRef.current && currentState === "have-local-offer";
@@ -1117,6 +1192,16 @@ const VideoCall = ({
 
         case "answer":
           log.debug("Processing received answer.");
+
+          // If receiving an answer, the remote user has explicitly accepted the call
+          if (!isIncoming) {
+            callAnsweredRef.current = true;
+            setIsWaitingForResponse(false);
+            if (unansweredCallTimeoutRef.current) {
+              clearTimeout(unansweredCallTimeoutRef.current);
+              unansweredCallTimeoutRef.current = null;
+            }
+          }
 
           if (currentState === "have-local-offer") {
             processedSignalsRef.current.add(signalId);
@@ -1188,7 +1273,8 @@ const VideoCall = ({
     callId,
     createOffer,
     createAnswer,
-    flushCandidateQueue
+    flushCandidateQueue,
+    isIncoming
   ]);
 
   // Attempt less disruptive recovery (ICE Restart)
@@ -1305,9 +1391,10 @@ const VideoCall = ({
       if (isMountedRef.current && !isConnected && isConnecting) {
         log.error("Signaling timeout reached. Connection failed.");
         setConnectionError(
-          "Connection timed out. Peer might be offline or network issues."
+          "Connection timed out. The other user may be offline or have network issues."
         );
         setIsConnecting(false);
+        setIsWaitingForResponse(false);
       }
     }, SIGNALLING_TIMEOUT);
 
@@ -1328,6 +1415,7 @@ const VideoCall = ({
       log.error("Error during signaling initiation:", err);
       setConnectionError(`Signaling Error: ${err.message}`);
       setIsConnecting(false);
+      setIsWaitingForResponse(false);
     }
   }, [isIncoming, createOffer, isConnected, isConnecting]);
 
@@ -1414,6 +1502,7 @@ const VideoCall = ({
     if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     if (candidateFlushTimeoutRef.current) clearTimeout(candidateFlushTimeoutRef.current);
+    if (unansweredCallTimeoutRef.current) clearTimeout(unansweredCallTimeoutRef.current);
     if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
     if (audioMeterIntervalRef.current) clearInterval(audioMeterIntervalRef.current);
 
@@ -1421,6 +1510,7 @@ const VideoCall = ({
     connectionTimeoutRef.current = null;
     reconnectTimeoutRef.current = null;
     candidateFlushTimeoutRef.current = null;
+    unansweredCallTimeoutRef.current = null;
     statsIntervalRef.current = null;
     audioMeterIntervalRef.current = null;
 
@@ -1457,6 +1547,7 @@ const VideoCall = ({
     processedSignalsRef.current.clear();
     negotiationInProgressRef.current = false;
     connectionCompletedRef.current = false;
+    callAnsweredRef.current = false;
 
     log.debug("VideoCall cleanup complete.");
   }, []);
@@ -1563,6 +1654,7 @@ const VideoCall = ({
 
       // Reset connection state
       connectionCompletedRef.current = false;
+      callAnsweredRef.current = false;
 
       // Set overall connection timeout
       connectionTimeoutRef.current = setTimeout(() => {
@@ -1570,6 +1662,7 @@ const VideoCall = ({
           log.error("Overall connection timeout reached.");
           setConnectionError("Connection failed to establish after 30 seconds.");
           setIsConnecting(false);
+          setIsWaitingForResponse(false);
         }
       }, CONNECTION_TIMEOUT);
 
@@ -1579,6 +1672,7 @@ const VideoCall = ({
           setConnectionError(null);
           setIsConnecting(true);
           setRetryCount(0);
+          setIsWaitingForResponse(false);
 
           await initializeMedia();
           if (!isMountedRef.current) return;
@@ -1593,6 +1687,7 @@ const VideoCall = ({
         } catch (err) {
           log.error("Error during call initialization sequence:", err);
           setIsConnecting(false);
+          setIsWaitingForResponse(false);
           setConnectionError(`Setup failed: ${err.message}`);
         }
       };
@@ -1615,6 +1710,7 @@ const VideoCall = ({
         clearInterval(durationInterval);
         if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
         if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
+        if (unansweredCallTimeoutRef.current) clearTimeout(unansweredCallTimeoutRef.current);
         closeConnection();
         setCallDuration(0);
       };
@@ -1626,6 +1722,7 @@ const VideoCall = ({
       // Reset state for potential reactivation
       setIsConnected(false);
       setIsConnecting(false);
+      setIsWaitingForResponse(false);
       setConnectionError(null);
       setRetryCount(0);
       setCallDuration(0);
@@ -1678,6 +1775,7 @@ const VideoCall = ({
       log.error("Received error signal from peer or server:", data?.error);
       setConnectionError(`Remote Error: ${data?.error || 'Unknown issue'}`);
       setIsConnecting(false);
+      setIsWaitingForResponse(false);
     };
 
     // Register event listeners
@@ -1756,9 +1854,9 @@ const VideoCall = ({
   // Debug effect to log connection state changes
   useEffect(() => {
     log.debug(
-      `Connection status changed - connected: ${isConnected}, connecting: ${isConnecting}, error: ${connectionError || "none"}`
+      `Connection status changed - connected: ${isConnected}, connecting: ${isConnecting}, waiting: ${isWaitingForResponse}, error: ${connectionError || "none"}`
     );
-  }, [isConnected, isConnecting, connectionError]);
+  }, [isConnected, isConnecting, isWaitingForResponse, connectionError]);
 
   // --- Render ---
   return (
@@ -1811,8 +1909,17 @@ const VideoCall = ({
             </div>
           )}
 
-          {/* Connecting indicator - only show when connecting and not connected */}
-          {isConnecting && !isConnected && (
+          {/* Waiting for answer indicator */}
+          {isWaitingForResponse && !connectionError && (
+            <div className="waiting-indicator">
+              <FaSpinner className="spin" aria-hidden="true" />
+              <span>Calling {recipientName}...</span>
+              <span className="waiting-subtext">Waiting for answer</span>
+            </div>
+          )}
+
+          {/* Connecting indicator - only show when connecting and not waiting for response */}
+          {isConnecting && !isConnected && !isWaitingForResponse && (
             <div className="connecting-indicator">
               <FaSpinner className="spin" aria-hidden="true" />
               <span>Connecting...</span>
@@ -1826,6 +1933,7 @@ const VideoCall = ({
           {connectionError && !isConnecting && (
             <div className="error-indicator">
               <div className="error-message">
+                <FaExclamationTriangle className="error-icon" />
                 <span>{formatErrorMessage(connectionError)}</span>
                 {retryCount < MAX_RETRY_COUNT && !isConnected && (
                   <button
@@ -2044,6 +2152,7 @@ const VideoCall = ({
         
         /* Indicator Styles for Video/Audio State */
         .connecting-indicator,
+        .waiting-indicator,
         .error-indicator {
           position: absolute;
           top: 0;
@@ -2059,10 +2168,17 @@ const VideoCall = ({
           backdrop-filter: blur(4px);
         }
         
-        .connecting-indicator {
+        .connecting-indicator,
+        .waiting-indicator {
           gap: 15px;
           color: #fff;
           font-size: 1.1em;
+        }
+        
+        .waiting-subtext {
+          font-size: 0.9em;
+          opacity: 0.7;
+          margin-top: -5px;
         }
         
         .spin {
@@ -2096,6 +2212,12 @@ const VideoCall = ({
           gap: 15px;
           font-size: 0.95em;
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        .error-icon {
+          font-size: 2em;
+          color: #ffcc00;
+          margin-bottom: 10px;
         }
         
         .retry-button,

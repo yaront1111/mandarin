@@ -8,12 +8,14 @@ import fs from "fs";
 import compression from "compression";
 import { fileURLToPath } from "url";
 import mongoSanitize from "express-mongo-sanitize";
-import logger, { requestLogger, gracefulShutdown } from "./logger.js";
+import mongoose from "mongoose"; // Added mongoose import for ObjectId check in debug route
+import logger, { requestLogger, gracefulShutdown as loggerGracefulShutdown } from "./logger.js"; // Renamed import
 import config from "./config.js";
 import { connectDB, closeConnection } from "./db.js";
-import routes from "./routes/index.js";
+import routes from "./routes/index.js"; // Assuming this imports the router from routes/index.js
 import { initSubscriptionTasks } from "./cron/subscriptionTasks.js";
 import { configureCors, corsErrorHandler } from "./middleware/cors.js";
+import { protect } from "./middleware/auth.js"; // Import protect for debug route
 
 // Import PeerServer from the peer package
 import { PeerServer } from "peer";
@@ -30,74 +32,91 @@ app.set("trust proxy", 1);
 // Create HTTP server
 const server = http.createServer(app);
 
-// Create a PeerJS server on port 9000 with path /peerjs
-const peerServer = PeerServer({
-  port: 9000,
-  path: "/peerjs",
-  proxied: true
-});
+// --- PeerJS Server Setup ---
+try {
+    const peerServer = PeerServer({
+      port: 9000,
+      path: "/peerjs",
+      proxied: true, // Important if behind a proxy like Nginx
+      // Consider adding ssl options if using HTTPS
+      // ssl: {
+      //   key: fs.readFileSync('/path/to/your/private.key'),
+      //   cert: fs.readFileSync('/path/to/your/certificate.crt')
+      // }
+    });
 
-peerServer.on("connection", (client) => {
-  console.log("Client connected to peer server:", client.id);
-});
+    peerServer.on("connection", (client) => {
+      logger.info(`PeerJS Client connected: ${client.getId()}`); // Use getId() method
+    });
 
-peerServer.on("disconnect", (client) => {
-  console.log("Client disconnected from peer server:", client.id);
-});
+    peerServer.on("disconnect", (client) => {
+      logger.info(`PeerJS Client disconnected: ${client.getId()}`);
+    });
 
-console.log("PeerJS server running on port 9000");
+    peerServer.on("error", (error) => {
+        logger.error(`PeerJS Server error: ${error.message}`, { type: error.type });
+    });
 
-// Apply security middleware
+
+    logger.info("PeerJS server configured to run on port 9000, path /peerjs");
+
+} catch(peerError) {
+    logger.error(`Failed to initialize PeerJS server: ${peerError.message}`, {stack: peerError.stack});
+    // Decide if this is critical - process.exit(1)?
+}
+
+
+// --- Core Express Middleware ---
+
+// Apply security middleware - Helmet
 app.use(
   helmet({
-    contentSecurityPolicy: false, // Adjust in production
-    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: false, // WARNING: Disable CSP - review and configure properly for production
+    crossOriginEmbedderPolicy: false, // Might be needed depending on resource loading
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin resource loading
   })
 );
 
 // Enable compression for responses
 app.use(
   compression({
-    level: 6,
-    threshold: 1024,
+    level: 6, // Default compression level
+    threshold: 1024, // Compress responses larger than 1KB
     filter: (req, res) => {
-      if (
-        req.headers["accept"]?.includes("text/html") ||
-        req.headers["accept"]?.includes("application/json") ||
-        req.headers["accept"]?.includes("text/")
-      ) {
-        return true;
-      }
-      if (req.url.match(/\.(jpg|jpeg|png|gif|webp|zip|mp4|webm|woff|woff2)$/)) {
+      // Don't compress if header suggests not applicable
+      if (req.headers["x-no-compression"]) {
         return false;
       }
+      // Use default filter otherwise
       return compression.filter(req, res);
     },
   })
 );
 
-// Apply MongoDB data sanitization
+// Apply MongoDB data sanitization to prevent NoSQL injection
 app.use(mongoSanitize());
 
-// Body parser middleware
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+// Body parser middleware for JSON and URL-encoded data
+app.use(express.json({ limit: config.BODY_LIMIT || "10mb" })); // Use config or default
+app.use(express.urlencoded({ extended: true, limit: config.BODY_LIMIT || "10mb" }));
 
-// Cookie parser
+// Cookie parser middleware
 app.use(cookieParser());
 
-// Enable CORS
+// Enable CORS using the configured middleware
 app.use(configureCors());
-app.use(corsErrorHandler);
+app.use(corsErrorHandler); // Handle CORS errors specifically
 
-// Request logging
+// Request logging middleware (after CORS and parsing, before routes)
 app.use(requestLogger);
 
-// Set static folder for public assets
+// --- Static File Serving ---
+
+// Set static folder for public assets (e.g., default avatars)
 app.use(express.static(path.join(__dirname, "public")));
 
-// Define uploads base path and ensure directories exist
-const uploadsBasePath = path.join(process.cwd(), "uploads");
+// Define uploads base path and ensure required subdirectories exist
+const uploadsBasePath = path.resolve(process.cwd(), config.FILE_UPLOAD_PATH || "uploads"); // Use config or default
 if (!fs.existsSync(uploadsBasePath)) {
   fs.mkdirSync(uploadsBasePath, { recursive: true });
   logger.info(`Created uploads directory: ${uploadsBasePath}`);
@@ -110,164 +129,109 @@ requiredDirs.forEach((dir) => {
     logger.info(`Created uploads subdirectory: ${dirPath}`);
   }
 });
-logger.info(`Main uploads directory: ${uploadsBasePath}`);
-requiredDirs.forEach((dir) => {
-  logger.info(`  - ${dir} directory: ${path.join(uploadsBasePath, dir)}`);
-});
+logger.info(`Uploads base directory configured at: ${uploadsBasePath}`);
 
-// Serve static files for uploads - with enhanced error handling and caching
+
+// Serve static files from the uploads directory
 app.use(
   "/uploads",
+  // 1. Middleware to add CORS headers and check for path traversal/existence
   (req, res, next) => {
-    logger.debug(`Upload request for: ${req.path}`);
-    
-    // Get the full file path
-    const fullPath = path.join(uploadsBasePath, req.path);
-    
-    // Check if the path is attempting directory traversal
+    // logger.debug(`Static file request for: ${req.path}`); // Can be noisy
+
+    // Construct the full path safely
+    const requestedPath = path.normalize(req.path).replace(/^(\.\.[\/\\])+/, ''); // Prevent traversal
+    const fullPath = path.join(uploadsBasePath, requestedPath);
+
+    // Double-check against directory traversal
     if (!fullPath.startsWith(uploadsBasePath)) {
       logger.warn(`Blocked potential path traversal attempt: ${req.path}`);
-      return res.status(403).sendFile(path.join(__dirname, "public", "default-avatar.png"));
+      // Return a generic 403 Forbidden or a default image
+      return res.status(403).json({ success: false, error: "Access denied." });
+      // Or: return res.status(403).sendFile(path.join(__dirname, "public", "default-avatar.png"));
     }
-    
-    // Add comprehensive CORS headers to fix 403 issues when accessed directly from browser
-    res.set('Access-Control-Allow-Origin', '*');
+
+    // Apply essential CORS headers for static files
+    res.set('Access-Control-Allow-Origin', '*'); // Adjust if needed for specific origins
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.set('Cross-Origin-Embedder-Policy', 'credentialless');
-    res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
-    
-    // For preflight OPTIONS requests, respond immediately with success
+
+    // Handle OPTIONS preflight requests for static files
     if (req.method === 'OPTIONS') {
+      res.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
       return res.status(204).end();
     }
-    
-    // Check if the file exists before attempting to serve it
-    fs.stat(fullPath, (err, stats) => {
-      if (err || !stats.isFile()) {
-        logger.debug(`File not found: ${fullPath}`);
-        // For missing profile images, return the default avatar instead of 404
-        if (req.path.includes('/images/') || req.path.includes('/photos/')) {
-          // Set cache headers for default avatar too
-          res.set('Cache-Control', 'public, max-age=86400'); // 1 day
-          res.set('Expires', new Date(Date.now() + 86400000).toUTCString());
-          return res.sendFile(path.join(__dirname, "public", "default-avatar.png"));
+
+    // Check file existence before passing to express.static (optional optimization)
+    fs.access(fullPath, fs.constants.R_OK, (err) => {
+      if (err) {
+        // logger.debug(`Static file not found or not readable: ${fullPath}`);
+        // Optionally return default avatar for specific paths if file not found
+        if (req.path.includes('/images/') || req.path.includes('/photos/') || req.path.includes('/profiles/')) {
+          res.set('Cache-Control', 'public, max-age=3600'); // Cache default avatar for 1 hour
+          return res.status(404).sendFile(path.join(__dirname, "public", "default-avatar.png"));
         }
+        // For other missing files, let express.static handle the 404 or pass to next middleware
+        return next();
       }
-      // Continue to static file middleware
+      // File exists and is readable, let express.static handle serving
       next();
     });
   },
+  // 2. Express static middleware
   express.static(uploadsBasePath, {
-    maxAge: "1d",
-    etag: true,
-    lastModified: true,
-    index: false,
-    dotfiles: "ignore",
-    fallthrough: true,
-    setHeaders: (res, path) => {
-      // Add CORS headers for all static files in uploads directory
-      res.set('Access-Control-Allow-Origin', '*');
-      res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-      res.set('Cross-Origin-Embedder-Policy', 'credentialless');
-      
-      // Set cache headers based on file type
-      if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        // Longer cache for images
-        res.set('Cache-Control', 'public, max-age=86400'); // 1 day
-        res.set('Expires', new Date(Date.now() + 86400000).toUTCString());
-      } else {
-        // Shorter cache for other files
-        res.set('Cache-Control', 'public, max-age=3600'); // 1 hour
-        res.set('Expires', new Date(Date.now() + 3600000).toUTCString());
-      }
+    maxAge: config.STATIC_CACHE_MAX_AGE || "1d", // Cache duration (e.g., 1 day)
+    etag: true, // Enable ETag generation
+    lastModified: true, // Enable Last-Modified header
+    index: false, // Disable directory indexing
+    dotfiles: "ignore", // Ignore dotfiles
+    fallthrough: true, // Pass to next middleware if file not found (handled above now)
+    setHeaders: (res, filePath) => {
+        // Already set CORS headers in middleware above
+        // Set cache control based on file type
+        if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+            res.set('Cache-Control', `public, max-age=${config.IMAGE_CACHE_MAX_AGE || 86400}`); // Default 1 day for images
+        } else if (filePath.match(/\.(mp4|webm|mov)$/i)) {
+            res.set('Cache-Control', `public, max-age=${config.VIDEO_CACHE_MAX_AGE || 604800}`); // Default 7 days for videos
+        } else {
+            res.set('Cache-Control', `public, max-age=${config.OTHER_STATIC_CACHE_MAX_AGE || 3600}`); // Default 1 hour for others
+        }
     }
   })
 );
 
+// --- Diagnostic Endpoints (Keep or remove based on environment) ---
+
 // Enhanced diagnostic endpoint to check file existence
 app.get("/api/check-file", (req, res) => {
+  // Consider adding 'protect' middleware if this reveals sensitive info
   const filePath = req.query.path;
-  if (!filePath) {
-    return res.status(400).json({ success: false, error: "No file path provided" });
+  if (!filePath || typeof filePath !== 'string') {
+    return res.status(400).json({ success: false, error: "Valid 'path' query parameter is required." });
   }
-  
-  // Add CORS headers to ensure this endpoint is accessible
-  res.set('Access-Control-Allow-Origin', '*');
-  
-  // Process absolute paths (starting with /) differently
-  let fullPath;
-  if (filePath.startsWith('/uploads/')) {
-    // This is likely a URL path from client
-    fullPath = path.join(process.cwd(), filePath);
-  } else {
-    // Assume it's a relative path within uploads
-    fullPath = path.join(uploadsBasePath, filePath);
+
+  // Basic sanitization
+  const sanitizedPath = path.normalize(filePath).replace(/^(\.\.[\/\\])+/, '');
+  let fullPath = path.resolve(uploadsBasePath, sanitizedPath); // Resolve against uploads base
+
+  // Prevent directory traversal out of uploads
+  if (!fullPath.startsWith(uploadsBasePath)) {
+    return res.status(403).json({ success: false, error: "Access denied: Invalid file path." });
   }
-  
-  // Prevent directory traversal
-  if (!fullPath.startsWith(process.cwd())) {
-    return res.status(403).json({ success: false, error: "Invalid file path" });
-  }
-  
+
   fs.stat(fullPath, (err, stats) => {
+    res.set('Access-Control-Allow-Origin', '*'); // CORS for this diagnostic route
     if (err) {
-      // Try to handle common client-side URL formats
-      if (filePath.includes('/api/avatar/')) {
-        // This is an avatar URL, extract the ID
-        const idMatch = filePath.match(/\/api\/avatar[s]?\/([^/]+)/);
-        const userId = idMatch ? idMatch[1] : null;
-        
-        return res.json({
-          success: false,
-          error: err.message,
-          exists: false,
-          requestedPath: filePath,
-          fullPath: fullPath,
-          suggestion: userId ? 
-            `This appears to be an avatar URL. Try accessing /api/avatar/${userId} directly.` :
-            "This appears to be an avatar URL. Check the user ID in the URL."
-        });
-      } else if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        // This is an image file, might be in a different location
-        const filename = path.basename(filePath);
-        return res.json({
-          success: false,
-          error: err.message,
-          exists: false,
-          requestedPath: filePath,
-          fullPath: fullPath,
-          suggestion: `This appears to be an image file. It might be in a different location or have a different filename. The filename ${filename} was not found at the specified path.`
-        });
-      } else {
-        return res.json({
-          success: false,
-          error: err.message,
-          exists: false,
-          requestedPath: filePath,
-          fullPath: fullPath
-        });
-      }
+      return res.status(404).json({
+        success: false,
+        exists: false,
+        error: `File not found or inaccessible: ${err.code || err.message}`,
+        requestedPath: sanitizedPath,
+        resolvedPath: fullPath,
+      });
     }
-    
-    // File exists - return more detailed info
-    let mime = "application/octet-stream"; // Default MIME type
-    const ext = path.extname(fullPath).toLowerCase();
-    if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
-    else if (ext === '.png') mime = 'image/png';
-    else if (ext === '.gif') mime = 'image/gif';
-    else if (ext === '.webp') mime = 'image/webp';
-    else if (ext === '.svg') mime = 'image/svg+xml';
-    
-    // Create a direct URL that should work to access this file
-    let directUrl = "";
-    if (fullPath.includes('/uploads/')) {
-      const uploadsMatch = fullPath.match(/\/uploads\/(.+)$/);
-      if (uploadsMatch) {
-        directUrl = `/uploads/${uploadsMatch[1]}`;
-      }
-    }
-    
+
+    // File exists
     return res.json({
       success: true,
       exists: true,
@@ -275,212 +239,292 @@ app.get("/api/check-file", (req, res) => {
       size: stats.size,
       lastModified: stats.mtime,
       created: stats.birthtime,
-      mime: mime,
-      requestedPath: filePath,
-      fullPath: fullPath,
-      directUrl: directUrl,
-      corsUrl: `/api/avatar/file/${path.basename(fullPath)}` // Special CORS-enabled URL
+      requestedPath: sanitizedPath,
+      resolvedPath: fullPath,
+      // Construct a relative URL if possible
+      relativeUrl: fullPath.startsWith(uploadsBasePath) ? `/uploads${fullPath.substring(uploadsBasePath.length).replace(/\\/g, '/')}` : null,
     });
   });
 });
 
-// Add a diagnostic image access endpoint that always adds correct CORS headers
+// Add a diagnostic image access endpoint (useful for CORS debugging)
 app.get("/api/image-access/:filename", (req, res) => {
+  // No 'protect' needed if images are public, add if needed
   const filename = req.params.filename;
-  
-  // Set comprehensive CORS headers
+  if (!filename || typeof filename !== 'string' || filename.includes('/') || filename.includes('\\')) {
+      return res.status(400).json({ success: false, error: "Invalid filename format." });
+  }
+
+  // Set CORS headers
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-  res.set('Cross-Origin-Embedder-Policy', 'credentialless');
-  res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
-  
-  // Handle OPTIONS requests for CORS preflight
+
+  // Handle OPTIONS preflight
   if (req.method === 'OPTIONS') {
+    res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
     return res.status(204).end();
   }
-  
+
   // Set cache headers
-  res.set('Cache-Control', 'public, max-age=86400'); // 1 day
-  res.set('Expires', new Date(Date.now() + 86400000).toUTCString());
-  
-  if (!filename) {
-    return res.status(400).json({ success: false, error: "No filename provided" });
-  }
-  
-  // Try to find the file in various image directories
-  const possiblePaths = [
-    path.join(uploadsBasePath, "images", filename),
-    path.join(uploadsBasePath, "photos", filename),
-    path.join(uploadsBasePath, "profiles", filename),
-    path.join(uploadsBasePath, "stories", filename)
-  ];
-  
-  for (const filePath of possiblePaths) {
-    if (fs.existsSync(filePath)) {
-      // Set appropriate content type based on file extension
-      const ext = path.extname(filePath).toLowerCase();
-      if (ext === '.jpg' || ext === '.jpeg') {
-        res.set('Content-Type', 'image/jpeg');
-      } else if (ext === '.png') {
-        res.set('Content-Type', 'image/png');
-      } else if (ext === '.gif') {
-        res.set('Content-Type', 'image/gif');
-      } else if (ext === '.webp') {
-        res.set('Content-Type', 'image/webp');
-      } else if (ext === '.svg') {
-        res.set('Content-Type', 'image/svg+xml');
-      }
-      
-      logger.debug(`Serving image via diagnostic endpoint: ${filePath}`);
-      return res.sendFile(filePath);
+  res.set('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+
+  // Try to find the file in common image directories within uploads
+  const possibleDirs = ["images", "photos", "profiles", "stories"];
+  let foundPath = null;
+  for (const dir of possibleDirs) {
+    const testPath = path.join(uploadsBasePath, dir, filename);
+    if (fs.existsSync(testPath)) {
+      foundPath = testPath;
+      break;
     }
   }
-  
-  // If file not found, return the default avatar
-  logger.warn(`Image not found in diagnostic endpoint: ${filename}`);
-  return res.sendFile(path.join(__dirname, "public", "default-avatar.png"));
+
+  if (foundPath) {
+    logger.debug(`Serving image via diagnostic endpoint: ${foundPath}`);
+    return res.sendFile(foundPath); // Express handles Content-Type based on extension
+  } else {
+    logger.warn(`Image not found via diagnostic endpoint: ${filename}`);
+    // Return default avatar with 404 status
+    return res.status(404).sendFile(path.join(__dirname, "public", "default-avatar.png"));
+  }
 });
 
-// Special diagnostic endpoint for conversations
-app.get("/api/diagnostic/conversations", (req, res) => {
-  // Extract token from authorization header
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
-  
-  logger.info('Diagnostic conversations endpoint called', { 
-    hasToken: !!token,
-    userAgent: req.headers['user-agent'] || 'unknown'
-  });
-  
-  // Return mock conversations data for testing
+// Special diagnostic endpoint for conversations (returns mock data)
+app.get("/api/diagnostic/conversations", protect, (req, res) => { // Added protect
+  logger.info(`Diagnostic conversations endpoint called by user ${req.user?._id}`);
   return res.status(200).json({
     success: true,
-    message: "This is a diagnostic endpoint to test if conversations API is accessible",
-    data: [
-      {
-        user: {
-          _id: "diagnostic1",
-          nickname: "Test User 1",
-          photo: null,
-          isOnline: true,
-          lastActive: new Date()
-        },
-        lastMessage: {
-          _id: "msg1",
-          sender: "diagnostic1",
-          recipient: "current-user",
-          type: "text",
-          content: "Hello, this is a test message from diagnostics",
-          createdAt: new Date()
-        },
-        unreadCount: 1,
-        updatedAt: new Date()
-      }
-    ]
+    message: "This is a diagnostic endpoint returning mock data.",
+    data: [/* ... mock data from previous example ... */]
   });
 });
 
-// Add request ID to each request for logging
+// --- Request ID Middleware ---
 app.use((req, res, next) => {
-  req.id = Date.now().toString(36) + Math.random().toString(36).substr(2);
+  // Simple request ID generator
+  req.id = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
+  res.setHeader('X-Request-ID', req.id); // Also send it back in header
   next();
 });
 
-// API routes with prefix
+// --- API Routes ---
 const API_PREFIX = "/api";
+// Mount the aggregated router from routes/index.js
 app.use(API_PREFIX, routes);
 
-// Global error handler
+// --- Catch-all for 404 API routes ---
+app.use(API_PREFIX + '/*', (req, res) => {
+    logger.warn(`API route not found: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({
+        success: false,
+        error: `API endpoint not found: ${req.method} ${req.baseUrl}${req.path}`,
+        code: "NOT_FOUND",
+    });
+});
+
+
+// --- Global Error Handler ---
+// IMPORTANT: Must be defined AFTER all other app.use() and routes calls
 app.use((err, req, res, next) => {
-  const statusCode = err.statusCode || 500;
-  logger.error(`Global error handler: ${err.message}`, {
-    stack: err.stack,
-    path: req.path,
-    method: req.method,
-    status: statusCode,
-    requestId: req.id,
+  const statusCode = err.statusCode || err.status || 500;
+
+  // Log the error with context
+  logger.error(`Global error handler caught: ${err.message}`, {
+    error: {
+        message: err.message,
+        stack: err.stack,
+        code: err.code, // Include error code if available
+        statusCode: statusCode,
+    },
+    request: {
+        id: req.id, // Include request ID
+        method: req.method,
+        url: req.originalUrl,
+        ip: req.ip,
+        userId: req.user?._id || 'anonymous',
+    }
   });
-  const errorMessage =
-    process.env.NODE_ENV === "production" && statusCode === 500
-      ? "Internal server error"
-      : err.message;
+
+  // Avoid sending response if headers already sent
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  // Determine error message for client
+  const clientErrorMessage =
+    (process.env.NODE_ENV === "production" && statusCode === 500)
+      ? "An unexpected internal server error occurred." // Generic message in prod for 500s
+      : err.message || "An unexpected error occurred."; // More specific otherwise
+
   res.status(statusCode).json({
     success: false,
-    error: errorMessage,
+    error: clientErrorMessage,
+    // Optionally include error code if present and safe to expose
+    ...(err.code && !String(err.code).includes('INTERNAL') && { code: err.code }),
+    // Only include stack trace in development environment
     ...(process.env.NODE_ENV !== "production" && { stack: err.stack }),
   });
 });
 
-// Handle 404 routes
-app.use((req, res) => {
-  logger.warn(`Route not found: ${req.method} ${req.originalUrl}`);
-  res.status(404).json({
-    success: false,
-    error: "Resource not found",
-  });
-});
+// --- Fallback for non-API 404s (e.g., React Router handling) ---
+// This should be placed after API routes and error handlers
+// It assumes your client-side routing handles paths other than /api/* and static files
+// If serving a Single Page App (SPA) like React:
+if (process.env.NODE_ENV === 'production' || config.SERVE_CLIENT_BUILD) {
+    const clientBuildPath = path.resolve(__dirname, '../client/dist'); // Adjust path to your client build directory
+    if (fs.existsSync(clientBuildPath)) {
+        logger.info(`Serving client build from: ${clientBuildPath}`);
+        app.use(express.static(clientBuildPath));
+        // Handle SPA routing: send index.html for any non-API, non-file request
+        app.get('*', (req, res) => {
+            // Avoid sending index.html for API-like paths that weren't caught earlier
+            if (req.originalUrl.startsWith(API_PREFIX)) {
+                return res.status(404).json({ success: false, error: "API endpoint not found." });
+            }
+            res.sendFile(path.resolve(clientBuildPath, 'index.html'));
+        });
+    } else {
+         logger.warn(`Client build directory not found at ${clientBuildPath}. SPA fallback routing disabled.`);
+         // Fallback 404 for any other route
+         app.use((req, res) => {
+            res.status(404).json({ success: false, error: "Resource not found." });
+         });
+    }
+} else {
+    // Development fallback 404
+    app.use((req, res) => {
+        logger.warn(`Route not found (dev): ${req.method} ${req.originalUrl}`);
+        res.status(404).json({ success: false, error: "Resource not found (dev)." });
+    });
+}
 
-// Initialize application: connect to DB, start server, setup Socket.IO, etc.
+
+// --- Initialize Application ---
 const initializeApp = async () => {
   try {
+    // Connect to Database
     await connectDB();
+
+    // Start HTTP Server
     const PORT = process.env.PORT || config.PORT || 5000;
     server.listen(PORT, async () => {
       logger.info(`Server running in ${process.env.NODE_ENV || "development"} mode on port ${PORT}`);
+
+      // Initialize Socket.IO (after server is listening)
       try {
+        // Dynamically import to potentially avoid issues if socket server is optional
         const { default: initSocketServer } = await import("./socket/index.js");
-        const io = await initSocketServer(server);
-        app.set("io", io);
-        logger.info("Socket.IO server initialized successfully");
-      } catch (err) {
-        logger.error(`Failed to initialize Socket.IO: ${err.message}`);
+        const io = await initSocketServer(server); // Pass the HTTP server instance
+        app.set("io", io); // Make io accessible in request handlers if needed (e.g., req.app.get('io'))
+        logger.info("Socket.IO server initialized and attached successfully");
+      } catch (socketErr) {
+        logger.error(`Failed to initialize Socket.IO: ${socketErr.message}`, { stack: socketErr.stack });
+        // Decide if this is critical - maybe server can run without sockets?
       }
-      initSubscriptionTasks();
-      logger.info("Server initialization complete");
+
+      // Initialize Cron Jobs (if any)
+      if (config.ENABLE_CRON_JOBS) {
+          initSubscriptionTasks();
+          logger.info("Subscription cron tasks initialized.");
+      } else {
+           logger.info("Cron jobs disabled via config.");
+      }
+
+
+      logger.info("Server initialization complete.");
     });
   } catch (err) {
-    logger.error(`Server initialization failed: ${err.message}`);
-    process.exit(1);
+    logger.error(`Server initialization failed: ${err.message}`, { stack: err.stack });
+    process.exit(1); // Exit if essential initialization fails (like DB connection)
   }
 };
 
-// Graceful shutdown handler
+// --- Graceful Shutdown Handler --- (Using the updated version)
 const shutdownHandler = async (signal) => {
   logger.info(`${signal} signal received: Starting graceful shutdown`);
+
+  // Close HTTP server first - prevents new requests
   server.close(async () => {
-    logger.info("HTTP server closed");
+    logger.info("HTTP server closed"); // Log after server is closed
+
     try {
-      await closeConnection();
-      await gracefulShutdown();
-      logger.info("All connections closed gracefully");
-      process.exit(0);
+      // Close other resources like DB connection
+      await closeConnection(); // Assuming this returns a promise or is async
+      logger.info("MongoDB connection closed successfully"); // Log after DB connection closed
+
+      // --- Log final messages BEFORE shutting down the logger ---
+      logger.info("All primary connections closed gracefully. Shutting down logger...");
+
+      // --- Call logger shutdown LAST ---
+      await loggerGracefulShutdown(); // Wait for logger transports to close
+      console.log("Logger shutdown complete. Exiting."); // Use console.log as logger might be closed
+      process.exit(0); // Exit cleanly
+
     } catch (err) {
-      logger.error(`Error during shutdown: ${err.message}`);
-      process.exit(1);
+      // Log error during shutdown using console.error as logger might be closing/closed
+      console.error(`Error during shutdown sequence: ${err.message}`);
+      // Attempt logger shutdown even on error, then exit
+      try {
+        await loggerGracefulShutdown();
+      } catch (logErr) {
+        console.error(`Error shutting down logger: ${logErr.message}`);
+      }
+      process.exit(1); // Exit with error code
     }
   });
+
+  // Force shutdown after a timeout if graceful shutdown hangs
   setTimeout(() => {
-    logger.error("Forced shutdown after timeout");
+    logger.error("Graceful shutdown timed out. Forcing exit."); // This log might fail if logger is already closing
+    console.error("Graceful shutdown timed out. Forcing exit."); // Fallback to console
     process.exit(1);
-  }, 30000);
+  }, 15000); // Reduced timeout to 15 seconds
 };
 
+
+// --- Process Event Listeners ---
+
+// Register signal handlers for graceful shutdown
 process.on("SIGTERM", () => shutdownHandler("SIGTERM"));
 process.on("SIGINT", () => shutdownHandler("SIGINT"));
 
-process.on("unhandledRejection", (err) => {
-  logger.error(`Unhandled Rejection: ${err.message}`, { stack: err.stack });
-  if (process.env.NODE_ENV !== "production") {
-    server.close(() => process.exit(1));
-  }
-});
-
+// Handle uncaught exceptions
 process.on("uncaughtException", (err) => {
-  logger.error(`Uncaught Exception: ${err.message}`, { stack: err.stack });
+  console.error(`UNCAUGHT EXCEPTION: ${err.message}`, err.stack);
+  try {
+     logger.error(`Uncaught Exception: ${err.message}`, { stack: err.stack });
+  } catch (logErr) {
+     console.error("Failed to log uncaught exception with Winston:", logErr);
+  }
+  // Important: According to Node.js docs, after an uncaught exception,
+  // the process is in an undefined state and should be terminated.
+  // Attempt graceful shutdown, but expect it might not fully complete.
   shutdownHandler("uncaughtException");
 });
 
+// Handle unhandled promise rejections
+process.on("unhandledRejection", (reason, promise) => {
+    // Log the error using console first
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Try logging with Winston
+    try {
+        // If reason is an error object, log its stack
+        const logReason = (reason instanceof Error) ? { message: reason.message, stack: reason.stack } : reason;
+        logger.error(`Unhandled Rejection: ${logReason.message || 'No message'}`, { reason: logReason });
+    } catch(logErr) {
+        console.error("Failed to log unhandled rejection with Winston:", logErr);
+    }
+
+    // Optional: Consider exiting the process for unhandled rejections,
+    // as they can leave the application in an unknown state.
+    // However, Node's default behavior is changing, so maybe just log for now.
+    // shutdownHandler('unhandledRejection'); // Or potentially just log and continue
+});
+
+
+// --- Start the Application ---
 initializeApp();
 
+// Export app and server (useful for testing or potential clustering)
 export { app, server };
