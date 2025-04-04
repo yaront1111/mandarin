@@ -51,6 +51,13 @@ const config = {
   PORT: Number.parseInt(process.env.PORT, 10) || 5000,
   NODE_ENV: process.env.NODE_ENV || "development",
   API_VERSION: process.env.API_VERSION || "v1",
+  APP_NAME: process.env.APP_NAME || "Mandarin Dating",
+  APP_URL: process.env.APP_URL || "https://mandarindating.com",
+
+  // Email settings
+  EMAIL_USER: process.env.EMAIL_USER,
+  EMAIL_PASSWORD: process.env.EMAIL_PASSWORD,
+  EMAIL_FROM: process.env.EMAIL_FROM || "noreply@mandarindating.com",
 
   // Database settings
   MONGODB_URI: process.env.MONGODB_URI || "mongodb://localhost:27017/mandarin",

@@ -3,18 +3,17 @@ import nodemailer from "nodemailer"
 import config from "../config.js"
 import logger from "../logger.js"
 
-// Configure the transporter for GoDaddy's SMTP relay
+// Configure the transporter for your local Postfix SMTP server
 const transporter = nodemailer.createTransport({
-  host: "n1smtpout.europe.secureserver.net",
-  port: 25, // You might also try 80 or 3535 if needed
-  secure: false, // Use false if you're on port 25/80/3535
-  // Uncomment and fill these if authentication is required:
-  // auth: {
-  //   user: "your-username",
-  //   pass: "your-password"
-  // },
+  host: "localhost", // Your local Postfix server
+  port: 25, // Standard SMTP port
+  secure: false, // Use TLS
+  auth: {
+    user: config.EMAIL_USER || "noreply@flirtss.com",
+    pass: config.EMAIL_PASSWORD || "ChangeThis456!" // Replace with your actual password
+  },
   tls: {
-    // Do not fail on invalid certs if necessary (not recommended for production)
+    // Only needed if you're using a self-signed certificate
     rejectUnauthorized: false,
   },
 })
@@ -23,7 +22,7 @@ const transporter = nodemailer.createTransport({
 export const sendEmailNotification = async ({ to, subject, text, html }) => {
   try {
     const info = await transporter.sendMail({
-      from: '"Your App Name" <your-email@yourdomain.com>', // Sender address (must be authorized)
+      from: `"${config.APP_NAME || 'Flirtss'}" <${config.EMAIL_FROM || 'noreply@flirtss.com'}>`, // Sender address (must be authorized)
       to, // Recipient's email
       subject, // Subject line
       text, // Plain text body
@@ -46,8 +45,8 @@ export const sendEmailNotification = async ({ to, subject, text, html }) => {
  * @returns {Promise} - Nodemailer info object
  */
 export const sendVerificationEmail = async ({ email, nickname, token }) => {
-  const appName = config.APP_NAME || "Your Dating App"
-  const appUrl = config.APP_URL || "https://yourdatingapp.com"
+  const appName = config.APP_NAME || "Flirtss"
+  const appUrl = config.APP_URL || "https://flirtss.com"
   const verificationUrl = `${appUrl}/verify-email?token=${token}`
 
   const subject = `Verify your email for ${appName}`
@@ -79,56 +78,94 @@ export const sendVerificationEmail = async ({ email, nickname, token }) => {
       <title>Verify Your Email</title>
       <style>
         body {
-          font-family: Arial, sans-serif;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
           line-height: 1.6;
           color: #333;
           max-width: 600px;
           margin: 0 auto;
           padding: 20px;
+          background-color: #f9f9f9;
         }
         .container {
           border: 1px solid #e1e1e1;
-          border-radius: 5px;
-          padding: 20px;
+          border-radius: 12px;
+          padding: 25px;
           background-color: #fff;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
         .header {
           text-align: center;
           padding-bottom: 20px;
-          border-bottom: 1px solid #e1e1e1;
-          margin-bottom: 20px;
+          margin-bottom: 25px;
         }
         .logo {
-          max-width: 150px;
+          max-width: 180px;
           height: auto;
+          margin-bottom: 15px;
         }
         .button {
           display: inline-block;
-          background-color: #ff4b7d;
+          background: linear-gradient(135deg, #ff6b6b 0%, #ff2d73 100%);
           color: white !important;
           text-decoration: none;
-          padding: 12px 24px;
-          border-radius: 4px;
-          margin: 20px 0;
+          padding: 14px 28px;
+          border-radius: 50px;
+          margin: 25px 0;
           font-weight: bold;
+          font-size: 16px;
+          box-shadow: 0 4px 10px rgba(255, 45, 115, 0.2);
+          transition: all 0.2s ease;
+        }
+        .button:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 15px rgba(255, 45, 115, 0.3);
         }
         .footer {
-          margin-top: 30px;
+          margin-top: 35px;
           text-align: center;
-          font-size: 12px;
+          font-size: 13px;
           color: #888;
+          border-top: 1px solid #f0f0f0;
+          padding-top: 20px;
+        }
+        .verification-banner {
+          background: linear-gradient(135deg, rgba(255,107,107,0.1) 0%, rgba(255,45,115,0.1) 100%);
+          border-left: 4px solid #ff2d73;
+          padding: 15px;
+          margin: 20px 0;
+          border-radius: 6px;
+        }
+        .social-icons {
+          margin-top: 15px;
+        }
+        .social-icon {
+          display: inline-block;
+          margin: 0 8px;
+          width: 32px;
+          height: 32px;
+        }
+        h1 {
+          color: #ff2d73;
+          font-weight: 600;
+        }
+        p {
+          color: #555;
         }
       </style>
     </head>
     <body>
       <div class="container">
         <div class="header">
+          <img src="${appUrl}/logo.png" alt="${appName} Logo" class="logo">
           <h1>${appName}</h1>
         </div>
         
         <p>Hello ${nickname},</p>
         
-        <p>Thank you for registering with ${appName}! We're excited to have you join our community.</p>
+        <div class="verification-banner">
+          <p><strong>Please verify your email to unlock all features</strong></p>
+          <p>Thank you for registering with ${appName}! We're excited to have you join our community.</p>
+        </div>
         
         <p>Please verify your email address by clicking the button below:</p>
         
@@ -136,10 +173,12 @@ export const sendVerificationEmail = async ({ email, nickname, token }) => {
           <a href="${verificationUrl}" class="button">Verify Email Address</a>
         </div>
         
-        <p>Or copy and paste this link into your browser:</p>
-        <p style="word-break: break-all; font-size: 14px;"><a href="${verificationUrl}">${verificationUrl}</a></p>
+        <p style="font-size: 14px; color: #777;">Or copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; font-size: 14px; background-color: #f8f8f8; padding: 10px; border-radius: 4px;"><a href="${verificationUrl}">${verificationUrl}</a></p>
         
-        <p>This link will expire in 24 hours.</p>
+        <p><strong>Why verify?</strong> Verified members have full access to messaging, profile features, and more!</p>
+        
+        <p>This verification link will expire in 24 hours.</p>
         
         <p>If you did not create an account, please ignore this email.</p>
         
@@ -148,6 +187,11 @@ export const sendVerificationEmail = async ({ email, nickname, token }) => {
         <div class="footer">
           <p>&copy; ${new Date().getFullYear()} ${appName}. All rights reserved.</p>
           <p>This is an automated message, please do not reply.</p>
+          <div class="social-icons">
+            <a href="#"><img src="${appUrl}/images/social/facebook.png" alt="Facebook" class="social-icon"></a>
+            <a href="#"><img src="${appUrl}/images/social/instagram.png" alt="Instagram" class="social-icon"></a>
+            <a href="#"><img src="${appUrl}/images/social/twitter.png" alt="Twitter" class="social-icon"></a>
+          </div>
         </div>
       </div>
     </body>
@@ -181,8 +225,8 @@ export const sendNewMessageEmail = async ({
   messageType,
   conversationUrl,
 }) => {
-  const appName = config.APP_NAME || "Your Dating App"
-  const appUrl = config.APP_URL || "https://yourdatingapp.com"
+  const appName = config.APP_NAME || "Flirtss"
+  const appUrl = config.APP_URL || "https://flirtss.com"
 
   // Default values if sender info is incomplete
   const senderName = sender?.nickname || "Someone"
@@ -390,33 +434,41 @@ export const sendNewMessageEmail = async ({
   })
 }
 
-// Example usage:
-// sendVerificationEmail({
-//   email: "user@example.com",
-//   nickname: "JohnDoe",
-//   token: "verification-token-123"
-// });
+// Test function to verify email configuration
+export const testEmailConfiguration = async (testEmail) => {
+  try {
+    const info = await transporter.sendMail({
+      from: `"Flirtss Test" <noreply@flirtss.com>`,
+      to: testEmail,
+      subject: "Flirtss Email Configuration Test",
+      text: "If you're reading this, your email configuration is working properly!",
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 8px;">
+          <h2 style="color: #ff4b7d;">Flirtss Email Test</h2>
+          <p>If you're reading this, your email configuration is working properly!</p>
+          <p>This is a test email sent from your Postfix SMTP server on flirtss.com.</p>
+          <p>Server time: ${new Date().toISOString()}</p>
+        </div>
+      `
+    })
 
-// sendNewMessageEmail({
-//   recipientEmail: "recipient@example.com",
-//   recipientName: "Jane",
-//   sender: {
-//     nickname: "John",
-//     details: {
-//       age: 28,
-//       location: "New York",
-//       iAm: "Man",
-//       lookingFor: ["Women"]
-//     },
-//     photos: [{ url: "https://example.com/photo.jpg" }]
-//   },
-//   messagePreview: "Hey there! How are you doing today?",
-//   messageType: "text",
-//   conversationUrl: "https://yourdatingapp.com/messages/user123"
-// });
+    return {
+      success: true,
+      messageId: info.messageId,
+      response: info.response
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message,
+      stack: error.stack
+    }
+  }
+}
 
 export default {
   sendEmailNotification,
   sendVerificationEmail,
   sendNewMessageEmail,
+  testEmailConfiguration
 }
