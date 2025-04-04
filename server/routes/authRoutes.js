@@ -1,10 +1,4 @@
-/**
- * routes/authRoutes.js
- *
- * Contains authentication-related endpoints.
- * This file uses ES Modules and modern practices for a production-ready API.
- */
-
+// server/routes/authRoutes.js - Enhanced with ES modules and improved imports/exports
 import express from "express"
 import jwt from "jsonwebtoken"
 import { check, validationResult } from "express-validator"
@@ -14,6 +8,7 @@ import config from "../config.js"
 import logger from "../logger.js"
 import rateLimit from "express-rate-limit"
 import crypto from "crypto"
+import { sendVerificationEmail } from "../utils/emailService.js"
 
 const router = express.Router()
 
@@ -47,7 +42,7 @@ const passwordValidator = (value) => {
   }
 
   // Check for number
-  if (!/(?=.*\d)/.test(value)) {
+  if (!/\d/.test(value)) {
     return "Password must include at least one number"
   }
 
@@ -105,10 +100,24 @@ router.post(
         isCouple: isCouple || false,
       })
 
-      // Generate verification token (email sending to be implemented in production)
+      // Generate verification token
       const verificationToken = user.createVerificationToken()
 
+      // Save the user to the database
       await user.save()
+
+      // Send verification email
+      try {
+        await sendVerificationEmail({
+          email: user.email,
+          nickname: user.nickname,
+          token: verificationToken,
+        })
+        logger.info(`Verification email sent to: ${user.email}`)
+      } catch (emailError) {
+        logger.error(`Failed to send verification email: ${emailError.message}`)
+        // Continue with registration even if email fails
+      }
 
       // Create token payload for authentication
       const payload = {
@@ -208,7 +217,7 @@ router.post(
       const payload = {
         id: user.id,
         role: user.role,
-        version: user.version || 1,
+        version: user.version,
       }
 
       const token = generateToken(payload)
@@ -228,7 +237,10 @@ router.post(
         },
       })
     } catch (err) {
-      logger.error(`Login error: ${err.message}`)
+      logger.error(`Login error: ${err.message}`, {
+        email: email,
+        stack: err.stack,
+      })
       res.status(500).json({ success: false, error: "Server error" })
     }
   }),
@@ -244,11 +256,15 @@ router.get(
     try {
       const user = await User.findById(req.user._id).select("-password")
       if (!user) {
+        logger.warn(`User not found with ID: ${req.user._id}`)
         return res.status(404).json({ success: false, error: "User not found" })
       }
       res.json({ success: true, data: user })
     } catch (err) {
-      logger.error(`Get user error: ${err.message}`)
+      logger.error(`Get user error: ${err.message}`, {
+        userId: req.user._id,
+        stack: err.stack,
+      })
       res.status(500).json({ success: false, error: "Server error" })
     }
   }),
@@ -339,7 +355,7 @@ router.post(
       user.refreshTokenExpires = undefined
       user.version = (user.version || 0) + 1
       await user.save()
-      await User.findByIdAndUpdate(user._id, { isOnline: false, lastActive: Date.now() })
+      await User.findByIdAndUpdate(req.user._id, { isOnline: false, lastActive: Date.now() })
       res.json({ success: true, message: "Logged out successfully" })
     } catch (err) {
       logger.error(`Logout error: ${err.message}`)
@@ -374,6 +390,56 @@ router.post(
       res.json({ success: true, message: "Email verified successfully" })
     } catch (err) {
       logger.error(`Email verification error: ${err.message}`)
+      res.status(500).json({ success: false, error: "Server error" })
+    }
+  }),
+)
+
+// @route   POST /api/auth/resend-verification
+// @desc    Resend verification email
+// @access  Private
+router.post(
+  "/resend-verification",
+  protect,
+  asyncHandler(async (req, res) => {
+    try {
+      const user = await User.findById(req.user._id)
+
+      if (!user) {
+        return res.status(404).json({ success: false, error: "User not found" })
+      }
+
+      if (user.isVerified) {
+        return res.status(400).json({ success: false, error: "Email is already verified" })
+      }
+
+      // Check if we should throttle resend attempts
+      const ONE_HOUR = 60 * 60 * 1000
+      if (user.verificationTokenExpires && user.verificationTokenExpires > Date.now() - ONE_HOUR) {
+        const timeLeft = Math.ceil((user.verificationTokenExpires - (Date.now() - ONE_HOUR)) / (60 * 1000))
+        return res.status(429).json({
+          success: false,
+          error: `Please wait ${timeLeft} minutes before requesting another verification email`,
+        })
+      }
+
+      // Generate new verification token
+      const verificationToken = user.createVerificationToken()
+      await user.save()
+
+      // Send verification email
+      await sendVerificationEmail({
+        email: user.email,
+        nickname: user.nickname,
+        token: verificationToken,
+      })
+
+      res.json({
+        success: true,
+        message: "Verification email sent successfully",
+      })
+    } catch (err) {
+      logger.error(`Resend verification error: ${err.message}`)
       res.status(500).json({ success: false, error: "Server error" })
     }
   }),
