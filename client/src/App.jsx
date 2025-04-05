@@ -12,6 +12,7 @@ import "./styles/utilities.css"
 import "./styles/settings.css" // Using regular CSS for settings
 import "./styles/notifications.css"
 import "./styles/stories.css" // Using regular CSS for stories
+import "./styles/footer.css" // Footer styles
 
 import { AuthProvider, UserProvider, StoriesProvider, ThemeProvider, NotificationProvider, LanguageProvider } from "./context"
 import { ChatConnectionProvider } from "./context/ChatConnectionContext"
@@ -20,6 +21,7 @@ import { useInitializeNotificationServiceNavigation } from "./services/notificat
 import ErrorBoundary from "./components/ErrorBoundary.jsx"
 import PrivateRoute from "./components/PrivateRoute.jsx"
 import VerificationBanner from "./components/VerificationBanner.jsx"
+import { Footer } from "./components"
 import Login from "./pages/Login"
 import Register from "./pages/Register"
 import Dashboard from "./pages/Dashboard"
@@ -180,6 +182,9 @@ function App() {
                       />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
+
+                    {/* Footer appears on all pages */}
+                    <Footer />
 
                     {/* Global floating chat window */}
                     {isChatOpen && chatRecipient && (

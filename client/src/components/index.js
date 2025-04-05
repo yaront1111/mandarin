@@ -10,6 +10,8 @@ import UserCard from "./UserCard.jsx"
 // Chat Components - Legacy
 import EmbeddedChat from "./EmbeddedChat"
 
+// Footer Component
+import Footer from "./Footer.jsx"
 
 // Stories Components
 import StoriesCarousel from "./Stories/StoriesCarousel"
@@ -36,7 +38,9 @@ export {
   LayoutPrivateRoute,
   // Chat Components
   EmbeddedChat,
-
+  // Footer Component
+  Footer,
+  
   UserCard,
   // Stories Components
   StoriesCarousel,
@@ -51,5 +55,4 @@ export {
   ThemeToggle,
   // User Profile Modal
   UserProfileModal,
-
 }

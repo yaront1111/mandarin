@@ -398,6 +398,21 @@ img {
   height: auto;
 }
 
+/* Layout for footer support */
+html, body, #root {
+  height: 100%;
+}
+
+.app-wrapper {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.site-footer {
+  margin-top: auto;
+}
+
 /* Container */
 .container {
   width: 100%;
