@@ -415,7 +415,7 @@ app.get("/api/socket-diagnostic", (req, res) => {
     serverTime: new Date().toISOString(),
     clientIP: ip,
     nodeEnv: process.env.NODE_ENV,
-    hostname: require('os').hostname(),
+    hostname: 'flirtss.com', // Hardcoded to avoid require('os').hostname() which doesn't work in ES modules
     socketPath: process.env.SOCKET_PATH || "/socket.io",
     allowedOrigins: process.env.ALLOWED_ORIGINS || "*",
     serverPort: process.env.PORT || 5000,
