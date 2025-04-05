@@ -116,30 +116,20 @@ const initSocketServer = async (server) => {
     }
   }
 
-  // Configure Socket.IO with VERY permissive settings to diagnose issues
-  // Use environment variable for path, fallback to "/socket.io"
-  const socketPath = process.env.SOCKET_PATH || "/socket.io"; 
+  // ULTRA-MINIMAL Socket.IO configuration for maximum compatibility
+  // Just use default path and absolute minimum settings
   
-  // Log critical path information
-  logger.info(`Socket.IO initializing with path: "${socketPath}" (from env: ${process.env.SOCKET_PATH ? 'yes' : 'no'})`);
+  logger.info(`Socket.IO initializing with minimal configuration for maximum compatibility`);
   
   const ioOptions = {
+    // Only set the most essential settings
     cors: {
       origin: "*", // Allow all origins
-      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      credentials: true,
-      allowedHeaders: "*", // Allow all headers
+      methods: ["GET", "POST", "OPTIONS"],
+      credentials: true
     },
-    transports: ["websocket", "polling"], // Prefer WebSocket first for better performance
-    pingTimeout: 60000, // Longer ping timeout
-    pingInterval: 25000, // More frequent pings
-    connectTimeout: 45000, // Longer connect timeout
-    maxHttpBufferSize: 5e6, // 5MB buffer
-    path: socketPath, // CRITICAL: Use value from env, ensures consistent configuration
-    serveClient: false, // Don't serve client files
-    allowEIO3: true, // Allow Engine.IO v3
-    cookie: false, // Don't use cookies
-    perMessageDeflate: false, // Disable WebSocket compression for reliability
+    // Default path is /socket.io - don't override it
+    // Avoid setting any other options to minimize configuration mismatches
   };
   
   // Log IP address of the server to help with debugging connection issues

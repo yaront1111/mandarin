@@ -96,18 +96,16 @@ class SocketClient {
         
         // CRITICAL: Use a direct websocket address WITHOUT a trailing slash in the path
         // This is often the key issue with Nginx proxying of socket.io
-        // MOST CRITICAL FIX: Must specify EXACT matching path as server with NO trailing slash
+        // MOST CRITICAL FIX: Use absolute minimum configuration for Socket.IO in production
+        console.log(`Using ultra-simplified Socket.IO connection for maximum compatibility`);
+        
+        // ULTRA SIMPLIFIED - use as few options as possible to avoid configuration mismatches
         this.socket = io(window.location.origin, {
-          query: { token },
-          auth: { token },
-          reconnection: true,
-          reconnectionAttempts: 10,
-          timeout: 20000,
-          transports: ["polling", "websocket"],
-          path: "/socket.io", // NO trailing slash - matches server configuration exactly
-          forceNew: true,
-          autoConnect: true,
-          withCredentials: false // Disable credentials for simpler CORS
+          // Absolutely minimal configuration for maximum compatibility
+          transports: ["polling", "websocket"],  // Try polling first which has better compatibility
+          query: { token },  // Include token in query for authentication
+          forceNew: true,    // Always create a new connection
+          reconnection: true // Enable automatic reconnection
         });
         
         console.log("Created simplified socket connection in production mode");

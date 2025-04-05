@@ -381,27 +381,72 @@ app.get("/socket.io/healthcheck", (req, res) => {
   }
 });
 
-// Add healthcheck at API endpoint as well
-app.get("/api/socket-healthcheck", (req, res) => {
+// Special endpoint for testing socket.io connectivity
+app.get("/socket-test", (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
+  res.set('Content-Type', 'text/plain');
+  return res.status(200).send('Socket.IO test endpoint is accessible');
+});
+
+// Also serve a test at the root socket.io path for troubleshooting
+app.get("/socket.io", (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Content-Type', 'text/plain');
   
   const socketIO = app.get('io');
   if (socketIO) {
-    return res.status(200).json({
-      success: true,
-      status: "Socket.IO is running",
-      socketPath: socketIO.path(),
-      enginePath: socketIO.engine?.path || 'unknown',
-      serverTime: new Date().toISOString(),
-      connections: Object.keys(socketIO.sockets.sockets || {}).length,
-      namespaces: Object.keys(socketIO.nsps || {}).length
-    });
+    return res.status(200).send(`Socket.IO GET endpoint is accessible. Path: "${socketIO.path()}"`);
   } else {
-    return res.status(503).json({
-      success: false,
-      error: "Socket.IO is not running or not properly initialized"
-    });
+    return res.status(503).send('Socket.IO is not running or not properly initialized');
   }
+});
+
+// Simple diagnostic endpoint
+app.get("/api/socket-diagnostic", (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  
+  // Get detailed information about the server
+  const ip = req.headers['x-forwarded-for'] || 
+             req.connection.remoteAddress || 
+             req.socket.remoteAddress;
+             
+  let serverInfo = {
+    success: true,
+    serverTime: new Date().toISOString(),
+    clientIP: ip,
+    nodeEnv: process.env.NODE_ENV,
+    hostname: require('os').hostname(),
+    socketPath: process.env.SOCKET_PATH || "/socket.io",
+    allowedOrigins: process.env.ALLOWED_ORIGINS || "*",
+    serverPort: process.env.PORT || 5000,
+    headers: {
+      host: req.headers.host,
+      origin: req.headers.origin,
+      userAgent: req.headers['user-agent'],
+      acceptEncoding: req.headers['accept-encoding'],
+      connectionType: req.headers.connection
+    }
+  };
+  
+  // Add Socket.IO information if available
+  const socketIO = app.get('io');
+  if (socketIO) {
+    serverInfo.socketIO = {
+      running: true,
+      path: socketIO.path(),
+      enginePath: socketIO.engine?.path || 'unknown',
+      connections: Object.keys(socketIO.sockets.sockets || {}).length,
+      namespaces: Object.keys(socketIO.nsps || {}).length,
+      connectedRooms: Array.from(socketIO.sockets.adapter.rooms || new Map()).map(r => r[0]).slice(0, 10)
+    };
+  } else {
+    serverInfo.socketIO = {
+      running: false,
+      error: "Socket.IO is not running or not properly initialized"
+    };
+  }
+  
+  return res.status(200).json(serverInfo);
 });
 
 // --- Catch-all for 404 API routes ---
