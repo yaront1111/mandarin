@@ -1490,6 +1490,264 @@ router.get(
   })
 );
 
+/**
+ * @route   POST /api/users/:id/block
+ * @desc    Block a user
+ * @access  Private
+ */
+router.post(
+  "/:id/block",
+  protect,
+  asyncHandler(async (req, res) => {
+    const targetUserId = req.params.id;
+    logger.debug(`User ${req.user._id} blocking user ${targetUserId}`);
+
+    try {
+      if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid user ID format"
+        });
+      }
+
+      // Check if user is trying to block themselves
+      if (req.user._id.toString() === targetUserId) {
+        return res.status(400).json({
+          success: false,
+          error: "You cannot block yourself"
+        });
+      }
+
+      // Find target user
+      const targetUser = await User.findById(targetUserId);
+      if (!targetUser) {
+        return res.status(404).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      // Check if already blocked
+      const currentUser = await User.findById(req.user._id);
+      if (currentUser.hasBlocked(targetUserId)) {
+        return res.status(200).json({
+          success: true,
+          message: "User is already blocked",
+          alreadyBlocked: true
+        });
+      }
+
+      // Add user to blocked list
+      await User.findByIdAndUpdate(req.user._id, {
+        $addToSet: { blockedUsers: targetUserId }
+      });
+
+      logger.info(`User ${req.user._id} blocked user ${targetUserId}`);
+
+      res.status(200).json({
+        success: true,
+        message: "User blocked successfully"
+      });
+    } catch (err) {
+      logger.error(`Error blocking user: ${err.message}`);
+      res.status(500).json({
+        success: false,
+        error: "Server error while blocking user"
+      });
+    }
+  })
+);
+
+/**
+ * @route   DELETE /api/users/:id/block
+ * @desc    Unblock a user
+ * @access  Private
+ */
+router.delete(
+  "/:id/block",
+  protect,
+  asyncHandler(async (req, res) => {
+    const targetUserId = req.params.id;
+    logger.debug(`User ${req.user._id} unblocking user ${targetUserId}`);
+
+    try {
+      if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid user ID format"
+        });
+      }
+
+      // Remove user from blocked list
+      await User.findByIdAndUpdate(req.user._id, {
+        $pull: { blockedUsers: targetUserId }
+      });
+
+      logger.info(`User ${req.user._id} unblocked user ${targetUserId}`);
+
+      res.status(200).json({
+        success: true,
+        message: "User unblocked successfully"
+      });
+    } catch (err) {
+      logger.error(`Error unblocking user: ${err.message}`);
+      res.status(500).json({
+        success: false,
+        error: "Server error while unblocking user"
+      });
+    }
+  })
+);
+
+/**
+ * @route   GET /api/users/blocked
+ * @desc    Get blocked users list
+ * @access  Private
+ */
+router.get(
+  "/blocked",
+  protect,
+  asyncHandler(async (req, res) => {
+    logger.debug(`Getting blocked users for ${req.user._id}`);
+
+    try {
+      const user = await User.findById(req.user._id)
+        .select("blockedUsers")
+        .populate("blockedUsers", "nickname photos isOnline lastActive");
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        count: user.blockedUsers.length,
+        data: user.blockedUsers
+      });
+    } catch (err) {
+      logger.error(`Error fetching blocked users: ${err.message}`);
+      res.status(500).json({
+        success: false,
+        error: "Server error while fetching blocked users"
+      });
+    }
+  })
+);
+
+/**
+ * @route   POST /api/users/:id/report
+ * @desc    Report a user
+ * @access  Private
+ */
+router.post(
+  "/:id/report",
+  protect,
+  asyncHandler(async (req, res) => {
+    const targetUserId = req.params.id;
+    const { reason } = req.body;
+    logger.debug(`User ${req.user._id} reporting user ${targetUserId}`);
+
+    try {
+      if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid user ID format"
+        });
+      }
+
+      // Check if user is trying to report themselves
+      if (req.user._id.toString() === targetUserId) {
+        return res.status(400).json({
+          success: false,
+          error: "You cannot report yourself"
+        });
+      }
+
+      // Find target user
+      const targetUser = await User.findById(targetUserId);
+      if (!targetUser) {
+        return res.status(404).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      // For now, just log the report - future: add to a reports collection
+      logger.warn(`REPORT: User ${req.user._id} reported user ${targetUserId}. Reason: ${reason || 'Not specified'}`);
+
+      // TODO: Create a Report model and save the report
+
+      res.status(200).json({
+        success: true,
+        message: "User reported successfully"
+      });
+    } catch (err) {
+      logger.error(`Error reporting user: ${err.message}`);
+      res.status(500).json({
+        success: false,
+        error: "Server error while reporting user"
+      });
+    }
+  })
+);
+
+/**
+ * @route   DELETE /api/users/:id
+ * @desc    Delete a user account (self or admin only)
+ * @access  Private/Admin
+ */
+router.delete(
+  "/:id",
+  protect,
+  asyncHandler(async (req, res) => {
+    const targetUserId = req.params.id;
+    
+    try {
+      // Check if user is trying to delete their own account or is an admin
+      if (req.user._id.toString() !== targetUserId && req.user.role !== 'admin') {
+        return res.status(403).json({
+          success: false,
+          error: "Not authorized to delete this account"
+        });
+      }
+
+      // Find user to delete
+      const user = await User.findById(targetUserId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      // Soft delete by setting active to false
+      user.active = false;
+      
+      // Add additional info
+      user.deletedAt = new Date();
+      user.deletedBy = req.user._id;
+      
+      await user.save();
+
+      logger.info(`User ${targetUserId} deleted by ${req.user._id}`);
+
+      res.status(200).json({
+        success: true,
+        message: "Account deleted successfully"
+      });
+    } catch (err) {
+      logger.error(`Error deleting user: ${err.message}`);
+      res.status(500).json({
+        success: false,
+        error: "Server error while deleting user"
+      });
+    }
+  })
+);
+
 // Add the following route handler after the existing photo-related routes
 
 // Approve all pending photo access requests

@@ -1,6 +1,9 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
-import { FaBell, FaLock, FaPalette, FaSignOutAlt, FaTrash, FaUser, FaShieldAlt, FaSave, FaTimes, FaExclamationTriangle } from "react-icons/fa"
+import { 
+  FaBell, FaLock, FaPalette, FaSignOutAlt, FaTrash, FaUser, FaShieldAlt, 
+  FaSave, FaTimes, FaExclamationTriangle, FaBan, FaUnlock, FaUserSlash
+} from "react-icons/fa"
 import { toast } from "react-toastify"
 import { useAuth, useTheme, useUser } from "../context"
 import { settingsService } from "../services"
@@ -12,8 +15,12 @@ const Settings = () => {
   const navigate = useNavigate()
   const { user, logout, getCurrentUser } = useAuth()
   const { theme, setTheme } = useTheme()
-  const { currentUser, updateProfile, getUser } = useUser()
+  const { currentUser, updateProfile, getUser, getBlockedUsers, unblockUser } = useUser()
   const previousUserRef = useRef(null);
+  
+  // State for blocked users
+  const [blockedUsers, setBlockedUsers] = useState([])
+  const [loadingBlockedUsers, setLoadingBlockedUsers] = useState(false)
 
   // Define default settings
   const defaultSettings = {
@@ -353,6 +360,49 @@ const Settings = () => {
   }, [user, currentUser, getCurrentUser, getUser, initialLoadComplete]);
 
   // FIXED VERSION: Only update settings when currentUser changes in a meaningful way
+  // Load blocked users
+  const loadBlockedUsers = useCallback(async () => {
+    if (!currentUser) return;
+    
+    setLoadingBlockedUsers(true);
+    try {
+      const blockedData = await getBlockedUsers();
+      if (blockedData && Array.isArray(blockedData)) {
+        setBlockedUsers(blockedData);
+      } else {
+        setBlockedUsers([]);
+      }
+    } catch (error) {
+      console.error("Error loading blocked users:", error);
+      setBlockedUsers([]);
+    } finally {
+      setLoadingBlockedUsers(false);
+    }
+  }, [getBlockedUsers, currentUser]);
+  
+  // Load blocked users when the privacy tab is selected
+  useEffect(() => {
+    if (activeTab === "privacy") {
+      loadBlockedUsers();
+    }
+  }, [activeTab, loadBlockedUsers]);
+  
+  // Handle unblocking a user
+  const handleUnblock = useCallback(async (userId, nickname) => {
+    if (!userId) return;
+    
+    try {
+      const success = await unblockUser(userId, nickname);
+      if (success) {
+        // Remove from local state for immediate UI update
+        setBlockedUsers(prevUsers => prevUsers.filter(user => user._id !== userId));
+      }
+    } catch (error) {
+      console.error("Error unblocking user:", error);
+      toast.error("Failed to unblock user");
+    }
+  }, [unblockUser]);
+
   useEffect(() => {
     // Skip if settings aren't initialized yet or user hasn't loaded
     if (!initialLoadComplete || !currentUser || !currentUser.settings) {
@@ -579,6 +629,52 @@ const Settings = () => {
                   No one
                 </label>
               </div>
+            </div>
+            
+            {/* Blocked Users Section */}
+            <div className={styles.blockedUsersSection}>
+              <div className={styles.sectionHeader}>
+                <FaBan className={styles.sectionIcon} />
+                <h3 className={styles.sectionTitle}>Blocked Users</h3>
+              </div>
+              <p className={styles.sectionDescription}>
+                Users you've blocked cannot message you or view your profile
+              </p>
+              
+              {loadingBlockedUsers ? (
+                <div className={styles.loadingState}>
+                  <div className={styles.spinner}></div>
+                  <p>Loading blocked users...</p>
+                </div>
+              ) : blockedUsers.length === 0 ? (
+                <div className={styles.emptyState}>
+                  <FaUserSlash className={styles.emptyStateIcon} />
+                  <p>You haven't blocked any users</p>
+                </div>
+              ) : (
+                <div className={styles.blockedUsersList}>
+                  {blockedUsers.map(user => (
+                    <div key={user._id} className={styles.blockedUserItem}>
+                      <div className={styles.blockedUserInfo}>
+                        <img 
+                          src={user.photos && user.photos[0] ? user.photos[0].url : "/default-avatar.png"} 
+                          alt={user.nickname} 
+                          className={styles.blockedUserAvatar}
+                        />
+                        <span className={styles.blockedUserName}>
+                          {user.nickname || "User"}
+                        </span>
+                      </div>
+                      <button 
+                        className={styles.unblockButton}
+                        onClick={() => handleUnblock(user._id, user.nickname)}
+                      >
+                        <FaUnlock /> Unblock
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         );

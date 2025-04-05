@@ -12,7 +12,13 @@ import { safeObjectId } from "../utils/index.js" // Import from shared utils
  */
 const sendMessageNotification = async (io, sender, recipient, message) => {
   try {
-    const recipientUser = await User.findById(recipient._id).select("settings socketId")
+    const recipientUser = await User.findById(recipient._id).select("settings socketId blockedUsers")
+
+    // Check if recipient has blocked the sender
+    if (recipientUser && typeof recipientUser.hasBlocked === 'function' && recipientUser.hasBlocked(sender._id)) {
+      logger.debug(`Notification blocked: User ${recipient._id} has blocked sender ${sender._id}`)
+      return
+    }
 
     // Check if recipient has message notifications enabled
     if (recipientUser?.settings?.notifications?.messages !== false) {
@@ -57,7 +63,13 @@ const sendMessageNotification = async (io, sender, recipient, message) => {
  */
 const sendLikeNotification = async (io, sender, recipient, likeData, userConnections) => {
   try {
-    const recipientUser = await User.findById(recipient._id).select("settings")
+    const recipientUser = await User.findById(recipient._id).select("settings blockedUsers")
+
+    // Check if recipient has blocked the sender
+    if (recipientUser && typeof recipientUser.hasBlocked === 'function' && recipientUser.hasBlocked(sender._id)) {
+      logger.debug(`Like notification blocked: User ${recipient._id} has blocked sender ${sender._id}`)
+      return
+    }
 
     // Check if recipient has like notifications enabled
     if (recipientUser?.settings?.notifications?.likes !== false) {
@@ -155,6 +167,26 @@ const registerMessagingHandlers = (io, socket, userConnections, rateLimiters) =>
 
       // Get full user object to check permissions
       const user = await User.findById(socket.user._id)
+
+      // Check if recipient has blocked the sender
+      if (typeof recipient.hasBlocked === 'function' && recipient.hasBlocked(socket.user._id)) {
+        logger.warn(`Message blocked: User ${recipientId} has blocked sender ${socket.user._id}`)
+        socket.emit("messageError", {
+          error: "Unable to send message. You have been blocked by this user.",
+          tempMessageId,
+        })
+        return
+      }
+      
+      // Check if sender has blocked the recipient
+      if (typeof user.hasBlocked === 'function' && user.hasBlocked(recipientId)) {
+        logger.warn(`Message blocked: Sender ${socket.user._id} has blocked recipient ${recipientId}`)
+        socket.emit("messageError", {
+          error: "Unable to send message. You have blocked this user.",
+          tempMessageId,
+        })
+        return
+      }
 
       // Check if user can send this type of message
       // First, safely check if the method exists, then call it if it does

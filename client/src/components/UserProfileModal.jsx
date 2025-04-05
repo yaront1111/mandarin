@@ -673,8 +673,16 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   const handleReport = async () => {
     if (!userId) return;
 
+    // Create a simple prompt for the report reason
+    const reason = prompt("Please provide a reason for reporting this user:");
+    
+    // If user cancels, abort the report
+    if (reason === null) {
+      return;
+    }
+
     try {
-      await reportUser(userId);
+      await reportUser(userId, reason);
       toast.success("User reported successfully");
       onClose();
     } catch (error) {

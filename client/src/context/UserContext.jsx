@@ -875,41 +875,116 @@ export const UserProvider = ({ children }) => {
   }, []);
 
   /**
+   * Get the list of users blocked by the current user
+   * @returns {Promise<Array>} List of blocked users
+   */
+  const getBlockedUsers = useCallback(async () => {
+    try {
+      const response = await apiService.get('/users/blocked');
+      
+      if (response.success) {
+        return response.data || [];
+      }
+      throw new Error(response.error || "Failed to fetch blocked users");
+    } catch (err) {
+      const errorMsg = err.error || err.message || "Failed to fetch blocked users";
+      dispatch({ type: "USER_ERROR", payload: errorMsg });
+      return [];
+    }
+  }, []);
+
+  /**
    * Block a user.
    * @param {string} userId - User ID to block.
+   * @param {string} nickname - User's nickname for toast message.
    * @returns {Promise<boolean>} Success status.
    */
-  const blockUser = useCallback(async (userId) => {
-    // This function is a placeholder since it wasn't implemented in the original
-    // but it's referenced in other components
+  const blockUser = useCallback(async (userId, nickname = "User") => {
     try {
+      // Validate userId format
+      if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
+        toast.error("Invalid user ID format");
+        return false;
+      }
+      
       const response = await apiService.post(`/users/${userId}/block`);
+      
       if (response.success) {
-        toast.success("User blocked successfully");
+        // Show success toast with custom message
+        toast.success(`You've blocked ${nickname}. They can no longer message you.`);
+        
+        // Force refresh user data to update blocked status
+        refreshUserData();
+        
+        return true;
+      } else if (response.alreadyBlocked) {
+        // Already blocked - still return true
+        toast.info(`${nickname} is already blocked`);
         return true;
       }
+      
       throw new Error(response.error || "Failed to block user");
     } catch (err) {
       const errorMsg = err.error || err.message || "Failed to block user";
       dispatch({ type: "USER_ERROR", payload: errorMsg });
       return false;
     }
-  }, []);
+  }, [refreshUserData]);
+
+  /**
+   * Unblock a user
+   * @param {string} userId - User ID to unblock
+   * @param {string} nickname - User's nickname for toast message
+   * @returns {Promise<boolean>} Success status
+   */
+  const unblockUser = useCallback(async (userId, nickname = "User") => {
+    try {
+      // Validate userId format
+      if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
+        toast.error("Invalid user ID format");
+        return false;
+      }
+      
+      const response = await apiService.delete(`/users/${userId}/block`);
+      
+      if (response.success) {
+        toast.success(`You've unblocked ${nickname}`);
+        
+        // Force refresh user data to update blocked status
+        refreshUserData();
+        
+        return true;
+      }
+      
+      throw new Error(response.error || "Failed to unblock user");
+    } catch (err) {
+      const errorMsg = err.error || err.message || "Failed to unblock user";
+      dispatch({ type: "USER_ERROR", payload: errorMsg });
+      return false;
+    }
+  }, [refreshUserData]);
 
   /**
    * Report a user.
    * @param {string} userId - User ID to report.
+   * @param {string} reason - Reason for reporting.
    * @returns {Promise<boolean>} Success status.
    */
-  const reportUser = useCallback(async (userId) => {
-    // This function is a placeholder since it wasn't implemented in the original
-    // but it's referenced in other components
+  const reportUser = useCallback(async (userId, reason = "") => {
     try {
-      const response = await apiService.post(`/users/${userId}/report`);
+      // Validate userId format
+      if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
+        toast.error("Invalid user ID format");
+        return false;
+      }
+      
+      const response = await apiService.post(`/users/${userId}/report`, { reason });
+      
       if (response.success) {
         toast.success("User reported successfully");
         return true;
       }
+      
       throw new Error(response.error || "Failed to report user");
     } catch (err) {
       const errorMsg = err.error || err.message || "Failed to report user";
@@ -945,6 +1020,8 @@ export const UserProvider = ({ children }) => {
         getLikedUsers,
         sendMessage,
         blockUser,
+        unblockUser,
+        getBlockedUsers,
         reportUser
       }}
     >
