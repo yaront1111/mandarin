@@ -117,29 +117,16 @@ const initSocketServer = async (server) => {
         // More permissive CORS during debugging
         // Accept connections from any origin to help diagnose issues
         return callback(null, true);
-        
-        /* Original strict CORS logic - commented out for debugging
-        if (!origin) {
-          logger.debug("Socket connection with no origin allowed");
-          return callback(null, true);
-        }
-        if (allowedOrigins.includes(origin) || isDev) {
-          logger.debug(`Socket.IO CORS allowed for origin: ${origin}`);
-          return callback(null, true);
-        }
-        logger.warn(`Socket.IO CORS rejected for origin: ${origin}`);
-        return callback(new Error("Not allowed by CORS"), false);
-        */
       },
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       credentials: true,
       allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     },
     transports: ["polling", "websocket"], // Try polling first for better reliability
-    pingTimeout: 30000,     // Reduced ping timeout to match more common client defaults
-    pingInterval: 15000,    // Ping more frequently for better connection monitoring
-    connectTimeout: 30000,  // Reduced connect timeout
-    maxHttpBufferSize: 1e6, // 1MB max buffer size
+    pingTimeout: 60000,     // Increased ping timeout for better reliability
+    pingInterval: 25000,    // Ping more frequently for better connection monitoring
+    connectTimeout: 60000,  // Increased connect timeout
+    maxHttpBufferSize: 5e6, // 5MB max buffer size
     path: "/socket.io",
     allowEIO3: true,        // Allow Engine.IO v3 clients for better compatibility
   };
