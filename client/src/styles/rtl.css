@@ -1,0 +1,234 @@
+/* RTL Specific Styles */
+
+/* Basic RTL layout */
+.rtl-layout,
+html[dir="rtl"] body,
+html[dir="rtl"] .app-wrapper,
+[data-language="he"] .modal-container {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* Text direction utility classes */
+.rtl-text,
+html[dir="rtl"] .text-content {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+.ltr-text {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+/* High specificity overrides */
+html[dir="rtl"] *,
+.rtl-layout * {
+  /* Only override if not explicitly set */
+  direction: inherit;
+}
+
+/* Fix for layout components in RTL mode */
+html[dir="rtl"] .layout-container,
+.rtl-layout .layout-container {
+  flex-direction: row-reverse !important;
+}
+
+html[dir="rtl"] .sidebar,
+.rtl-layout .sidebar {
+  border-right: none !important;
+  border-left: 1px solid var(--border-color) !important;
+}
+
+/* Form fields in RTL */
+html[dir="rtl"] .form-field label,
+.rtl-layout .form-field label {
+  text-align: right !important;
+}
+
+html[dir="rtl"] .form-field input,
+html[dir="rtl"] .form-field textarea,
+html[dir="rtl"] .form-field select,
+.rtl-layout .form-field input,
+.rtl-layout .form-field textarea,
+.rtl-layout .form-field select {
+  text-align: right !important;
+}
+
+/* Buttons with icons */
+html[dir="rtl"] .button-icon,
+.rtl-layout .button-icon {
+  flex-direction: row-reverse !important;
+}
+
+html[dir="rtl"] .button-icon svg,
+html[dir="rtl"] .button-icon i,
+.rtl-layout .button-icon svg,
+.rtl-layout .button-icon i {
+  margin-right: 0 !important;
+  margin-left: 8px !important;
+}
+
+/* Fix margins for content that relies on left/right positioning */
+html[dir="rtl"] .card-header,
+html[dir="rtl"] .card-content,
+html[dir="rtl"] .card-footer,
+.rtl-layout .card-header,
+.rtl-layout .card-content,
+.rtl-layout .card-footer {
+  padding-left: 0 !important;
+  padding-right: 1rem !important;
+}
+
+/* Navigation items */
+html[dir="rtl"] .nav-item,
+.rtl-layout .nav-item {
+  flex-direction: row-reverse !important;
+}
+
+html[dir="rtl"] .nav-item-icon,
+.rtl-layout .nav-item-icon {
+  margin-right: 0 !important;
+  margin-left: 10px !important;
+}
+
+/* Messages and chat bubbles */
+html[dir="rtl"] .message-bubble.outgoing,
+.rtl-layout .message-bubble.outgoing {
+  border-radius: 15px 0 15px 15px !important;
+  margin-left: 0 !important;
+  margin-right: auto !important;
+}
+
+html[dir="rtl"] .message-bubble.incoming,
+.rtl-layout .message-bubble.incoming {
+  border-radius: 0 15px 15px 15px !important;
+  margin-right: 0 !important;
+  margin-left: auto !important;
+}
+
+/* Dropdowns */
+html[dir="rtl"] .dropdown-menu,
+.rtl-layout .dropdown-menu {
+  left: auto !important;
+  right: 0 !important;
+  text-align: right !important;
+}
+
+/* Fix margins for app layout */
+html[dir="rtl"] .app-wrapper,
+.rtl-layout .app-wrapper {
+  padding-left: 0 !important;
+  padding-right: 1rem !important;
+}
+
+/* Settings page tabs */
+html[dir="rtl"] .settings-tabs,
+.rtl-layout .settings-tabs {
+  flex-direction: row-reverse !important;
+}
+
+/* User cards */
+html[dir="rtl"] .user-card-actions,
+.rtl-layout .user-card-actions {
+  flex-direction: row-reverse !important;
+}
+
+/* Modal close button */
+html[dir="rtl"] .modal-close,
+.rtl-layout .modal-close {
+  right: auto !important;
+  left: 1rem !important;
+}
+
+/* Toast notifications */
+html[dir="rtl"] .toast-container,
+.rtl-layout .toast-container {
+  left: 1rem !important;
+  right: auto !important;
+}
+
+/* Fix for tagging elements with directional content */
+html[dir="rtl"] .tags-container .tag,
+.rtl-layout .tags-container .tag,
+html[dir="rtl"] .tagsContainer .tag,
+.rtl-layout .tagsContainer .tag,
+html[dir="rtl"] .interestsTags .interestTag,
+.rtl-layout .interestsTags .interestTag {
+  margin-right: 0 !important;
+  margin-left: 8px !important;
+}
+
+/* Fix for user profile modal */
+html[dir="rtl"] .modalContainer,
+.rtl-layout .modalContainer,
+[data-language="he"] .modalContainer,
+html[dir="rtl"] .modal-body,
+.rtl-layout .modal-body,
+[data-language="he"] .modal-body,
+html[dir="rtl"] *[class*="modal-body"],
+.rtl-layout *[class*="modal-body"],
+[data-language="he"] *[class*="modal-body"],
+[dir="rtl"].modal-body,
+.modal-body[dir="rtl"],
+.rtl-layout > .modal-body,
+html[lang="he"] .modal-body {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* Ensure profile/user sections are correctly aligned */
+html[dir="rtl"] .detailsSection,
+.rtl-layout .detailsSection,
+html[dir="rtl"] .photosSection,
+.rtl-layout .photosSection {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* Always keep English content in LTR direction */
+html[dir="rtl"] .url,
+html[dir="rtl"] .code,
+html[dir="rtl"] .number,
+html[dir="rtl"] .email,
+.rtl-layout .url,
+.rtl-layout .code,
+.rtl-layout .number,
+.rtl-layout .email {
+  direction: ltr !important;
+  display: inline-block !important;
+}
+
+/* Fix alignment of date/time components */
+html[dir="rtl"] .icon + span,
+.rtl-layout .icon + span {
+  margin-right: 4px !important;
+  margin-left: 0 !important;
+}
+
+/* Flip chevron icons in pagination and carousel controls */
+html[dir="rtl"] .nav-prev,
+.rtl-layout .nav-prev,
+html[dir="rtl"] .navPrev,
+.rtl-layout .navPrev {
+  transform: scaleX(-1) !important;
+}
+
+html[dir="rtl"] .nav-next,
+.rtl-layout .nav-next,
+html[dir="rtl"] .navNext,
+.rtl-layout .navNext {
+  transform: scaleX(-1) !important;
+}
+
+/* Fix for react-toastify RTL support */
+.Toastify__toast--rtl {
+  direction: rtl !important;
+}
+
+/* Force RTL on specific components that might resist proper direction change */
+html[dir="rtl"] [data-force-rtl],
+.rtl-layout [data-force-rtl] {
+  direction: rtl !important;
+  text-align: right !important;
+}
