@@ -327,17 +327,17 @@ app.get("/api/socket-diagnostic", (req, res) => {
       corsOrigins: Array.isArray(config.CORS_OPTIONS?.origin) 
         ? config.CORS_OPTIONS.origin 
         : [typeof config.CORS_OPTIONS?.origin === 'string' ? config.CORS_OPTIONS.origin : '*'],
-      hostname: require('os').hostname(),
+      hostname: 'flirtss.com', // Hardcoded hostname for production
       serverTime: new Date().toISOString(),
       socketIoAttached: Boolean(socketIO),
-      activeConnections: socketIO ? Object.keys(socketIO.sockets.sockets).length : 0,
+      activeConnections: socketIO ? Object.keys(socketIO.sockets.sockets || {}).length : 0,
       allowedOrigins: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['*'],
       engineIoPath: socketIO ? socketIO.path() : '/socket.io',
       
       // Additional debug info
       server: {
         uptime: process.uptime(),
-        memory: process.memoryUsage(),
+        memory: JSON.stringify(process.memoryUsage()),
         socketEngineInfo: socketIO ? {
           path: socketIO.path(),
           clientsCount: socketIO.engine?.clientsCount || 0,
@@ -415,7 +415,7 @@ app.get("/api/socket-diagnostic", (req, res) => {
     serverTime: new Date().toISOString(),
     clientIP: ip,
     nodeEnv: process.env.NODE_ENV,
-    hostname: 'flirtss.com', // Hardcoded to avoid require('os').hostname() which doesn't work in ES modules
+    hostname: 'flirtss.com', // Hardcoded hostname for production
     socketPath: process.env.SOCKET_PATH || "/socket.io",
     allowedOrigins: process.env.ALLOWED_ORIGINS || "*",
     serverPort: process.env.PORT || 5000,
