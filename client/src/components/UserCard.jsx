@@ -1,10 +1,12 @@
 import React, { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import { FaHeart, FaComment, FaUser, FaMapMarkerAlt, FaClock, FaChevronDown, FaChevronUp } from "react-icons/fa";
 import { Avatar, Card, Button } from "./common";
 import { formatDate, normalizePhotoUrl, logger } from "../utils";
 import { withMemo } from "./common";
+import { useLanguage } from "../context";
 import styles from "../styles/usercard.module.css";
 
 // Constants
@@ -12,6 +14,28 @@ const TAG_TYPES = {
   LOOKING_FOR: "lookingFor",
   INTO: "into",
   INTEREST: "interest",
+};
+
+/**
+ * Safely gets a translation string, handling cases where the translation might return an object
+ * @param {Function} t - Translation function from useTranslation
+ * @param {String} key - Translation key
+ * @param {String} defaultValue - Default value if translation is missing or invalid
+ * @returns {String} The translated string or default value
+ */
+const safeTranslate = (t, key, defaultValue = "") => {
+  try {
+    const translated = t(key);
+    // Check if translation returned an object instead of a string
+    if (typeof translated === 'object' && translated !== null) {
+      // Try to get a string representation or return the default
+      return translated.toString ? translated.toString() : defaultValue;
+    }
+    return translated || defaultValue;
+  } catch (error) {
+    logger.error(`Translation error for key '${key}':`, error);
+    return defaultValue;
+  }
 };
 
 /**
@@ -32,8 +56,10 @@ const UserCard = ({
   const [showAllTags, setShowAllTags] = useState(false);
   const [showMoreSections, setShowMoreSections] = useState(false);
 
-  // Navigation
+  // Navigation and internationalization
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const { isRTL } = useLanguage();
 
   // Helper functions
   const getTagClass = useCallback((type) => {
@@ -56,9 +82,9 @@ const UserCard = ({
       console.log('Skipping card click - clicked on a button');
       return;
     }
-    
+
     console.log('UserCard clicked:', user?._id, user?.nickname);
-    
+
     if (onClick) {
       console.log('Using provided onClick handler');
       onClick();
@@ -89,16 +115,16 @@ const UserCard = ({
       // Ensure the event doesn't bubble up and trigger card click
       e.stopPropagation();
       e.preventDefault();
-      
+
       if (onMessage) {
         onMessage(e, user);
       } else {
         // Create an embedded chat dialog with this user
-        const chatEvent = new CustomEvent('openChat', { 
+        const chatEvent = new CustomEvent('openChat', {
           detail: { recipient: user }
         });
         window.dispatchEvent(chatEvent);
-        
+
         // Log the event to help debug
         console.log('Dispatched openChat event with recipient:', user);
         console.log('User data in event:', JSON.stringify(user));
@@ -120,11 +146,11 @@ const UserCard = ({
   // Memoized data calculations
   const profilePhotoUrl = useMemo(() => {
     if (!user?.photos?.length) return "/default-avatar.png";
-    
+
     // Normalize the photo URL
     const url = user.photos[0]?.url;
     if (!url) return "/default-avatar.png";
-    
+
     // Use the normalizePhotoUrl utility function
     return normalizePhotoUrl(url);
   }, [user?.photos]);
@@ -185,12 +211,22 @@ const UserCard = ({
   // Last active formatting
   const lastActiveText = useMemo(() => {
     // If user is currently online, show "Active now" regardless of lastActive timestamp
-    if (user?.isOnline) return "Active now";
+    if (user?.isOnline) return safeTranslate(t, 'common.activeNow', 'Active now');
 
-    if (!user?.lastActive) return "Never active";
+    if (!user?.lastActive) return safeTranslate(t, 'common.neverActive', 'Never active');
 
     return formatDate(user.lastActive, { showRelative: true, showTime: false, showDate: false });
-  }, [user?.lastActive, user?.isOnline]);
+  }, [user?.lastActive, user?.isOnline, t]);
+
+  // Helper to safely translate profile identity/lookingFor/etc tags
+  const getTranslatedTag = useCallback((namespace, tag) => {
+    if (!tag) return "";
+
+    // Format the tag key according to the i18n pattern
+    const key = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
+    // Use the original tag as the default if translation fails
+    return safeTranslate(t, key, tag);
+  }, [t]);
 
   // Validation
   if (!user) return null;
@@ -198,13 +234,13 @@ const UserCard = ({
   // Common action buttons for both grid and list view
   const renderActionButtons = () => (
     <>
-      <button 
+      <button
         onClick={handleLikeClick}
         aria-label={`${isLiked ? "Unlike" : "Like"} ${user.nickname}`}
         className={`${styles.actionBtn} ${styles.likeBtn} ${isLiked ? styles.active : ""}`}
       >
         <FaHeart size={18} />
-        {isLiked ? 'Liked' : 'Like'}
+        {isLiked ? safeTranslate(t, 'common.liked', 'Liked') : safeTranslate(t, 'common.like', 'Like')}
       </button>
       <button
         onClick={handleMessageClick}
@@ -212,7 +248,7 @@ const UserCard = ({
         className={`${styles.actionBtn} ${styles.messageBtn}`}
       >
         <FaComment size={18} />
-        Message
+        {safeTranslate(t, 'common.message', 'Message')}
       </button>
     </>
   );
@@ -231,9 +267,9 @@ const UserCard = ({
       >
         {/* User Photo */}
         <div className={styles.cardPhoto}>
-          <img 
-            src={profilePhotoUrl || "/default-avatar.png"} 
-            alt={user.nickname} 
+          <img
+            src={profilePhotoUrl || "/default-avatar.png"}
+            alt={user.nickname}
             onError={(e) => {
               e.target.onerror = null;
               e.target.src = "/default-avatar.png";
@@ -260,7 +296,7 @@ const UserCard = ({
 
           <p className={styles.location}>
             <FaMapMarkerAlt className={styles.icon} />
-            {user.details?.location || "Unknown location"}
+            {user.details?.location || safeTranslate(t, 'profile.unknownLocation', 'Unknown location')}
           </p>
 
           {/* Extended Details Section */}
@@ -269,7 +305,7 @@ const UserCard = ({
               <div className={styles.detailsRow}>
                 {extendedDetails.identity && (
                   <div className={styles.detailItem}>
-                    <span className={styles.detailLabel}>I am:</span>
+                    <span className={styles.detailLabel}>{safeTranslate(t, 'profile.iAm', 'I am')}:</span>
                     <span
                       className={`${styles.tag} ${styles.identityTag} ${
                         extendedDetails.identity.toLowerCase().includes("woman")
@@ -281,14 +317,14 @@ const UserCard = ({
                               : ""
                       }`}
                     >
-                      {extendedDetails.identity}
+                      {getTranslatedTag('profile.identity', extendedDetails.identity)}
                     </span>
                   </div>
                 )}
-                
+
                 {tags.lookingFor.length > 0 && (
                   <div className={styles.detailItem}>
-                    <span className={styles.detailLabel}>Into:</span>
+                    <span className={styles.detailLabel}>{safeTranslate(t, 'profile.lookingFor', 'Looking for')}:</span>
                     <span className={`${styles.tag} ${
                       tags.lookingFor[0].toLowerCase().includes("women") || tags.lookingFor[0].toLowerCase().includes("woman")
                         ? styles.identityWoman
@@ -298,7 +334,7 @@ const UserCard = ({
                             ? styles.identityCouple
                             : styles.lookingForTag
                     }`}>
-                      {tags.lookingFor[0]}
+                      {getTranslatedTag('profile.lookingFor', tags.lookingFor[0])}
                     </span>
                     {tags.lookingFor.length > 1 && (
                       <span className={styles.moreCount}>+{tags.lookingFor.length - 1}</span>
@@ -317,9 +353,9 @@ const UserCard = ({
                 <div className={styles.tagsToggle}>
                   <span className={styles.toggleBtn} onClick={toggleShowMoreSections}>
                     {showMoreSections ? (
-                      <>Show less <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
+                      <>{safeTranslate(t, 'common.viewLess', 'View less')} <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
                     ) : (
-                      <>Show more <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
+                      <>{safeTranslate(t, 'common.viewMore', 'View more')} <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
                     )}
                   </span>
                 </div>
@@ -331,7 +367,7 @@ const UserCard = ({
                   {/* Interests */}
                   {tags.interests.length > 0 && (
                     <div className={styles.tagCategory}>
-                      <h4 className={styles.categoryTitle}>Interests</h4>
+                      <h4 className={styles.categoryTitle}>{safeTranslate(t, 'profile.interests', 'Interests')}</h4>
                       <div className={styles.interestTags}>
                         {(showAllTags ? tags.interests : tags.interests.slice(0, 3)).map((tag, idx) => (
                           <span key={`interest-${idx}`} className={`${styles.tag} ${
@@ -343,7 +379,7 @@ const UserCard = ({
                                   ? styles.identityCouple
                                   : ""
                           }`}>
-                            {tag}
+                            {getTranslatedTag('profile.interests', tag)}
                           </span>
                         ))}
                         {tags.interests.length > 3 && !showAllTags && (
@@ -354,11 +390,11 @@ const UserCard = ({
                       </div>
                     </div>
                   )}
-                
+
                   {/* Preferences section (formerly Into) */}
                   {tags.into.length > 0 && (
                     <div className={styles.tagCategory}>
-                      <h4 className={styles.categoryTitle}>Preferences</h4>
+                      <h4 className={styles.categoryTitle}>{safeTranslate(t, 'profile.preferences', 'Preferences')}</h4>
                       <div className={styles.interestTags}>
                         {(showAllTags ? tags.into : tags.into.slice(0, 3)).map((tag, idx) => (
                           <span key={`into-${idx}`} className={`${styles.tag} ${
@@ -370,7 +406,7 @@ const UserCard = ({
                                   ? styles.identityCouple
                                   : styles.intoTag
                           }`}>
-                            {tag}
+                            {getTranslatedTag('profile.intoTags', tag)}
                           </span>
                         ))}
                         {tags.into.length > 3 && !showAllTags && (
@@ -387,9 +423,9 @@ const UserCard = ({
                     <div className={styles.tagsToggle}>
                       <span className={styles.toggleBtn} onClick={toggleShowAllTags}>
                         {showAllTags ? (
-                          <>Show less tags <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
+                          <>{safeTranslate(t, 'common.showLessTags', 'Show less tags')} <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
                         ) : (
-                          <>Show all tags <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
+                          <>{safeTranslate(t, 'common.showAllTags', 'Show all tags')} <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
                         )}
                       </span>
                     </div>
@@ -411,9 +447,9 @@ const UserCard = ({
     <div className={styles.listItem} onClick={handleCardClick} data-userid={user._id}>
       {/* User Photo - List View */}
       <div className={styles.listPhotoContainer}>
-        <img 
-          src={profilePhotoUrl || "/default-avatar.png"} 
-          alt={user.nickname} 
+        <img
+          src={profilePhotoUrl || "/default-avatar.png"}
+          alt={user.nickname}
           onError={(e) => {
             e.target.onerror = null;
             e.target.src = "/default-avatar.png";
@@ -441,7 +477,7 @@ const UserCard = ({
 
         <p className={styles.location}>
           <FaMapMarkerAlt className={styles.icon} />
-          {user.details?.location || "Unknown location"}
+          {user.details?.location || safeTranslate(t, 'profile.unknownLocation', 'Unknown location')}
         </p>
 
         {/* Extended Details - List View */}
@@ -450,7 +486,7 @@ const UserCard = ({
             <div className={styles.detailsRow}>
               {extendedDetails.identity && (
                 <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>I am:</span>
+                  <span className={styles.detailLabel}>{safeTranslate(t, 'profile.iAm', 'I am')}:</span>
                   <span
                     className={`${styles.tag} ${styles.identityTag} ${
                       extendedDetails.identity.toLowerCase().includes("woman")
@@ -462,14 +498,14 @@ const UserCard = ({
                             : ""
                     }`}
                   >
-                    {extendedDetails.identity}
+                    {getTranslatedTag('profile.identity', extendedDetails.identity)}
                   </span>
                 </div>
               )}
-              
+
               {tags.lookingFor.length > 0 && (
                 <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>Into:</span>
+                  <span className={styles.detailLabel}>{safeTranslate(t, 'profile.into', 'Into')}:</span>
                   <span className={`${styles.tag} ${
                     tags.lookingFor[0].toLowerCase().includes("women") || tags.lookingFor[0].toLowerCase().includes("woman")
                       ? styles.identityWoman
@@ -479,7 +515,7 @@ const UserCard = ({
                           ? styles.identityCouple
                           : styles.lookingForTag
                   }`}>
-                    {tags.lookingFor[0]}
+                    {getTranslatedTag('profile.lookingFor', tags.lookingFor[0])}
                   </span>
                   {tags.lookingFor.length > 1 && (
                     <span className={styles.moreCount}>+{tags.lookingFor.length - 1}</span>
@@ -498,9 +534,9 @@ const UserCard = ({
               <div className={styles.tagsToggle}>
                 <span className={styles.toggleBtn} onClick={toggleShowMoreSections}>
                   {showMoreSections ? (
-                    <>Show less <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
+                    <>{safeTranslate(t, 'common.showLess', 'Show less')} <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
                   ) : (
-                    <>Show more <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
+                    <>{safeTranslate(t, 'common.showMore', 'Show more')} <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
                   )}
                 </span>
               </div>
@@ -512,7 +548,7 @@ const UserCard = ({
                 {/* Interests */}
                 {tags.interests.length > 0 && (
                   <div className={styles.tagCategory}>
-                    <h4 className={styles.categoryTitle}>Interests</h4>
+                    <h4 className={styles.categoryTitle}>{safeTranslate(t, 'profile.interests', 'Interests')}</h4>
                     <div className={styles.interestTags}>
                       {(showAllTags ? tags.interests : tags.interests.slice(0, 2)).map((tag, idx) => (
                         <span key={`interest-${idx}`} className={`${styles.tag} ${
@@ -524,7 +560,7 @@ const UserCard = ({
                                 ? styles.identityCouple
                                 : ""
                         }`}>
-                          {tag}
+                          {getTranslatedTag('profile.interests', tag)}
                         </span>
                       ))}
                       {tags.interests.length > 2 && !showAllTags && (
@@ -535,11 +571,11 @@ const UserCard = ({
                     </div>
                   </div>
                 )}
-                
+
                 {/* Preferences section (formerly Into) */}
                 {tags.into.length > 0 && (
                   <div className={styles.tagCategory}>
-                    <h4 className={styles.categoryTitle}>Preferences</h4>
+                    <h4 className={styles.categoryTitle}>{safeTranslate(t, 'profile.preferences', 'Preferences')}</h4>
                     <div className={styles.interestTags}>
                       {(showAllTags ? tags.into : tags.into.slice(0, 2)).map((tag, idx) => (
                         <span key={`into-${idx}`} className={`${styles.tag} ${
@@ -551,7 +587,7 @@ const UserCard = ({
                                 ? styles.identityCouple
                                 : styles.intoTag
                         }`}>
-                          {tag}
+                          {getTranslatedTag('profile.intoTags', tag)}
                         </span>
                       ))}
                       {tags.into.length > 2 && !showAllTags && (
@@ -568,9 +604,9 @@ const UserCard = ({
                   <div className={styles.tagsToggle}>
                     <span className={styles.toggleBtn} onClick={toggleShowAllTags}>
                       {showAllTags ? (
-                        <>Show less tags <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
+                        <>{safeTranslate(t, 'common.showLessTags', 'Show less tags')} <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
                       ) : (
-                        <>Show all tags <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
+                        <>{safeTranslate(t, 'common.showAllTags', 'Show all tags')} <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
                       )}
                     </span>
                   </div>

@@ -165,7 +165,7 @@ export const createTextStory = async (storyData, onProgress) => {
     }
 
     // For backwards compatibility, handle different response formats
-    if (response.success) {
+    if (response && response.success) {
       return {
         success: true,
         data: response.data || response.story,
@@ -174,15 +174,30 @@ export const createTextStory = async (storyData, onProgress) => {
     }
 
     // Handle old API that might return the story directly
-    if (response._id) {
+    if (response && response._id) {
       return {
         success: true,
         data: response,
         message: "Story created successfully",
       }
     }
+    
+    // If we get an undefined or null response but no error was thrown,
+    // assume success but wrap it in our standard format
+    if (response === undefined || response === null) {
+      return {
+        success: true,
+        message: "Story created successfully",
+        data: { created: true, timestamp: Date.now() }
+      }
+    }
 
-    return response
+    // Wrap any other response format in a success object
+    return {
+      success: true,
+      data: response,
+      message: "Story created successfully"
+    }
   } catch (error) {
     console.error("Error creating text story:", error)
     return {

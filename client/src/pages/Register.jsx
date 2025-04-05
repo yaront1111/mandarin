@@ -22,6 +22,8 @@ import {
   FaEdit,
 } from "react-icons/fa"
 import { useAuth } from "../context"
+import { useTranslation } from "react-i18next" 
+import { useLanguage } from "../context"
 import { toast } from "react-toastify"
 import styles from "../styles/register.module.css"
 
@@ -56,6 +58,9 @@ const Register = () => {
   const [errors, setErrors] = useState({})
   const [locationSuggestions, setLocationSuggestions] = useState([])
 
+  // Internationalization and Auth context
+  const { t } = useTranslation()
+  const { isRTL } = useLanguage()
   const { register, error, isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -765,22 +770,22 @@ const Register = () => {
       <div className={styles.progressSteps}>
         <div className={`${styles.progressStep} ${currentStep >= 1 ? styles.active : ""}`}>
           <div className={styles.stepCircle}>{currentStep > 1 ? <FaCheck /> : 1}</div>
-          <span className={styles.stepLabel}>Account</span>
+          <span className={styles.stepLabel}>{t('register.accountStep')}</span>
         </div>
         <div className={styles.progressLine}></div>
         <div className={`${styles.progressStep} ${currentStep >= 2 ? styles.active : ""}`}>
           <div className={styles.stepCircle}>{currentStep > 2 ? <FaCheck /> : 2}</div>
-          <span className={styles.stepLabel}>Profile</span>
+          <span className={styles.stepLabel}>{t('register.profileStep')}</span>
         </div>
         <div className={styles.progressLine}></div>
         <div className={`${styles.progressStep} ${currentStep >= 3 ? styles.active : ""}`}>
           <div className={styles.stepCircle}>{currentStep > 3 ? <FaCheck /> : 3}</div>
-          <span className={styles.stepLabel}>Photo</span>
+          <span className={styles.stepLabel}>{t('register.photoStep')}</span>
         </div>
         <div className={styles.progressLine}></div>
         <div className={`${styles.progressStep} ${currentStep >= 4 ? styles.active : ""}`}>
           <div className={styles.stepCircle}>{currentStep > 4 ? <FaCheck /> : 4}</div>
-          <span className={styles.stepLabel}>Preferences</span>
+          <span className={styles.stepLabel}>{t('register.preferencesStep')}</span>
         </div>
       </div>
     </div>
@@ -1318,7 +1323,7 @@ const Register = () => {
   }
 
   return (
-    <div className="auth-page register-page d-flex min-vh-100 bg-light-subtle">
+    <div className={`auth-page register-page d-flex min-vh-100 bg-light-subtle ${isRTL ? 'rtl-layout' : ''}`}>
       <div className={styles.registerContainer}>
         <div className={styles.gradientBar}></div>
         
@@ -1326,7 +1331,7 @@ const Register = () => {
           <Link to="/" className={styles.pageTitle}>
             Mandarin
           </Link>
-          <p className={styles.subtitle}>Create your account in a few steps</p>
+          <p className={styles.subtitle}>{t('register.createAccount')}</p>
         </div>
 
         {formErrors.general && (

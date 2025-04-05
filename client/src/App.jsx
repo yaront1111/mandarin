@@ -13,7 +13,7 @@ import "./styles/settings.css" // Using regular CSS for settings
 import "./styles/notifications.css"
 import "./styles/stories.css" // Using regular CSS for stories
 
-import { AuthProvider, UserProvider, StoriesProvider, ThemeProvider, NotificationProvider } from "./context"
+import { AuthProvider, UserProvider, StoriesProvider, ThemeProvider, NotificationProvider, LanguageProvider } from "./context"
 import { ChatConnectionProvider } from "./context/ChatConnectionContext"
 // Correctly import the named hook
 import { useInitializeNotificationServiceNavigation } from "./services/notificationService.jsx"
@@ -59,17 +59,43 @@ function App() {
         }, 50)
       }
     }
+    
+    // Listen for language direction changes
+    const handleLanguageDirectionChange = (event) => {
+      console.log("Language direction changed", event.detail)
+      // Force a re-render of critical components by adding/removing a temporary class
+      document.body.classList.add('direction-changing')
+      
+      // Force layout recalculation
+      document.body.offsetHeight
+      
+      setTimeout(() => {
+        document.body.classList.remove('direction-changing')
+      }, 50)
+      
+      // Apply RTL to toasts if Hebrew
+      const toastContainer = document.querySelector('.Toastify')
+      if (toastContainer) {
+        if (event.detail.isRTL) {
+          toastContainer.classList.add('Toastify__toast--rtl')
+        } else {
+          toastContainer.classList.remove('Toastify__toast--rtl')
+        }
+      }
+    }
 
-    // Add the event listener
+    // Add the event listeners
     window.addEventListener("openChat", handleOpenChat)
+    window.addEventListener("languageDirectionChanged", handleLanguageDirectionChange)
 
     // Test the event listener on mount in development
     if (process.env.NODE_ENV === "development") {
-      console.log("Chat event handler registered in App.jsx")
+      console.log("Event handlers registered in App.jsx")
     }
 
     return () => {
       window.removeEventListener("openChat", handleOpenChat)
+      window.removeEventListener("languageDirectionChanged", handleLanguageDirectionChange)
     }
   }, [])
 
@@ -81,11 +107,12 @@ function App() {
     // ErrorBoundary and Providers remain the same
     <ErrorBoundary>
       <ThemeProvider>
-        <AuthProvider>
-          <UserProvider>
-            <ChatConnectionProvider>
-              <StoriesProvider>
-                <NotificationProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <UserProvider>
+              <ChatConnectionProvider>
+                <StoriesProvider>
+                  <NotificationProvider>
                   <div className="app-wrapper">
                     {/* Add the verification banner at the top level */}
                     <VerificationBanner />
@@ -165,12 +192,13 @@ function App() {
                       hideProgressBar={false}
                       newestOnTop={false}
                       closeOnClick
-                      rtl={false}
+                      rtl={document.documentElement.dir === 'rtl'}
                       pauseOnFocusLoss
                       draggable
                       pauseOnHover
                       limit={5}
                       theme="colored"
+                      className={document.documentElement.dir === 'rtl' ? 'rtl-layout Toastify__toast--rtl' : ''}
                     />
                   </div>
                 </NotificationProvider>
@@ -178,6 +206,7 @@ function App() {
             </ChatConnectionProvider>
           </UserProvider>
         </AuthProvider>
+        </LanguageProvider>
       </ThemeProvider>
     </ErrorBoundary>
   )

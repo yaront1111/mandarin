@@ -2,10 +2,12 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { 
   FaBell, FaLock, FaPalette, FaSignOutAlt, FaTrash, FaUser, FaShieldAlt, 
-  FaSave, FaTimes, FaExclamationTriangle, FaBan, FaUnlock, FaUserSlash
+  FaSave, FaTimes, FaExclamationTriangle, FaBan, FaUnlock, FaUserSlash,
+  FaLanguage, FaGlobe
 } from "react-icons/fa"
 import { toast } from "react-toastify"
-import { useAuth, useTheme, useUser } from "../context"
+import { useTranslation } from 'react-i18next'
+import { useAuth, useTheme, useUser, useLanguage } from "../context"
 import { settingsService } from "../services"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
 import { Navbar } from "../components/LayoutComponents"
@@ -16,6 +18,8 @@ const Settings = () => {
   const { user, logout, getCurrentUser } = useAuth()
   const { theme, setTheme } = useTheme()
   const { currentUser, updateProfile, getUser, getBlockedUsers, unblockUser } = useUser()
+  const { t } = useTranslation()
+  const { language, changeLanguage, supportedLanguages, getLanguageDisplayName } = useLanguage()
   const previousUserRef = useRef(null);
   
   // State for blocked users
@@ -684,8 +688,8 @@ const Settings = () => {
           <div className={styles.settingsContent}>
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
-                <h3 className={styles.optionTitle}>Theme</h3>
-                <p className={styles.optionDescription}>Choose your preferred app theme</p>
+                <h3 className={styles.optionTitle}>{t('settings.themeMode')}</h3>
+                <p className={styles.optionDescription}>{t('settings.themeMode')}</p>
               </div>
               <div className={styles.themeOptions}>
                 <button
@@ -693,21 +697,21 @@ const Settings = () => {
                   onClick={() => handleThemeChange("light")}
                 >
                   <div className={`${styles.themePreview} ${styles.light}`}></div>
-                  <span className={styles.themeName}>Light</span>
+                  <span className={styles.themeName}>{t('settings.light')}</span>
                 </button>
                 <button
                   className={`${styles.themeOption} ${theme === "dark" ? styles.active : ""}`}
                   onClick={() => handleThemeChange("dark")}
                 >
                   <div className={`${styles.themePreview} ${styles.dark}`}></div>
-                  <span className={styles.themeName}>Dark</span>
+                  <span className={styles.themeName}>{t('settings.dark')}</span>
                 </button>
                 <button
                   className={`${styles.themeOption} ${theme === "system" ? styles.active : ""}`}
                   onClick={() => handleThemeChange("system")}
                 >
                   <div className={`${styles.themePreview} ${styles.system}`}></div>
-                  <span className={styles.themeName}>System</span>
+                  <span className={styles.themeName}>{t('settings.system')}</span>
                 </button>
               </div>
             </div>
@@ -718,6 +722,37 @@ const Settings = () => {
                 <p className={styles.optionDescription}>Quickly switch between light and dark mode</p>
               </div>
               <ThemeToggle />
+            </div>
+            
+            {/* Language Settings */}
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>
+                  <FaLanguage className={styles.optionIcon} /> {t('settings.language')}
+                </h3>
+                <p className={styles.optionDescription}>
+                  {t('settings.language')}
+                </p>
+              </div>
+              <div className={styles.languageSelector}>
+                <select 
+                  value={language} 
+                  onChange={(e) => changeLanguage(e.target.value)}
+                  className={styles.languageSelect}
+                >
+                  {supportedLanguages.map((lang) => (
+                    <option key={lang} value={lang}>
+                      {getLanguageDisplayName(lang)}
+                    </option>
+                  ))}
+                </select>
+                <div className={styles.languageInfo}>
+                  <FaGlobe className={styles.languageIcon} />
+                  <span className={styles.languageInfoText}>
+                    {language === 'he' ? 'עברית מופעלת' : 'Hebrew detection is enabled for users from Israel'}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         );

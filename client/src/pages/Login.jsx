@@ -2,7 +2,8 @@
 import { useState, useEffect } from "react"
 import { Link, useNavigate, useLocation } from "react-router-dom"
 import { FaEnvelope, FaLock, FaEye, FaEyeSlash, FaGoogle, FaFacebook, FaArrowRight, FaExclamationTriangle } from "react-icons/fa"
-import { useAuth } from "../context"
+import { useTranslation } from "react-i18next"
+import { useAuth, useLanguage } from "../context"
 import styles from "../styles/login.module.css"
 
 const Login = () => {
@@ -13,6 +14,8 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const { login, error, clearError, isAuthenticated } = useAuth()
+  const { t } = useTranslation()
+  const { isRTL } = useLanguage()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -46,14 +49,14 @@ const Login = () => {
     const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/
 
     if (!formData.email) {
-      errors.email = "Email is required"
+      errors.email = t('auth.email') + " " + t('errors.validationError')
     } else if (!emailRegex.test(formData.email)) {
-      errors.email = "Invalid email format"
+      errors.email = t('errors.validationError')
     }
     if (!formData.password) {
-      errors.password = "Password is required"
+      errors.password = t('auth.password') + " " + t('errors.validationError')
     } else if (formData.password.length < 6) {
-      errors.password = "Password must be at least 6 characters"
+      errors.password = t('auth.passwordRequirements')
     }
 
     return errors
@@ -89,7 +92,7 @@ const Login = () => {
   }
 
   return (
-    <div className="auth-page login-page d-flex min-vh-100 bg-light-subtle">
+    <div className={`auth-page login-page d-flex min-vh-100 bg-light-subtle ${isRTL ? 'rtl-layout' : ''}`}>
       <div className={styles.loginContainer}>
         <div className={styles.gradientBar}></div>
         
@@ -97,7 +100,7 @@ const Login = () => {
           <Link to="/" className={styles.pageTitle}>
             Mandarin
           </Link>
-          <p className={styles.subtitle}>Sign in to continue your journey</p>
+          <p className={styles.subtitle}>{t('auth.signIn')}</p>
         </div>
 
         {formErrors.general && (
@@ -110,7 +113,7 @@ const Login = () => {
         <form onSubmit={handleSubmit}>
           <div className={styles.formGroup}>
             <label className={styles.formLabel} htmlFor="email">
-              Email Address
+              {t('auth.email')}
             </label>
             <div className={styles.inputWrapper}>
               <FaEnvelope className={styles.inputIcon} />
@@ -119,7 +122,7 @@ const Login = () => {
                 id="email"
                 name="email"
                 className={styles.input}
-                placeholder="Enter your email"
+                placeholder={t('auth.email')}
                 value={formData.email}
                 onChange={handleChange}
                 disabled={isSubmitting}
@@ -136,7 +139,7 @@ const Login = () => {
 
           <div className={styles.formGroup}>
             <label className={styles.formLabel} htmlFor="password">
-              Password
+              {t('auth.password')}
             </label>
             <div className={styles.inputWrapper}>
               <FaLock className={styles.inputIcon} />
@@ -145,7 +148,7 @@ const Login = () => {
                 id="password"
                 name="password"
                 className={styles.input}
-                placeholder="Enter your password"
+                placeholder={t('auth.password')}
                 value={formData.password}
                 onChange={handleChange}
                 disabled={isSubmitting}
@@ -177,10 +180,10 @@ const Login = () => {
                 onChange={() => setRememberMe(!rememberMe)}
                 disabled={isSubmitting}
               />
-              Remember me
+              {t('auth.rememberMe')}
             </label>
             <Link to="/forgot-password" className={styles.forgotPassword}>
-              Forgot Password?
+              {t('auth.forgotPassword')}
             </Link>
           </div>
 
@@ -192,34 +195,34 @@ const Login = () => {
             {isSubmitting ? (
               <>
                 <span className={styles.spinner}></span>
-                <span>Signing in...</span>
+                <span>{t('common.loading')}</span>
               </>
             ) : (
               <>
-                <span>Sign In</span>
+                <span>{t('auth.signIn')}</span>
                 <FaArrowRight />
               </>
             )}
           </button>
         </form>
 
-        <div className={styles.divider}>OR</div>
+        <div className={styles.divider}>{t('common.or')}</div>
 
         <div>
           <button className={styles.socialButton}>
             <FaGoogle className={styles.googleIcon} />
-            <span>Sign in with Google</span>
+            <span>{t('auth.signInWith')} Google</span>
           </button>
           <button className={styles.socialButton}>
             <FaFacebook className={styles.facebookIcon} />
-            <span>Sign in with Facebook</span>
+            <span>{t('auth.signInWith')} Facebook</span>
           </button>
         </div>
 
         <div className={styles.footer}>
-          Don't have an account?{" "}
+          {t('auth.dontHaveAccount')}{" "}
           <Link to="/register" className={styles.footerLink}>
-            Sign Up
+            {t('auth.signUp')}
           </Link>
         </div>
       </div>

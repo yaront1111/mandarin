@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import { createPortal } from 'react-dom';
 import { FaTimes } from 'react-icons/fa';
 import { useClickOutside } from '../../hooks';
+import { useLanguage } from '../../context';
 
 /**
  * Reusable modal component
@@ -26,6 +27,12 @@ const Modal = ({
 }) => {
   const modalRef = useRef(null);
   const previousFocusRef = useRef(null);
+  
+  // Get language settings, with fallbacks in case context isn't available
+  const { language = 'en', isRTL = false } = useLanguage() || {};
+  
+  // Fallback to check document direction if context is not available
+  const actualIsRTL = isRTL || document.documentElement.dir === 'rtl' || document.documentElement.lang === 'he';
   
   // Close when clicking outside
   const closeModalRef = useClickOutside(() => {
@@ -114,10 +121,27 @@ const Modal = ({
   
   if (!isOpen) return null;
   
+  // RTL style block for Hebrew - applied directly to ensure it works even without external CSS
+  const rtlStyleBlock = actualIsRTL ? (
+    <style>
+      {`
+      .modal, .modal-body, .modal-header, .modal-footer {
+        direction: rtl !important;
+        text-align: right !important;
+      }
+      .modal-close {
+        right: auto !important;
+        left: 1rem !important;
+      }
+      `}
+    </style>
+  ) : null;
+  
   const modalContent = (
     <div className={`modal-overlay ${isOpen ? 'open' : ''}`} onClick={closeOnClickOutside ? onClose : undefined}>
+      {rtlStyleBlock}
       <div 
-        className={`modal ${sizeClasses[size] || ''} ${className}`}
+        className={`modal ${sizeClasses[size] || ''} ${className} ${actualIsRTL ? 'rtl-layout' : ''}`}
         ref={(el) => {
           modalRef.current = el;
           if (closeModalRef) {
@@ -128,8 +152,10 @@ const Modal = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? "modal-title" : undefined}
+        dir={actualIsRTL ? "rtl" : "ltr"}
+        data-language={language}
       >
-        <div className={`modal-header ${headerClassName}`}>
+        <div className={`modal-header ${headerClassName} ${actualIsRTL ? 'rtl-layout' : ''}`}>
           {title && <h2 className="modal-title" id="modal-title">{title}</h2>}
           {showCloseButton && (
             <button 
@@ -142,12 +168,12 @@ const Modal = ({
           )}
         </div>
         
-        <div className={`modal-body ${bodyClassName}`}>
+        <div className={`modal-body ${bodyClassName} ${actualIsRTL ? 'rtl-layout' : ''}`} dir={actualIsRTL ? "rtl" : "ltr"}>
           {children}
         </div>
         
         {footer && (
-          <div className={`modal-footer ${footerClassName}`}>
+          <div className={`modal-footer ${footerClassName} ${actualIsRTL ? 'rtl-layout' : ''}`}>
             {footer}
           </div>
         )}

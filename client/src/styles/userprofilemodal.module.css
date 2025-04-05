@@ -1,4 +1,4 @@
- /* UserProfileModal Module CSS - 2025 */
+/* UserProfileModal Module CSS with Enhanced RTL Support - 2025 */
 
 /* Container styles */
 .modalContainer {
@@ -10,6 +10,12 @@
   overflow: hidden;
 }
 
+/* RTL Support for Modal Container */
+:global([dir="rtl"]) .modalContainer {
+  direction: rtl;
+  text-align: right;
+}
+
 .modalHeader {
   position: absolute;
   top: 0;
@@ -19,6 +25,13 @@
   background: transparent;
   display: flex;
   justify-content: flex-end;
+}
+
+/* RTL Support for modal header */
+:global([dir="rtl"]) .modalHeader {
+  right: auto;
+  left: 0;
+  justify-content: flex-start;
 }
 
 .modalHeader :global(.modal-close) {
@@ -72,6 +85,11 @@
   border: none;
 }
 
+/* RTL Support for profile layout */
+:global([dir="rtl"]) .profileLayout {
+  direction: rtl;
+}
+
 /* Photo section */
 .photosSection {
   position: relative;
@@ -81,12 +99,24 @@
   overflow: hidden;
 }
 
+/* RTL Support for photo section */
+:global([dir="rtl"]) .photosSection {
+  border-right: none;
+  border-left: none;
+}
+
 /* Stories thumbnail */
 .storiesThumbnail {
   position: absolute;
   top: 16px;
   left: 16px;
   z-index: 10;
+}
+
+/* RTL Support for stories thumbnail */
+:global([dir="rtl"]) .storiesThumbnail {
+  left: auto;
+  right: 16px;
 }
 
 .galleryContainer {
@@ -153,6 +183,21 @@
   right: 16px;
 }
 
+/* RTL Support for navigation buttons */
+:global([dir="rtl"]) .navPrev {
+  left: auto;
+  right: 16px;
+}
+
+:global([dir="rtl"]) .navNext {
+  right: auto;
+  left: 16px;
+}
+
+:global([dir="rtl"]) .nav svg {
+  transform: scaleX(-1);
+}
+
 /* Thumbnails */
 .thumbnails {
   position: absolute;
@@ -211,6 +256,10 @@
   padding: 20px;
   text-align: center;
   background: linear-gradient(135deg, #f1f5f9 0%, #f8fafc 100%);
+}
+
+:global([dir="rtl"]) .privatePhoto {
+  background: linear-gradient(225deg, #f1f5f9 0%, #f8fafc 100%);
 }
 
 .lockIcon {
@@ -278,6 +327,10 @@
   box-shadow: 0 6px 16px rgba(255, 51, 102, 0.3);
 }
 
+:global([dir="rtl"]) .requestAccessBtn {
+  flex-direction: row-reverse;
+}
+
 /* Online badge */
 .onlineBadge {
   position: absolute;
@@ -294,6 +347,13 @@
   gap: 8px;
   z-index: 5;
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+/* RTL Support for online badge */
+:global([dir="rtl"]) .onlineBadge {
+  right: auto;
+  left: 16px;
+  flex-direction: row-reverse;
 }
 
 .pulse {
@@ -315,6 +375,11 @@
   border-radius: 50%;
   transform-origin: center;
   animation: pulse 1.5s infinite;
+}
+
+:global([dir="rtl"]) .pulse::after {
+  right: 0;
+  left: auto;
 }
 
 @keyframes pulse {
@@ -356,6 +421,10 @@
   min-width: 120px;
 }
 
+:global([dir="rtl"]) .actionBtn {
+  flex-direction: row-reverse;
+}
+
 .likeBtn {
   background-color: #ff3366;
   color: white;
@@ -381,6 +450,10 @@
   color: white;
   background-image: linear-gradient(to right, #ff3366, #ff6b98);
   box-shadow: 0 4px 12px rgba(255, 51, 102, 0.25);
+}
+
+:global([dir="rtl"]) .messageBtn {
+  background-image: linear-gradient(to left, #ff3366, #ff6b98);
 }
 
 .messageBtn:hover {
@@ -421,6 +494,11 @@
   z-index: 20;
 }
 
+:global([dir="rtl"]) .dropdown {
+  right: auto;
+  left: 0;
+}
+
 .dropdownItem {
   width: 100%;
   text-align: left;
@@ -436,6 +514,11 @@
   transition: background 0.2s ease;
 }
 
+:global([dir="rtl"]) .dropdownItem {
+  text-align: right;
+  flex-direction: row-reverse;
+}
+
 .dropdownItem:hover {
   background: #f8f9fa;
 }
@@ -449,12 +532,23 @@
   box-shadow: -5px 0 15px rgba(0, 0, 0, 0.03);
 }
 
+/* RTL Support for details section */
+:global([dir="rtl"]) .detailsSection {
+  border-left: none;
+  border-right: none;
+  box-shadow: 5px 0 15px rgba(0, 0, 0, 0.03);
+}
+
 /* User headline */
 .headline {
   margin-bottom: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+:global([dir="rtl"]) .headline {
+  flex-direction: row-reverse;
 }
 
 .headlineTitle {
@@ -476,6 +570,11 @@
   border-radius: 8px;
 }
 
+:global([dir="rtl"]) .premiumBadge {
+  background: linear-gradient(to left, #6366f1, #8b5cf6);
+  flex-direction: row-reverse;
+}
+
 /* User info */
 .location {
   display: flex;
@@ -484,6 +583,11 @@
   margin-bottom: 16px;
   color: #64748b;
   font-size: 14px;
+}
+
+/* RTL Support for location */
+:global([dir="rtl"]) .location {
+  flex-direction: row-reverse;
 }
 
 .icon {
@@ -512,11 +616,20 @@
   color: #64748b;
 }
 
+:global([dir="rtl"]) .activity {
+  flex-direction: row-reverse;
+}
+
 .activityItem {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
+}
+
+/* RTL Support for activity items */
+:global([dir="rtl"]) .activityItem {
+  flex-direction: row-reverse;
 }
 
 /* Compatibility section */
@@ -541,6 +654,10 @@
   gap: 24px;
 }
 
+:global([dir="rtl"]) .compatibilityScore {
+  flex-direction: row-reverse;
+}
+
 .scoreCircle {
   position: relative;
   width: 100px;
@@ -551,6 +668,10 @@
   width: 100%;
   height: 100%;
   transform: rotate(-90deg);
+}
+
+:global([dir="rtl"]) .scoreCircle svg {
+  transform: rotate(90deg) scaleX(-1);
 }
 
 .scoreBg {
@@ -606,11 +727,14 @@
   border-radius: 12px;
 }
 
+:global([dir="rtl"]) .factorFill {
+  background: linear-gradient(to left, #ff3366, #ff6b98);
+}
+
 /* Profile sections */
 .section {
-  margin-bottom: 24px;
-  padding-bottom: 20px;
   border-bottom: 1px solid #f1f5f9;
+  margin-top: 4px;
 }
 
 .aboutText {
@@ -626,6 +750,12 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
+}
+
+/* RTL Support for tags container */
+:global([dir="rtl"]) .tagsContainer {
+  justify-content: flex-start;
+  text-align: right;
 }
 
 .tag {
@@ -691,6 +821,10 @@
   margin-top: 12px;
 }
 
+:global([dir="rtl"]) .interestsTags {
+  flex-direction: row-reverse;
+}
+
 .moreCount {
   font-size: 0.75rem;
   background-color: rgba(255, 51, 102, 0.15);
@@ -700,6 +834,12 @@
   border-radius: 6px;
   cursor: pointer;
   font-weight: 600;
+}
+
+/* RTL Support for more count tag */
+:global([dir="rtl"]) .moreCount {
+  margin-left: 0;
+  margin-right: 0.25rem;
 }
 
 .interestTag {
@@ -713,6 +853,11 @@
   font-size: 0.75rem;
   font-weight: 500;
   transition: all 0.2s ease;
+}
+
+/* RTL Support for interest tags with icons */
+:global([dir="rtl"]) .interestTag {
+  flex-direction: row-reverse;
 }
 
 .interestTag:hover {
@@ -739,6 +884,11 @@
   text-decoration: underline;
 }
 
+/* RTL Support for show more button */
+:global([dir="rtl"]) .showMoreBtn {
+  text-align: right;
+}
+
 .showMoreBtn:hover {
   color: #e31b54;
 }
@@ -761,6 +911,11 @@
   gap: 12px;
 }
 
+/* RTL Support for notification content */
+:global([dir="rtl"]) .notificationContent {
+  flex-direction: row-reverse;
+}
+
 .notificationIcon {
   color: #f97316;
   font-size: 20px;
@@ -778,6 +933,11 @@
   justify-content: flex-end;
 }
 
+/* RTL Support for notification actions */
+:global([dir="rtl"]) .notificationActions {
+  justify-content: flex-start;
+}
+
 .approveBtn {
   background-color: #10b981;
   color: white;
@@ -791,6 +951,10 @@
   gap: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+:global([dir="rtl"]) .approveBtn {
+  flex-direction: row-reverse;
 }
 
 .approveBtn:hover {
@@ -813,6 +977,10 @@
   transition: all 0.2s ease;
 }
 
+:global([dir="rtl"]) .rejectBtn {
+  flex-direction: row-reverse;
+}
+
 .rejectBtn:hover {
   background-color: #dc2626;
   transform: translateY(-1px);
@@ -829,6 +997,19 @@
   }
   100% {
     transform: rotate(360deg);
+  }
+}
+
+:global([dir="rtl"]) .spinner {
+  animation: spin-rtl 1s linear infinite;
+}
+
+@keyframes spin-rtl {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(-360deg);
   }
 }
 
@@ -861,6 +1042,18 @@
   margin-bottom: 20px;
 }
 
+/* Chat overlay */
+.chatOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
 /* Responsive styles */
 @media (max-width: 991px) {
   .profileLayout {
@@ -877,6 +1070,11 @@
     border-right: none;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   }
+
+  :global([dir="rtl"]) .photosSection {
+    border-left: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  }
   
   .actions {
     bottom: 80px;
@@ -888,11 +1086,19 @@
     padding: 20px;
     box-shadow: none;
   }
+
+  :global([dir="rtl"]) .detailsSection {
+    box-shadow: none;
+  }
   
   .headline {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+  }
+
+  :global([dir="rtl"]) .headline {
+    align-items: flex-end;
   }
   
   .section {
@@ -922,19 +1128,7 @@
   }
 }
 
-/* Chat overlay */
-.chatOverlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-  backdrop-filter: blur(4px);
-}
-
-/* Dark mode styles */
+/* Dark mode styles with RTL support */
 :global(.dark) .profileLayout {
   background-color: #1e293b;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
@@ -948,6 +1142,10 @@
 :global(.dark) .detailsSection {
   background-color: #1e293b;
   box-shadow: -5px 0 15px rgba(0, 0, 0, 0.1);
+}
+
+:global([dir="rtl"]):global(.dark) .detailsSection {
+  box-shadow: 5px 0 15px rgba(0, 0, 0, 0.1);
 }
 
 :global(.dark) .gallery, 
@@ -968,6 +1166,10 @@
 :global(.dark) .privatePhoto {
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   color: #94a3b8;
+}
+
+:global([dir="rtl"]):global(.dark) .privatePhoto {
+  background: linear-gradient(225deg, #0f172a 0%, #1e293b 100%);
 }
 
 :global(.dark) .privateThumbnail {

@@ -3,6 +3,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter as Router } from "react-router-dom"; // <-- Import Router
 import App from "./App.jsx";
+import "./i18n"; // Import i18n configuration
 if (typeof global === 'undefined') {
   window.global = window;
 }
@@ -19,6 +20,7 @@ import "./styles/stories.css"; // Using regular CSS for stories
 import "./styles/chat.css"; // General chat styling
 import "./styles/modal.css"; // Modal component styling
 import "./styles/home.css"; // Home page specific styling
+import "./styles/rtl.css"; // RTL support for Hebrew
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

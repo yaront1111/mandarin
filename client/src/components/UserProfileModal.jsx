@@ -19,7 +19,8 @@ import {
   FaSpinner,
   FaEye,
 } from "react-icons/fa"
-import { useUser, useAuth, useStories } from "../context"
+import { useTranslation } from "react-i18next"
+import { useUser, useAuth, useStories, useLanguage } from "../context"
 import { EmbeddedChat } from "../components"
 import StoriesViewer from "./Stories/StoriesViewer"
 import StoryThumbnail from "./Stories/StoryThumbnail"
@@ -34,6 +35,28 @@ import { useApi, useMounted } from "../hooks"
 import { formatDate, logger, markUrlAsFailed, normalizePhotoUrl } from "../utils"
 
 /**
+ * Safely gets a translation string, handling cases where the translation might return an object
+ * @param {Function} t - Translation function from useTranslation
+ * @param {String} key - Translation key
+ * @param {String} defaultValue - Default value if translation is missing or invalid
+ * @returns {String} The translated string or default value
+ */
+const safeTranslate = (t, key, defaultValue = "") => {
+  try {
+    const translated = t(key);
+    // Check if translation returned an object instead of a string
+    if (typeof translated === 'object' && translated !== null) {
+      // Try to get a string representation or return the default
+      return translated.toString ? translated.toString() : defaultValue;
+    }
+    return translated || defaultValue;
+  } catch (error) {
+    logger.error(`Translation error for key '${key}':`, error);
+    return defaultValue;
+  }
+};
+
+/**
  * UserProfileModal component displays a user's profile information
  * with photo gallery, compatibility score, and interaction options.
  *
@@ -43,6 +66,10 @@ import { formatDate, logger, markUrlAsFailed, normalizePhotoUrl } from "../utils
  * @param {Function} props.onClose Function to call when closing the modal
  */
 const UserProfileModal = ({ userId, isOpen, onClose }) => {
+  // Hooks for translation and RTL support
+  const { t } = useTranslation();
+  const { isRTL, language } = useLanguage();
+
   // Auth context
   const { user: currentUser } = useAuth();
 
@@ -132,28 +159,28 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
   // Track the last userId to avoid fetch loops
   const lastFetchedUserIdRef = useRef(null);
-  
+
   // Fetch user data - excluding unstable deps to avoid loops
   useEffect(() => {
     // Skip if no userId, no isOpen (modal is closed), or if we've already fetched this user
     if (!userId || !isOpen || lastFetchedUserIdRef.current === userId) {
       return;
     }
-    
+
     // Wrap getUser in a function to avoid dependency issues
     const fetchUserData = async () => {
       setLoading(true);
       lastFetchedUserIdRef.current = userId;
-      
+
       try {
         // Adding a small delay to prevent race conditions with other API calls
         await new Promise(resolve => setTimeout(resolve, 50));
-        
+
         // Use getUser from context but don't add it to dependencies
         const userData = await getUser(userId);
-        
+
         if (!isMounted()) return;
-        
+
         log.debug("User data received:", userData);
         setUser(userData);
       } catch (error) {
@@ -170,7 +197,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     };
 
     fetchUserData();
-    
+
     // Reset the ref when component unmounts or userId changes
     return () => {
       // Only reset if the component is unmounting, not just when userId changes
@@ -210,9 +237,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       // Process valid response data
       if (response && response.success) {
         // Get the data array, handling different response formats
-        const requestsData = Array.isArray(response) ? response : 
+        const requestsData = Array.isArray(response) ? response :
                            (Array.isArray(response.data) ? response.data : null);
-        
+
         if (requestsData) {
           // Group requests by user
           const requestsByUser = {};
@@ -234,14 +261,14 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
           // Convert to array
           const groupedRequests = Object.values(requestsByUser);
-          
+
           // Only update state if it actually changed
           setPendingRequests(prevRequests => {
             // Simple length check first
             if (prevRequests.length !== groupedRequests.length) {
               return groupedRequests;
             }
-            
+
             // Deep comparison using JSON stringify
             try {
               const prevJson = JSON.stringify(prevRequests);
@@ -253,7 +280,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               return groupedRequests;
             }
           });
-          
+
           log.debug(`Processed ${groupedRequests.length} pending request groups`);
         } else {
           log.warn("No valid requests data in response:", response);
@@ -268,7 +295,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     } catch (error) {
       // Skip if component unmounted during the request
       if (!isMounted()) return;
-      
+
       log.error("Error fetching pending requests:", error);
       // Only show error toast if this is a true network error, not just empty data
       if (error.message && !error.message.includes("no pending requests")) {
@@ -288,12 +315,12 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   // Track whether we've loaded data for this userId and whether the component is mounted
   const dataLoadedRef = useRef(false);
   const calledApiRef = useRef(false);
-  
+
   // Track modal open/close status with a separate ref to fix infinite update loop
   const isModalOpenRef = useRef(false);
   // Track if we've fetched photo access to avoid redundant calls
   const photoAccessFetchedRef = useRef(false);
-  
+
   // Load user data, access status, and stories when modal opens
   useEffect(() => {
     // Skip if no userId or isOpen changed to false
@@ -307,7 +334,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         storiesLoadingRef.current = false;
         requestsLoadingRef.current = false;
         photoAccessFetchedRef.current = false;
-        
+
         // Reset all UI state when closing
         setShowChat(false);
         setShowStories(false);
@@ -321,17 +348,17 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         setActivePhotoIndex(0);
         setUserStories([]);
         setPendingRequests([]);
-        
+
         log.debug(`Modal cleanup ran for userId: ${userId}`);
       }
       return;
     }
-    
+
     // Only run when the modal is truly opening (not just re-rendering)
     if (!isModalOpenRef.current) {
       isModalOpenRef.current = true;
       log.debug(`Modal opened for userId: ${userId}, dataLoadedRef: ${dataLoadedRef.current}`);
-      
+
       // Reset UI state when opening
       setActivePhotoIndex(0);
       setShowAllInterests(false);
@@ -339,13 +366,13 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       setPhotoLoadError({});
       setShowChat(false);
       setShowStories(false);
-      
+
       // Reset permission-related states
       setUserPhotoAccess({
         status: null,
         isLoading: false
       });
-      
+
       // Reset loading states
       setLoading(false);
       setIsLiking(false);
@@ -353,11 +380,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       setIsLoadingRequests(false);
       setIsProcessingApproval(false);
     }
-    
+
     // Load stories only once
     if (!storiesLoadingRef.current && !dataLoadedRef.current) {
       storiesLoadingRef.current = true;
-      
+
       // Use Promise.resolve to handle both synchronous and asynchronous loadUserStories
       Promise.resolve(loadUserStories?.(userId))
         .then(stories => {
@@ -374,25 +401,25 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
           }
         });
     }
-    
+
     // Fetch photo access status once
     if (!accessStatusLoadingRef.current && !photoAccessFetchedRef.current) {
       photoAccessFetchedRef.current = true;
       accessStatusLoadingRef.current = true;
-      
+
       // Use the API directly to avoid callback issues
       api.get(`/users/${userId}/photo-access-status`)
         .then(response => {
           if (!isMounted()) return;
-          
+
           log.debug(`Received photo access status response:`, response);
-          
+
           if (response && response.success) {
             // Simplified access to status value with fallbacks
-            const statusValue = response.status || 
-                              (response.data && response.data.status) || 
+            const statusValue = response.status ||
+                              (response.data && response.data.status) ||
                               null;
-            
+
             if (statusValue) {
               // Only update state if it's actually different and component is still mounted
               if (isMounted()) {
@@ -447,15 +474,15 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
           }
         });
     }
-    
+
     // If viewing own profile, fetch pending requests once
-    if (currentUser && 
-        currentUser._id === userId && 
+    if (currentUser &&
+        currentUser._id === userId &&
         !requestsLoadingRef.current &&
         !dataLoadedRef.current) {
       fetchPendingRequests();
     }
-    
+
     // Mark data loaded if not already
     if (!dataLoadedRef.current) {
       dataLoadedRef.current = true;
@@ -482,20 +509,20 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
     try {
       log.debug(`Requesting photo access for user ${profileUser._id}`);
-      
+
       // ALWAYS set UI to pending state for better UX
       setUserPhotoAccess({
         status: "pending",
         isLoading: false
       });
-      toast.success("Access to photos requested");
-      
+      toast.success(safeTranslate(t, "profile.accessRequestSent", "Access to photos requested"));
+
       try {
         // Make a single API call to request access to all photos (but don't block UI)
         const response = await api.post(`/users/${profileUser._id}/request-photo-access`);
-        
+
         if (!isMounted()) return;
-        
+
         if (response && response.success) {
           log.debug("Photo access request successful:", response.message || "Request processed");
         } else if (response) {
@@ -511,21 +538,21 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       }
     } catch (error) {
       if (!isMounted()) return;
-      
+
       log.error("Error in photo access request flow:", error);
-      
+
       // Always show success to user and set to pending state
       setUserPhotoAccess({
         status: "pending",
         isLoading: false
       });
-      toast.success("Access to photos requested");
+      toast.success(safeTranslate(t, "profile.accessRequestSent", "Access to photos requested"));
     }
   };
 
   // Handle approving all requests from a specific user
   const handleApproveAllRequests = async (userId, requests) => {
-    if (!userId || !isValidObjectId(userId) || 
+    if (!userId || !isValidObjectId(userId) ||
         !requests || !Array.isArray(requests) || requests.length === 0) {
       log.warn("Invalid user ID or empty requests array for approval");
       return;
@@ -544,24 +571,24 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       const response = await api.put(`/users/${userId}/approve-photo-access`);
 
       if (!isMounted()) return;
-      
+
       if (response && response.success) {
-        toast.success(`Approved all photo requests from this user`);
+        toast.success(safeTranslate(t, "profile.approvedAllRequests", "Approved all photo requests from this user"));
         log.debug("Successfully approved photo requests");
-        
+
         // Remove this user from pending requests without refetching
-        setPendingRequests(prev => prev.filter(item => 
+        setPendingRequests(prev => prev.filter(item =>
           !item.user || item.user._id !== userId
         ));
       } else {
         log.warn("Failed to approve photo requests:", response);
-        toast.error(response?.error || "Failed to approve photo requests");
+        toast.error(response?.error || safeTranslate(t, "errors.approvalFailed", "Failed to approve photo requests"));
       }
     } catch (error) {
       if (!isMounted()) return;
-      
+
       log.error("Error approving requests:", error);
-      toast.error(error?.error || "Failed to approve photo requests");
+      toast.error(error?.error || safeTranslate(t, "errors.approvalFailed", "Failed to approve photo requests"));
     } finally {
       if (isMounted()) {
         setIsProcessingApproval(false);
@@ -571,7 +598,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
   // Handle rejecting all requests from a specific user
   const handleRejectAllRequests = async (userId, requests) => {
-    if (!userId || !isValidObjectId(userId) || 
+    if (!userId || !isValidObjectId(userId) ||
         !requests || !Array.isArray(requests) || requests.length === 0) {
       log.warn("Invalid user ID or empty requests array for rejection");
       return;
@@ -590,24 +617,24 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       const response = await api.put(`/users/${userId}/reject-photo-access`);
 
       if (!isMounted()) return;
-      
+
       if (response && response.success) {
-        toast.success(`Rejected all photo requests from this user`);
+        toast.success(safeTranslate(t, "profile.rejectedAllRequests", "Rejected all photo requests from this user"));
         log.debug("Successfully rejected photo requests");
-        
+
         // Remove this user from pending requests without refetching
-        setPendingRequests(prev => prev.filter(item => 
+        setPendingRequests(prev => prev.filter(item =>
           !item.user || item.user._id !== userId
         ));
       } else {
         log.warn("Failed to reject photo requests:", response);
-        toast.error(response?.error || "Failed to reject photo requests");
+        toast.error(response?.error || safeTranslate(t, "errors.rejectionFailed", "Failed to reject photo requests"));
       }
     } catch (error) {
       if (!isMounted()) return;
-      
+
       log.error("Error rejecting requests:", error);
-      toast.error(error?.error || "Failed to reject photo requests");
+      toast.error(error?.error || safeTranslate(t, "errors.rejectionFailed", "Failed to reject photo requests"));
     } finally {
       if (isMounted()) {
         setIsProcessingApproval(false);
@@ -622,11 +649,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       ...prev,
       [photoId]: true,
     }));
-    
+
     // Mark any unsplash URLs as failed to prevent retries
     const failedImage = profileUser?.photos?.find(p => p._id === photoId);
     if (failedImage && failedImage.url && (
-      failedImage.url.includes('unsplash.com') || 
+      failedImage.url.includes('unsplash.com') ||
       !failedImage.url.startsWith(window.location.origin)
     )) {
       markUrlAsFailed(failedImage.url);
@@ -647,7 +674,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       }
     } catch (error) {
       log.error("Error toggling like:", error);
-      toast.error("Failed to update like status");
+      toast.error(safeTranslate(t, "errors.likeUpdateFailed", "Failed to update like status"));
     } finally {
       if (isMounted()) {
         setIsLiking(false);
@@ -661,11 +688,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
     try {
       await blockUser(userId);
-      toast.success("User blocked successfully");
+      toast.success(safeTranslate(t, "profile.userBlocked", "User blocked successfully"));
       onClose();
     } catch (error) {
       log.error("Error blocking user:", error);
-      toast.error("Failed to block user");
+      toast.error(safeTranslate(t, "errors.blockFailed", "Failed to block user"));
     }
   };
 
@@ -674,8 +701,8 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     if (!userId) return;
 
     // Create a simple prompt for the report reason
-    const reason = prompt("Please provide a reason for reporting this user:");
-    
+    const reason = prompt(safeTranslate(t, "profile.reportPrompt", "Please provide a reason for reporting this user:"));
+
     // If user cancels, abort the report
     if (reason === null) {
       return;
@@ -683,11 +710,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
     try {
       await reportUser(userId, reason);
-      toast.success("User reported successfully");
+      toast.success(safeTranslate(t, "profile.userReported", "User reported successfully"));
       onClose();
     } catch (error) {
       log.error("Error reporting user:", error);
-      toast.error("Failed to report user");
+      toast.error(safeTranslate(t, "errors.reportFailed", "Failed to report user"));
     }
   };
 
@@ -703,7 +730,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       onClose();
     } catch (error) {
       log.error("Error sending message:", error);
-      toast.error("Failed to start conversation");
+      toast.error(safeTranslate(t, "errors.conversationFailed", "Failed to start conversation"));
     } finally {
       if (isMounted()) {
         setIsChatInitiating(false);
@@ -755,12 +782,22 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     return Math.min(100, score);
   }
 
+  // Helper to safely translate profile data (identity, lookingFor, etc.)
+  const getTranslatedTag = useCallback((namespace, tag) => {
+    if (!tag) return "";
+
+    // Format the tag key according to the i18n pattern
+    const key = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
+    // Use the original tag as the default if translation fails
+    return safeTranslate(t, key, tag);
+  }, [t]);
+
   // Text formatter
   const capitalize = (str) => {
     if (!str || typeof str !== 'string') return '';
     return str.charAt(0).toUpperCase() + str.slice(1);
   };
-  
+
   // Function to validate MongoDB ObjectId format
   const isValidObjectId = (id) => {
     return id && typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
@@ -773,7 +810,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="large">
         <div className={styles.loadingContainer}>
-          <LoadingSpinner text="Loading profile..." size="large" centered />
+          <LoadingSpinner text={safeTranslate(t, 'common.loadingProfile', 'Loading profile...')} size="large" centered />
         </div>
       </Modal>
     );
@@ -783,10 +820,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="small">
         <div className={styles.errorContainer}>
-          <h3 className={styles.errorTitle}>Error Loading Profile</h3>
+          <h3 className={styles.errorTitle}>{safeTranslate(t, 'common.errorLoadingProfile', 'Error Loading Profile')}</h3>
           <p className={styles.errorText}>{error}</p>
           <Button variant="primary" onClick={onClose}>
-            Close
+            {safeTranslate(t, 'common.close', 'Close')}
           </Button>
         </div>
       </Modal>
@@ -797,10 +834,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="small">
         <div className={styles.notFoundContainer}>
-          <h3 className={styles.notFoundTitle}>User Not Found</h3>
-          <p className={styles.notFoundText}>The user you're looking for doesn't exist or has been removed.</p>
+          <h3 className={styles.notFoundTitle}>{safeTranslate(t, 'common.userNotFound', 'User Not Found')}</h3>
+          <p className={styles.notFoundText}>{safeTranslate(t, 'common.userNotFoundDesc', 'This user profile could not be found or has been removed.')}</p>
           <Button variant="primary" onClick={onClose}>
-            Close
+            {safeTranslate(t, 'common.close', 'Close')}
           </Button>
         </div>
       </Modal>
@@ -813,20 +850,22 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       isOpen={isOpen}
       onClose={onClose}
       size="xlarge"
-      className={styles.modalContainer}
+      className={`${styles.modalContainer} ${isRTL ? 'rtl-layout' : ''}`}
       showCloseButton={true}
-      headerClassName={styles.modalHeader}
-      bodyClassName="modern-user-profile"
+      headerClassName={`${styles.modalHeader} ${isRTL ? 'rtl-layout' : ''}`}
+      bodyClassName={`modern-user-profile ${isRTL ? 'rtl-layout' : ''}`}
       closeOnClickOutside={true}
+      data-force-rtl={isRTL ? 'true' : undefined}
+      data-language={language || 'en'}
     >
-      <div className={styles.profileContent} ref={profileRef}>
+      <div className={`${styles.profileContent} ${isRTL ? 'rtl-layout' : ''}`} ref={profileRef} data-force-rtl={isRTL ? 'true' : undefined} data-language={language || 'en'}>
         {/* Pending requests notification */}
         {!isOwnProfile && hasPendingRequestFromUser && currentUserRequests && (
           <div className={styles.requestNotification}>
             <div className={styles.notificationContent}>
               <FaEye className={styles.notificationIcon} />
               <p className={styles.notificationText}>
-                <strong>{profileUser.nickname}</strong> has requested access to your private photos
+                <strong>{profileUser.nickname}</strong> {safeTranslate(t, 'profile.requestedPhotoAccess', 'requested access to your photos')}
               </p>
             </div>
             <div className={styles.notificationActions}>
@@ -836,7 +875,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 disabled={isProcessingApproval}
               >
                 {isProcessingApproval ? <FaSpinner className={styles.spinner} /> : <FaCheck />}
-                Approve
+                {safeTranslate(t, 'common.approve', 'Approve')}
               </button>
               <button
                 className={styles.rejectBtn}
@@ -844,7 +883,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 disabled={isProcessingApproval}
               >
                 {isProcessingApproval ? <FaSpinner className={styles.spinner} /> : <FaBan />}
-                Reject
+                {safeTranslate(t, 'common.reject', 'Reject')}
               </button>
             </div>
           </div>
@@ -873,14 +912,14 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   !canViewPrivatePhotos ? (
                     <div className={styles.privatePhoto}>
                       <FaLock className={styles.lockIcon} />
-                      <p>Private Photo</p>
+                      <p>{safeTranslate(t, 'profile.privatePhoto', 'This photo is private')}</p>
 
                       {userPhotoAccess.status === "pending" && (
-                        <p className={`${styles.permissionStatus} ${styles.pending}`}>Access Request Pending</p>
+                        <p className={`${styles.permissionStatus} ${styles.pending}`}>{safeTranslate(t, 'profile.accessRequestPending', 'Access request pending')}</p>
                       )}
 
                       {userPhotoAccess.status === "rejected" && (
-                        <p className={`${styles.permissionStatus} ${styles.rejected}`}>Access Denied</p>
+                        <p className={`${styles.permissionStatus} ${styles.rejected}`}>{safeTranslate(t, 'profile.accessDenied', 'Access request denied')}</p>
                       )}
 
                       {(!userPhotoAccess.status || userPhotoAccess.status === "none") && (
@@ -890,7 +929,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                           disabled={userPhotoAccess.isLoading}
                         >
                           {userPhotoAccess.isLoading ? <FaSpinner className={styles.spinner} /> : null}
-                          Request Photo Access
+                          {safeTranslate(t, 'profile.requestPhotoAccess', 'Request Access')}
                         </button>
                       )}
                     </div>
@@ -911,7 +950,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   {profileUser.isOnline && (
                     <div className={styles.onlineBadge}>
                       <span className={styles.pulse}></span>
-                      Online Now
+                      {safeTranslate(t, 'common.onlineNow', 'Online Now')}
                     </div>
                   )}
 
@@ -919,20 +958,20 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   {profileUser.photos.length > 1 && (
                     <>
                       <button
-                        className={`${styles.nav} ${styles.navPrev}`}
+                        className={`${styles.nav} ${styles.navPrev} ${isRTL ? 'rtl-nav' : ''}`}
                         onClick={prevPhoto}
                         disabled={activePhotoIndex === 0}
-                        aria-label="Previous photo"
+                        aria-label={safeTranslate(t, 'profile.previousPhoto', 'Previous photo')}
                       >
-                        <FaChevronLeft />
+                        {isRTL ? <FaChevronRight /> : <FaChevronLeft />}
                       </button>
                       <button
-                        className={`${styles.nav} ${styles.navNext}`}
+                        className={`${styles.nav} ${styles.navNext} ${isRTL ? 'rtl-nav' : ''}`}
                         onClick={nextPhoto}
                         disabled={activePhotoIndex === profileUser.photos.length - 1}
-                        aria-label="Next photo"
+                        aria-label={safeTranslate(t, 'profile.nextPhoto', 'Next photo')}
                       >
-                        <FaChevronRight />
+                        {isRTL ? <FaChevronLeft /> : <FaChevronRight />}
                       </button>
                     </>
                   )}
@@ -952,14 +991,14 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                             <FaLock />
                             {userPhotoAccess.status && (
                               <div className={`${styles.permissionStatus} ${styles[userPhotoAccess.status]}`}>
-                                {userPhotoAccess.status === "pending" && "Pending"}
-                                {userPhotoAccess.status === "approved" && "Granted"}
-                                {userPhotoAccess.status === "rejected" && "Denied"}
+                                {userPhotoAccess.status === "pending" && safeTranslate(t, 'common.pending', 'Pending')}
+                                {userPhotoAccess.status === "approved" && safeTranslate(t, 'common.granted', 'Granted')}
+                                {userPhotoAccess.status === "rejected" && safeTranslate(t, 'common.denied', 'Denied')}
                               </div>
                             )}
                           </div>
                         ) : (
-                          <img 
+                          <img
                             src={normalizePhotoUrl(photo.url)}
                             alt={`${profileUser.nickname} ${index + 1}`}
                             className={styles.thumbnailImg}
@@ -979,7 +1018,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   alt={profileUser.nickname}
                   status={profileUser.isOnline ? "online" : null}
                 />
-                <p>No photos available</p>
+                <p>{safeTranslate(t, 'profile.noPhotosAvailable', 'No photos available')}</p>
               </div>
             )}
 
@@ -993,7 +1032,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     disabled={isLiking}
                   >
                     {isLiking ? <FaSpinner className={styles.spinner} /> : <FaHeart />}
-                    {isUserLiked && isUserLiked(profileUser._id) ? "Liked" : "Like"}
+                    {isUserLiked && isUserLiked(profileUser._id)
+                      ? safeTranslate(t, 'common.liked', 'Liked')
+                      : safeTranslate(t, 'common.like', 'Like')}
                   </button>
                   <button
                     className={`${styles.actionBtn} ${styles.messageBtn}`}
@@ -1001,7 +1042,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     disabled={isChatInitiating}
                   >
                     {isChatInitiating ? <FaSpinner className={styles.spinner} /> : <FaComment />}
-                    Message
+                    {safeTranslate(t, 'common.message', 'Message')}
                   </button>
                 </>
               )}
@@ -1020,14 +1061,14 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       onClick={handleReport}
                     >
                       <FaFlag />
-                      Report User
+                      {safeTranslate(t, 'profile.reportUser', 'Report User')}
                     </button>
                     <button
                       className={styles.dropdownItem}
                       onClick={handleBlock}
                     >
                       <FaBan />
-                      Block User
+                      {safeTranslate(t, 'profile.blockUser', 'Block User')}
                     </button>
                   </div>
                 )}
@@ -1044,7 +1085,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               </h1>
               {profileUser.role === "premium" && (
                 <div className={styles.premiumBadge}>
-                  <FaTrophy /> Premium
+                  <FaTrophy /> {safeTranslate(t, 'common.premium', 'Premium')}
                 </div>
               )}
             </div>
@@ -1052,9 +1093,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             {/* User location */}
             <div className={styles.location}>
               <FaMapMarkerAlt className={styles.icon} />
-              <span>{profileUser.details?.location || "Unknown location"}</span>
+              <span>{profileUser.details?.location || safeTranslate(t, 'profile.unknownLocation', 'Unknown location')}</span>
               <div className={`${styles.onlineStatus} ${profileUser.isOnline ? styles.isOnline : ""}`}>
-                {profileUser.isOnline ? "Online now" : "Offline"}
+                {profileUser.isOnline
+                  ? safeTranslate(t, 'common.onlineNow', 'Online Now')
+                  : safeTranslate(t, 'common.offline', 'Offline')}
               </div>
             </div>
 
@@ -1064,20 +1107,28 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 <FaRegClock className={styles.icon} />
                 <span>
                   {profileUser.isOnline
-                    ? "Active now"
-                    : `Last active ${formatDate(profileUser.lastActive, { showTime: false })}`}
+                    ? safeTranslate(t, 'common.activeNow', 'Active now')
+                    : safeTranslate(t, 'profile.lastActive', 'פעילות אחרונה: {{date}}', { 
+                        date: profileUser.lastActive 
+                          ? formatDate(profileUser.lastActive, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' }) 
+                          : 'N/A' 
+                      })}
                 </span>
               </div>
               <div className={styles.activityItem}>
                 <FaCalendarAlt className={styles.icon} />
-                <span>Member since {formatDate(profileUser.createdAt, { showTime: false })}</span>
+                <span>{safeTranslate(t, 'profile.memberSince', 'חבר מאז: {{date}}', { 
+                  date: profileUser.createdAt 
+                    ? formatDate(profileUser.createdAt, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' }) 
+                    : 'N/A' 
+                })}</span>
               </div>
             </div>
 
             {/* Compatibility section */}
             {!isOwnProfile && (
               <div className={styles.compatibilitySection}>
-                <h2 className={styles.sectionTitle}>Compatibility</h2>
+                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.compatibility', 'Compatibility')}</h2>
                 <div className={styles.compatibilityScore}>
                   <div className={styles.scoreCircle}>
                     <svg viewBox="0 0 100 100">
@@ -1101,7 +1152,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   </div>
                   <div className={styles.compatibilityDetails}>
                     <div className={styles.compatibilityFactor}>
-                      <span className={styles.factorLabel}>Location</span>
+                      <span className={styles.factorLabel}>{safeTranslate(t, 'profile.location', 'Location')}</span>
                       <div className={styles.factorBar}>
                         <div
                           className={styles.factorFill}
@@ -1113,7 +1164,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       </div>
                     </div>
                     <div className={styles.compatibilityFactor}>
-                      <span className={styles.factorLabel}>Age</span>
+                      <span className={styles.factorLabel}>{safeTranslate(t, 'profile.age', 'Age')}</span>
                       <div className={styles.factorBar}>
                         <div
                           className={styles.factorFill}
@@ -1129,7 +1180,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       </div>
                     </div>
                     <div className={styles.compatibilityFactor}>
-                      <span className={styles.factorLabel}>Interests</span>
+                      <span className={styles.factorLabel}>{safeTranslate(t, 'profile.interests', 'Interests')}</span>
                       <div className={styles.factorBar}>
                         <div
                           className={styles.factorFill}
@@ -1147,17 +1198,17 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             {/* User details sections */}
             {profileUser.details?.bio && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>About Me</h2>
+                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.aboutMe', 'About Me')}</h2>
                 <p className={styles.aboutText}>{profileUser.details.bio}</p>
               </div>
             )}
 
             {profileUser.details?.iAm && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>I am a</h2>
+                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.iAm', 'I Am')}</h2>
                 <div className={styles.tagsContainer}>
                   <span className={`${styles.tag} ${styles.identityTag}`}>
-                    {capitalize(profileUser.details.iAm)}
+                    {getTranslatedTag('profile.identity', profileUser.details.iAm)}
                   </span>
                 </div>
               </div>
@@ -1165,10 +1216,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {profileUser.details?.maritalStatus && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>Marital Status</h2>
+                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.maritalStatus', 'Marital Status')}</h2>
                 <div className={styles.tagsContainer}>
                   <span className={`${styles.tag} ${styles.statusTag}`}>
-                    {profileUser.details.maritalStatus}
+                    {getTranslatedTag('profile.maritalStatus', profileUser.details.maritalStatus)}
                   </span>
                 </div>
               </div>
@@ -1176,11 +1227,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {profileUser.details?.lookingFor && profileUser.details.lookingFor.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>Looking For</h2>
+                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.lookingFor', 'Looking For')}</h2>
                 <div className={styles.tagsContainer}>
                   {profileUser.details.lookingFor.map((item, index) => (
                     <span key={index} className={`${styles.tag} ${styles.lookingForTag}`}>
-                      {item}
+                      {getTranslatedTag('profile.lookingFor', item)}
                     </span>
                   ))}
                 </div>
@@ -1189,11 +1240,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {profileUser.details?.intoTags && profileUser.details.intoTags.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>I'm Into</h2>
+                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.imInto', "I'm Into")}</h2>
                 <div className={styles.tagsContainer}>
                   {profileUser.details.intoTags.map((item, index) => (
                     <span key={index} className={`${styles.tag} ${styles.intoTag}`}>
-                      {item}
+                      {getTranslatedTag('profile.intoTags', item)}
                     </span>
                   ))}
                 </div>
@@ -1202,11 +1253,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {profileUser.details?.turnOns && profileUser.details.turnOns.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>It Turns Me On</h2>
+                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.turnOns', 'Turn Ons')}</h2>
                 <div className={styles.tagsContainer}>
                   {profileUser.details.turnOns.map((item, index) => (
                     <span key={index} className={`${styles.tag} ${styles.turnOnTag}`}>
-                      {item}
+                      {getTranslatedTag('profile.turnOns', item)}
                     </span>
                   ))}
                 </div>
@@ -1216,7 +1267,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             {/* Interests section */}
             {profileUser.details?.interests?.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>Interests</h2>
+                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.interests', 'Interests')}</h2>
                 <div className={styles.interestsTags}>
                   {(showAllInterests
                     ? profileUser.details.interests
@@ -1226,7 +1277,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       key={interest}
                       className={`${styles.interestTag} ${commonInterests.includes(interest) ? styles.commonTag : ""}`}
                     >
-                      {interest}
+                      {getTranslatedTag('profile.interests', interest)}
                       {commonInterests.includes(interest) && <FaCheck className={styles.commonIcon} />}
                     </span>
                   ))}
@@ -1235,7 +1286,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       className={styles.showMoreBtn}
                       onClick={() => setShowAllInterests(true)}
                     >
-                      +{profileUser.details.interests.length - 8} more
+                      +{profileUser.details.interests.length - 8} {safeTranslate(t, 'common.more', 'more')}
                     </button>
                   )}
                 </div>

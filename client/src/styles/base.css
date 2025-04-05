@@ -448,10 +448,6 @@ img {
   outline-offset: 2px;
 }
 
-/* Section Styles */
-.section {
-  padding: var(--space-section) 0;
-}
 
 .section-title {
   font-size: var(--font-size-3xl);

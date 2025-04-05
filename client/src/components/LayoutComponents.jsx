@@ -2,7 +2,8 @@
 // client/src/components/LayoutComponents.js
 import { useEffect, useState, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { useAuth, useNotifications } from "../context"
+import { useTranslation } from "react-i18next"
+import { useAuth, useNotifications, useLanguage } from "../context"
 import { toast } from "react-toastify"
 import {
   FaUserCircle,
@@ -34,6 +35,8 @@ export const Navbar = () => {
   } = useNotifications()
 
   const { isAuthenticated, logout, user } = useAuth()
+  const { t } = useTranslation()
+  const { isRTL } = useLanguage()
   const navigate = useNavigate()
 
   const handleLogout = async (e) => {
@@ -108,7 +111,7 @@ export const Navbar = () => {
   }
 
   return (
-    <header className="app-header">
+    <header className={`app-header ${isRTL ? 'rtl-header' : ''}`}>
       <div className="header-inner">
         <div className="header-logo" onClick={() => navigate("/")}>
           <span>Mandarin</span>
@@ -123,7 +126,7 @@ export const Navbar = () => {
                   onClick={() => navigate("/dashboard")}
                 >
                   <FaSearch />
-                  <span className="nav-text">Discover</span>
+                  <span className="nav-text">{t('common.search')}</span>
                 </button>
               </li>
               <li>
@@ -132,7 +135,7 @@ export const Navbar = () => {
                   onClick={() => navigate("/messages")}
                 >
                   <FaEnvelopeOpen />
-                  <span className="nav-text">Messages</span>
+                  <span className="nav-text">{t('common.messages')}</span>
                 </button>
               </li>
             </ul>
@@ -202,20 +205,20 @@ export const Navbar = () => {
                     <div ref={userDropdownRef} className="user-dropdown">
                       <div className="user-dropdown-item" onClick={navigateToProfile}>
                         <FaUserCircle />
-                        Profile
+                        {t('common.profile')}
                       </div>
                       <div className="user-dropdown-item" onClick={() => navigate("/settings")}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                        Settings
+                        {t('common.settings')}
                       </div>
                       <div className="user-dropdown-item" onClick={() => navigate("/subscription")}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
-                        Subscription
+                        {t('common.subscription')}
                       </div>
                       <div className="user-dropdown-divider"></div>
                       <div className="user-dropdown-item danger" onClick={handleLogout}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-                        Logout
+                        {t('common.logout')}
                       </div>
                     </div>
                   )}
@@ -225,10 +228,10 @@ export const Navbar = () => {
           ) : (
             <div className="auth-buttons">
               <Link to="/login" className="btn btn-outline me-2">
-                Login
+                {t('common.login')}
               </Link>
               <Link to="/register" className="btn btn-primary">
-                Register
+                {t('common.register')}
               </Link>
             </div>
           )}

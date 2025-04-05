@@ -20,6 +20,12 @@
   box-shadow: 0 16px 35px rgba(0, 0, 0, 0.12);
 }
 
+/* RTL Support for user card */
+:global([dir="rtl"]) .userCard {
+  direction: rtl;
+  text-align: right;
+}
+
 /* Grid View Styles */
 .cardHeader {
   position: relative;
@@ -47,6 +53,12 @@
   right: 15px;
   z-index: 2;
   border: 2px solid white;
+}
+
+/* RTL Support for status indicator */
+:global([dir="rtl"]) .cardPhoto :global(.status-indicator) {
+  right: auto;
+  left: 15px;
 }
 
 .cardPhoto :global(.online) {
@@ -87,6 +99,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  margin-top: 5px;
 }
 
 :global(.dark) .userName {
@@ -111,6 +124,11 @@
   margin-bottom: 0.75rem;
 }
 
+/* RTL Support for lastActive */
+:global([dir="rtl"]) .lastActive {
+  flex-direction: row-reverse;
+}
+
 :global(.dark) .lastActive {
   color: var(--text-secondary-dark, #94a3b8);
 }
@@ -122,6 +140,11 @@
   color: var(--text-secondary, #64748b);
   font-size: 0.875rem;
   margin-bottom: 1.25rem;
+}
+
+/* RTL Support for location */
+:global([dir="rtl"]) .location {
+  flex-direction: row-reverse;
 }
 
 :global(.dark) .location {
@@ -153,6 +176,11 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+/* RTL Support for detail item */
+:global([dir="rtl"]) .detailItem {
+  flex-direction: row-reverse;
 }
 
 .detailLabel {
@@ -268,6 +296,12 @@
   font-weight: 600;
 }
 
+/* RTL Support for moreCount */
+:global([dir="rtl"]) .moreCount {
+  margin-left: 0;
+  margin-right: 0.25rem;
+}
+
 :global(.dark) .moreCount {
   color: var(--primary-light, #818cf8);
 }
@@ -312,6 +346,11 @@
   transition: all 0.2s ease;
 }
 
+/* RTL Support for action buttons */
+:global([dir="rtl"]) .actionBtn {
+  flex-direction: row-reverse;
+}
+
 .likeBtn {
   background-color: rgba(var(--primary-rgb, 99, 102, 241), 0.05);
   color: var(--primary, #6366f1);
@@ -336,6 +375,11 @@
   transition: all 0.2s ease;
   background-image: linear-gradient(to right, var(--primary, #6366f1), var(--primary-light, #818cf8));
   box-shadow: 0 4px 12px rgba(var(--primary-rgb, 99, 102, 241), 0.25);
+}
+
+/* RTL Support for message button gradient */
+:global([dir="rtl"]) .messageBtn {
+  background-image: linear-gradient(to left, var(--primary, #6366f1), var(--primary-light, #818cf8));
 }
 
 .messageBtn:hover {
@@ -369,6 +413,12 @@
   background-color: white;
 }
 
+/* RTL Support for list item */
+:global([dir="rtl"]) .listItem {
+  direction: rtl;
+  text-align: right;
+}
+
 .listItem:hover {
   background-color: rgba(var(--primary-rgb, 99, 102, 241), 0.02);
   transform: translateY(-1px);
@@ -396,6 +446,12 @@
   position: relative;
 }
 
+/* RTL Support for list photo container */
+:global([dir="rtl"]) .listPhotoContainer {
+  margin-right: 0;
+  margin-left: 8px;
+}
+
 .listPhotoContainer :global(.status-indicator) {
   position: absolute;
   width: 10px;
@@ -405,6 +461,12 @@
   right: 8px;
   z-index: 2;
   border: 1.5px solid white;
+}
+
+/* RTL Support for list status indicator */
+:global([dir="rtl"]) .listPhotoContainer :global(.status-indicator) {
+  right: auto;
+  left: 8px;
 }
 
 .listPhotoContainer :global(.online-small) {
@@ -458,6 +520,11 @@
   margin-bottom: 0.25rem;
 }
 
+/* RTL Support for list last active */
+:global([dir="rtl"]) .listLastActive {
+  flex-direction: row-reverse;
+}
+
 :global(.dark) .listLastActive {
   color: var(--text-secondary-dark, #94a3b8);
 }
@@ -489,5 +556,10 @@
     margin-top: 1rem;
     width: 100%;
     justify-content: center;
+  }
+  
+  /* RTL specific responsive styles */
+  :global([dir="rtl"]) .detailsRow {
+    align-items: flex-end;
   }
 }

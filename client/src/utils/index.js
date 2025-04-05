@@ -234,11 +234,25 @@ export const markUrlAsFailed = (url) => {
  * @returns {string} Formatted date
  */
 export const formatDate = (date, options = {}) => {
+  // Determine locale from document or navigator
+  let detectedLocale = 'en-US';
+  try {
+    if (document.documentElement.lang === 'he') {
+      detectedLocale = 'he-IL';
+    } else if (navigator.languages && navigator.languages.length) {
+      detectedLocale = navigator.languages[0];
+    } else if (navigator.language) {
+      detectedLocale = navigator.language;
+    }
+  } catch (e) {
+    console.warn('Failed to detect locale:', e);
+  }
+  
   const {
     showTime = true,
     showDate = true,
     showRelative = false,
-    locale = 'en-US'
+    locale = detectedLocale
   } = options;
   
   if (!date) return '';
@@ -249,36 +263,76 @@ export const formatDate = (date, options = {}) => {
   if (isNaN(dateObj.getTime())) return '';
   
   if (showRelative) {
-    const now = new Date();
-    const diffMs = now - dateObj;
-    const diffSeconds = Math.floor(diffMs / 1000);
-    const diffMinutes = Math.floor(diffSeconds / 60);
-    const diffHours = Math.floor(diffMinutes / 60);
-    const diffDays = Math.floor(diffHours / 24);
-    
-    if (diffSeconds < 60) return 'just now';
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
+    // For Hebrew locale, use Hebrew relative time strings
+    if (locale.startsWith('he')) {
+      const now = new Date();
+      const diffMs = now - dateObj;
+      const diffSeconds = Math.floor(diffMs / 1000);
+      const diffMinutes = Math.floor(diffSeconds / 60);
+      const diffHours = Math.floor(diffMinutes / 60);
+      const diffDays = Math.floor(diffHours / 24);
+      
+      if (diffSeconds < 60) return 'זה עתה';
+      if (diffMinutes < 60) return `לפני ${diffMinutes} דקות`;
+      if (diffHours < 24) return `לפני ${diffHours} שעות`;
+      if (diffDays < 7) return `לפני ${diffDays} ימים`;
+    } else {
+      const now = new Date();
+      const diffMs = now - dateObj;
+      const diffSeconds = Math.floor(diffMs / 1000);
+      const diffMinutes = Math.floor(diffSeconds / 60);
+      const diffHours = Math.floor(diffMinutes / 60);
+      const diffDays = Math.floor(diffHours / 24);
+      
+      if (diffSeconds < 60) return 'just now';
+      if (diffMinutes < 60) return `${diffMinutes}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+    }
   }
   
   let formattedDate = '';
   
   if (showDate) {
-    formattedDate = dateObj.toLocaleDateString(locale, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    try {
+      formattedDate = dateObj.toLocaleDateString(locale, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (e) {
+      // Fallback if the locale is not supported
+      console.warn(`Locale ${locale} not supported for date formatting, falling back to default`);
+      formattedDate = dateObj.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
   }
   
   if (showTime) {
-    const timeStr = dateObj.toLocaleTimeString(locale, {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    let timeStr;
+    try {
+      timeStr = dateObj.toLocaleTimeString(locale, {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      // Fallback if the locale is not supported
+      console.warn(`Locale ${locale} not supported for time formatting, falling back to default`);
+      timeStr = dateObj.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
     
-    formattedDate = showDate ? `${formattedDate}, ${timeStr}` : timeStr;
+    // Handle RTL languages differently for combining date and time
+    if (locale.startsWith('he') || document.dir === 'rtl') {
+      formattedDate = showDate ? `${timeStr} ,${formattedDate}` : timeStr;
+    } else {
+      formattedDate = showDate ? `${formattedDate}, ${timeStr}` : timeStr;
+    }
   }
   
   return formattedDate;

@@ -25,12 +25,14 @@ import {
   FaEye,
 } from "react-icons/fa";
 import { useParams, useNavigate } from "react-router-dom";
-import { useUser, useAuth, useStories } from "../context";
+import { useUser, useAuth, useStories, useLanguage } from "../context";
 import { EmbeddedChat, Navbar } from "../components"; // Import Navbar if needed
 import StoriesViewer from "../components/Stories/StoriesViewer";
 import StoryThumbnail from "../components/Stories/StoryThumbnail";
 import { toast } from "react-toastify";
 import { permissionClient, apiService } from "../services"; // Import permissionClient and apiService
+import { useTranslation } from "react-i18next";
+import { formatDate } from "../utils";
 // Ensure you have a separate CSS file for UserProfile page styles if needed
 // import "../styles/UserProfile.css"; // Example
 
@@ -54,10 +56,42 @@ const normalizePhotoUrl = (url) => {
    return `/uploads/images/${url.split('/').pop()}`;
 };
 
+// Helper function to safely translate profile fields
+const translateProfileField = (i18n, field, key) => {
+  if (!field) return "";
+  
+  try {
+    // For Hebrew translations, we first try direct lookups
+    // Handle special case for profile fields
+    if (typeof field === 'string') {
+      // 1. First try the direct field value translation from top-level
+      const directFieldTranslation = i18n(field);
+      if (directFieldTranslation !== field && directFieldTranslation !== `${field}`) {
+        return directFieldTranslation;
+      }
+      
+      // 2. Next try the nested structure with the specific key
+      const nestedKey = `${key}.${field}`;
+      const nestedTranslation = i18n(nestedKey);
+      if (nestedTranslation !== nestedKey && nestedTranslation !== `${nestedKey}`) {
+        return nestedTranslation;
+      }
+    }
+    
+    // Fallback to original value if no translation found
+    return field;
+  } catch (error) {
+    console.warn(`Translation error for ${key}.${field}:`, error);
+    return field;
+  }
+};
+
 const UserProfile = () => {
   const { id } = useParams(); // User ID from URL
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const { t } = useTranslation();
+  const { language = 'en', isRTL = false } = useLanguage() || {};
   const {
     // Use context methods, but fetch profile data locally using apiService for this specific page view
     loading: userContextLoading, // Context loading might be different
@@ -393,9 +427,9 @@ const UserProfile = () => {
 
   // --- Main JSX ---
   return (
-    <div className="min-vh-100 bg-light-subtle" ref={profileRef}>
+    <div className={`min-vh-100 bg-light-subtle ${isRTL ? 'rtl-layout' : ''}`} ref={profileRef} data-force-rtl={isRTL ? 'true' : null}>
        <Navbar /> {/* Include Navbar if this is a top-level page */}
-       <div className="container max-w-xl py-4 px-3">
+       <div className={`container max-w-xl py-4 px-3 ${isRTL ? 'rtl-layout' : ''}`} data-language={language}>
          <button 
            className="btn btn-outline-secondary rounded-pill d-inline-flex align-items-center gap-2 mb-4 shadow-sm hover-scale transition-all"
            onClick={() => navigate(-1)}
@@ -516,18 +550,18 @@ const UserProfile = () => {
                        {profileUser.photos.length > 1 && (
                         <>
                           <button 
-                            className="position-absolute top-50 transform-translateY--50 left-4 bg-white-90 text-dark border-0 w-48px h-48px rounded-circle d-flex align-items-center justify-content-center shadow-md z-5 hover-scale transition-all"
+                            className={`position-absolute top-50 transform-translateY--50 ${isRTL ? 'right-4' : 'left-4'} bg-white-90 text-dark border-0 w-48px h-48px rounded-circle d-flex align-items-center justify-content-center shadow-md z-5 hover-scale transition-all`}
                             onClick={prevPhoto} 
                             disabled={activePhotoIndex === 0}
                           >
-                            <FaChevronLeft />
+                            {isRTL ? <FaChevronRight /> : <FaChevronLeft />}
                           </button> 
                           <button 
-                            className="position-absolute top-50 transform-translateY--50 right-4 bg-white-90 text-dark border-0 w-48px h-48px rounded-circle d-flex align-items-center justify-content-center shadow-md z-5 hover-scale transition-all"
+                            className={`position-absolute top-50 transform-translateY--50 ${isRTL ? 'left-4' : 'right-4'} bg-white-90 text-dark border-0 w-48px h-48px rounded-circle d-flex align-items-center justify-content-center shadow-md z-5 hover-scale transition-all`}
                             onClick={nextPhoto} 
                             disabled={activePhotoIndex === profileUser.photos.length - 1}
                           >
-                            <FaChevronRight />
+                            {isRTL ? <FaChevronLeft /> : <FaChevronRight />}
                           </button>
                         </>
                        )}
@@ -653,11 +687,19 @@ const UserProfile = () => {
               <div className="d-flex flex-wrap gap-4 mb-5 text-sm text-opacity-60">
                 <div className="d-flex align-items-center gap-2">
                   <FaRegClock className="text-opacity-50" />
-                  <span>Last active {profileUser.lastActive ? new Date(profileUser.lastActive).toLocaleDateString() : 'N/A'}</span>
+                  <span>{t('profile.lastActive', { 
+                    date: profileUser.lastActive 
+                      ? formatDate(profileUser.lastActive, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' }) 
+                      : 'N/A' 
+                  })}</span>
                 </div>
                 <div className="d-flex align-items-center gap-2">
                   <FaCalendarAlt className="text-opacity-50" />
-                  <span>Member since {profileUser.createdAt ? new Date(profileUser.createdAt).toLocaleDateString() : 'N/A'}</span>
+                  <span>{t('profile.memberSince', { 
+                    date: profileUser.createdAt 
+                      ? formatDate(profileUser.createdAt, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' }) 
+                      : 'N/A' 
+                  })}</span>
                 </div>
               </div>
               
@@ -685,15 +727,15 @@ const UserProfile = () => {
               <div className="d-grid grid-cols-1 grid-cols-md-2 gap-4 mb-5">
                 {profileUser.details?.iAm && 
                   <div className="bg-white rounded-lg p-3 shadow-sm border">
-                    <h3 className="font-weight-medium text-sm text-opacity-60 mb-2">I am a</h3>
-                    <p className="m-0 font-weight-medium">{capitalize(profileUser.details.iAm)}</p>
+                    <h3 className="font-weight-medium text-sm text-opacity-60 mb-2">{t('profile.iAm')}</h3>
+                    <p className="m-0 font-weight-medium">{translateProfileField(t, profileUser.details.iAm, 'profile.identity')}</p>
                   </div>
                 }
                 
                 {profileUser.details?.maritalStatus && 
                   <div className="bg-white rounded-lg p-3 shadow-sm border">
-                    <h3 className="font-weight-medium text-sm text-opacity-60 mb-2">Status</h3>
-                    <p className="m-0 font-weight-medium">{profileUser.details.maritalStatus}</p>
+                    <h3 className="font-weight-medium text-sm text-opacity-60 mb-2">{t('profile.maritalStatus')}</h3>
+                    <p className="m-0 font-weight-medium">{translateProfileField(t, profileUser.details.maritalStatus, 'profile.maritalStatus')}</p>
                   </div>
                 }
               </div>
@@ -701,11 +743,11 @@ const UserProfile = () => {
               {/* Looking For */}
               {profileUser.details?.lookingFor?.length > 0 && 
                 <div className="mb-5 animate-fade-in">
-                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">Looking For</h2>
+                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">{t('profile.lookingFor')}</h2>
                   <div className="d-flex flex-wrap gap-2">
                     {profileUser.details.lookingFor.map(t => 
                       <span key={t} className="bg-primary-50 text-primary border border-primary-100 px-3 py-2 rounded-pill text-sm font-weight-medium shadow-sm hover-transform-y-n1 transition-all">
-                        {t}
+                        {translateProfileField(t, t, 'profile.lookingFor')}
                       </span>
                     )}
                   </div>
@@ -715,11 +757,11 @@ const UserProfile = () => {
               {/* Into */}
               {profileUser.details?.intoTags?.length > 0 && 
                 <div className="mb-5 animate-fade-in">
-                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">Into</h2>
+                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">{t('profile.imInto')}</h2>
                   <div className="d-flex flex-wrap gap-2">
                     {profileUser.details.intoTags.map(t => 
                       <span key={t} className="bg-secondary-50 text-secondary border border-secondary-100 px-3 py-2 rounded-pill text-sm font-weight-medium shadow-sm hover-transform-y-n1 transition-all">
-                        {t}
+                        {translateProfileField(t, t, 'profile.intoTags')}
                       </span>
                     )}
                   </div>
@@ -729,11 +771,11 @@ const UserProfile = () => {
               {/* Turn Ons */}
               {profileUser.details?.turnOns?.length > 0 && 
                 <div className="mb-5 animate-fade-in">
-                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">Turns Me On</h2>
+                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">{t('profile.turnOns')}</h2>
                   <div className="d-flex flex-wrap gap-2">
                     {profileUser.details.turnOns.map(t => 
                       <span key={t} className="bg-danger-50 text-danger border border-danger-100 px-3 py-2 rounded-pill text-sm font-weight-medium shadow-sm hover-transform-y-n1 transition-all">
-                        {t}
+                        {translateProfileField(t, t, 'profile.turnOns')}
                       </span>
                     )}
                   </div>
@@ -743,11 +785,11 @@ const UserProfile = () => {
               {/* Interests */}
               {profileUser.details?.interests?.length > 0 && (
                 <div className="mb-5 animate-fade-in">
-                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">Interests</h2>
+                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">{t('profile.interests')}</h2>
                   <div className="d-flex flex-wrap gap-2">
                     {(showAllInterests ? profileUser.details.interests : profileUser.details.interests.slice(0, 8)).map(interest => (
                       <span key={interest} className={`px-3 py-2 rounded-pill text-sm font-weight-medium shadow-sm hover-transform-y-n1 transition-all d-inline-flex align-items-center gap-2 ${commonInterests.includes(interest) ? "bg-success-50 text-success-700 border border-success-100" : "bg-light text-opacity-70 border"}`}>
-                        {interest} {commonInterests.includes(interest) && <FaCheck className="text-xs" />}
+                        {translateProfileField(t, interest, 'profile.interests')} {commonInterests.includes(interest) && <FaCheck className="text-xs" />}
                       </span>
                     ))}
                     {!showAllInterests && profileUser.details.interests.length > 8 && 
@@ -755,7 +797,7 @@ const UserProfile = () => {
                         className="border-0 bg-transparent text-primary text-sm font-weight-medium px-3 py-2 hover-bg-primary-50 rounded-pill transition-all"
                         onClick={() => setShowAllInterests(true)}
                       >
-                        +{profileUser.details.interests.length - 8} more
+                        +{profileUser.details.interests.length - 8} {t('common.viewMore')}
                       </button>
                     }
                   </div>

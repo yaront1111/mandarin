@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { FaSearch, FaThLarge, FaList, FaFilter, FaPlus, FaSpinner } from "react-icons/fa"
 import { toast } from "react-toastify"
-import { useAuth, useUser, useStories } from "../context"
+import { useTranslation } from "react-i18next"
+import { useAuth, useUser, useStories, useLanguage } from "../context"
 import EmbeddedChat from "../components/EmbeddedChat"
 import { Navbar } from "../components/LayoutComponents"
 import StoriesCarousel from "../components/Stories/StoriesCarousel"
@@ -30,6 +31,8 @@ const Dashboard = () => {
   // unreadMessages is no longer available from ChatContext
   const unreadMessages = 0
   const { createStory } = useStories()
+  const { t } = useTranslation()
+  const { isRTL } = useLanguage()
 
   // Infinite scrolling states
   const [page, setPage] = useState(1)
@@ -257,11 +260,12 @@ const Dashboard = () => {
     setCreatingStory(true)
     createStory(storyData)
       .then((response) => {
-        if (response.success) {
+        // Check for different valid response formats
+        if (response && (response.success === true || response._id || (response.data && response.data._id))) {
           toast.success("Your story has been created!")
           setShowStoryCreator(false)
         } else {
-          toast.error(response.error || "Failed to create story")
+          toast.error((response && response.error) || "Failed to create story")
         }
       })
       .catch((error) => {
@@ -354,7 +358,7 @@ const Dashboard = () => {
   const isLoading = (loading || likesLoading) && page === 1 && !initialLoadComplete
 
   return (
-    <div className={styles.dashboardPage}>
+    <div className={`${styles.dashboardPage} ${isRTL ? 'rtl-layout' : ''}`}>
       <Navbar />
 
       <main className={styles.dashboardContent}>
@@ -363,7 +367,7 @@ const Dashboard = () => {
           {/* Stories Section */}
           <div className={styles.storiesSection}>
             <div className={styles.storiesHeader}>
-              <h2 className={styles.storiesTitle}>Stories</h2>
+              <h2 className={styles.storiesTitle}>{t('stories.myStories')}</h2>
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() => !creatingStory && setShowStoryCreator(true)}
@@ -371,7 +375,7 @@ const Dashboard = () => {
                 disabled={creatingStory}
               >
                 <FaPlus />
-                <span>{creatingStory ? "Creating..." : "Create Story"}</span>
+                <span>{creatingStory ? t('common.loading') : t('stories.createStory')}</span>
               </button>
             </div>
             <StoriesCarousel
@@ -386,8 +390,8 @@ const Dashboard = () => {
           {/* Content Header with Filters and View Toggle */}
           <div className={styles.dashboardHeader}>
             <div>
-              <h1 className={styles.dashboardTitle}>{activeTab === "discover" ? "Discover People" : "Your Matches"}</h1>
-              <p className={styles.dashboardSubtitle}>Find the perfect match for you</p>
+              <h1 className={styles.dashboardTitle}>{activeTab === "discover" ? t('dashboard.browseUsers') : t('dashboard.yourMatches')}</h1>
+              <p className={styles.dashboardSubtitle}>{t('dashboard.findMatches')}</p>
             </div>
             <div className={styles.dashboardActions}>
               <div className={styles.viewToggle}>
@@ -415,7 +419,7 @@ const Dashboard = () => {
                 aria-label="Toggle filters"
               >
                 <FaFilter />
-                <span>Filters</span>
+                <span>{t('common.filter')}</span>
               </button>
             </div>
           </div>
@@ -425,7 +429,7 @@ const Dashboard = () => {
             <div className={`${styles.filterPanel} animate-fade-in`}>
               {/* Age Range Filter */}
               <div className={styles.filterSection}>
-                <h3>Age Range</h3>
+                <h3>{t('profile.age')} {t('common.range')}</h3>
                 <div className={styles.filterOptions}>
                   <div className={styles.rangeSlider}>
                     <div className={styles.rangeValues}>
@@ -466,7 +470,7 @@ const Dashboard = () => {
 
               {/* Distance Filter */}
               <div className={styles.filterSection}>
-                <h3>Distance</h3>
+                <h3>{t('profile.distance')}</h3>
                 <div className={styles.filterOptions}>
                   <div className={styles.rangeSlider}>
                     <div className={styles.rangeValue}>
@@ -492,7 +496,7 @@ const Dashboard = () => {
 
               {/* Show Only Filters */}
               <div className={styles.filterSection}>
-                <h3>Show Only</h3>
+                <h3>{t('common.showOnly')}</h3>
                 <div className={`${styles.filterOptions} d-flex flex-column`}>
                   <label className={styles.filterOption}>
                     <input
@@ -506,7 +510,7 @@ const Dashboard = () => {
                       }
                       aria-label="Show only online users"
                     />
-                    <span>Online Now</span>
+                    <span>{t('common.online')}</span>
                   </label>
                   <label className={styles.filterOption}>
                     <input
@@ -520,7 +524,7 @@ const Dashboard = () => {
                       }
                       aria-label="Show only verified profiles"
                     />
-                    <span>Verified Profiles</span>
+                    <span>{t('profile.verified')}</span>
                   </label>
                   <label className={styles.filterOption}>
                     <input
@@ -534,14 +538,14 @@ const Dashboard = () => {
                       }
                       aria-label="Show only profiles with photos"
                     />
-                    <span>With Photos</span>
+                    <span>{t('profile.withPhotos')}</span>
                   </label>
                 </div>
               </div>
 
               {/* Interests Filter */}
               <div className={styles.filterSection}>
-                <h3>Interests</h3>
+                <h3>{t('profile.interests')}</h3>
                 <div className={styles.tagsContainer}>
                   {availableInterests.map((interest) => (
                     <button
@@ -559,10 +563,10 @@ const Dashboard = () => {
               {/* Filter Actions */}
               <div className={styles.filterActions}>
                 <button className="btn btn-outline" onClick={resetFilters} aria-label="Reset filters">
-                  Reset
+                  {t('common.reset')}
                 </button>
                 <button className="btn btn-primary" onClick={() => setShowFilters(false)} aria-label="Apply filters">
-                  Apply Filters
+                  {t('common.apply')} {t('common.filter')}
                 </button>
               </div>
             </div>
@@ -575,7 +579,7 @@ const Dashboard = () => {
               <div className={styles.contentLoader}>
                 <div className={styles.loadingContainer}>
                   <div className={styles.spinner}></div>
-                  <p className={styles.loadingText}>Loading users...</p>
+                  <p className={styles.loadingText}>{t('dashboard.loadingUsers')}...</p>
                 </div>
               </div>
             ) : sortedUsers.length > 0 ? (
@@ -610,7 +614,7 @@ const Dashboard = () => {
                   <div className={styles.contentLoader} style={{minHeight: "100px"}}>
                     <div className={styles.loadingContainer}>
                       <div className={styles.spinner}></div>
-                      <p className={styles.loadingText}>Loading more users...</p>
+                      <p className={styles.loadingText}>{t('dashboard.loadingMoreUsers')}...</p>
                     </div>
                   </div>
                 )}
@@ -622,10 +626,10 @@ const Dashboard = () => {
                   <div className={styles.noResultsIcon}>
                     <FaSearch />
                   </div>
-                  <h3>No matches found</h3>
-                  <p>Try adjusting your filters to see more people</p>
+                  <h3>{t('dashboard.noMatches')}</h3>
+                  <p>{t('dashboard.tryAdjustingFilters')}</p>
                   <button className="btn btn-primary" onClick={resetFilters} aria-label="Reset filters">
-                    Reset Filters
+                    {t('common.reset')} {t('common.filter')}
                   </button>
                 </div>
               </div>

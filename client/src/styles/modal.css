@@ -1,5 +1,7 @@
-/* Essential Modal Component Styles */
-
+/* Essential Modal Component Styles with RTL Support */
+html[lang="he"] body {
+  direction: rtl;
+}
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -79,6 +81,7 @@
   padding: 20px;
   overflow-y: auto;
   flex: 1;
+  direction: rtl;
 }
 
 .modal-footer {
@@ -111,6 +114,63 @@
 .dark .modal-close:hover {
   background-color: rgba(255, 255, 255, 0.1);
   color: #f8fafc;
+}
+
+/* RTL Support for Hebrew Language */
+:global([dir="rtl"]) .modal-body,
+.rtl .modal-body,
+html[lang="he"] .modal-body {
+  direction: rtl;
+  text-align: right;
+}
+
+:global([dir="rtl"]) .modal-header,
+.rtl .modal-header,
+html[lang="he"] .modal-header {
+  flex-direction: row-reverse;
+}
+
+:global([dir="rtl"]) .modal-footer,
+.rtl .modal-footer,
+html[lang="he"] .modal-footer {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}
+
+:global([dir="rtl"]) .modal-close,
+.rtl .modal-close,
+html[lang="he"] .modal-close {
+  transform: scaleX(-1); /* Flip close icon if needed */
+}
+
+/* For any icon-based buttons in the modal */
+:global([dir="rtl"]) .modal button svg,
+.rtl .modal button svg,
+html[lang="he"] .modal button svg {
+  transform: scaleX(-1);
+}
+
+/* For any form field groups with icons */
+:global([dir="rtl"]) .form-group,
+.rtl .form-group,
+html[lang="he"] .form-group {
+  flex-direction: row-reverse;
+}
+
+:global([dir="rtl"]) .form-group .icon,
+.rtl .form-group .icon,
+html[lang="he"] .form-group .icon {
+  margin-right: 0;
+  margin-left: 10px;
+}
+
+/* Any dropdown menus */
+:global([dir="rtl"]) .dropdown-menu,
+.rtl .dropdown-menu,
+html[lang="he"] .dropdown-menu {
+  text-align: right;
+  left: auto;
+  right: 0;
 }
 
 /* Responsive adjustments */

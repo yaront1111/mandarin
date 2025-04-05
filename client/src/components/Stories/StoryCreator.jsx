@@ -5,7 +5,8 @@ import {
   FaTimes, FaCheck, FaSpinner, FaFont, FaPalette
 } from "react-icons/fa"
 import { toast } from "react-toastify"
-import { useAuth } from "../../context"
+import { useTranslation } from "react-i18next"
+import { useAuth, useLanguage } from "../../context"
 import { useStories } from "../../context/StoriesContext"
 import styles from "../../styles/StoryCreator.module.css"
 
@@ -31,6 +32,8 @@ const FONT_OPTIONS = [
 const StoryCreator = ({ onClose, onSubmit }) => {
   const { user } = useAuth()
   const { createStory } = useStories()
+  const { t } = useTranslation()
+  const { isRTL } = useLanguage()
   const [text, setText] = useState("")
   const [selectedBackground, setSelectedBackground] = useState(BACKGROUND_OPTIONS[0])
   const [selectedFont, setSelectedFont] = useState(FONT_OPTIONS[0])
@@ -44,18 +47,18 @@ const StoryCreator = ({ onClose, onSubmit }) => {
   const handleCreateStory = async () => {
     // Prevent duplicate submissions
     if (isSubmitting || isUploading) {
-      toast.info("Please wait, your story is being created...")
+      toast.info(t('stories.waitForStoryCreation'))
       return
     }
 
     // Validate text content
     if (!text.trim()) {
-      toast.error("Please add some text to your story")
+      toast.error(t('stories.addTextError'))
       return
     }
 
     if (!user) {
-      toast.error("You must be logged in to create a story")
+      toast.error(t('stories.loginRequired'))
       return
     }
 
@@ -78,21 +81,28 @@ const StoryCreator = ({ onClose, onSubmit }) => {
 
       const response = await createStory(storyData, updateProgress)
 
-      if (response && response.success) {
-        toast.success("Story created successfully!")
-        if (onSubmit && response.data) {
-          onSubmit(response.data)
-        } else if (onSubmit) {
-          onSubmit(response)
+      // Handle different response formats for compatibility
+      if (response && (response.success === true || response._id || (response.data && response.data._id))) {
+        toast.success(t('stories.createStorySuccess'))
+        
+        // Determine what to pass to onSubmit based on response format
+        if (onSubmit) {
+          if (response.data) {
+            onSubmit(response.data)
+          } else if (response._id) {
+            onSubmit(response)
+          } else {
+            onSubmit(response)
+          }
         }
         onClose?.()
       } else {
-        setError(response?.message || "Failed to create story")
+        setError(response?.message || response?.error || t('stories.createStoryError'))
       }
     } catch (error) {
       console.error("Error creating story:", error)
-      setError(error.message || "An error occurred")
-      toast.error(error.message || "An error occurred")
+      setError(error.message || t('errors.somethingWentWrong'))
+      toast.error(error.message || t('errors.somethingWentWrong'))
     } finally {
       setIsUploading(false)
       setIsSubmitting(false)
@@ -132,14 +142,14 @@ const StoryCreator = ({ onClose, onSubmit }) => {
   }, [onClose, isUploading, isSubmitting])
 
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} ${isRTL ? 'rtl-layout' : ''}`}>
       <div
         className={styles.overlay}
         onClick={isUploading || isSubmitting ? undefined : onClose}
       />
       <div className={styles.modal}>
         <div className={styles.header}>
-          <h2 className={styles.title}>Create Story</h2>
+          <h2 className={styles.title}>{t('stories.createStory')}</h2>
           <button
             className={styles.closeButton}
             onClick={isUploading || isSubmitting ? undefined : onClose}
@@ -159,7 +169,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
               {text ? (
                 <div className={styles.textContent}>{text}</div>
               ) : (
-                <div className={styles.placeholder}>Type something amazing...</div>
+                <div className={styles.placeholder}>{t('stories.typeSomething')}</div>
               )}
             </div>
           </div>
@@ -171,14 +181,14 @@ const StoryCreator = ({ onClose, onSubmit }) => {
                 onClick={() => setActiveTab("text")}
                 disabled={isSubmitting || isUploading}
               >
-                <span style={{ fontSize: '20px' }}>A</span> Text
+                <span style={{ fontSize: '20px' }}>A</span> {t('stories.text')}
               </button>
               <button
                 className={`${styles.tabButton} ${activeTab === "background" ? styles.activeTab : ""}`}
                 onClick={() => setActiveTab("background")}
                 disabled={isSubmitting || isUploading}
               >
-                <FaPalette /> Background
+                <FaPalette /> {t('stories.background')}
               </button>
             </div>
 
@@ -189,7 +199,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
                     className={styles.textarea}
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    placeholder="What's on your mind?"
+                    placeholder={t('stories.whatsOnYourMind')}
                     maxLength={150}
                     disabled={isSubmitting || isUploading}
                   />
@@ -242,7 +252,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
                 onClick={onClose}
                 disabled={isUploading || isSubmitting}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 className={`${styles.button} ${styles.primaryButton}`}
@@ -256,12 +266,12 @@ const StoryCreator = ({ onClose, onSubmit }) => {
                 {isSubmitting ? (
                   <>
                     <FaSpinner className={styles.spinner} />
-                    <span>Creating...</span>
+                    <span>{t('stories.creating')}</span>
                   </>
                 ) : (
                   <>
                     <FaCheck />
-                    <span>Create Story</span>
+                    <span>{t('stories.createStory')}</span>
                   </>
                 )}
               </button>
