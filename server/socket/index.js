@@ -67,13 +67,22 @@ const validateOnlineUsers = async (io, userConnections) => {
 const initSocketServer = async (server) => {
   const isDev = process.env.NODE_ENV !== "production";
 
-  const allowedOrigins = isDev
-    ? ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173"]
+  // Allow all origins for Socket.io in development or if DEBUG_SOCKET is true
+  const debugSocket = process.env.DEBUG_SOCKET === 'true';
+  const allowedOrigins = process.env.ALLOWED_ORIGINS === '*' || debugSocket || isDev
+    ? '*'  // Allow all origins
     : process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(",")
-      : [process.env.FRONTEND_URL || "https://yourdomain.com"];
+      : [process.env.FRONTEND_URL || "https://flirtss.com"];
 
   logger.info(`Socket.IO configured with allowed origins: ${JSON.stringify(allowedOrigins)}`);
+  
+  // Log additional debug info if DEBUG_SOCKET is true
+  if (debugSocket) {
+    logger.info('Socket Debug - Environment:', process.env.NODE_ENV);
+    logger.info(`Socket Debug - ALLOWED_ORIGINS: ${process.env.ALLOWED_ORIGINS}`);
+    logger.info(`Socket Debug - FRONTEND_URL: ${process.env.FRONTEND_URL}`);
+  }
 
   // Initialize Redis clients if Redis is configured
   let pubClient, subClient;
@@ -107,24 +116,46 @@ const initSocketServer = async (server) => {
     }
   }
 
-  // Configure Socket.IO options with simpler, more permissive settings
+  // Configure Socket.IO with VERY permissive settings to diagnose issues
   const ioOptions = {
     cors: {
-      origin: "*", // Allow all origins in production
+      origin: "*", // Allow all origins
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       credentials: true,
-      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+      allowedHeaders: "*", // Allow all headers
     },
-    transports: ["polling", "websocket"],
-    pingTimeout: 30000,
-    pingInterval: 15000,
-    connectTimeout: 30000,
-    maxHttpBufferSize: 1e6, // 1MB
-    path: "/socket.io",
-    allowEIO3: true,
+    transports: ["websocket", "polling"], // Prefer WebSocket first for better performance
+    pingTimeout: 60000, // Longer ping timeout
+    pingInterval: 25000, // More frequent pings
+    connectTimeout: 45000, // Longer connect timeout
+    maxHttpBufferSize: 5e6, // 5MB buffer
+    path: "/socket.io", // Default path
+    serveClient: false, // Don't serve client files
+    allowEIO3: true, // Allow Engine.IO v3
+    cookie: false, // Don't use cookies
+    perMessageDeflate: false, // Disable WebSocket compression for reliability
   };
   
-  logger.info(`Socket.IO configured with simplified options for better reliability`);
+  // Log IP address of the server to help with debugging connection issues
+  try {
+    const { networkInterfaces } = require('os');
+    const nets = networkInterfaces();
+    const ipAddresses = [];
+    
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal) {
+          ipAddresses.push(net.address);
+        }
+      }
+    }
+    
+    logger.info(`Server IP addresses: ${ipAddresses.join(', ')}`);
+  } catch (err) {
+    logger.error(`Error getting IP addresses: ${err.message}`);
+  }
+  
+  logger.info(`Socket.IO configured with maximum compatibility options`);
 
   // Add Redis adapter if available
   if (pubClient && subClient && redisAdapter) {

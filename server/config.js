@@ -13,36 +13,77 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) })
 // Fallback to default .env file if environment-specific one doesn't exist
 dotenv.config({ path: path.resolve(process.cwd(), ".env") })
 
-// CORS configuration with improved structure
+// CORS configuration with improved structure for debugging
 const createCorsOptions = () => {
-  // In development, allow all origins including undefined (for same-origin requests)
-  const allowedOrigins =
-    process.env.NODE_ENV !== "production"
-      ? ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173"]
-      : process.env.ALLOWED_ORIGINS
-        ? process.env.ALLOWED_ORIGINS.split(",")
-        : [process.env.FRONTEND_URL || "https://flirtss.com"]
-
+  // Get ALLOWED_ORIGINS from env - if "*" is specified, allow all origins
+  const originsConfig = process.env.ALLOWED_ORIGINS;
+  const debugCors = process.env.DEBUG_CORS === 'true';
+  
+  // Debug logging
+  if (debugCors) {
+    console.log('CORS Debug - Environment:', process.env.NODE_ENV);
+    console.log('CORS Debug - ALLOWED_ORIGINS config:', originsConfig);
+    console.log('CORS Debug - FRONTEND_URL config:', process.env.FRONTEND_URL);
+  }
+  
+  // If ALLOWED_ORIGINS is "*", allow all origins
+  if (originsConfig === '*') {
+    if (debugCors) console.log('CORS Debug - Allowing all origins (*)');
+    return {
+      origin: '*',
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+      exposedHeaders: ["Content-Length", "X-Request-ID"],
+      credentials: true,
+      maxAge: 86400, // 24 hours CORS cache
+      preflightContinue: false,
+      optionsSuccessStatus: 204,
+    };
+  }
+  
+  // Otherwise, parse allowed origins
+  const allowedOrigins = process.env.NODE_ENV !== "production" 
+    ? ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "https://flirtss.com"]
+    : originsConfig 
+      ? originsConfig.split(",")
+      : [process.env.FRONTEND_URL || "https://flirtss.com"];
+      
+  if (debugCors) console.log('CORS Debug - Parsed allowed origins:', allowedOrigins);
+  
   return {
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl requests)
-      if (!origin || process.env.NODE_ENV !== "production") {
-        return callback(null, true)
+      if (debugCors) console.log(`CORS Debug - Request from origin: "${origin || 'no origin'}"`);
+      
+      // Always allow requests with no origin (like mobile apps, curl requests, or same-origin)
+      if (!origin) {
+        if (debugCors) console.log('CORS Debug - Allowing request with no origin');
+        return callback(null, true);
       }
-
+      
+      // Allow the specific origin if it's in our list
       if (allowedOrigins.includes(origin)) {
-        callback(null, true)
-      } else {
-        callback(new Error("Not allowed by CORS"))
+        if (debugCors) console.log(`CORS Debug - Origin "${origin}" is allowed`);
+        return callback(null, true);
       }
+      
+      // During development or if debugging, be more permissive
+      if (process.env.NODE_ENV !== "production" || debugCors) {
+        if (debugCors) console.log(`CORS Debug - Allowing origin "${origin}" in dev/debug mode`);
+        return callback(null, true);
+      }
+      
+      // Reject the request with a CORS error
+      if (debugCors) console.log(`CORS Debug - Rejecting origin "${origin}"`);
+      return callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+    exposedHeaders: ["Content-Length", "X-Request-ID"],
     credentials: true,
     maxAge: 86400, // 24 hours CORS cache
     preflightContinue: false,
     optionsSuccessStatus: 204,
-  }
+  };
 }
 
 // Configuration object with enhanced security and defaults

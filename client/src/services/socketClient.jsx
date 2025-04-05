@@ -71,107 +71,245 @@ class SocketClient {
       // Simplify socket initialization for more reliable connections
       console.log(`Creating simplified socket connection to ${serverUrl} with userId ${userId}`)
       
-      // For production debugging and testing paths
-      const socketPaths = ["/socket.io", "socket.io"];
-      let socketError = null;
-      let socketConnected = false;
+      // ULTIMATE FALLBACK STRATEGY
+      console.log(`Starting robust connection strategy for socket.io`);
       
-      // Try the first path option
-      try {
-        console.log(`Attempting first connection with path: "${socketPaths[0]}"`);
-        this.socket = io(serverUrl, {
+      // For production, simplify and focus on most reliable connection
+      const isProduction = window.location.hostname !== 'localhost' && 
+                          window.location.hostname !== '127.0.0.1';
+                          
+      if (isProduction) {
+        // In production, use direct websocket with relative path for best compatibility
+        console.log("Using production simplified connection strategy");
+        
+        // Try with basic settings optimized for reliability
+        this.socket = io(window.location.origin, {
           query: { token },
           auth: { token },
           reconnection: true,
-          reconnectionAttempts: 3, // Reduced for faster fallback to alternate path
-          reconnectionDelay: 1000,
-          reconnectionDelayMax: 3000,
-          timeout: 5000, // Shorter timeout for faster fallback
+          reconnectionAttempts: 5,
+          timeout: 10000,
           transports: ["polling", "websocket"],
-          autoConnect: true,
+          path: "/socket.io/",
           forceNew: true,
-          path: socketPaths[0]
+          autoConnect: true
         });
         
-        // Add a one-time listener to detect if this connection works
-        const connectionTimeout = setTimeout(() => {
-          // If we're still not connected after 5 seconds, try alternate path
-          if (!socketConnected && !socketError) {
-            console.log("Timeout waiting for socket connection, trying alternate path");
-            tryAlternatePath();
-          }
-        }, 5000);
+        console.log("Created simplified socket connection in production mode");
         
-        // Listen for successful connection
-        this.socket.once("connect", () => {
-          console.log(`Connected successfully using path: ${socketPaths[0]}`);
-          socketConnected = true;
-          clearTimeout(connectionTimeout);
-        });
-        
-        // Listen for connection error
+        // Set up basic error reporting
         this.socket.once("connect_error", (err) => {
-          console.error(`Connection failed with path ${socketPaths[0]}: ${err.message}`);
-          socketError = err;
-          clearTimeout(connectionTimeout);
+          console.error(`Production socket connection error: ${err.message}`);
           
-          // Try alternate path if this one fails
-          if (!socketConnected) {
-            tryAlternatePath();
-          }
+          // If this fails, try the socket.io socket path as a fallback
+          console.log("Falling back to alternate path due to connection error");
+          setTimeout(() => {
+            try {
+              if (this.socket) {
+                this.socket.disconnect();
+              }
+              
+              // First try with no path specified
+              console.log("Trying with no path specified");
+              this.socket = io(window.location.origin, {
+                query: { token },
+                forceNew: true,
+                autoConnect: true
+              });
+              
+              // Set up second fallback
+              this.socket.once("connect_error", (error) => {
+                console.error(`Second fallback also failed: ${error.message}`);
+                
+                // Try bare websocket if everything else fails
+                console.log("Attempting last resort raw websocket connection");
+                
+                try {
+                  if (this.socket) {
+                    this.socket.disconnect();
+                  }
+                  
+                  // Check if our app is hosted on the same domain as the backend
+                  // If so, WebSocket will work without CORS issues
+                  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                  const wsUrl = `${wsProtocol}//${window.location.host}/socket.io/?token=${encodeURIComponent(token)}&EIO=4&transport=websocket`;
+                  
+                  console.log(`Connecting raw WebSocket to: ${wsUrl}`);
+                  
+                  // Create a raw WebSocket connection
+                  const rawSocket = new WebSocket(wsUrl);
+                  
+                  // Basic raw websocket wrapper to simulate socket.io
+                  this.socket = {
+                    id: `raw-${Date.now()}`,
+                    connected: false,
+                    rawSocket: rawSocket,
+                    
+                    // Minimal event handlers
+                    eventHandlers: {},
+                    
+                    // Simple emit
+                    emit: (event, data) => {
+                      if (rawSocket.readyState === WebSocket.OPEN) {
+                        try {
+                          rawSocket.send(JSON.stringify({
+                            event,
+                            data,
+                            token
+                          }));
+                          return true;
+                        } catch (err) {
+                          console.error(`Error sending via raw websocket: ${err.message}`);
+                          return false;
+                        }
+                      }
+                      return false;
+                    },
+                    
+                    // Simple on
+                    on: (event, callback) => {
+                      if (!this.socket.eventHandlers[event]) {
+                        this.socket.eventHandlers[event] = [];
+                      }
+                      this.socket.eventHandlers[event].push(callback);
+                      return () => this.socket.off(event, callback);
+                    },
+                    
+                    // Simple off
+                    off: (event, callback) => {
+                      if (this.socket.eventHandlers[event]) {
+                        this.socket.eventHandlers[event] = this.socket.eventHandlers[event]
+                          .filter(cb => cb !== callback);
+                      }
+                    },
+                    
+                    // Basic disconnect
+                    disconnect: () => {
+                      if (rawSocket) {
+                        rawSocket.close();
+                      }
+                    },
+                    
+                    // Is connected check
+                    isConnected: () => {
+                      return rawSocket && rawSocket.readyState === WebSocket.OPEN;
+                    }
+                  };
+                  
+                  // Raw WebSocket event handlers
+                  rawSocket.onopen = () => {
+                    console.log("Raw WebSocket connected");
+                    this.socket.connected = true;
+                    
+                    // Simulate connect event
+                    if (this.socket.eventHandlers.connect) {
+                      this.socket.eventHandlers.connect.forEach(cb => cb());
+                    }
+                  };
+                  
+                  rawSocket.onclose = () => {
+                    console.log("Raw WebSocket closed");
+                    this.socket.connected = false;
+                    
+                    // Simulate disconnect event
+                    if (this.socket.eventHandlers.disconnect) {
+                      this.socket.eventHandlers.disconnect.forEach(cb => cb());
+                    }
+                  };
+                  
+                  rawSocket.onerror = (error) => {
+                    console.error("Raw WebSocket error:", error);
+                    
+                    // Simulate error event
+                    if (this.socket.eventHandlers.error) {
+                      this.socket.eventHandlers.error.forEach(cb => cb(error));
+                    }
+                  };
+                  
+                  rawSocket.onmessage = (event) => {
+                    try {
+                      const data = JSON.parse(event.data);
+                      if (data.event && this.socket.eventHandlers[data.event]) {
+                        this.socket.eventHandlers[data.event].forEach(cb => cb(data.data));
+                      }
+                    } catch (err) {
+                      console.error("Error parsing message:", err);
+                    }
+                  };
+                  
+                } catch (finalError) {
+                  console.error("Fatal: All fallback methods failed:", finalError);
+                }
+              });
+                
+            } catch (e) {
+              console.error("Fallback connection also failed:", e);
+            }
+          }, 1000);
         });
         
-      } catch (err) {
-        console.error(`Error creating socket with path ${socketPaths[0]}: ${err.message}`);
-        socketError = err;
-        tryAlternatePath();
-      }
-      
-      // Fallback function to try alternate socket.io path if the first one fails
-      const tryAlternatePath = () => {
-        try {
-          if (this.socket) {
-            // Clean up the existing socket attempt
-            this.socket.close();
-            this.socket.removeAllListeners();
+      } else {
+        // Development mode - can use more complex connection strategy
+        let socketPaths = ["/socket.io/", "socket.io", ""];
+        console.log("Using development connection strategy with multiple fallbacks");
+        
+        // Try each path in sequence
+        const tryNextPath = (index = 0) => {
+          if (index >= socketPaths.length) {
+            console.error("All socket connection attempts failed");
+            return;
           }
           
-          console.log(`Attempting fallback connection with path: "${socketPaths[1]}"`);
+          const path = socketPaths[index];
+          console.log(`Attempting socket connection with path: "${path}"`);
           
-          // Try with the alternate path
-          this.socket = io(serverUrl, {
-            query: { token },
-            auth: { token },
-            reconnection: true, 
-            reconnectionAttempts: 5,
-            reconnectionDelay: 3000,
-            reconnectionDelayMax: 10000,
-            timeout: 20000,
-            transports: ["polling", "websocket"],
-            autoConnect: true,
-            forceNew: true,
-            path: socketPaths[1] // Try alternate path
-          });
-          
-          console.log(`Created socket with alternate path: ${socketPaths[1]}`);
-        } catch (fallbackErr) {
-          console.error(`Failed to create socket with fallback path: ${fallbackErr.message}`);
-          // Final fallback attempt - try with no path specified
           try {
+            // Clean up previous socket if any
+            if (this.socket) {
+              this.socket.disconnect();
+              this.socket.removeAllListeners();
+            }
+            
+            // Create socket with current path
             this.socket = io(serverUrl, {
               query: { token },
               auth: { token },
               reconnection: true,
-              reconnectionAttempts: 10,
-              timeout: 30000,
+              reconnectionAttempts: 3,
+              timeout: 5000,
+              transports: ["polling", "websocket"],
               autoConnect: true,
-              forceNew: true
+              forceNew: true,
+              ...(path ? { path } : {})
             });
-            console.log("Created socket with no path specified");
-          } catch (finalErr) {
-            console.error(`All socket connection attempts failed: ${finalErr.message}`);
+            
+            // Set up timeout for this attempt
+            const timeout = setTimeout(() => {
+              console.log(`Connection timeout with path "${path}", trying next`);
+              tryNextPath(index + 1);
+            }, 5000);
+            
+            // Listen for success
+            this.socket.once("connect", () => {
+              console.log(`Connected successfully with path: "${path}"`);
+              clearTimeout(timeout);
+            });
+            
+            // Listen for error
+            this.socket.once("connect_error", (err) => {
+              console.error(`Connection failed with path "${path}": ${err.message}`);
+              clearTimeout(timeout);
+              tryNextPath(index + 1);
+            });
+            
+          } catch (err) {
+            console.error(`Error creating socket with path "${path}": ${err.message}`);
+            tryNextPath(index + 1);
           }
-        }
+        };
+        
+        // Start with first path
+        tryNextPath();
       }
 
       // Set up core socket event handlers
