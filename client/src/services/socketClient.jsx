@@ -96,6 +96,7 @@ class SocketClient {
         
         // CRITICAL: Use a direct websocket address WITHOUT a trailing slash in the path
         // This is often the key issue with Nginx proxying of socket.io
+        // MOST CRITICAL FIX: Must specify EXACT matching path as server with NO trailing slash
         this.socket = io(window.location.origin, {
           query: { token },
           auth: { token },
@@ -103,7 +104,7 @@ class SocketClient {
           reconnectionAttempts: 10,
           timeout: 20000,
           transports: ["polling", "websocket"],
-          path: "/socket.io", // NO trailing slash - this is critical
+          path: "/socket.io", // NO trailing slash - matches server configuration exactly
           forceNew: true,
           autoConnect: true,
           withCredentials: false // Disable credentials for simpler CORS

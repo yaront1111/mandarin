@@ -375,9 +375,32 @@ app.get("/socket.io/healthcheck", (req, res) => {
   
   const socketIO = app.get('io');
   if (socketIO) {
-    return res.status(200).send(`Socket.IO is running. Path: ${socketIO.path()}`);
+    return res.status(200).send(`Socket.IO is running. Path: "${socketIO.path()}", engine.io path: "${socketIO.engine?.path || 'unknown'}"`);
   } else {
     return res.status(503).send('Socket.IO is not running or not properly initialized');
+  }
+});
+
+// Add healthcheck at API endpoint as well
+app.get("/api/socket-healthcheck", (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  
+  const socketIO = app.get('io');
+  if (socketIO) {
+    return res.status(200).json({
+      success: true,
+      status: "Socket.IO is running",
+      socketPath: socketIO.path(),
+      enginePath: socketIO.engine?.path || 'unknown',
+      serverTime: new Date().toISOString(),
+      connections: Object.keys(socketIO.sockets.sockets || {}).length,
+      namespaces: Object.keys(socketIO.nsps || {}).length
+    });
+  } else {
+    return res.status(503).json({
+      success: false,
+      error: "Socket.IO is not running or not properly initialized"
+    });
   }
 });
 

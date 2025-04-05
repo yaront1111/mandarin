@@ -263,15 +263,45 @@ class NotificationService {
 
   /**
    * Register socket event listeners for different notification types
+   * Enhanced to be more resilient to socket connection issues
    */
   registerSocketListeners() {
     // First clean up existing listeners to prevent duplicates
     this.cleanup();
 
-    if (!socketService.isConnected()) {
-      console.warn("NotificationService: Socket not connected. Cannot register listeners.");
+    // More resilient socket check - allow for both socketService and socketClient direct access
+    let isSocketReady = false;
+    
+    try {
+      // Primary check via socketService
+      if (socketService && socketService.isConnected()) {
+        isSocketReady = true;
+      } 
+      // Fallback: check socket client directly
+      else if (window.socketClient && window.socketClient.isConnected()) {
+        isSocketReady = true;
+      }
+      // Fallback: check if socket is defined with connected state
+      else if (socketService && socketService.socket && socketService.socket.connected) {
+        isSocketReady = true;
+      }
+    } catch (err) {
+      console.error("Error checking socket connection status:", err);
+    }
+    
+    if (!isSocketReady) {
+      console.warn("NotificationService: Socket not connected. Will retry registration shortly.");
+      
+      // Schedule a retry in 2 seconds - this is the fix for "listeners not registered"
+      setTimeout(() => {
+        console.log("NotificationService: Retrying socket listener registration...");
+        this.registerSocketListeners();
+      }, 2000);
+      
       return;
     }
+    
+    console.log("NotificationService: Socket connected. Registering listeners now.");
 
     // Define all notification types in one place for easier management
     // Note that for messages, we map to the "messages" property in settings, even though the type is "message"
@@ -284,6 +314,11 @@ class NotificationService {
       { event: "photoPermissionRequestReceived", type: "photoRequest", handler: this._handlePhotoRequestNotification.bind(this) },
       { event: "photoPermissionResponseReceived", type: "photoResponse", handler: this._handlePhotoResponseNotification.bind(this) },
       { event: "notification", type: "generic", handler: this._handleGenericNotification.bind(this) },
+      // Add fallback listener for API-based fallback notifications
+      { event: "fallbackConnection", type: "system", handler: (data) => {
+        console.log("Received fallback connection notification:", data);
+        // No need to show this to the user
+      }}
     ];
 
     // Register all listeners at once

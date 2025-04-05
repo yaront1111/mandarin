@@ -117,6 +117,12 @@ const initSocketServer = async (server) => {
   }
 
   // Configure Socket.IO with VERY permissive settings to diagnose issues
+  // Use environment variable for path, fallback to "/socket.io"
+  const socketPath = process.env.SOCKET_PATH || "/socket.io"; 
+  
+  // Log critical path information
+  logger.info(`Socket.IO initializing with path: "${socketPath}" (from env: ${process.env.SOCKET_PATH ? 'yes' : 'no'})`);
+  
   const ioOptions = {
     cors: {
       origin: "*", // Allow all origins
@@ -129,7 +135,7 @@ const initSocketServer = async (server) => {
     pingInterval: 25000, // More frequent pings
     connectTimeout: 45000, // Longer connect timeout
     maxHttpBufferSize: 5e6, // 5MB buffer
-    path: "/socket.io", // Default path
+    path: socketPath, // CRITICAL: Use value from env, ensures consistent configuration
     serveClient: false, // Don't serve client files
     allowEIO3: true, // Allow Engine.IO v3
     cookie: false, // Don't use cookies
