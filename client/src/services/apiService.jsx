@@ -371,14 +371,34 @@ class ApiService {
   async _processHttpError(error) {
     const originalRequest = error.config
     const status = error.response.status
+    
+    // Implement retry logic for 502 Bad Gateway errors
+    if (status === 502 && (!originalRequest._retryCount || originalRequest._retryCount < 3)) {
+      // Track retry attempts
+      originalRequest._retryCount = (originalRequest._retryCount || 0) + 1
+      
+      // Add exponential backoff delay: 500ms, 1s, 2s
+      const delay = Math.pow(2, originalRequest._retryCount - 1) * 500
+      
+      apiLogger.warn(`502 Bad Gateway error, retrying request (attempt ${originalRequest._retryCount}/3) after ${delay}ms...`)
+      
+      // Wait the specified delay time
+      await new Promise(resolve => setTimeout(resolve, delay))
+      
+      // Retry the request with the same configuration
+      return this.api(originalRequest)
+    }
+    
     apiLogger.error(
       `Response error: ${originalRequest.method.toUpperCase()} ${originalRequest.url}`,
       `Status: ${status}`,
       error.response.data,
     )
+    
     if (status === 401 && !originalRequest._retry) {
       return this._handleAuthError(error)
     }
+    
     const errorData = error.response.data
     const errorMsg =
       errorData?.error ||
@@ -388,7 +408,12 @@ class ApiService {
         ? "You've already liked this user or reached your daily limit"
         : "An error occurred")
     const errorCode = errorData?.code || null
-    this._showErrorNotification(status, errorMsg, errorCode)
+    
+    // Only show error notification after all retries have failed
+    if (status !== 502 || (originalRequest._retryCount && originalRequest._retryCount >= 3)) {
+      this._showErrorNotification(status, errorMsg, errorCode)
+    }
+    
     return Promise.reject({ success: false, error: errorMsg, code: errorCode, status, data: error.response.data })
   }
 
