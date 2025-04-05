@@ -49,30 +49,130 @@ class SocketClient {
     this.userId = userId
 
     // IMPORTANT: Always connect to the backend server, not the frontend
-    // Use relative path when in the same domain or origin
-    const serverUrl = options.serverUrl || process.env.REACT_APP_SOCKET_URL || window.location.origin
+    // Use relative path for production, and make sure we're not using undefined paths
+    let serverUrl;
+    
+    // Check for environment variables from Vite
+    if (import.meta.env?.VITE_SOCKET_URL) {
+      serverUrl = import.meta.env.VITE_SOCKET_URL;
+    } 
+    // Check for options provided directly
+    else if (options.serverUrl) {
+      serverUrl = options.serverUrl;
+    } 
+    // Use window.location.origin as a fallback
+    else {
+      serverUrl = window.location.origin;
+    }
+    
     console.log(`Connecting to socket server at ${serverUrl}`)
 
     try {
-      // Initialize socket with improved auth and reconnection options
-      // Note: Changed transports order to try polling first for better reliability
-      this.socket = io(serverUrl, {
-        query: { token },
-        auth: { token, userId },
-        reconnection: true,
-        reconnectionAttempts: this.maxReconnectAttempts,
-        reconnectionDelay: this.reconnectDelay,
-        reconnectionDelayMax: 30000,
-        timeout: 30000, // Increased timeout
-        transports: ["polling", "websocket"], // Try polling first for more reliability
-        autoConnect: true,
-        forceNew: true, // Force new connection attempt
-        path: "/socket.io", // Remove trailing slash to avoid double slash issues
-        extraHeaders: {  // Add extra headers that might help with CORS
-          "X-Client-Version": "1.0.0",
-          "X-Connection-Type": "mandarin-app"
+      // Simplify socket initialization for more reliable connections
+      console.log(`Creating simplified socket connection to ${serverUrl} with userId ${userId}`)
+      
+      // For production debugging and testing paths
+      const socketPaths = ["/socket.io", "socket.io"];
+      let socketError = null;
+      let socketConnected = false;
+      
+      // Try the first path option
+      try {
+        console.log(`Attempting first connection with path: "${socketPaths[0]}"`);
+        this.socket = io(serverUrl, {
+          query: { token },
+          auth: { token },
+          reconnection: true,
+          reconnectionAttempts: 3, // Reduced for faster fallback to alternate path
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 3000,
+          timeout: 5000, // Shorter timeout for faster fallback
+          transports: ["polling", "websocket"],
+          autoConnect: true,
+          forceNew: true,
+          path: socketPaths[0]
+        });
+        
+        // Add a one-time listener to detect if this connection works
+        const connectionTimeout = setTimeout(() => {
+          // If we're still not connected after 5 seconds, try alternate path
+          if (!socketConnected && !socketError) {
+            console.log("Timeout waiting for socket connection, trying alternate path");
+            tryAlternatePath();
+          }
+        }, 5000);
+        
+        // Listen for successful connection
+        this.socket.once("connect", () => {
+          console.log(`Connected successfully using path: ${socketPaths[0]}`);
+          socketConnected = true;
+          clearTimeout(connectionTimeout);
+        });
+        
+        // Listen for connection error
+        this.socket.once("connect_error", (err) => {
+          console.error(`Connection failed with path ${socketPaths[0]}: ${err.message}`);
+          socketError = err;
+          clearTimeout(connectionTimeout);
+          
+          // Try alternate path if this one fails
+          if (!socketConnected) {
+            tryAlternatePath();
+          }
+        });
+        
+      } catch (err) {
+        console.error(`Error creating socket with path ${socketPaths[0]}: ${err.message}`);
+        socketError = err;
+        tryAlternatePath();
+      }
+      
+      // Fallback function to try alternate socket.io path if the first one fails
+      const tryAlternatePath = () => {
+        try {
+          if (this.socket) {
+            // Clean up the existing socket attempt
+            this.socket.close();
+            this.socket.removeAllListeners();
+          }
+          
+          console.log(`Attempting fallback connection with path: "${socketPaths[1]}"`);
+          
+          // Try with the alternate path
+          this.socket = io(serverUrl, {
+            query: { token },
+            auth: { token },
+            reconnection: true, 
+            reconnectionAttempts: 5,
+            reconnectionDelay: 3000,
+            reconnectionDelayMax: 10000,
+            timeout: 20000,
+            transports: ["polling", "websocket"],
+            autoConnect: true,
+            forceNew: true,
+            path: socketPaths[1] // Try alternate path
+          });
+          
+          console.log(`Created socket with alternate path: ${socketPaths[1]}`);
+        } catch (fallbackErr) {
+          console.error(`Failed to create socket with fallback path: ${fallbackErr.message}`);
+          // Final fallback attempt - try with no path specified
+          try {
+            this.socket = io(serverUrl, {
+              query: { token },
+              auth: { token },
+              reconnection: true,
+              reconnectionAttempts: 10,
+              timeout: 30000,
+              autoConnect: true,
+              forceNew: true
+            });
+            console.log("Created socket with no path specified");
+          } catch (finalErr) {
+            console.error(`All socket connection attempts failed: ${finalErr.message}`);
+          }
         }
-      })
+      }
 
       // Set up core socket event handlers
       this._setupSocketHandlers()

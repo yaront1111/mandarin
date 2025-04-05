@@ -314,6 +314,41 @@ const API_PREFIX = "/api";
 // Mount the aggregated router from routes/index.js
 app.use(API_PREFIX, routes);
 
+// Socket.io diagnostic route
+app.get("/api/socket-diagnostic", (req, res) => {
+  try {
+    // Get server info
+    const serverInfo = {
+      nodejs: process.version,
+      environment: process.env.NODE_ENV || "development",
+      port: process.env.PORT || config.PORT || 5000,
+      socketPath: "/socket.io",
+      corsOrigins: Array.isArray(config.CORS_OPTIONS?.origin) 
+        ? config.CORS_OPTIONS.origin 
+        : [typeof config.CORS_OPTIONS?.origin === 'string' ? config.CORS_OPTIONS.origin : '*'],
+      hostname: require('os').hostname(),
+      serverTime: new Date().toISOString(),
+      socketIoAttached: Boolean(app.get('io')),
+      activeConnections: app.get('io') ? Object.keys(app.get('io').sockets.sockets).length : 0,
+      allowedOrigins: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['*'],
+      engineIoPath: app.get('io') ? app.get('io').path() : '/socket.io'
+    };
+    
+    res.set('Access-Control-Allow-Origin', '*');
+    return res.json({
+      success: true,
+      status: "Socket.IO diagnostic successful",
+      server: serverInfo
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: `Socket diagnostic error: ${err.message}`,
+      stack: process.env.NODE_ENV === 'production' ? undefined : err.stack
+    });
+  }
+});
+
 // --- Catch-all for 404 API routes ---
 app.use(API_PREFIX + '/*', (req, res) => {
     logger.warn(`API route not found: ${req.method} ${req.originalUrl}`);

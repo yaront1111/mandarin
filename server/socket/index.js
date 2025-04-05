@@ -107,29 +107,24 @@ const initSocketServer = async (server) => {
     }
   }
 
-  // Configure Socket.IO options
+  // Configure Socket.IO options with simpler, more permissive settings
   const ioOptions = {
     cors: {
-      origin: (origin, callback) => {
-        // Log the origin for debugging
-        logger.debug(`Socket connection request from origin: ${origin || 'no origin'}`);
-        
-        // More permissive CORS during debugging
-        // Accept connections from any origin to help diagnose issues
-        return callback(null, true);
-      },
+      origin: "*", // Allow all origins in production
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       credentials: true,
       allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     },
-    transports: ["polling", "websocket"], // Try polling first for better reliability
-    pingTimeout: 60000,     // Increased ping timeout for better reliability
-    pingInterval: 25000,    // Ping more frequently for better connection monitoring
-    connectTimeout: 60000,  // Increased connect timeout
-    maxHttpBufferSize: 5e6, // 5MB max buffer size
+    transports: ["polling", "websocket"],
+    pingTimeout: 30000,
+    pingInterval: 15000,
+    connectTimeout: 30000,
+    maxHttpBufferSize: 1e6, // 1MB
     path: "/socket.io",
-    allowEIO3: true,        // Allow Engine.IO v3 clients for better compatibility
+    allowEIO3: true,
   };
+  
+  logger.info(`Socket.IO configured with simplified options for better reliability`);
 
   // Add Redis adapter if available
   if (pubClient && subClient && redisAdapter) {

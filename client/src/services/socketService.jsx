@@ -33,12 +33,26 @@ class SocketService {
     // Clear any existing connection monitor
     this._clearConnectionMonitor()
 
+    // For production environments, prefer relative paths
+    // This helps avoid CORS issues with different domains
+    const isProduction = import.meta.env?.MODE === 'production' || 
+                        window.location.hostname !== 'localhost';
+    
+    const socketOptions = {
+      ...options,
+      // In production, use relative path with current origin
+      serverUrl: isProduction ? window.location.origin : options.serverUrl
+    };
+    
+    this._log(`Initializing socket service in ${isProduction ? 'production' : 'development'} mode`);
+    this._log(`Using socket server URL: ${socketOptions.serverUrl}`);
+    
     this._log(`Initializing socket service for user: ${userId}`)
     this.userId = userId
     this.reconnectAttempts = 0
 
     try {
-      this.socket.init(userId, token, options)
+      this.socket.init(userId, token, socketOptions)
       this.initialized = true
       this.connectionState = "connecting"
 
