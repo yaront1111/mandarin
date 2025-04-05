@@ -89,26 +89,49 @@ const socketAuthMiddleware = async (socket, next) => {
         return next(new Error("Server authentication configuration error"));
       }
 
-      // Log token format without exposing full contents
-      logger.debug(`Verifying socket token: ${token.substring(0, 10)}...`);
-      const decoded = jwt.verify(token, jwtSecret);
-      logger.debug(`Token verified successfully for socket ${socket.id}`);
+      // Enhanced token debugging - show more details safely
+      logger.debug(`Socket ${socket.id} auth attempt with token: ${token.substring(0, 10)}...`);
+      logger.debug(`Token length: ${token.length}, IP: ${socket.handshake.address}`);
+      
+      // Try JWT verification with detailed error logging
+      let decoded;
+      try {
+        decoded = jwt.verify(token, jwtSecret);
+        logger.debug(`Token verified successfully for socket ${socket.id}, userId: ${decoded.id}, exp: ${decoded.exp}`);
+      } catch (jwtError) {
+        // Detailed JWT error logging
+        logger.error(`JWT verification failed for socket ${socket.id}: ${jwtError.name} - ${jwtError.message}`);
+        
+        // Check if token is expired and provide specific error
+        if (jwtError.name === 'TokenExpiredError') {
+          logger.error(`Token expired at: ${new Date(jwtError.expiredAt)}, current time: ${new Date()}`);
+          return next(new Error(`Authentication token expired at ${jwtError.expiredAt}`));
+        }
+        
+        // Re-throw for outer catch block
+        throw jwtError;
+      }
 
       if (!decoded || !decoded.id) {
-        logger.warn(`Socket ${socket.id} provided invalid token format`);
+        logger.warn(`Socket ${socket.id} provided invalid token format: ${JSON.stringify(decoded || {})}`);
         return next(new Error("Invalid authentication token format"));
       }
 
-      // Find user (do not filter by active field)
-      const user = await User.findById(decoded.id).select("-password");
+      // Find user with enhanced error handling
+      const user = await User.findById(decoded.id).select("-password")
+        .catch(err => {
+          logger.error(`DB error while finding user ${decoded.id}: ${err.message}`);
+          return null;
+        });
+        
       if (!user) {
         logger.warn(`Socket ${socket.id} token has valid format but user not found: ${decoded.id}`);
         return next(new Error("User not found"));
       }
 
-      // Check token version to handle revoked tokens
+      // Enhanced token version check
       if (decoded.version && user.version && decoded.version !== user.version) {
-        logger.warn(`Socket ${socket.id} token is outdated for user ${user._id}`);
+        logger.warn(`Socket ${socket.id} token version mismatch: token=${decoded.version}, user=${user.version}`);
         return next(new Error("Token has been revoked. Please log in again."));
       }
 

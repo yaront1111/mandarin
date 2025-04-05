@@ -111,6 +111,14 @@ const initSocketServer = async (server) => {
   const ioOptions = {
     cors: {
       origin: (origin, callback) => {
+        // Log the origin for debugging
+        logger.debug(`Socket connection request from origin: ${origin || 'no origin'}`);
+        
+        // More permissive CORS during debugging
+        // Accept connections from any origin to help diagnose issues
+        return callback(null, true);
+        
+        /* Original strict CORS logic - commented out for debugging
         if (!origin) {
           logger.debug("Socket connection with no origin allowed");
           return callback(null, true);
@@ -121,15 +129,16 @@ const initSocketServer = async (server) => {
         }
         logger.warn(`Socket.IO CORS rejected for origin: ${origin}`);
         return callback(new Error("Not allowed by CORS"), false);
+        */
       },
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       credentials: true,
       allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     },
-    transports: ["websocket", "polling"],
-    pingTimeout: 60000,     // Increased ping timeout
-    pingInterval: 25000,    // Ping every 25 seconds
-    connectTimeout: 45000,  // Increased connect timeout
+    transports: ["polling", "websocket"], // Try polling first for better reliability
+    pingTimeout: 30000,     // Reduced ping timeout to match more common client defaults
+    pingInterval: 15000,    // Ping more frequently for better connection monitoring
+    connectTimeout: 30000,  // Reduced connect timeout
     maxHttpBufferSize: 1e6, // 1MB max buffer size
     path: "/socket.io",
     allowEIO3: true,        // Allow Engine.IO v3 clients for better compatibility
@@ -146,21 +155,43 @@ const initSocketServer = async (server) => {
   logger.info(`Creating Socket.IO server with path: ${ioOptions.path}, transports: ${ioOptions.transports.join(", ")}`);
   const io = new Server(server, ioOptions);
 
-  // Connection logging
+  // Enhanced connection logging with detailed error tracking
   io.engine.on("initial_headers", (headers, req) => {
     logger.debug(`Socket.IO initial headers: ${JSON.stringify(headers)}`);
   });
+  
   io.engine.on("headers", (headers, req) => {
     logger.debug(`Socket.IO headers: ${JSON.stringify(headers)}`);
+    
+    // Add custom header to help debug client-side issues
+    headers["X-Socket-Debug"] = "true";
+    headers["Access-Control-Allow-Origin"] = "*"; // Ensure CORS headers are present
   });
+  
   io.engine.on("connection_error", (err) => {
+    // Extended error logging with all available properties
     logger.error(`Socket.IO connection error: ${err.code} - ${err.message} - ${err.context || "No context"}`);
+    logger.error(`Error details: ${JSON.stringify({
+      code: err.code,
+      message: err.message,
+      context: err.context,
+      type: err.type,
+      stack: err.stack,
+      time: new Date().toISOString()
+    })}`);
+    
+    // Log connection attempt details when errors occur
+    const req = err.req;
+    if (req) {
+      logger.error(`Failed connection attempt from: ${req.connection.remoteAddress}`);
+      logger.error(`Request headers: ${JSON.stringify(req.headers || {})}`);
+    }
   });
 
-  // Set up rate limiters
-  const typingLimiter = new RateLimiterMemory({ points: 5, duration: 3, blockDuration: 2 });
-  const messageLimiter = new RateLimiterMemory({ points: 10, duration: 10, blockDuration: 30 });
-  const callLimiter = new RateLimiterMemory({ points: 3, duration: 60, blockDuration: 120 });
+  // Set up rate limiters with higher thresholds to reduce connection issues
+  const typingLimiter = new RateLimiterMemory({ points: 50, duration: 3, blockDuration: 1 });
+  const messageLimiter = new RateLimiterMemory({ points: 100, duration: 10, blockDuration: 15 });
+  const callLimiter = new RateLimiterMemory({ points: 30, duration: 60, blockDuration: 60 });
   const rateLimiters = { typingLimiter, messageLimiter, callLimiter };
   const userConnections = new Map();
 

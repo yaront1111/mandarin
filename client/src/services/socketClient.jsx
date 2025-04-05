@@ -54,7 +54,8 @@ class SocketClient {
     console.log(`Connecting to socket server at ${serverUrl}`)
 
     try {
-      // Initialize socket with auth and reconnection options
+      // Initialize socket with improved auth and reconnection options
+      // Note: Changed transports order to try polling first for better reliability
       this.socket = io(serverUrl, {
         query: { token },
         auth: { token, userId },
@@ -62,9 +63,15 @@ class SocketClient {
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectDelay,
         reconnectionDelayMax: 30000,
-        timeout: 20000,
-        transports: ["websocket", "polling"],
+        timeout: 30000, // Increased timeout
+        transports: ["polling", "websocket"], // Try polling first for more reliability
         autoConnect: true,
+        forceNew: true, // Force new connection attempt
+        path: "/socket.io/", // Explicitly set the path
+        extraHeaders: {  // Add extra headers that might help with CORS
+          "X-Client-Version": "1.0.0",
+          "X-Connection-Type": "mandarin-app"
+        }
       })
 
       // Set up core socket event handlers
@@ -535,49 +542,101 @@ class SocketClient {
    * Enhanced reconnect method with better notification support
    */
   enhancedReconnect() {
-    if (this.reconnecting) return
+    if (this.reconnecting) {
+      console.log("Already attempting reconnection, skipping duplicate request");
+      return;
+    }
 
-    console.log("Forcing socket reconnection with notification support...")
-    this.reconnecting = true
+    console.log("Forcing socket reconnection with notification support...");
+    this.reconnecting = true;
 
-    // Close existing connection
+    // Close existing connection with better error handling
     if (this.socket) {
       try {
-        this.socket.close()
+        this.socket.disconnect();
+        this.socket.close();
       } catch (error) {
-        console.error("Error closing socket:", error)
+        console.error("Error closing socket:", error);
+        // Continue anyway - don't let this stop us from reconnecting
       }
     }
 
     // Stop heartbeat
-    this._stopHeartbeat()
+    this._stopHeartbeat();
 
     // Reconnect if we have userId
     if (this.userId) {
-      const token = localStorage.getItem("token") || sessionStorage.getItem("token")
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
       if (token) {
         // Add a small random delay to prevent simultaneous reconnection attempts
-        const reconnectDelay = 1000 + Math.random() * 2000
+        const reconnectDelay = 1000 + Math.random() * 2000;
+        console.log(`Scheduling reconnection in ${Math.round(reconnectDelay)}ms`);
+        
         setTimeout(() => {
           try {
             // Re-fetch a fresh token directly from storage in case it changed
-            const freshToken = localStorage.getItem("token") || sessionStorage.getItem("token")
+            const freshToken = localStorage.getItem("token") || sessionStorage.getItem("token");
             if (freshToken !== token) {
-              console.log("Token changed since reconnection attempt started, using fresh token")
+              console.log("Token changed since reconnection attempt started, using fresh token");
+            }
+            
+            // Check network status - if browser is offline, wait for online event
+            if (!navigator.onLine) {
+              console.log("Browser is offline, waiting for connection to return");
+              
+              // Set up one-time event listener for reconnection when back online
+              const onlineHandler = () => {
+                console.log("Browser back online, attempting reconnection");
+                window.removeEventListener('online', onlineHandler);
+                
+                // Wait a moment for network to stabilize
+                setTimeout(() => {
+                  this.reconnecting = false;
+                  this.enhancedReconnect();
+                }, 2000);
+              };
+              
+              window.addEventListener('online', onlineHandler, { once: true });
+              this.reconnecting = false;
+              return;
             }
             
             // Always use the most recent token available
-            this.init(this.userId, freshToken || token)
+            console.log("Initializing socket with fresh token");
+            this.init(this.userId, freshToken || token, {
+              // Explicitly try polling first on reconnect for better reliability
+              transportOptions: {
+                polling: {
+                  extraHeaders: {
+                    "X-Reconnect-Attempt": "true"
+                  }
+                }
+              }
+            });
             
             // Dispatch reconnection success event specifically for notifications
-            window.dispatchEvent(new CustomEvent("notificationSocketReconnected"))
-            console.log("Socket reconnected with notification support")
+            window.dispatchEvent(new CustomEvent("notificationSocketReconnected"));
+            console.log("Socket reconnected with notification support");
           } catch (err) {
-            console.error("Socket reconnection failed:", err)
+            console.error("Socket reconnection failed:", err);
+            
+            // Attempt fallback to polling-only if WebSocket is the issue
+            if (err.message && (err.message.includes("websocket") || err.message.includes("WebSocket"))) {
+              console.log("WebSocket error detected, trying fallback to polling transport only");
+              try {
+                this.init(this.userId, token, {
+                  transports: ["polling"],
+                  autoConnect: true
+                });
+                console.log("Fallback to polling transport initiated");
+              } catch (fallbackErr) {
+                console.error("Polling fallback also failed:", fallbackErr);
+              }
+            }
             
             // If reconnection failed due to token issues, try one more time with a clean token
-            if (err.message && err.message.includes("auth")) {
-              console.log("Authentication error detected, trying emergency session reset")
+            if (err.message && (err.message.includes("auth") || err.message.includes("token"))) {
+              console.log("Authentication error detected, trying emergency session reset");
               
               // Wait 2 seconds before trying the emergency recovery
               setTimeout(() => {
@@ -586,27 +645,73 @@ class SocketClient {
                   if (typeof window.fixMyUserId === 'function') {
                     window.fixMyUserId();
                   } else {
-                    // Fallback to manual reset if fix function not available
-                    localStorage.clear();
-                    sessionStorage.clear();
-                    window.location.reload();
+                    // Try to refresh the token first before full reset
+                    this._attemptTokenRefresh().catch(() => {
+                      // Last resort: clear storage and reload
+                      console.log("Performing emergency session reset");
+                      localStorage.clear();
+                      sessionStorage.clear();
+                      window.location.reload();
+                    });
                   }
                 } catch (emergencyErr) {
                   console.error("Emergency recovery failed:", emergencyErr);
+                  this.reconnecting = false;
                 }
               }, 2000);
+              return;
             }
+          } finally {
+            this.reconnecting = false;
           }
-          this.reconnecting = false
-        }, reconnectDelay)
+        }, reconnectDelay);
       } else {
-        console.error("Cannot reconnect: No authentication token found")
-        this.reconnecting = false
+        console.error("Cannot reconnect: No authentication token found");
+        this.reconnecting = false;
       }
     } else {
-      console.error("Cannot reconnect: No user ID")
-      this.reconnecting = false
+      console.error("Cannot reconnect: No user ID");
+      this.reconnecting = false;
     }
+  }
+  
+  /**
+   * Attempt to refresh auth token
+   * @private
+   * @returns {Promise} - Promise that resolves when token refresh completes
+   */
+  _attemptTokenRefresh() {
+    return new Promise((resolve, reject) => {
+      console.log("Attempting to refresh authentication token");
+      
+      // First try a token refresh API if available
+      fetch('/api/auth/refresh-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      })
+      .then(response => {
+        if (!response.ok) throw new Error('Token refresh failed');
+        return response.json();
+      })
+      .then(data => {
+        if (data.token) {
+          console.log("Token refresh successful");
+          localStorage.setItem('token', data.token);
+          this.reconnecting = false;
+          this.enhancedReconnect();
+          resolve();
+        } else {
+          throw new Error('No token in response');
+        }
+      })
+      .catch(err => {
+        console.error("Token refresh failed:", err);
+        reject(err);
+      });
+    });
   }
 
   /**
