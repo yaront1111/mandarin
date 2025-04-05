@@ -55,13 +55,25 @@ class SocketClient {
     // Check for environment variables from Vite
     if (import.meta.env?.VITE_SOCKET_URL) {
       serverUrl = import.meta.env.VITE_SOCKET_URL;
+      console.log(`Using environment variable for socket connection: ${serverUrl}`);
     } 
     // Check for options provided directly
     else if (options.serverUrl) {
       serverUrl = options.serverUrl;
+      console.log(`Using provided option for socket connection: ${serverUrl}`);
     } 
     // Use window.location.origin as a fallback
     else {
+      serverUrl = window.location.origin;
+      console.log(`Using window.location.origin for socket connection: ${serverUrl}`);
+    }
+    
+    // CRITICAL: In production, add the exact socket.io path to the URL
+    // This ensures proper path handling with Nginx proxying
+    if (window.location.hostname !== 'localhost' && 
+        window.location.hostname !== '127.0.0.1') {
+      // For production, just use the origin without specifying a custom socket path
+      console.log("Production environment detected. Using origin for Socket.IO connection.");
       serverUrl = window.location.origin;
     }
     
@@ -79,20 +91,22 @@ class SocketClient {
                           window.location.hostname !== '127.0.0.1';
                           
       if (isProduction) {
-        // In production, use direct websocket with relative path for best compatibility
-        console.log("Using production simplified connection strategy");
+        // In production, use VERY basic connection settings with RELATIVE path and NO trailing slash
+        console.log("Using production simplified connection strategy with maximally compatible settings");
         
-        // Try with basic settings optimized for reliability
+        // CRITICAL: Use a direct websocket address WITHOUT a trailing slash in the path
+        // This is often the key issue with Nginx proxying of socket.io
         this.socket = io(window.location.origin, {
           query: { token },
           auth: { token },
           reconnection: true,
-          reconnectionAttempts: 5,
-          timeout: 10000,
+          reconnectionAttempts: 10,
+          timeout: 20000,
           transports: ["polling", "websocket"],
-          path: "/socket.io/",
+          path: "/socket.io", // NO trailing slash - this is critical
           forceNew: true,
-          autoConnect: true
+          autoConnect: true,
+          withCredentials: false // Disable credentials for simpler CORS
         });
         
         console.log("Created simplified socket connection in production mode");
@@ -676,7 +690,7 @@ class SocketClient {
    * Process any pending messages
    */
   _processPendingMessages() {
-    if (!this.connected || this.pendingMessages.length === 0) return
+    if ((!this.connected && !this.usingApiFallback) || this.pendingMessages.length === 0) return
 
     console.log(`Processing ${this.pendingMessages.length} pending messages`)
 
@@ -685,7 +699,7 @@ class SocketClient {
     this.pendingMessages = []
 
     messages.forEach((msg) => {
-      this.emit(msg.event, msg.data)
+      this.emit(msg.event, msg.data, msg.target)
     })
   }
 
@@ -751,33 +765,73 @@ class SocketClient {
 
   /**
    * Emit an event to the server
+   * Automatically uses API fallback if socket is not available
    * @param {string} event - Event name
    * @param {any} data - Event data
+   * @param {string} target - Optional target user ID (for direct messages)
    * @returns {boolean} - Success status
    */
-  emit(event, data = {}) {
+  emit(event, data = {}, target = null) {
+    // If using API fallback, route through that
+    if (this.usingApiFallback) {
+      console.log(`Using API fallback to emit '${event}'`);
+      
+      // Using the global apiService instance
+      if (window.apiService) {
+        // Asynchronously send via API fallback
+        window.apiService.socketFallbackSend(event, data, target)
+          .then(result => {
+            if (!result.success) {
+              console.error(`API fallback emit for '${event}' failed:`, result.error);
+              // Queue for retry if reconnected
+              this.pendingMessages.push({ event, data, target });
+            }
+          })
+          .catch(err => {
+            console.error(`Error in API fallback emit for '${event}':`, err);
+            // Queue for retry if reconnected
+            this.pendingMessages.push({ event, data, target });
+          });
+        return true;
+      } else {
+        console.warn(`API service not available for fallback emit of '${event}'`);
+        // Queue for later retry
+        this.pendingMessages.push({ event, data, target });
+        return false;
+      }
+    }
+    
+    // Traditional socket.io emit
     if (!this.socket) {
       console.warn(`Socket not initialized, cannot emit '${event}'`)
+      this.pendingMessages.push({ event, data, target })
       return false
     }
 
     if (!this.connected) {
       console.log(`Socket not connected, queueing '${event}'`)
-      this.pendingMessages.push({ event, data })
+      this.pendingMessages.push({ event, data, target })
       return true
     }
 
     try {
-      this.socket.emit(event, data)
+      // If a target is specified, and it's not a room that the socket is already in
+      if (target) {
+        this.socket.emit(event, { ...data, target });
+      } else {
+        this.socket.emit(event, data);
+      }
       return true
     } catch (error) {
       console.error(`Error emitting '${event}':`, error)
+      // Queue for retry
+      this.pendingMessages.push({ event, data, target })
       return false
     }
   }
 
   /**
-   * Enhanced reconnect method with better notification support
+   * Enhanced reconnect method with better notification support and API fallback
    */
   enhancedReconnect() {
     if (this.reconnecting) {
@@ -869,6 +923,14 @@ class SocketClient {
                 console.log("Fallback to polling transport initiated");
               } catch (fallbackErr) {
                 console.error("Polling fallback also failed:", fallbackErr);
+                
+                // If all socket attempts fail, try API fallback
+                this._activateApiFallback(token);
+              }
+            } else {
+              // For other errors, try API fallback if the retry count is high enough
+              if (this.connectionAttempts >= 3) {
+                this._activateApiFallback(token);
               }
             }
             
@@ -911,6 +973,130 @@ class SocketClient {
       console.error("Cannot reconnect: No user ID");
       this.reconnecting = false;
     }
+  }
+  
+  /**
+   * Activate API fallback when all Socket.io connection methods fail
+   * This uses the HTTP-based fallback API for real-time communication
+   * @private
+   * @param {string} token - Auth token
+   */
+  async _activateApiFallback(token) {
+    console.log("All socket connection attempts failed, activating API fallback");
+    
+    // Import apiService dynamically if needed
+    try {
+      if (!window.apiService) {
+        const apiServiceModule = await import('./apiService.jsx');
+        window.apiService = apiServiceModule.default;
+      }
+      
+      const apiService = window.apiService;
+      
+      // Save fallback state
+      this.usingApiFallback = true;
+      this.fallbackClientId = `fb_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      
+      // Initialize fallback connection
+      const fallbackResult = await apiService.initSocketFallback(this.userId, this.fallbackClientId);
+      
+      if (fallbackResult.success) {
+        console.log("API fallback activated successfully:", fallbackResult);
+        
+        // Set up polling for events
+        this._startFallbackPolling();
+        
+        // Create a simulated "connected" event to trigger normal flow
+        this.connected = true;
+        
+        window.dispatchEvent(new CustomEvent("socketConnected", {
+          detail: {
+            userId: this.userId,
+            socketId: this.fallbackClientId,
+            usingFallback: true
+          }
+        }));
+        
+        this._notifyEventHandlers("socketConnected", {
+          userId: this.userId,
+          socketId: this.fallbackClientId,
+          usingFallback: true
+        });
+        
+        // Also trigger pong to prevent heartbeat errors
+        this.lastPong = Date.now();
+      } else {
+        console.error("API fallback initialization failed:", fallbackResult.error);
+        this.usingApiFallback = false;
+      }
+    } catch (err) {
+      console.error("Error activating API fallback:", err);
+      this.usingApiFallback = false;
+    }
+  }
+
+  /**
+   * Start long-polling mechanism for the API fallback
+   * @private
+   */
+  _startFallbackPolling() {
+    if (!this.usingApiFallback || this.fallbackPolling) return;
+    
+    console.log("Starting fallback polling for real-time events");
+    
+    // Mark as polling
+    this.fallbackPolling = true;
+    
+    // Track last event ID
+    this.fallbackLastEventId = 0;
+    
+    // Create polling function
+    const pollForEvents = async () => {
+      if (!this.usingApiFallback || !this.fallbackPolling) return;
+      
+      try {
+        const apiService = window.apiService;
+        if (!apiService) return;
+        
+        // Poll with current last event ID
+        const response = await apiService.socketFallbackPoll(
+          this.fallbackLastEventId,
+          20000 // 20 second long poll
+        );
+        
+        if (response.success && response.events && response.events.length > 0) {
+          // Process all events
+          response.events.forEach(event => {
+            // Update last event ID
+            this.fallbackLastEventId = Math.max(this.fallbackLastEventId, event.id);
+            
+            // Emit event to handlers
+            this._notifyEventHandlers(event.event, event.data);
+            
+            // Also dispatch window event for global listeners
+            window.dispatchEvent(new CustomEvent(event.event, {
+              detail: event.data
+            }));
+          });
+        }
+        
+        // Schedule next poll based on response or default delay
+        const nextDelay = response.pollingInfo?.nextPollDelay || 0;
+        setTimeout(pollForEvents, nextDelay);
+        
+        // Update lastPong to prevent heartbeat errors
+        this.lastPong = Date.now();
+        
+      } catch (err) {
+        console.error("Fallback polling error:", err);
+        
+        // On error, wait a bit longer before retrying
+        setTimeout(pollForEvents, 5000);
+      }
+    };
+    
+    // Start polling immediately
+    pollForEvents();
   }
   
   /**
@@ -977,6 +1163,13 @@ class SocketClient {
       } catch (err) {
         console.error("Error closing notification sync channel:", err)
       }
+    }
+
+    // Stop API fallback if active
+    if (this.usingApiFallback) {
+      console.log("Stopping API fallback polling");
+      this.fallbackPolling = false;
+      this.usingApiFallback = false;
     }
 
     if (this.socket) {

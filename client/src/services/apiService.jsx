@@ -1028,6 +1028,131 @@ class ApiService {
       return { success: false, error: error.error || error.message || "Health check failed" }
     }
   }
+  
+  /**
+   * Socket.io Fallback API methods
+   * Used when WebSocket communication fails
+   */
+  async initSocketFallback(userId, clientId = null) {
+    try {
+      if (!userId) {
+        throw new Error("User ID is required for socket fallback");
+      }
+      
+      // Use a client ID if provided, or generate one
+      const fallbackClientId = clientId || `fb_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      
+      // Initialize the socket fallback connection
+      const response = await this.get("/socket-fallback", { 
+        clientId: fallbackClientId
+      });
+      
+      if (response.success) {
+        apiLogger.info(`Socket fallback initialized for user ${userId} with client ID ${fallbackClientId}`);
+        return {
+          success: true,
+          clientId: fallbackClientId,
+          endpoints: response.endpoints,
+          message: response.message
+        };
+      } else {
+        throw new Error(response.error || "Failed to initialize socket fallback");
+      }
+    } catch (error) {
+      apiLogger.error(`Socket fallback initialization error: ${error.message}`, error);
+      return {
+        success: false,
+        error: error.error || error.message || "Socket fallback initialization failed"
+      };
+    }
+  }
+  
+  /**
+   * Send an event through the socket fallback API
+   * @param {string} event - Event name to emit
+   * @param {object} data - Event data
+   * @param {string} target - Optional target user ID
+   * @returns {Promise} - API response
+   */
+  async socketFallbackSend(event, data = {}, target = null) {
+    try {
+      // Ensure event name is valid
+      if (!event || typeof event !== 'string') {
+        throw new Error("Valid event name is required");
+      }
+      
+      const response = await this.post("/socket-fallback/send", {
+        event,
+        data,
+        target
+      });
+      
+      apiLogger.debug(`Socket fallback sent event '${event}' to ${target || 'server'}: ${response.success ? 'SUCCESS' : 'FAILED'}`);
+      return response;
+    } catch (error) {
+      apiLogger.error(`Socket fallback send error: ${error.message}`, error);
+      return {
+        success: false,
+        error: error.error || error.message || "Failed to send via socket fallback"
+      };
+    }
+  }
+  
+  /**
+   * Poll for events through the socket fallback API (long polling)
+   * @param {number} lastEventId - Last received event ID
+   * @param {number} timeout - Polling timeout in ms
+   * @returns {Promise} - API response with events
+   */
+  async socketFallbackPoll(lastEventId = 0, timeout = 20000) {
+    try {
+      const response = await this.get("/socket-fallback/poll", {
+        lastEventId,
+        timeout
+      }, {
+        timeout: timeout + 5000 // Add 5s to client timeout to account for network delays
+      });
+      
+      const eventCount = response.events?.length || 0;
+      if (eventCount > 0) {
+        apiLogger.debug(`Socket fallback poll received ${eventCount} new events`);
+      }
+      
+      return response;
+    } catch (error) {
+      // Don't log timeout errors as they're expected in long polling
+      if (error.message && !error.message.includes('timeout')) {
+        apiLogger.error(`Socket fallback poll error: ${error.message}`);
+      }
+      return {
+        success: false,
+        events: [],
+        error: error.error || error.message || "Failed to poll for events",
+        pollingInfo: {
+          lastEventId: lastEventId,
+          nextPollDelay: 1000 // Retry after 1 second on error
+        }
+      };
+    }
+  }
+  
+  /**
+   * Check online users through the socket fallback API
+   * @returns {Promise} - API response with online users
+   */
+  async socketFallbackPresence() {
+    try {
+      const response = await this.get("/socket-fallback/presence");
+      return response;
+    } catch (error) {
+      apiLogger.error(`Socket fallback presence error: ${error.message}`);
+      return {
+        success: false,
+        online: [],
+        error: error.error || error.message || "Failed to check online users"
+      };
+    }
+  }
 
   getMetrics() {
     return { ...this.metrics }

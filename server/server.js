@@ -317,7 +317,8 @@ app.use(API_PREFIX, routes);
 // Socket.io diagnostic route
 app.get("/api/socket-diagnostic", (req, res) => {
   try {
-    // Get server info
+    // Get server info with more details for debugging
+    const socketIO = app.get('io');
     const serverInfo = {
       nodejs: process.version,
       environment: process.env.NODE_ENV || "development",
@@ -328,10 +329,28 @@ app.get("/api/socket-diagnostic", (req, res) => {
         : [typeof config.CORS_OPTIONS?.origin === 'string' ? config.CORS_OPTIONS.origin : '*'],
       hostname: require('os').hostname(),
       serverTime: new Date().toISOString(),
-      socketIoAttached: Boolean(app.get('io')),
-      activeConnections: app.get('io') ? Object.keys(app.get('io').sockets.sockets).length : 0,
+      socketIoAttached: Boolean(socketIO),
+      activeConnections: socketIO ? Object.keys(socketIO.sockets.sockets).length : 0,
       allowedOrigins: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['*'],
-      engineIoPath: app.get('io') ? app.get('io').path() : '/socket.io'
+      engineIoPath: socketIO ? socketIO.path() : '/socket.io',
+      
+      // Additional debug info
+      server: {
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        socketEngineInfo: socketIO ? {
+          path: socketIO.path(),
+          clientsCount: socketIO.engine?.clientsCount || 0,
+          initialEngineConfig: JSON.stringify(socketIO.engine?.opts || {})
+        } : null
+      },
+      
+      env: {
+        NODE_ENV: process.env.NODE_ENV,
+        DEBUG_SOCKET: process.env.DEBUG_SOCKET,
+        DEBUG_CORS: process.env.DEBUG_CORS,
+        ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS
+      }
     };
     
     res.set('Access-Control-Allow-Origin', '*');
@@ -346,6 +365,19 @@ app.get("/api/socket-diagnostic", (req, res) => {
       error: `Socket diagnostic error: ${err.message}`,
       stack: process.env.NODE_ENV === 'production' ? undefined : err.stack
     });
+  }
+});
+
+// Add a very simple Socket.io health check endpoint
+app.get("/socket.io/healthcheck", (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Content-Type', 'text/plain');
+  
+  const socketIO = app.get('io');
+  if (socketIO) {
+    return res.status(200).send(`Socket.IO is running. Path: ${socketIO.path()}`);
+  } else {
+    return res.status(503).send('Socket.IO is not running or not properly initialized');
   }
 });
 
