@@ -79,25 +79,48 @@ const StoryCreator = ({ onClose, onSubmit }) => {
         type: "text",
       }
 
-      const response = await createStory(storyData, updateProgress)
+      // Safely call createStory with a timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Story creation timed out')), 30000)
+      );
+      
+      const response = await Promise.race([
+        createStory(storyData, updateProgress),
+        timeoutPromise
+      ]);
 
-      // Handle different response formats for compatibility
-      if (response && (response.success === true || response._id || (response.data && response.data._id))) {
-        toast.success(t('stories.createStorySuccess'))
+      // Defensive programming: ensure we have a response object even if API returns null/undefined
+      const safeResponse = response || {};
+      
+      // Handle different response formats for compatibility with improved checks
+      if (
+        safeResponse.success === true || 
+        safeResponse._id || 
+        (safeResponse.data && safeResponse.data._id) ||
+        // Handle case where success might be a string "true" or 1
+        safeResponse.success === "true" ||
+        safeResponse.success === 1
+      ) {
+        toast.success(t('stories.createStorySuccess'));
         
-        // Determine what to pass to onSubmit based on response format
+        // Simplified logic to determine what to pass to onSubmit
         if (onSubmit) {
-          if (response.data) {
-            onSubmit(response.data)
-          } else if (response._id) {
-            onSubmit(response)
+          if (safeResponse.data && typeof safeResponse.data === 'object') {
+            onSubmit(safeResponse.data);
           } else {
-            onSubmit(response)
+            onSubmit(safeResponse);
           }
         }
-        onClose?.()
+        onClose?.();
       } else {
-        setError(response?.message || response?.error || t('stories.createStoryError'))
+        // More detailed error message with response inspection
+        const errorMessage = safeResponse.message || 
+                            safeResponse.error || 
+                            (safeResponse.success === false ? 'Story creation failed' : null) ||
+                            t('stories.createStoryError');
+                            
+        console.warn('Story creation failed with response:', safeResponse);
+        setError(errorMessage);
       }
     } catch (error) {
       console.error("Error creating story:", error)

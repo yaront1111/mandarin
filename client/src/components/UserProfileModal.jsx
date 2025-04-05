@@ -89,6 +89,29 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   // Other contexts
   const { loadUserStories, hasUnviewedStories } = useStories();
 
+  // Enhanced component mount tracking
+  const mountedRef = useRef(true);
+  const safeSetState = useCallback((setter, value) => {
+    if (mountedRef.current) {
+      setter(value);
+    } else {
+      log.debug("Prevented state update after unmount");
+    }
+  }, []);
+  
+  // Improved isMounted function
+  const isMounted = useCallback(() => {
+    return mountedRef.current;
+  }, []);
+  
+  // Make sure we reset the mounted ref when component unmounts
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      log.debug("UserProfileModal unmounted - mountedRef set to false");
+    };
+  }, []);
+
   // State management
   const [userStories, setUserStories] = useState([]);
   const [showChat, setShowChat] = useState(false);
@@ -120,10 +143,60 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   // Hooks
   const navigate = useNavigate();
   const api = useApi();
-  const { isMounted } = useMounted();
+  // Use a different name for the hook to avoid conflict with our local isMounted function
+  const { isMounted: hookIsMounted } = useMounted();
 
   // Create contextual logger
   const log = logger.create('UserProfileModal');
+
+  // Calculate compatibility score between users
+  // Define this function before we use it in useMemo
+  const calculateCompatibility = useCallback(() => {
+    if (!profileUser?.details || !currentUser?.details) return 0;
+
+    try {
+      let score = 0;
+
+      // Location (25%)
+      const profileLocation = profileUser?.details?.location;
+      const currentUserLocation = currentUser?.details?.location;
+      
+      if (profileLocation && currentUserLocation && profileLocation === currentUserLocation) {
+        score += 25;
+      }
+
+      // Age proximity (25%)
+      const profileAge = parseInt(profileUser?.details?.age || 0, 10);
+      const currentUserAge = parseInt(currentUser?.details?.age || 0, 10);
+      
+      if (!isNaN(profileAge) && !isNaN(currentUserAge)) {
+        const ageDiff = Math.abs(profileAge - currentUserAge);
+        if (ageDiff <= 5) score += 25;
+        else if (ageDiff <= 10) score += 15;
+        else score += 5;
+      } else {
+        // Default score if ages aren't valid numbers
+        score += 5;
+      }
+
+      // Interests (50%)
+      const profileInterests = Array.isArray(profileUser?.details?.interests) ? profileUser.details.interests : [];
+      const userInterests = Array.isArray(currentUser?.details?.interests) ? currentUser.details.interests : [];
+      
+      // Safely calculate common interests
+      let commonCount = 0;
+      if (profileInterests.length > 0 && userInterests.length > 0) {
+        commonCount = profileInterests.filter(i => i && userInterests.includes(i)).length;
+      }
+      
+      score += Math.min(50, commonCount * 10);
+
+      return Math.min(100, score);
+    } catch (error) {
+      log.error("Error calculating compatibility:", error);
+      return 0;
+    }
+  }, [profileUser, currentUser, log]);
 
   // Memoized values
   const isOwnProfile = useMemo(() => {
@@ -133,24 +206,40 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   const compatibility = useMemo(() => {
     if (!profileUser || !currentUser) return 0;
     return calculateCompatibility();
-  }, [profileUser, currentUser]);
+  }, [profileUser, currentUser, calculateCompatibility]);
 
   const commonInterests = useMemo(() => {
-    if (!profileUser || !currentUser || !profileUser.details?.interests) return [];
-    return profileUser.details.interests.filter(
-      interest => currentUser.details?.interests?.includes(interest)
+    if (!profileUser || !currentUser) return [];
+    
+    // Verify both users have interests arrays
+    const profileInterests = Array.isArray(profileUser?.details?.interests) ? profileUser.details.interests : [];
+    const userInterests = Array.isArray(currentUser?.details?.interests) ? currentUser.details.interests : [];
+    
+    if (profileInterests.length === 0 || userInterests.length === 0) return [];
+    
+    // Filter with additional null check
+    return profileInterests.filter(
+      interest => interest && userInterests.includes(interest)
     );
   }, [profileUser, currentUser]);
 
   const hasPendingRequestFromUser = useMemo(() => {
+    if (!Array.isArray(pendingRequests) || pendingRequests.length === 0 || !profileUser?._id) {
+      return false;
+    }
+    
     return pendingRequests.some(
-      (item) => item.user && profileUser && item.user._id === profileUser._id
+      (item) => item?.user && item.user?._id && profileUser?._id && item.user._id === profileUser._id
     );
   }, [pendingRequests, profileUser]);
 
   const currentUserRequests = useMemo(() => {
+    if (!Array.isArray(pendingRequests) || pendingRequests.length === 0 || !profileUser?._id) {
+      return null;
+    }
+    
     return pendingRequests.find(
-      (item) => item.user && profileUser && item.user._id === profileUser._id
+      (item) => item?.user && item.user?._id && profileUser?._id && item.user._id === profileUser._id
     );
   }, [pendingRequests, profileUser]);
 
@@ -160,54 +249,62 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   // Track the last userId to avoid fetch loops
   const lastFetchedUserIdRef = useRef(null);
 
-  // Fetch user data - excluding unstable deps to avoid loops
+  // Fetch user data with proper dependency management
   useEffect(() => {
     // Skip if no userId, no isOpen (modal is closed), or if we've already fetched this user
     if (!userId || !isOpen || lastFetchedUserIdRef.current === userId) {
       return;
     }
 
-    // Wrap getUser in a function to avoid dependency issues
-    const fetchUserData = async () => {
+    // Create a stable reference to the current getUser function
+    const getUserFn = getUser;
+    // Create a stable reference to the current userId
+    const currentUserId = userId;
+    
+    let isCancelled = false;
+    
+    // Use an IIFE to encapsulate the async operation
+    (async () => {
       setLoading(true);
-      lastFetchedUserIdRef.current = userId;
+      lastFetchedUserIdRef.current = currentUserId;
 
       try {
         // Adding a small delay to prevent race conditions with other API calls
         await new Promise(resolve => setTimeout(resolve, 50));
 
-        // Use getUser from context but don't add it to dependencies
-        const userData = await getUser(userId);
+        // Use the stable reference to getUser
+        const userData = await getUserFn(currentUserId);
 
-        if (!isMounted()) return;
-
-        log.debug("User data received:", userData);
-        setUser(userData);
+        // Check if the component is still mounted and the fetch hasn't been cancelled
+        if (!hookIsMounted() || isCancelled) return;
+        
+        // Check if userId still matches our request (prevent race conditions)
+        if (userId === currentUserId) {
+          log.debug("User data received:", userData);
+          setUser(userData);
+        }
       } catch (error) {
-        if (isMounted()) {
+        if (hookIsMounted() && !isCancelled) {
           log.error("Error fetching user:", error);
           // Don't leave the loading state on if there's an error
           setLoading(false);
         }
       } finally {
-        if (isMounted()) {
+        if (hookIsMounted() && !isCancelled) {
           setLoading(false);
         }
       }
-    };
+    })();
 
-    fetchUserData();
-
-    // Reset the ref when component unmounts or userId changes
+    // Cleanup function
     return () => {
+      isCancelled = true;
       // Only reset if the component is unmounting, not just when userId changes
       if (!isOpen) {
         lastFetchedUserIdRef.current = null;
       }
     };
-  // Explicitly exclude getUser from deps since it might change between renders
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, isOpen, isMounted]);
+  }, [userId, isOpen, hookIsMounted, getUser]); // Include getUser in dependencies
 
   // IMPORTANT: We're not using this callback anymore - it's replaced with a direct API call
   // in the useEffect to prevent loops. Keep this here just for reference and documentation.
@@ -219,7 +316,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   // Fetch pending photo access requests
   const fetchPendingRequests = useCallback(async () => {
     // Skip if no currentUser, already loading, or component unmounted
-    if (!currentUser || requestsLoadingRef.current || !isMounted()) {
+    if (!currentUser || requestsLoadingRef.current || !hookIsMounted()) {
       return;
     }
 
@@ -232,7 +329,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       const response = await api.get("/users/photos/permissions?status=pending");
 
       // If component unmounted during the request, bail out
-      if (!isMounted()) return;
+      if (!hookIsMounted()) return;
 
       // Process valid response data
       if (response && response.success) {
@@ -294,7 +391,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       }
     } catch (error) {
       // Skip if component unmounted during the request
-      if (!isMounted()) return;
+      if (!hookIsMounted()) return;
 
       log.error("Error fetching pending requests:", error);
       // Only show error toast if this is a true network error, not just empty data
@@ -305,12 +402,12 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       setPendingRequests(prev => prev.length > 0 ? [] : prev);
     } finally {
       // Skip if component unmounted during the request
-      if (isMounted()) {
+      if (hookIsMounted()) {
         setIsLoadingRequests(false);
         requestsLoadingRef.current = false;
       }
     }
-  }, [currentUser, api, isMounted]);
+  }, [currentUser, api, hookIsMounted]);
 
   // Track whether we've loaded data for this userId and whether the component is mounted
   const dataLoadedRef = useRef(false);
@@ -323,6 +420,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
   // Load user data, access status, and stories when modal opens
   useEffect(() => {
+    // Track cancellation for all async operations
+    let isCancelled = false;
+    
     // Skip if no userId or isOpen changed to false
     if (!userId || !isOpen) {
       // If modal closed, reset states
@@ -335,19 +435,21 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         requestsLoadingRef.current = false;
         photoAccessFetchedRef.current = false;
 
-        // Reset all UI state when closing
-        setShowChat(false);
-        setShowStories(false);
-        setUserPhotoAccess({
-          status: null,
-          isLoading: false
-        });
-        setPhotoLoadError({});
-        setIsLiking(false);
-        setIsChatInitiating(false);
-        setActivePhotoIndex(0);
-        setUserStories([]);
-        setPendingRequests([]);
+        // Reset all UI state when closing (only if still mounted)
+        if (hookIsMounted()) {
+          setShowChat(false);
+          setShowStories(false);
+          setUserPhotoAccess({
+            status: null,
+            isLoading: false
+          });
+          setPhotoLoadError({});
+          setIsLiking(false);
+          setIsChatInitiating(false);
+          setActivePhotoIndex(0);
+          setUserStories([]);
+          setPendingRequests([]);
+        }
 
         log.debug(`Modal cleanup ran for userId: ${userId}`);
       }
@@ -359,44 +461,54 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       isModalOpenRef.current = true;
       log.debug(`Modal opened for userId: ${userId}, dataLoadedRef: ${dataLoadedRef.current}`);
 
-      // Reset UI state when opening
-      setActivePhotoIndex(0);
-      setShowAllInterests(false);
-      setShowActions(false);
-      setPhotoLoadError({});
-      setShowChat(false);
-      setShowStories(false);
+      if (hookIsMounted()) {
+        // Reset UI state when opening
+        setActivePhotoIndex(0);
+        setShowAllInterests(false);
+        setShowActions(false);
+        setPhotoLoadError({});
+        setShowChat(false);
+        setShowStories(false);
 
-      // Reset permission-related states
-      setUserPhotoAccess({
-        status: null,
-        isLoading: false
-      });
+        // Reset permission-related states
+        setUserPhotoAccess({
+          status: null,
+          isLoading: false
+        });
 
-      // Reset loading states
-      setLoading(false);
-      setIsLiking(false);
-      setIsChatInitiating(false);
-      setIsLoadingRequests(false);
-      setIsProcessingApproval(false);
+        // Reset loading states
+        setLoading(false);
+        setIsLiking(false);
+        setIsChatInitiating(false);
+        setIsLoadingRequests(false);
+        setIsProcessingApproval(false);
+      }
     }
 
+    // Capture current userId for async operations
+    const currentUserId = userId;
+    
     // Load stories only once
     if (!storiesLoadingRef.current && !dataLoadedRef.current) {
       storiesLoadingRef.current = true;
 
+      // Store reference to the current loadUserStories function
+      const loadUserStoriesFn = loadUserStories;
+      
       // Use Promise.resolve to handle both synchronous and asynchronous loadUserStories
-      Promise.resolve(loadUserStories?.(userId))
+      Promise.resolve(loadUserStoriesFn?.(currentUserId))
         .then(stories => {
-          if (isMounted() && stories && Array.isArray(stories)) {
+          if (hookIsMounted() && !isCancelled && userId === currentUserId && stories && Array.isArray(stories)) {
             setUserStories(stories);
           }
         })
         .catch(err => {
-          log.error("Error loading stories:", err);
+          if (hookIsMounted() && !isCancelled) {
+            log.error("Error loading stories:", err);
+          }
         })
         .finally(() => {
-          if (isMounted()) {
+          if (hookIsMounted() && !isCancelled) {
             storiesLoadingRef.current = false;
           }
         });
@@ -407,10 +519,13 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       photoAccessFetchedRef.current = true;
       accessStatusLoadingRef.current = true;
 
+      // Store reference to the current API
+      const apiRef = api;
+      
       // Use the API directly to avoid callback issues
-      api.get(`/users/${userId}/photo-access-status`)
+      apiRef.get(`/users/${currentUserId}/photo-access-status`)
         .then(response => {
-          if (!isMounted()) return;
+          if (!hookIsMounted() || isCancelled || userId !== currentUserId) return;
 
           log.debug(`Received photo access status response:`, response);
 
@@ -422,17 +537,15 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             if (statusValue) {
               // Only update state if it's actually different and component is still mounted
-              if (isMounted()) {
-                setUserPhotoAccess(prev => {
-                  if (prev.status !== statusValue) {
-                    return {
-                      status: statusValue,
-                      isLoading: false
-                    };
-                  }
-                  return prev;
-                });
-              }
+              setUserPhotoAccess(prev => {
+                if (prev.status !== statusValue) {
+                  return {
+                    status: statusValue,
+                    isLoading: false
+                  };
+                }
+                return prev;
+              });
             } else {
               // Got a success response but no status value (default to "none")
               setUserPhotoAccess({
@@ -459,7 +572,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
           }
         })
         .catch(error => {
-          if (isMounted()) {
+          if (hookIsMounted() && !isCancelled && userId === currentUserId) {
             log.error(`Error loading photo access status:`, error);
             // Reset the loading state on error and provide a default status
             setUserPhotoAccess({
@@ -469,7 +582,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
           }
         })
         .finally(() => {
-          if (isMounted()) {
+          if (hookIsMounted() && !isCancelled) {
             accessStatusLoadingRef.current = false;
           }
         });
@@ -477,23 +590,30 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
     // If viewing own profile, fetch pending requests once
     if (currentUser &&
-        currentUser._id === userId &&
+        currentUser._id === currentUserId &&
         !requestsLoadingRef.current &&
         !dataLoadedRef.current) {
-      fetchPendingRequests();
+      // Store reference to current fetchPendingRequests
+      const fetchPendingRequestsFn = fetchPendingRequests;
+      fetchPendingRequestsFn();
     }
 
     // Mark data loaded if not already
     if (!dataLoadedRef.current) {
       dataLoadedRef.current = true;
     }
-  }, [userId, loadUserStories, currentUser, isOpen, isMounted, api, fetchPendingRequests]);
+    
+    // Clean up all pending operations when component unmounts or dependencies change
+    return () => {
+      isCancelled = true;
+    };
+  }, [userId, loadUserStories, currentUser, isOpen, hookIsMounted, api, fetchPendingRequests, log]);
 
-  // Request access to all photos
+  // Request access to all photos with improved mount state tracking
   const handleRequestAccessToAllPhotos = async () => {
     // Prevent multiple requests
-    if (!profileUser || !profileUser._id || userPhotoAccess.isLoading) {
-      log.warn("Cannot request photo access: missing user ID or already loading");
+    if (!profileUser || !profileUser._id || userPhotoAccess.isLoading || !hookIsMounted()) {
+      log.warn("Cannot request photo access: missing user ID, already loading, or component unmounted");
       return;
     }
 
@@ -501,8 +621,20 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     const requestInProgress = userPhotoAccess.isLoading;
     if (requestInProgress) return;
 
+    // Create a request-specific mounted tracker to handle race conditions
+    const isRequestActive = { current: true };
+    
+    // Only update state if component AND request are still active
+    const updateStateIfActive = (setter, value) => {
+      if (mountedRef.current && isRequestActive.current) {
+        setter(value);
+      } else {
+        log.debug("Skipped state update after unmount in photo access request");
+      }
+    };
+
     // Update loading state
-    setUserPhotoAccess(prev => ({
+    updateStateIfActive(setUserPhotoAccess, prev => ({
       ...prev,
       isLoading: true
     }));
@@ -511,17 +643,22 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       log.debug(`Requesting photo access for user ${profileUser._id}`);
 
       // ALWAYS set UI to pending state for better UX
-      setUserPhotoAccess({
+      updateStateIfActive(setUserPhotoAccess, {
         status: "pending",
         isLoading: false
       });
-      toast.success(safeTranslate(t, "profile.accessRequestSent", "Access to photos requested"));
+      
+      // Only show toast if component is still mounted
+      if (mountedRef.current) {
+        toast.success(safeTranslate(t, "profile.accessRequestSent", "Access to photos requested"));
+      }
 
       try {
         // Make a single API call to request access to all photos (but don't block UI)
         const response = await api.post(`/users/${profileUser._id}/request-photo-access`);
 
-        if (!isMounted()) return;
+        // Check if component was unmounted during the API call
+        if (!mountedRef.current || !isRequestActive.current) return;
 
         if (response && response.success) {
           log.debug("Photo access request successful:", response.message || "Request processed");
@@ -537,24 +674,33 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         log.error("Backend error in photo access request (UI unaffected):", apiError);
       }
     } catch (error) {
-      if (!isMounted()) return;
+      // Check if component was unmounted during error handling
+      if (!mountedRef.current || !isRequestActive.current) return;
 
       log.error("Error in photo access request flow:", error);
 
       // Always show success to user and set to pending state
-      setUserPhotoAccess({
+      updateStateIfActive(setUserPhotoAccess, {
         status: "pending",
         isLoading: false
       });
-      toast.success(safeTranslate(t, "profile.accessRequestSent", "Access to photos requested"));
+      
+      // Only show toast if component is still mounted
+      if (mountedRef.current) {
+        toast.success(safeTranslate(t, "profile.accessRequestSent", "Access to photos requested"));
+      }
+    } finally {
+      // Mark this request as completed
+      isRequestActive.current = false;
     }
   };
 
-  // Handle approving all requests from a specific user
+  // Handle approving all requests from a specific user with improved mount tracking
   const handleApproveAllRequests = async (userId, requests) => {
+    // Enhanced validation with mount check
     if (!userId || !isValidObjectId(userId) ||
-        !requests || !Array.isArray(requests) || requests.length === 0) {
-      log.warn("Invalid user ID or empty requests array for approval");
+        !requests || !Array.isArray(requests) || requests.length === 0 || !hookIsMounted()) {
+      log.warn("Invalid user ID, empty requests array, or component unmounted");
       return;
     }
 
@@ -563,44 +709,77 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       return;
     }
 
-    setIsProcessingApproval(true);
+    // Create a request-specific active flag
+    const isRequestActive = { current: true };
+    
+    // Safe state setter for this specific request
+    const updateStateIfActive = (setter, value) => {
+      if (mountedRef.current && isRequestActive.current) {
+        setter(value);
+      } else {
+        log.debug("Skipped state update after unmount in approval request");
+      }
+    };
+
+    // Update processing state
+    updateStateIfActive(setIsProcessingApproval, true);
 
     try {
       log.debug(`Approving all photo requests from user ${userId}`);
+      
       // Single API call to approve all requests from this user
       const response = await api.put(`/users/${userId}/approve-photo-access`);
 
-      if (!isMounted()) return;
+      // Check if component unmounted during API call
+      if (!mountedRef.current || !isRequestActive.current) return;
 
       if (response && response.success) {
-        toast.success(safeTranslate(t, "profile.approvedAllRequests", "Approved all photo requests from this user"));
+        // Only show toast if component is still mounted
+        if (mountedRef.current) {
+          toast.success(safeTranslate(t, "profile.approvedAllRequests", "Approved all photo requests from this user"));
+        }
+        
         log.debug("Successfully approved photo requests");
 
         // Remove this user from pending requests without refetching
-        setPendingRequests(prev => prev.filter(item =>
+        updateStateIfActive(setPendingRequests, prev => prev.filter(item =>
           !item.user || item.user._id !== userId
         ));
       } else {
         log.warn("Failed to approve photo requests:", response);
-        toast.error(response?.error || safeTranslate(t, "errors.approvalFailed", "Failed to approve photo requests"));
+        
+        // Only show toast if component is still mounted
+        if (mountedRef.current) {
+          toast.error(response?.error || safeTranslate(t, "errors.approvalFailed", "Failed to approve photo requests"));
+        }
       }
     } catch (error) {
-      if (!isMounted()) return;
+      // Check if component unmounted during error handling
+      if (!mountedRef.current || !isRequestActive.current) return;
 
       log.error("Error approving requests:", error);
-      toast.error(error?.error || safeTranslate(t, "errors.approvalFailed", "Failed to approve photo requests"));
-    } finally {
-      if (isMounted()) {
-        setIsProcessingApproval(false);
+      
+      // Only show toast if component is still mounted
+      if (mountedRef.current) {
+        toast.error(error?.error || safeTranslate(t, "errors.approvalFailed", "Failed to approve photo requests"));
       }
+    } finally {
+      // Reset state if component is still mounted
+      if (mountedRef.current && isRequestActive.current) {
+        updateStateIfActive(setIsProcessingApproval, false);
+      }
+      
+      // Mark request as completed
+      isRequestActive.current = false;
     }
   };
 
-  // Handle rejecting all requests from a specific user
+  // Handle rejecting all requests from a specific user with improved mount tracking
   const handleRejectAllRequests = async (userId, requests) => {
+    // Enhanced validation with mount check
     if (!userId || !isValidObjectId(userId) ||
-        !requests || !Array.isArray(requests) || requests.length === 0) {
-      log.warn("Invalid user ID or empty requests array for rejection");
+        !requests || !Array.isArray(requests) || requests.length === 0 || !hookIsMounted()) {
+      log.warn("Invalid user ID, empty requests array, or component unmounted");
       return;
     }
 
@@ -609,56 +788,98 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       return;
     }
 
-    setIsProcessingApproval(true);
+    // Create a request-specific active flag
+    const isRequestActive = { current: true };
+    
+    // Safe state setter for this specific request
+    const updateStateIfActive = (setter, value) => {
+      if (mountedRef.current && isRequestActive.current) {
+        setter(value);
+      } else {
+        log.debug("Skipped state update after unmount in rejection request");
+      }
+    };
+
+    // Update processing state
+    updateStateIfActive(setIsProcessingApproval, true);
 
     try {
       log.debug(`Rejecting all photo requests from user ${userId}`);
+      
       // Single API call to reject all requests from this user
       const response = await api.put(`/users/${userId}/reject-photo-access`);
 
-      if (!isMounted()) return;
+      // Check if component unmounted during API call
+      if (!mountedRef.current || !isRequestActive.current) return;
 
       if (response && response.success) {
-        toast.success(safeTranslate(t, "profile.rejectedAllRequests", "Rejected all photo requests from this user"));
+        // Only show toast if component is still mounted
+        if (mountedRef.current) {
+          toast.success(safeTranslate(t, "profile.rejectedAllRequests", "Rejected all photo requests from this user"));
+        }
+        
         log.debug("Successfully rejected photo requests");
 
         // Remove this user from pending requests without refetching
-        setPendingRequests(prev => prev.filter(item =>
+        updateStateIfActive(setPendingRequests, prev => prev.filter(item =>
           !item.user || item.user._id !== userId
         ));
       } else {
         log.warn("Failed to reject photo requests:", response);
-        toast.error(response?.error || safeTranslate(t, "errors.rejectionFailed", "Failed to reject photo requests"));
+        
+        // Only show toast if component is still mounted
+        if (mountedRef.current) {
+          toast.error(response?.error || safeTranslate(t, "errors.rejectionFailed", "Failed to reject photo requests"));
+        }
       }
     } catch (error) {
-      if (!isMounted()) return;
+      // Check if component unmounted during error handling
+      if (!mountedRef.current || !isRequestActive.current) return;
 
       log.error("Error rejecting requests:", error);
-      toast.error(error?.error || safeTranslate(t, "errors.rejectionFailed", "Failed to reject photo requests"));
-    } finally {
-      if (isMounted()) {
-        setIsProcessingApproval(false);
+      
+      // Only show toast if component is still mounted
+      if (mountedRef.current) {
+        toast.error(error?.error || safeTranslate(t, "errors.rejectionFailed", "Failed to reject photo requests"));
       }
+    } finally {
+      // Reset state if component is still mounted
+      if (mountedRef.current && isRequestActive.current) {
+        updateStateIfActive(setIsProcessingApproval, false);
+      }
+      
+      // Mark request as completed
+      isRequestActive.current = false;
     }
   };
 
-  // Handle image loading errors
+  // Handle image loading errors with mount state check
   const handleImageError = useCallback((photoId) => {
     log.debug(`Image with ID ${photoId} failed to load`);
-    setPhotoLoadError(prev => ({
-      ...prev,
-      [photoId]: true,
-    }));
-
-    // Mark any unsplash URLs as failed to prevent retries
-    const failedImage = profileUser?.photos?.find(p => p._id === photoId);
-    if (failedImage && failedImage.url && (
-      failedImage.url.includes('unsplash.com') ||
-      !failedImage.url.startsWith(window.location.origin)
-    )) {
-      markUrlAsFailed(failedImage.url);
+    
+    // Only update state if component is still mounted
+    if (hookIsMounted()) {
+      setPhotoLoadError(prev => ({
+        ...prev,
+        [photoId]: true,
+      }));
+      
+      // Mark any unsplash URLs as failed to prevent retries
+      const failedImage = profileUser?.photos?.find(p => p._id === photoId);
+      if (failedImage && failedImage.url && (
+        failedImage.url.includes('unsplash.com') ||
+        !failedImage.url.startsWith(window.location.origin)
+      )) {
+        try {
+          markUrlAsFailed(failedImage.url);
+        } catch (error) {
+          log.error(`Error marking URL as failed: ${error.message}`);
+        }
+      }
+    } else {
+      log.debug(`Skipped updating state for failed image ${photoId} - component unmounted`);
     }
-  }, [profileUser]);
+  }, [profileUser, hookIsMounted]);
 
   // Handle liking/unliking users
   const handleLike = async () => {
@@ -676,7 +897,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       log.error("Error toggling like:", error);
       toast.error(safeTranslate(t, "errors.likeUpdateFailed", "Failed to update like status"));
     } finally {
-      if (isMounted()) {
+      if (hookIsMounted()) {
         setIsLiking(false);
       }
     }
@@ -732,7 +953,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       log.error("Error sending message:", error);
       toast.error(safeTranslate(t, "errors.conversationFailed", "Failed to start conversation"));
     } finally {
-      if (isMounted()) {
+      if (hookIsMounted()) {
         setIsChatInitiating(false);
       }
     }
@@ -743,54 +964,40 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   const handleCloseStories = () => setShowStories(false);
   const handleCloseChat = () => setShowChat(false);
 
-  // Photo navigation
-  const nextPhoto = () => {
-    if (profileUser?.photos && activePhotoIndex < profileUser.photos.length - 1) {
-      setActivePhotoIndex(activePhotoIndex + 1);
+  // Photo navigation with improved safety checks
+  const nextPhoto = useCallback(() => {
+    if (!profileUser?.photos || !Array.isArray(profileUser.photos)) {
+      return; // Safety check for missing photos array
     }
-  };
+    
+    if (activePhotoIndex < profileUser.photos.length - 1) {
+      setActivePhotoIndex(prev => prev + 1);
+    }
+  }, [profileUser, activePhotoIndex]);
 
-  const prevPhoto = () => {
+  const prevPhoto = useCallback(() => {
     if (activePhotoIndex > 0) {
-      setActivePhotoIndex(activePhotoIndex - 1);
+      setActivePhotoIndex(prev => prev - 1);
     }
-  };
-
-  // Calculate compatibility score between users
-  function calculateCompatibility() {
-    if (!profileUser?.details || !currentUser?.details) return 0;
-
-    let score = 0;
-
-    // Location (25%)
-    if (profileUser.details.location === currentUser.details.location) {
-      score += 25;
-    }
-
-    // Age proximity (25%)
-    const ageDiff = Math.abs((profileUser.details.age || 0) - (currentUser.details.age || 0));
-    if (ageDiff <= 5) score += 25;
-    else if (ageDiff <= 10) score += 15;
-    else score += 5;
-
-    // Interests (50%)
-    const profileInterests = profileUser.details.interests || [];
-    const userInterests = currentUser.details.interests || [];
-    const commonCount = profileInterests.filter(i => userInterests.includes(i)).length;
-    score += Math.min(50, commonCount * 10);
-
-    return Math.min(100, score);
-  }
+  }, [activePhotoIndex]);
 
   // Helper to safely translate profile data (identity, lookingFor, etc.)
   const getTranslatedTag = useCallback((namespace, tag) => {
     if (!tag) return "";
-
-    // Format the tag key according to the i18n pattern
-    const key = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
-    // Use the original tag as the default if translation fails
-    return safeTranslate(t, key, tag);
-  }, [t]);
+    
+    try {
+      // Format the tag key according to the i18n pattern
+      // Use optional chaining to handle possible null/undefined values
+      const normalizedTag = tag?.toLowerCase?.()?.replace?.(/\s+/g, '_') || tag;
+      const key = `${namespace}.${normalizedTag}`;
+      
+      // Use the original tag as the default if translation fails
+      return safeTranslate(t, key, tag);
+    } catch (error) {
+      log.error(`Error translating tag '${tag}':`, error);
+      return tag || "";
+    }
+  }, [t, log]);
 
   // Text formatter
   const capitalize = (str) => {
@@ -799,9 +1006,96 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   };
 
   // Function to validate MongoDB ObjectId format
-  const isValidObjectId = (id) => {
-    return id && typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
-  };
+  // Memoize to avoid recreating this function on every render
+  const isValidObjectId = useCallback((id) => {
+    if (!id) return false;
+    if (typeof id !== 'string') return false;
+    
+    try {
+      return /^[0-9a-fA-F]{24}$/.test(id);
+    } catch (error) {
+      log.error("Error validating ObjectId:", error);
+      return false;
+    }
+  }, [log]);
+  
+  // Component unmount tracking to prevent memory leaks and state updates after unmount
+  useEffect(() => {
+    // Track all timeouts and intervals for cleanup
+    const timeouts = new Set();
+    const intervals = new Set();
+    
+    // Create a safe timeout function that automatically tracks timeouts
+    const createSafeTimeout = (callback, delay) => {
+      if (!mountedRef.current) return null;
+      
+      const id = setTimeout(() => {
+        timeouts.delete(id);
+        if (mountedRef.current) {
+          try {
+            callback();
+          } catch (error) {
+            log.error("Error in timeout callback:", error);
+          }
+        }
+      }, delay);
+      
+      timeouts.add(id);
+      return id;
+    };
+    
+    // Create a safe interval function that automatically tracks intervals
+    const createSafeInterval = (callback, delay) => {
+      if (!mountedRef.current) return null;
+      
+      const id = setInterval(() => {
+        if (mountedRef.current) {
+          try {
+            callback();
+          } catch (error) {
+            log.error("Error in interval callback:", error);
+          }
+        } else {
+          // Auto-clear interval if component unmounted
+          clearInterval(id);
+          intervals.delete(id);
+        }
+      }, delay);
+      
+      intervals.add(id);
+      return id;
+    };
+    
+    // Make these functions available for other effects and callbacks
+    window.__ProfileModal_safeTimeout = createSafeTimeout;
+    window.__ProfileModal_safeInterval = createSafeInterval;
+    
+    // Cleanup function
+    return () => {
+      log.debug("Running UserProfileModal cleanup");
+      mountedRef.current = false;
+      
+      // Clear all timeouts
+      if (timeouts.size > 0) {
+        log.debug(`Clearing ${timeouts.size} tracked timeouts`);
+        timeouts.forEach(id => clearTimeout(id));
+        timeouts.clear();
+      }
+      
+      // Clear all intervals
+      if (intervals.size > 0) {
+        log.debug(`Clearing ${intervals.size} tracked intervals`);
+        intervals.forEach(id => clearInterval(id));
+        intervals.clear();
+      }
+      
+      // Remove global helpers
+      delete window.__ProfileModal_safeTimeout;
+      delete window.__ProfileModal_safeInterval;
+      
+      log.debug("UserProfileModal cleanup complete");
+    };
+  }, []);
 
   // Early returns for special cases
   if (!isOpen) return null;

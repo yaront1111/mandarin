@@ -14,6 +14,7 @@ import config from "./config.js";
 import { connectDB, closeConnection } from "./db.js";
 import routes from "./routes/index.js"; // Assuming this imports the router from routes/index.js
 import { initSubscriptionTasks } from "./cron/subscriptionTasks.js";
+import { initEmailDigestTasks } from "./cron/emailDigestTasks.js";
 import { configureCors, corsErrorHandler } from "./middleware/cors.js";
 import { protect } from "./middleware/auth.js"; // Import protect for debug route
 
@@ -426,7 +427,8 @@ const initializeApp = async () => {
       // Initialize Cron Jobs (if any)
       if (config.ENABLE_CRON_JOBS) {
           initSubscriptionTasks();
-          logger.info("Subscription cron tasks initialized.");
+          initEmailDigestTasks();
+          logger.info("Cron tasks initialized (subscriptions and email digests).");
       } else {
            logger.info("Cron jobs disabled via config.");
       }

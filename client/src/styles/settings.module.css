@@ -878,6 +878,90 @@
   box-shadow: none;
 }
 
+/* Section Divider */
+.sectionDivider {
+  margin: var(--space-lg, 1.5rem) 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  padding-top: var(--space-md, 1rem);
+  position: relative;
+}
+
+:global(.dark) .sectionDivider {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dividerTitle {
+  position: relative;
+  margin: 0;
+  font-size: var(--font-size-lg, 1.125rem);
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--primary);
+  padding-left: var(--space-sm, 0.5rem);
+}
+
+.dividerTitle:before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(to bottom, var(--primary), var(--secondary));
+  border-radius: 2px;
+}
+
+/* Test Email Section */
+.testEmailSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-md, 1rem);
+  margin-top: var(--space-md, 1rem);
+  background-color: rgba(var(--primary-rgb), 0.05);
+  border-radius: var(--radius-lg, 12px);
+  border: 1px dashed rgba(var(--primary-rgb), 0.3);
+  transition: all 0.3s ease;
+}
+
+:global(.dark) .testEmailSection {
+  background-color: rgba(var(--primary-rgb), 0.1);
+  border-color: rgba(var(--primary-rgb), 0.3);
+}
+
+.testEmailSection:hover {
+  background-color: rgba(var(--primary-rgb), 0.08);
+  transform: translateY(-2px);
+}
+
+.testEmailButton {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: white;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-sm, 0.5rem) var(--space-md, 1rem);
+  font-weight: var(--font-weight-medium, 500);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.17, 0.67, 0.34, 0.99);
+  box-shadow: 0 4px 10px rgba(var(--primary-rgb), 0.3);
+  margin-bottom: var(--space-sm, 0.5rem);
+}
+
+.testEmailButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(var(--primary-rgb), 0.4);
+}
+
+.testEmailDescription {
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--text-medium, #555);
+  text-align: center;
+  margin: 0;
+}
+
+:global(.dark) .testEmailDescription {
+  color: var(--text-medium-dark, #aaa);
+}
+
 /* Blocked Users Section */
 .blockedUsersSection {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.7), rgba(248, 250, 255, 0.7));

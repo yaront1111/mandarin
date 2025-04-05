@@ -247,6 +247,14 @@ const userSchema = new Schema(
         stories: { type: Boolean, default: true },
         likes: { type: Boolean, default: true },
         comments: { type: Boolean, default: true },
+        // Email notifications settings
+        email: { type: Boolean, default: true },
+        emailOfflineOnly: { type: Boolean, default: true },
+        emailDigestFrequency: { 
+          type: String, 
+          default: "instant",
+          enum: ["instant", "hourly", "daily", "never"]
+        },
       },
       privacy: {
         showOnlineStatus: { type: Boolean, default: true },

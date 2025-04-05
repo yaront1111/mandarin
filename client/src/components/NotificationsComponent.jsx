@@ -131,25 +131,51 @@ const NotificationsComponent = ({
         })
       }
     }
-
-    // Connect directly to the socket for immediate notification updates
-    if (socketService.socket) {
-      log.debug("📱 Setting up direct socket handlers in NotificationsComponent")
-
-      // Listen for all types of notification events
-      socketService.socket.on("notification", handleDirectNotification)
-      socketService.socket.on("newMessage", handleDirectNotification)
-      socketService.socket.on("newLike", handleDirectNotification)
-      socketService.socket.on("photoPermissionRequestReceived", handleDirectNotification)
-      socketService.socket.on("photoPermissionResponseReceived", handleDirectNotification)
-      socketService.socket.on("newComment", handleDirectNotification)
-      socketService.socket.on("incomingCall", handleDirectNotification)
-
-      // Test the socket connection by logging its state
-      log.debug("Socket connected:", socketService.isConnected())
-      log.debug("Socket ID:", socketService.socket.id)
+    
+    // Setup socket connection/disconnection handlers
+    const handleSocketConnect = () => {
+      log.debug("Socket connected in component handler")
+      // Update our local state immediately, don't wait for context
+      setConnectionState("connected")
+    }
+    
+    const handleSocketDisconnect = () => {
+      log.debug("Socket disconnected in component handler")
+      // Update our local state immediately, don't wait for context
+      setConnectionState("disconnected")
     }
 
+    // Function to attach socket event listeners
+    const attachSocketListeners = () => {
+      if (socketService.socket) {
+        log.debug("📱 Setting up direct socket handlers in NotificationsComponent")
+
+        // Listen for all types of notification events
+        socketService.socket.on("notification", handleDirectNotification)
+        socketService.socket.on("newMessage", handleDirectNotification)
+        socketService.socket.on("newLike", handleDirectNotification)
+        socketService.socket.on("photoPermissionRequestReceived", handleDirectNotification)
+        socketService.socket.on("photoPermissionResponseReceived", handleDirectNotification)
+        socketService.socket.on("newComment", handleDirectNotification)
+        socketService.socket.on("incomingCall", handleDirectNotification)
+        
+        // Add connection state handlers
+        socketService.socket.on("connect", handleSocketConnect)
+        socketService.socket.on("disconnect", handleSocketDisconnect)
+
+        // Test the socket connection by logging its state
+        const isConnected = socketService.isConnected()
+        log.debug("Socket connected:", isConnected)
+        log.debug("Socket ID:", socketService.socket.id)
+        
+        // Make sure our local state reflects reality
+        setConnectionState(isConnected ? "connected" : "disconnected")
+      }
+    }
+    
+    // Initial attachment
+    attachSocketListeners()
+    
     return () => {
       if (socketService.socket) {
         socketService.socket.off("notification", handleDirectNotification)
@@ -159,6 +185,8 @@ const NotificationsComponent = ({
         socketService.socket.off("photoPermissionResponseReceived", handleDirectNotification)
         socketService.socket.off("newComment", handleDirectNotification)
         socketService.socket.off("incomingCall", handleDirectNotification)
+        socketService.socket.off("connect", handleSocketConnect)
+        socketService.socket.off("disconnect", handleSocketDisconnect)
       }
 
       // Clear any pending refresh timeouts
@@ -174,7 +202,7 @@ const NotificationsComponent = ({
   // Add a connection state flag to avoid false disconnection messages
   const [connectionState, setConnectionState] = useState(socketConnected ? "connected" : "disconnected");
   
-  // Force socket check on component mount
+  // Force socket check on component mount with improved synchronization
   useEffect(() => {
     // Check actual socket connection status directly
     const checkSocketStatus = async () => {
@@ -184,10 +212,11 @@ const NotificationsComponent = ({
           const isActuallyConnected = socketService.isConnected();
           log.debug(`Initial socket check - Connected: ${isActuallyConnected}`);
           
-          // If state doesn't match reality, fix it
+          // If state doesn't match reality, adjust the connection state here rather than
+          // waiting for context to catch up. This prevents UI inconsistency.
           if (socketConnected !== isActuallyConnected) {
-            log.warn(`Socket connection state mismatch. Context: ${socketConnected}, Actual: ${isActuallyConnected}`);
-            // The actual connection status will be picked up by the context eventually
+            log.debug(`Aligning component connection state with actual socket state (${isActuallyConnected})`);
+            setConnectionState(isActuallyConnected ? "connected" : "disconnected");
           }
         }
       } catch (err) {
@@ -200,27 +229,33 @@ const NotificationsComponent = ({
 
   // Monitor socket connection status and refresh when reconnected
   useEffect(() => {
-    log.debug(`Socket connection change detected - previous: ${previousConnectedRef.current}, current: ${socketConnected}`);
+    // Always check the actual socket status instead of just relying on the context state
+    const actualSocketConnected = socketService.isConnected();
     
-    // Update connection state for UI
-    setConnectionState(socketConnected ? "connected" : "disconnected");
+    log.debug(`Socket connection change detected - context: ${socketConnected}, actual: ${actualSocketConnected}`);
+    
+    // Use the actual socket status for our component's connection state
+    setConnectionState(actualSocketConnected ? "connected" : "disconnected");
+    
+    // Track state changes based on the actual socket status for better reliability
+    const wasConnected = previousConnectedRef.current;
     
     // If socket reconnects, refresh notifications
-    if (socketConnected && !previousConnectedRef.current) {
+    if (actualSocketConnected && !wasConnected) {
       log.debug("Socket reconnected - refreshing notifications");
       refreshNotifications();
       lastRefreshRef.current = Date.now();
     }
 
     // If socket disconnects, set up polling fallback
-    if (!socketConnected && previousConnectedRef.current) {
+    if (!actualSocketConnected && wasConnected) {
       log.debug("Socket disconnected - setting up polling fallback");
       
       // Set up a polling mechanism when socket is disconnected
       const pollInterval = 60000; // 1 minute
 
       const pollForUpdates = () => {
-        // Check if socket is still disconnected before polling
+        // Check the actual socket status before polling
         if (!socketService.isConnected()) {
           log.debug("Polling for notifications while socket is disconnected");
           refreshNotifications();
@@ -230,6 +265,8 @@ const NotificationsComponent = ({
           refreshTimeoutRef.current = setTimeout(pollForUpdates, pollInterval);
         } else {
           log.debug("Socket reconnected during polling cycle, stopping poll");
+          // Also update our connection state to match reality
+          setConnectionState("connected");
         }
       };
 
@@ -237,8 +274,8 @@ const NotificationsComponent = ({
       refreshTimeoutRef.current = setTimeout(pollForUpdates, 5000);
     }
 
-    // Update the ref at the end of the effect to track changes
-    previousConnectedRef.current = socketConnected;
+    // Update the ref at the end of the effect to track the actual socket status
+    previousConnectedRef.current = actualSocketConnected;
 
     // Clean up polling timers when component unmounts or socket reconnects
     return () => {
@@ -587,13 +624,29 @@ const NotificationsComponent = ({
       {showFilters && !isMobile && renderFilterButtons()}
 
       <div ref={listRef} className="notification-list" style={{ maxHeight: `${maxHeight}px` }}>
-        {filteredNotifications.map((notification) => (
-          <NotificationItem
-            key={notification._id || notification.id || `notification-${Math.random()}`}
-            notification={notification}
-            onClick={handleNotificationClick}
-          />
-        ))}
+        {filteredNotifications.map((notification, index) => {
+          // Create a stable, unique key that won't cause re-renders
+          // Use a combination of fields to ensure uniqueness, falling back to index if needed
+          const uniqueId = notification._id || 
+                          notification.id || 
+                          (notification.createdAt && notification.type ? 
+                           `${notification.type}-${notification.createdAt}` : 
+                           `notification-index-${index}`);
+                           
+          return (
+            <NotificationItem
+              key={uniqueId}
+              notification={notification}
+              onClick={handleNotificationClick}
+              aria-label={`Notification: ${notification.message || notification.type || 'New notification'}`}
+            />
+          );
+        })}
+        {filteredNotifications.length === 0 && (
+          <div className="notification-empty-state">
+            <p>No notifications to display</p>
+          </div>
+        )}
       </div>
 
       {showFilters && isMobile && <div className="notification-footer">{renderFilterButtons()}</div>}

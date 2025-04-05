@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import { protect, asyncHandler } from "../middleware/auth.js";
 import logger from "../logger.js";
 import { User, Notification } from "../models/index.js";
+import emailService from "../utils/emailService.js";
 
 const router = express.Router();
 
@@ -619,6 +620,62 @@ router.delete(
       res.status(500).json({
         success: false,
         error: "Server error while clearing notifications",
+      });
+    }
+  })
+);
+
+/**
+ * @route   POST /api/notifications/test-email
+ * @desc    Send a test email notification
+ * @access  Private
+ */
+router.post(
+  "/test-email",
+  protect,
+  asyncHandler(async (req, res) => {
+    try {
+      // Get user with settings to get their email
+      const user = await User.findById(req.user._id).select("email nickname settings");
+      
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: "User not found",
+        });
+      }
+      
+      if (!user.email) {
+        return res.status(400).json({
+          success: false,
+          error: "No email address found for your account",
+        });
+      }
+      
+      // Send test email notification
+      const result = await emailService.sendTestNotificationEmail({
+        email: user.email,
+        nickname: user.nickname || "User",
+        settings: user.settings || {}
+      });
+      
+      if (result.success) {
+        logger.info(`Test email notification sent to ${user.email} for user ${user._id}`);
+        
+        res.status(200).json({
+          success: true,
+          message: "Test email notification sent successfully",
+          details: `Email sent to ${user.email}`,
+        });
+      } else {
+        throw new Error(result.error || "Unknown error sending test email");
+      }
+    } catch (err) {
+      logger.error(`Error sending test email notification: ${err.message}`);
+      res.status(500).json({
+        success: false,
+        error: "Error sending test email notification",
+        details: err.message,
       });
     }
   })

@@ -133,28 +133,60 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
 
   // Setup loading timeout to show a message if loading takes too long
   useEffect(() => {
+    // Create a mounted ref to track component mount state
+    const isMounted = { current: true };
+    
     // Clear any existing timeout
     if (loadingTimeoutRef.current) {
       clearTimeout(loadingTimeoutRef.current);
+      loadingTimeoutRef.current = null;
     }
+    
+    // Safe state setter that checks if component is still mounted
+    const safeSetState = (setter, value) => {
+      if (isMounted.current) {
+        setter(value);
+      } else {
+        log.debug("Prevented state update after unmount in timeout effect");
+      }
+    };
     
     // If we're loading, set a timeout to show a message after 5 seconds
     if (loading && !loadingTimeout) {
       loadingTimeoutRef.current = setTimeout(() => {
-        setLoadingTimeout(true);
+        if (isMounted.current) {
+          safeSetState(setLoadingTimeout, true);
+        }
       }, 5000);
     } else if (!loading) {
-      setLoadingTimeout(false);
+      safeSetState(setLoadingTimeout, false);
     }
+    
+    // Safely add a system message while checking component is mounted
+    const addSystemMessage = (message) => {
+      if (!isMounted.current) return;
+      
+      safeSetState(setMessagesData, prev => {
+        const validPrev = Array.isArray(prev) ? prev : [];
+        return [message, ...validPrev];
+      });
+    };
+    
+    // All timeouts go into this array for cleanup
+    const timeouts = [];
     
     // Fallback timeout to prevent permanent loading state (force timeout after 10 seconds)
     const fallbackTimeout = setTimeout(() => {
+      if (!isMounted.current) return;
+      
       if (loading) {
         log.warn("Force loading timeout after 10 seconds");
-        setLoadingTimeout(true);
+        safeSetState(setLoadingTimeout, true);
         
         // Force loading to false after 15 seconds total if still loading
-        setTimeout(() => {
+        const forceExitTimeout = setTimeout(() => {
+          if (!isMounted.current) return;
+          
           if (loading) {
             log.error("Forcing exit from loading state after 15s");
             
@@ -168,21 +200,28 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
               error: true
             };
             
-            setMessagesData(prev => [errorMessage, ...(Array.isArray(prev) ? prev : [])]);
+            addSystemMessage(errorMessage);
             
-            // Try to create an empty message list to recover 
-            if (messagesData.length === 0) {
-              setMessagesData([{
-                _id: generateUniqueId(),
-                sender: "system",
-                content: "No messages found. You can start a new conversation.",
-                createdAt: new Date().toISOString(),
-                type: "system"
-              }]);
-            }
+            // Try to create an empty message list to recover
+            // Use a function to get the latest state
+            safeSetState(setMessagesData, currentMessages => {
+              if (Array.isArray(currentMessages) && currentMessages.length === 0) {
+                return [{
+                  _id: generateUniqueId(),
+                  sender: "system",
+                  content: "No messages found. You can start a new conversation.",
+                  createdAt: new Date().toISOString(),
+                  type: "system"
+                }];
+              }
+              return currentMessages;
+            });
             
-            // Attempt reconnection
-            if (socketService && socketService.isConnected && !socketService.isConnected()) {
+            // Attempt reconnection if needed
+            if (socketService && 
+                typeof socketService.isConnected === 'function' && 
+                !socketService.isConnected() &&
+                isMounted.current) {
               log.info("Attempting socket reconnection after timeout");
               try {
                 socketService.reconnect();
@@ -192,30 +231,98 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
             }
           }
         }, 5000);
+        
+        // Add to timeouts array for cleanup
+        timeouts.push(forceExitTimeout);
       }
-    }, 10000); // Reduced from 15s to 10s
+    }, 10000);
     
+    // Add main timeout to array for cleanup
+    timeouts.push(fallbackTimeout);
+    
+    // Enhanced cleanup function to ensure all timeouts are cleared
     return () => {
+      // Mark component as unmounted
+      isMounted.current = false;
+      
+      // Clear the main loading timeout
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
       }
-      clearTimeout(fallbackTimeout);
+      
+      // Clear all additional timeouts
+      timeouts.forEach(timeout => clearTimeout(timeout));
+      
+      log.debug("Cleaned up all timeouts in loading effect");
     };
-  }, [loading, loadingTimeout, messagesData.length]);
+  }, [loading, loadingTimeout]);
 
-  // Handle incoming video calls
+  // Handle incoming video calls with improved state handling
+  // Define handleEndCall function before using it in useEffect
+  const handleEndCall = (e) => {
+    if (e) e.stopPropagation()
+    
+    // Send hangup signal if we have an active call
+    if (isCallActive) {
+      socketService.emit("videoHangup", {
+        recipientId: recipient?._id
+      });
+    }
+    
+    // Reset call states
+    setIsCallActive(false)
+    setIncomingCall(null)
+
+    // Add a system message instead of toast
+    const systemMessage = {
+      _id: generateUniqueId(),
+      sender: "system",
+      content: `Video call with ${recipient?.nickname || 'user'} ended.`,
+      createdAt: new Date().toISOString(),
+      type: "system",
+    }
+
+    setMessagesData((prev) => [...prev, systemMessage])
+  };
+
   useEffect(() => {
+    // Skip effect execution if required props are missing
     if (!isOpen || !recipient || !user?._id) return;
+    
+    // Create a mounted ref to track component mount state
+    const isMounted = { current: true };
+    
+    // Safe state setter that checks if component is still mounted
+    const safeSetState = (setter, value) => {
+      if (isMounted.current) {
+        setter(value);
+      } else {
+        log.debug("Prevented state update after unmount in call handler effect");
+      }
+    };
+    
+    // Safely add a system message while checking component is mounted
+    const addSystemMessage = (message) => {
+      if (!isMounted.current) return;
+      
+      safeSetState(setMessagesData, prev => {
+        if (!Array.isArray(prev)) {
+          return [message];
+        }
+        return [...prev, message];
+      });
+    };
     
     // Register for incoming call events
     const handleIncomingCall = (call) => {
       // Ignore calls not from this recipient when chat is open
-      if (call.userId !== recipient._id) return;
+      if (call.userId !== recipient._id || !isMounted.current) return;
       
       log.debug(`Received incoming call from ${call.userId}`, call);
       
       // Set the incoming call data
-      setIncomingCall({
+      safeSetState(setIncomingCall, {
         callId: call.callId,
         callerName: call.caller?.name || recipient.nickname,
         callerId: call.userId,
@@ -231,12 +338,12 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
         type: "system",
       };
       
-      setMessagesData((prev) => [...prev, systemMessage]);
+      addSystemMessage(systemMessage);
     };
     
     // Handle call accepted event
     const handleCallAccepted = (data) => {
-      if (data.userId !== recipient._id) return;
+      if (data.userId !== recipient._id || !isMounted.current) return;
       
       log.debug(`Call accepted by ${recipient.nickname}`);
       
@@ -249,13 +356,17 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
         type: "system",
       };
       
-      setMessagesData((prev) => [...prev, systemMessage]);
-      toast.success(`${recipient.nickname} accepted your call`);
+      addSystemMessage(systemMessage);
+      
+      // Only show toast if component is mounted
+      if (isMounted.current) {
+        toast.success(`${recipient.nickname} accepted your call`);
+      }
     };
     
     // Handle call declined event
     const handleCallDeclined = (data) => {
-      if (data.userId !== recipient._id) return;
+      if (data.userId !== recipient._id || !isMounted.current) return;
       
       log.debug(`Call declined by ${recipient.nickname}`);
       
@@ -268,19 +379,23 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
         type: "system",
       };
       
-      setMessagesData((prev) => [...prev, systemMessage]);
-      setIsCallActive(false);
-      toast.info(`${recipient.nickname} declined your call`);
+      addSystemMessage(systemMessage);
+      safeSetState(setIsCallActive, false);
+      
+      // Only show toast if component is mounted
+      if (isMounted.current) {
+        toast.info(`${recipient.nickname} declined your call`);
+      }
     };
     
     // Handle call hangup event
     const handleCallHangup = (data) => {
-      if (data.userId !== recipient._id) return;
+      if (data.userId !== recipient._id || !isMounted.current) return;
       
       log.debug(`Call hung up by ${recipient.nickname}`);
       
       // End the call if it's active
-      if (isCallActive) {
+      if (isCallActive && isMounted.current) {
         handleEndCall();
       }
     };
@@ -295,12 +410,38 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
     
     // Cleanup on unmount
     return () => {
-      unsubscribers.forEach(unsubscribe => unsubscribe());
+      // Mark component as unmounted to prevent state updates
+      isMounted.current = false;
+      
+      // Clean up all event listeners
+      unsubscribers.forEach(unsubscribe => {
+        if (typeof unsubscribe === 'function') {
+          try {
+            unsubscribe();
+          } catch (error) {
+            log.error("Error unsubscribing from socket event:", error);
+          }
+        }
+      });
+      
+      log.debug("Cleaned up all call event listeners");
     };
   }, [isOpen, recipient, user?._id, isCallActive]);
 
   // Update messagesData when hookMessages changes
   useEffect(() => {
+    // Create a mounted ref to track component mount state
+    const isMounted = { current: true };
+    
+    // Safe state setter that checks if component is still mounted
+    const safeSetState = (setter, value) => {
+      if (isMounted.current) {
+        setter(value);
+      } else {
+        log.debug("Prevented state update after unmount in messages effect");
+      }
+    };
+    
     // Update local state based on hook state, filtering out duplicates
     if (Array.isArray(hookMessages)) {
       // Create a map of message IDs we've already seen to filter out duplicates
@@ -344,18 +485,26 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
         log.debug(`Filtered out ${hookMessages.length - uniqueMessages.length} duplicate messages`);
       }
       
-      setMessagesData(normalizedMessages);
-      log.debug(`Received ${normalizedMessages.length} normalized messages from hook`);
+      // Only update state if component is still mounted
+      safeSetState(setMessagesData, normalizedMessages);
+      
+      log.debug(`Processed ${normalizedMessages.length} normalized messages from hook`);
     } else {
       log.warn(`Received non-array messages from hook: ${typeof hookMessages}`);
       // Initialize with empty array to prevent undefined errors
-      setMessagesData([]);
+      safeSetState(setMessagesData, []);
     }
     
     // If loading completes but we have no messages, that's okay - just not an error state
     if (!loading && Array.isArray(hookMessages) && hookMessages.length === 0) {
       log.debug("Loading complete with no messages");
     }
+    
+    // Cleanup function
+    return () => {
+      // Mark component as unmounted
+      isMounted.current = false;
+    };
   }, [hookMessages, loading])
 
   // Scroll to bottom when messages change
@@ -372,29 +521,109 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
 
   // Focus on the chat input when the chat opens
   useEffect(() => {
+    // Create a mounted ref to track component mount state
+    const isMounted = { current: true };
+    
+    // Only proceed if conditions are met
     if (isOpen && recipient && !isMinimized && !isCollapsed) {
-      setTimeout(() => {
-        if (chatInputRef.current) {
-          chatInputRef.current.focus()
+      const focusTimeout = setTimeout(() => {
+        // Check if component is still mounted
+        if (isMounted.current && chatInputRef.current) {
+          try {
+            chatInputRef.current.focus();
+            log.debug("Focused chat input after open");
+          } catch (error) {
+            log.error("Error focusing chat input:", error);
+          }
         }
-      }, 300)
+      }, 300);
+      
+      // Return cleanup function
+      return () => {
+        isMounted.current = false;
+        clearTimeout(focusTimeout);
+      };
     }
+    
+    // Always return a cleanup function
+    return () => {
+      isMounted.current = false;
+    };
   }, [isOpen, recipient, isMinimized, isCollapsed])
 
-  // Cleanup on component unmount
+  // Enhanced cleanup on component unmount
   useEffect(() => {
+    // Create a mounted ref to track component mount state
+    const isMounted = { current: true };
+    
+    // Track all timeouts created by this component for proper cleanup
+    const allTimeouts = new Set();
+    
+    // Create a safe timeout function that automatically tracks the timeout IDs
+    const createSafeTimeout = (callback, delay) => {
+      // Skip if already unmounted
+      if (!isMounted.current) return null;
+      
+      // Create the timeout and track it
+      const timeoutId = setTimeout(() => {
+        // Remove from tracking once executed
+        allTimeouts.delete(timeoutId);
+        
+        // Only execute callback if still mounted
+        if (isMounted.current) {
+          callback();
+        }
+      }, delay);
+      
+      // Add to tracking set
+      allTimeouts.add(timeoutId);
+      
+      return timeoutId;
+    };
+    
+    // Add this to window for other event handlers in this component to use
+    window.__EmbeddedChat_createSafeTimeout = createSafeTimeout;
+    
+    // Comprehensive cleanup function
     return () => {
-      // Clear all timeouts
+      // Mark component as unmounted
+      isMounted.current = false;
+      
+      log.debug(`Running comprehensive cleanup for EmbeddedChat component`);
+      
+      // Clear all explicitly tracked timeouts
       if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current)
-      }
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current)
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
       }
       
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
+      
+      // Clear all timeouts created with the safe timeout function
+      if (allTimeouts.size > 0) {
+        log.debug(`Clearing ${allTimeouts.size} tracked timeouts`);
+        allTimeouts.forEach(timeoutId => {
+          clearTimeout(timeoutId);
+        });
+        allTimeouts.clear();
+      }
+      
+      // Remove the global helper
+      delete window.__EmbeddedChat_createSafeTimeout;
+      
       // Reset message state to prevent duplication on remount
-      setMessagesData([])
-    }
+      // This is safe because we know we're in the cleanup phase
+      try {
+        setMessagesData([]);
+      } catch (error) {
+        // Ignore errors during unmount
+      }
+      
+      log.debug(`EmbeddedChat component cleanup complete`);
+    };
   }, [])
 
   // Don't render if chat is not open
@@ -863,32 +1092,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
     }
   }
 
-  // Handle ending call
-  const handleEndCall = (e) => {
-    if (e) e.stopPropagation()
-    
-    // Send hangup signal if we have an active call
-    if (isCallActive) {
-      socketService.emit("videoHangup", {
-        recipientId: recipient._id
-      });
-    }
-    
-    // Reset call states
-    setIsCallActive(false)
-    setIncomingCall(null)
-
-    // Add a system message instead of toast
-    const systemMessage = {
-      _id: generateUniqueId(),
-      sender: "system",
-      content: `Video call with ${recipient.nickname} ended.`,
-      createdAt: new Date().toISOString(),
-      type: "system",
-    }
-
-    setMessagesData((prev) => [...prev, systemMessage])
-  }
+  // This is now defined above the useEffect to avoid the reference error
 
   // Handle enter key press
   const handleKeyPress = (e) => {

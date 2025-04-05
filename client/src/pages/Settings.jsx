@@ -34,6 +34,10 @@ const Settings = () => {
       stories: true,
       likes: true,
       comments: true,
+      // Email notification settings
+      email: true,
+      emailOfflineOnly: true,
+      emailDigestFrequency: "instant", // 'instant', 'hourly', 'daily', 'never'
     },
     privacy: {
       showOnlineStatus: true,
@@ -85,6 +89,10 @@ const Settings = () => {
               stories: freshSettings.data.notifications?.stories === false ? false : !!freshSettings.data.notifications?.stories,
               likes: freshSettings.data.notifications?.likes === false ? false : !!freshSettings.data.notifications?.likes,
               comments: freshSettings.data.notifications?.comments === false ? false : !!freshSettings.data.notifications?.comments,
+              // Email notification settings
+              email: freshSettings.data.notifications?.email === false ? false : !!freshSettings.data.notifications?.email,
+              emailOfflineOnly: freshSettings.data.notifications?.emailOfflineOnly === false ? false : !!freshSettings.data.notifications?.emailOfflineOnly,
+              emailDigestFrequency: freshSettings.data.notifications?.emailDigestFrequency || defaultSettings.notifications.emailDigestFrequency,
             },
             privacy: {
               showOnlineStatus: freshSettings.data.privacy?.showOnlineStatus ?? defaultSettings.privacy.showOnlineStatus,
@@ -121,6 +129,10 @@ const Settings = () => {
             stories: userSettings.notifications?.stories === false ? false : !!userSettings.notifications?.stories,
             likes: userSettings.notifications?.likes === false ? false : !!userSettings.notifications?.likes,
             comments: userSettings.notifications?.comments === false ? false : !!userSettings.notifications?.comments,
+            // Email notification settings
+            email: userSettings.notifications?.email === false ? false : !!userSettings.notifications?.email,
+            emailOfflineOnly: userSettings.notifications?.emailOfflineOnly === false ? false : !!userSettings.notifications?.emailOfflineOnly,
+            emailDigestFrequency: userSettings.notifications?.emailDigestFrequency || defaultSettings.notifications.emailDigestFrequency,
           },
           privacy: {
             showOnlineStatus: userSettings.privacy?.showOnlineStatus ?? defaultSettings.privacy.showOnlineStatus,
@@ -212,6 +224,10 @@ const Settings = () => {
           stories: settings.notifications.stories === false ? false : !!settings.notifications.stories,
           likes: settings.notifications.likes === false ? false : !!settings.notifications.likes,
           comments: settings.notifications.comments === false ? false : !!settings.notifications.comments,
+          // Email notification settings
+          email: settings.notifications.email === false ? false : !!settings.notifications.email,
+          emailOfflineOnly: settings.notifications.emailOfflineOnly === false ? false : !!settings.notifications.emailOfflineOnly,
+          emailDigestFrequency: settings.notifications.emailDigestFrequency || defaultSettings.notifications.emailDigestFrequency,
         },
         privacy: { ...settings.privacy }
       };
@@ -539,6 +555,135 @@ const Settings = () => {
                 <span className={styles.toggleSlider}></span>
               </label>
             </div>
+
+            {/* Email Notification Settings */}
+            <div className={styles.sectionDivider}>
+              <h3 className={styles.dividerTitle}>Email Notifications</h3>
+            </div>
+
+            <div className={styles.settingsOption}>
+              <div className={styles.optionContent}>
+                <h3 className={styles.optionTitle}>Email Notifications</h3>
+                <p className={styles.optionDescription}>Receive important notifications via email</p>
+              </div>
+              <label className={styles.toggleWrapper}>
+                <input
+                  type="checkbox"
+                  checked={settings.notifications.email}
+                  onChange={() => handleToggleChange("notifications", "email")}
+                  className={styles.toggleInput}
+                />
+                <span className={styles.toggleSlider}></span>
+              </label>
+            </div>
+
+            {settings.notifications.email && (
+              <>
+                <div className={styles.settingsOption}>
+                  <div className={styles.optionContent}>
+                    <h3 className={styles.optionTitle}>Offline Messages Only</h3>
+                    <p className={styles.optionDescription}>Only send email notifications for messages when you're offline</p>
+                  </div>
+                  <label className={styles.toggleWrapper}>
+                    <input
+                      type="checkbox"
+                      checked={settings.notifications.emailOfflineOnly}
+                      onChange={() => handleToggleChange("notifications", "emailOfflineOnly")}
+                      className={styles.toggleInput}
+                    />
+                    <span className={styles.toggleSlider}></span>
+                  </label>
+                </div>
+
+                <div className={styles.settingsOption}>
+                  <div className={styles.optionContent}>
+                    <h3 className={styles.optionTitle}>Email Frequency</h3>
+                    <p className={styles.optionDescription}>How often to receive email notifications</p>
+                  </div>
+                  <div className={styles.radioGroup}>
+                    <label className={styles.radioOption}>
+                      <input
+                        type="radio"
+                        name="emailFrequency"
+                        value="instant"
+                        checked={settings.notifications.emailDigestFrequency === "instant"}
+                        onChange={() => handleRadioChange("notifications", "emailDigestFrequency", "instant")}
+                        className={styles.radioInput}
+                      />
+                      Instant
+                    </label>
+                    <label className={styles.radioOption}>
+                      <input
+                        type="radio"
+                        name="emailFrequency"
+                        value="hourly"
+                        checked={settings.notifications.emailDigestFrequency === "hourly"}
+                        onChange={() => handleRadioChange("notifications", "emailDigestFrequency", "hourly")}
+                        className={styles.radioInput}
+                      />
+                      Hourly Digest
+                    </label>
+                    <label className={styles.radioOption}>
+                      <input
+                        type="radio"
+                        name="emailFrequency"
+                        value="daily"
+                        checked={settings.notifications.emailDigestFrequency === "daily"}
+                        onChange={() => handleRadioChange("notifications", "emailDigestFrequency", "daily")}
+                        className={styles.radioInput}
+                      />
+                      Daily Digest
+                    </label>
+                    <label className={styles.radioOption}>
+                      <input
+                        type="radio"
+                        name="emailFrequency"
+                        value="never"
+                        checked={settings.notifications.emailDigestFrequency === "never"}
+                        onChange={() => handleRadioChange("notifications", "emailDigestFrequency", "never")}
+                        className={styles.radioInput}
+                      />
+                      Never
+                    </label>
+                  </div>
+                </div>
+
+                {/* Test Email Notification Button */}
+                <div className={styles.testEmailSection}>
+                  <button 
+                    className={styles.testEmailButton}
+                    onClick={async () => {
+                      try {
+                        toast.info("Sending test email notification...");
+                        const response = await fetch('/api/notifications/test-email', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('token')}`
+                          }
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                          toast.success("Test email sent successfully! Please check your inbox.");
+                        } else {
+                          toast.error(`Failed to send test email: ${data.error}`);
+                        }
+                      } catch (error) {
+                        console.error("Error sending test email:", error);
+                        toast.error("An error occurred while sending test email");
+                      }
+                    }}
+                  >
+                    Send Test Email
+                  </button>
+                  <p className={styles.testEmailDescription}>
+                    Send a test email to verify your notification settings
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         );
 

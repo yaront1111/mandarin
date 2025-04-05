@@ -2,6 +2,8 @@ import { Message, User } from "../models/index.js"
 import logger from "../logger.js"
 import mongoose from "mongoose"
 import { safeObjectId } from "../utils/index.js" // Import from shared utils
+import emailService from "../utils/emailService.js" // Import email service for offline notifications
+import config from "../config.js" // Import config for app URL
 
 /**
  * Send a message notification
@@ -12,7 +14,8 @@ import { safeObjectId } from "../utils/index.js" // Import from shared utils
  */
 const sendMessageNotification = async (io, sender, recipient, message) => {
   try {
-    const recipientUser = await User.findById(recipient._id).select("settings socketId blockedUsers")
+    const recipientUser = await User.findById(recipient._id)
+      .select("settings socketId blockedUsers email nickname isOnline lastActive")
 
     // Check if recipient has blocked the sender
     if (recipientUser && typeof recipientUser.hasBlocked === 'function' && recipientUser.hasBlocked(sender._id)) {
@@ -46,6 +49,47 @@ const sendMessageNotification = async (io, sender, recipient, message) => {
         }
       } catch (notificationError) {
         logger.debug(`Notification saving skipped: ${notificationError.message}`)
+      }
+      
+      // Send email notification if user is offline and has email notifications enabled
+      const isUserOffline = !recipientUser?.socketId || 
+        (recipientUser.isOnline === false) || 
+        (recipientUser.lastActive && (Date.now() - new Date(recipientUser.lastActive).getTime() > 10 * 60 * 1000)); // Offline for more than 10 minutes
+      
+      // Check if recipient has email notifications enabled
+      const emailNotificationsEnabled = recipientUser?.settings?.notifications?.email !== false;
+      
+      if (isUserOffline && emailNotificationsEnabled && recipientUser.email) {
+        try {
+          logger.info(`Sending email notification to offline user ${recipientUser._id} (${recipientUser.email})`);
+          
+          // Prepare message preview - truncate if necessary
+          let messagePreview = message.content;
+          if (message.type === 'text' && messagePreview && messagePreview.length > 100) {
+            messagePreview = messagePreview.substring(0, 97) + '...';
+          }
+          
+          // Build the conversation URL
+          const appUrl = config.APP_URL || "https://flirtss.com";
+          const conversationUrl = `${appUrl}/messages/${sender._id}`;
+          
+          // Send the email
+          await emailService.sendNewMessageEmail({
+            recipientEmail: recipientUser.email,
+            recipientName: recipientUser.nickname || 'User',
+            sender: {
+              ...sender,
+              nickname: sender.nickname || sender.username || 'Someone'
+            },
+            messagePreview,
+            messageType: message.type || 'text',
+            conversationUrl
+          });
+          
+          logger.info(`Email notification sent successfully to ${recipientUser.email}`);
+        } catch (emailError) {
+          logger.error(`Failed to send email notification: ${emailError.message}`);
+        }
       }
     }
   } catch (error) {

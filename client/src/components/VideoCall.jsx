@@ -318,7 +318,9 @@ const VideoCall = ({
   const processedSignalsRef = useRef(new Set());
   const incomingSignalQueueRef = useRef([]);
   const negotiationInProgressRef = useRef(false);
-  const isMountedRef = useRef(false);
+  // Initialize to true and explicitly set to false in useEffect cleanup to avoid memory leaks.
+  // This ref is used throughout the component to prevent state updates after unmounting.
+  const isMountedRef = useRef(true);
   const connectionCompletedRef = useRef(false);
   const callAnsweredRef = useRef(false);
 
@@ -1635,15 +1637,52 @@ const VideoCall = ({
 
   // --- Effects ---
 
-  // Effect to manage component mount state
+  // Effect to manage component mount state and clean up all resources
   useEffect(() => {
-    isMountedRef.current = true;
+    // We started with isMountedRef.current = true already
     log.debug("VideoCall component mounted.");
 
+    // Create a collection of all timeouts and intervals for centralized cleanup
+    const timers = new Set();
+    
+    // Override setTimeout to track all timers
+    const originalSetTimeout = window.setTimeout;
+    window.setTimeout = (...args) => {
+      const id = originalSetTimeout(...args);
+      timers.add(id);
+      return id;
+    };
+    
+    // Override setInterval to track all intervals
+    const originalSetInterval = window.setInterval;
+    window.setInterval = (...args) => {
+      const id = originalSetInterval(...args);
+      timers.add(id);
+      return id;
+    };
+    
+    // Return comprehensive cleanup function
     return () => {
+      // IMPORTANT: Set mounted flag to false first to prevent any further state updates
+      // This flag is checked in multiple places throughout the component to prevent 
+      // state updates after unmounting, which would cause memory leaks
       isMountedRef.current = false;
-      log.debug("VideoCall component unmounting.");
+      log.debug("VideoCall component unmounting. Cleaning up resources...");
+      
+      // Clear all timeouts and intervals
+      timers.forEach(id => {
+        clearTimeout(id);
+        clearInterval(id);
+      });
+      
+      // Close WebRTC connection
       closeConnection();
+      
+      // Restore original timer functions
+      window.setTimeout = originalSetTimeout;
+      window.setInterval = originalSetInterval;
+      
+      log.debug(`VideoCall cleanup complete. Cleared ${timers.size} timers.`);
     };
   }, [closeConnection]);
 

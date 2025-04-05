@@ -466,9 +466,213 @@ export const testEmailConfiguration = async (testEmail) => {
   }
 }
 
+/**
+ * Sends a test notification email to verify user's notification settings
+ * @param {Object} options - Email options
+ * @param {string} options.email - Recipient email
+ * @param {string} options.nickname - User's nickname
+ * @param {Object} options.settings - User's notification settings
+ * @returns {Promise<Object>} - Result object with success status
+ */
+export const sendTestNotificationEmail = async ({ email, nickname, settings }) => {
+  try {
+    const appName = config.APP_NAME || "Flirtss"
+    const appUrl = config.APP_URL || "https://flirtss.com"
+    
+    const subject = `Test Notification from ${appName}`
+    
+    // Get settings summary
+    const emailEnabled = settings?.notifications?.email !== false
+    const frequency = settings?.notifications?.emailDigestFrequency || 'instant'
+    const offlineOnly = settings?.notifications?.emailOfflineOnly !== false
+    
+    // Plain text version
+    const text = `
+      Hello ${nickname},
+      
+      This is a test notification email from ${appName}.
+      
+      Your current email notification settings:
+      
+      - Email notifications: ${emailEnabled ? 'Enabled' : 'Disabled'}
+      - Frequency: ${frequency}
+      - Offline only: ${offlineOnly ? 'Yes' : 'No'}
+      
+      If you received this email, your email notification settings are working correctly.
+      
+      You can update your notification preferences at any time in your settings:
+      ${appUrl}/settings
+      
+      Best regards,
+      The ${appName} Team
+    `
+    
+    // HTML version
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Test Notification</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+          }
+          .container {
+            border: 1px solid #e1e1e1;
+            border-radius: 8px;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+          }
+          .header {
+            text-align: center;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e1e1e1;
+            margin-bottom: 20px;
+          }
+          .logo {
+            max-width: 150px;
+            height: auto;
+            margin-bottom: 10px;
+          }
+          .button {
+            display: inline-block;
+            background-color: #ff4b7d;
+            color: white !important;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            margin: 20px 0;
+            font-weight: bold;
+            text-align: center;
+          }
+          .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 12px;
+            color: #888;
+            padding-top: 15px;
+            border-top: 1px solid #e1e1e1;
+          }
+          .settings-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+          }
+          .settings-table th, .settings-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #e1e1e1;
+          }
+          .settings-table th {
+            background-color: #f5f5f5;
+          }
+          .enabled {
+            color: #28a745;
+            font-weight: bold;
+          }
+          .disabled {
+            color: #dc3545;
+          }
+          .test-badge {
+            display: inline-block;
+            background-color: #6c757d;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 10px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <img src="${appUrl}/logo.png" alt="${appName} Logo" class="logo">
+            <h1>${appName} <span class="test-badge">TEST</span></h1>
+          </div>
+          
+          <p>Hello ${nickname},</p>
+          
+          <p>This is a test notification email from ${appName}.</p>
+          
+          <h2>Your Email Notification Settings</h2>
+          
+          <table class="settings-table">
+            <tr>
+              <th>Setting</th>
+              <th>Status</th>
+            </tr>
+            <tr>
+              <td>Email Notifications</td>
+              <td class="${emailEnabled ? 'enabled' : 'disabled'}">
+                ${emailEnabled ? 'Enabled' : 'Disabled'}
+              </td>
+            </tr>
+            <tr>
+              <td>Delivery Frequency</td>
+              <td>
+                ${frequency === 'instant' ? 'Instant' : 
+                  frequency === 'hourly' ? 'Hourly Digest' : 
+                  frequency === 'daily' ? 'Daily Digest' : 'Never'}
+              </td>
+            </tr>
+            <tr>
+              <td>Offline Messages Only</td>
+              <td>
+                ${offlineOnly ? 'Yes' : 'No'}
+              </td>
+            </tr>
+          </table>
+          
+          <p>If you received this email, your email notification settings are working correctly.</p>
+          
+          <div style="text-align: center;">
+            <a href="${appUrl}/settings" class="button">Manage Settings</a>
+          </div>
+          
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} ${appName}. All rights reserved.</p>
+            <p>
+              <small>This is a test email. If you did not request this test, you can safely ignore it.</small>
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+    
+    const info = await sendEmailNotification({
+      to: email,
+      subject,
+      text,
+      html
+    })
+    
+    return {
+      success: true,
+      messageId: info.messageId
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    }
+  }
+}
+
 export default {
   sendEmailNotification,
   sendVerificationEmail,
   sendNewMessageEmail,
-  testEmailConfiguration
+  testEmailConfiguration,
+  sendTestNotificationEmail
 }

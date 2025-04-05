@@ -88,9 +88,11 @@ const UserCard = ({
     if (onClick) {
       console.log('Using provided onClick handler');
       onClick();
-    } else {
+    } else if (user?._id) {
       console.log('Navigating to user profile:', `/user/${user._id}`);
       navigate(`/user/${user._id}`);
+    } else {
+      console.log('Cannot navigate: missing user ID');
     }
   }, [onClick, navigate, user?._id]);
 
@@ -98,13 +100,15 @@ const UserCard = ({
   const handleLikeClick = useCallback(
     (e) => {
       // Prevent event propagation to avoid triggering parent click
-      e.stopPropagation();
-      e.preventDefault();
+      e?.stopPropagation();
+      e?.preventDefault();
 
-      if (onLike) {
+      if (onLike && user?._id && user?.nickname) {
         logger.debug(`Like button clicked for user ${user._id}, current isLiked: ${isLiked}`);
         // Pass the user ID and name to the parent component for like handling
         onLike(user._id, user.nickname);
+      } else if (onLike) {
+        logger.debug('Like button clicked but user data is incomplete');
       }
     },
     [onLike, user?._id, user?.nickname, isLiked],
@@ -113,9 +117,14 @@ const UserCard = ({
   const handleMessageClick = useCallback(
     (e) => {
       // Ensure the event doesn't bubble up and trigger card click
-      e.stopPropagation();
-      e.preventDefault();
+      e?.stopPropagation();
+      e?.preventDefault();
 
+      if (!user) {
+        logger.error('Cannot message: user data is missing');
+        return;
+      }
+      
       if (onMessage) {
         onMessage(e, user);
       } else {
@@ -222,10 +231,15 @@ const UserCard = ({
   const getTranslatedTag = useCallback((namespace, tag) => {
     if (!tag) return "";
 
-    // Format the tag key according to the i18n pattern
-    const key = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
-    // Use the original tag as the default if translation fails
-    return safeTranslate(t, key, tag);
+    try {
+      // Format the tag key according to the i18n pattern
+      const key = `${namespace}.${tag?.toLowerCase?.()?.replace?.(/\s+/g, '_') || tag}`;
+      // Use the original tag as the default if translation fails
+      return safeTranslate(t, key, tag);
+    } catch (error) {
+      logger.error(`Translation error for tag '${tag}':`, error);
+      return tag || "";
+    }
   }, [t]);
 
   // Validation
@@ -263,7 +277,7 @@ const UserCard = ({
         noPadding={true}
         headerClassName={styles.cardHeader}
         bodyClassName={styles.cardBody}
-        data-userid={user._id}
+        data-userid={user?._id || 'unknown'}
       >
         {/* User Photo */}
         <div className={styles.cardPhoto}>
@@ -308,11 +322,11 @@ const UserCard = ({
                     <span className={styles.detailLabel}>{safeTranslate(t, 'profile.iAm', 'I am')}:</span>
                     <span
                       className={`${styles.tag} ${styles.identityTag} ${
-                        extendedDetails.identity.toLowerCase().includes("woman")
+                        extendedDetails.identity?.toLowerCase?.()?.includes?.("woman")
                           ? styles.identityWoman
-                          : extendedDetails.identity.toLowerCase().includes("man")
+                          : extendedDetails.identity?.toLowerCase?.()?.includes?.("man")
                             ? styles.identityMan
-                            : extendedDetails.identity.toLowerCase().includes("couple")
+                            : extendedDetails.identity?.toLowerCase?.()?.includes?.("couple")
                               ? styles.identityCouple
                               : ""
                       }`}
@@ -322,22 +336,22 @@ const UserCard = ({
                   </div>
                 )}
 
-                {tags.lookingFor.length > 0 && (
+                {tags.lookingFor?.length > 0 && tags.lookingFor[0] && (
                   <div className={styles.detailItem}>
                     <span className={styles.detailLabel}>{safeTranslate(t, 'profile.lookingFor', 'Looking for')}:</span>
                     <span className={`${styles.tag} ${
-                      tags.lookingFor[0].toLowerCase().includes("women") || tags.lookingFor[0].toLowerCase().includes("woman")
+                      tags.lookingFor[0]?.toLowerCase?.()?.includes?.("women") || tags.lookingFor[0]?.toLowerCase?.()?.includes?.("woman")
                         ? styles.identityWoman
-                        : tags.lookingFor[0].toLowerCase().includes("men") || tags.lookingFor[0].toLowerCase().includes("man")
+                        : tags.lookingFor[0]?.toLowerCase?.()?.includes?.("men") || tags.lookingFor[0]?.toLowerCase?.()?.includes?.("man")
                           ? styles.identityMan
-                          : tags.lookingFor[0].toLowerCase().includes("couple")
+                          : tags.lookingFor[0]?.toLowerCase?.()?.includes?.("couple")
                             ? styles.identityCouple
                             : styles.lookingForTag
                     }`}>
                       {getTranslatedTag('profile.lookingFor', tags.lookingFor[0])}
                     </span>
-                    {tags.lookingFor.length > 1 && (
-                      <span className={styles.moreCount}>+{tags.lookingFor.length - 1}</span>
+                    {tags.lookingFor?.length > 1 && (
+                      <span className={styles.moreCount}>+{tags.lookingFor?.length - 1 || 0}</span>
                     )}
                   </div>
                 )}
@@ -349,7 +363,7 @@ const UserCard = ({
           {showExtendedDetails && (
             <div className={styles.tagsContainer}>
               {/* Show More/Less Toggle for all sections */}
-              {(tags.lookingFor.length > 0 || tags.into.length > 0 || tags.interests.length > 0) && (
+              {(tags.lookingFor?.length > 0 || tags.into?.length > 0 || tags.interests?.length > 0) && (
                 <div className={styles.tagsToggle}>
                   <span className={styles.toggleBtn} onClick={toggleShowMoreSections}>
                     {showMoreSections ? (
@@ -382,9 +396,9 @@ const UserCard = ({
                             {getTranslatedTag('profile.interests', tag)}
                           </span>
                         ))}
-                        {tags.interests.length > 3 && !showAllTags && (
+                        {tags.interests?.length > 3 && !showAllTags && (
                           <span className={styles.moreCount} onClick={toggleShowAllTags}>
-                            +{tags.interests.length - 3}
+                            +{tags.interests?.length - 3 || 0}
                           </span>
                         )}
                       </div>
@@ -409,9 +423,9 @@ const UserCard = ({
                             {getTranslatedTag('profile.intoTags', tag)}
                           </span>
                         ))}
-                        {tags.into.length > 3 && !showAllTags && (
+                        {tags.into?.length > 3 && !showAllTags && (
                           <span className={styles.moreCount} onClick={toggleShowAllTags}>
-                            +{tags.into.length - 3}
+                            +{tags.into?.length - 3 || 0}
                           </span>
                         )}
                       </div>
@@ -419,7 +433,7 @@ const UserCard = ({
                   )}
 
                   {/* Global More/Less Toggle for all tags */}
-                  {(tags.lookingFor.length > 3 || tags.into.length > 3 || tags.interests.length > 3) && (
+                  {(tags.lookingFor?.length > 3 || tags.into?.length > 3 || tags.interests?.length > 3) && (
                     <div className={styles.tagsToggle}>
                       <span className={styles.toggleBtn} onClick={toggleShowAllTags}>
                         {showAllTags ? (
@@ -444,7 +458,7 @@ const UserCard = ({
 
   // List View Rendering
   return (
-    <div className={styles.listItem} onClick={handleCardClick} data-userid={user._id}>
+    <div className={styles.listItem} onClick={handleCardClick} data-userid={user?._id || 'unknown'}>
       {/* User Photo - List View */}
       <div className={styles.listPhotoContainer}>
         <img
@@ -489,11 +503,11 @@ const UserCard = ({
                   <span className={styles.detailLabel}>{safeTranslate(t, 'profile.iAm', 'I am')}:</span>
                   <span
                     className={`${styles.tag} ${styles.identityTag} ${
-                      extendedDetails.identity.toLowerCase().includes("woman")
+                      extendedDetails.identity?.toLowerCase?.()?.includes?.("woman")
                         ? styles.identityWoman
-                        : extendedDetails.identity.toLowerCase().includes("man")
+                        : extendedDetails.identity?.toLowerCase?.()?.includes?.("man")
                           ? styles.identityMan
-                          : extendedDetails.identity.toLowerCase().includes("couple")
+                          : extendedDetails.identity?.toLowerCase?.()?.includes?.("couple")
                             ? styles.identityCouple
                             : ""
                     }`}
@@ -503,22 +517,22 @@ const UserCard = ({
                 </div>
               )}
 
-              {tags.lookingFor.length > 0 && (
+              {tags.lookingFor?.length > 0 && tags.lookingFor[0] && (
                 <div className={styles.detailItem}>
                   <span className={styles.detailLabel}>{safeTranslate(t, 'profile.into', 'Into')}:</span>
                   <span className={`${styles.tag} ${
-                    tags.lookingFor[0].toLowerCase().includes("women") || tags.lookingFor[0].toLowerCase().includes("woman")
+                    tags.lookingFor[0]?.toLowerCase?.()?.includes?.("women") || tags.lookingFor[0]?.toLowerCase?.()?.includes?.("woman")
                       ? styles.identityWoman
-                      : tags.lookingFor[0].toLowerCase().includes("men") || tags.lookingFor[0].toLowerCase().includes("man")
+                      : tags.lookingFor[0]?.toLowerCase?.()?.includes?.("men") || tags.lookingFor[0]?.toLowerCase?.()?.includes?.("man")
                         ? styles.identityMan
-                        : tags.lookingFor[0].toLowerCase().includes("couple")
+                        : tags.lookingFor[0]?.toLowerCase?.()?.includes?.("couple")
                           ? styles.identityCouple
                           : styles.lookingForTag
                   }`}>
                     {getTranslatedTag('profile.lookingFor', tags.lookingFor[0])}
                   </span>
-                  {tags.lookingFor.length > 1 && (
-                    <span className={styles.moreCount}>+{tags.lookingFor.length - 1}</span>
+                  {tags.lookingFor?.length > 1 && (
+                    <span className={styles.moreCount}>+{tags.lookingFor?.length - 1 || 0}</span>
                   )}
                 </div>
               )}
@@ -546,26 +560,26 @@ const UserCard = ({
             {showMoreSections && (
               <>
                 {/* Interests */}
-                {tags.interests.length > 0 && (
+                {tags.interests?.length > 0 && (
                   <div className={styles.tagCategory}>
                     <h4 className={styles.categoryTitle}>{safeTranslate(t, 'profile.interests', 'Interests')}</h4>
                     <div className={styles.interestTags}>
-                      {(showAllTags ? tags.interests : tags.interests.slice(0, 2)).map((tag, idx) => (
+                      {(showAllTags ? tags.interests : tags.interests?.slice(0, 2)).map((tag, idx) => (
                         <span key={`interest-${idx}`} className={`${styles.tag} ${
-                          tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
+                          tag?.toLowerCase?.()?.includes?.("women") || tag?.toLowerCase?.()?.includes?.("woman")
                             ? styles.identityWoman
-                            : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
+                            : tag?.toLowerCase?.()?.includes?.("men") || tag?.toLowerCase?.()?.includes?.("man")
                               ? styles.identityMan
-                              : tag.toLowerCase().includes("couple")
+                              : tag?.toLowerCase?.()?.includes?.("couple")
                                 ? styles.identityCouple
                                 : ""
                         }`}>
                           {getTranslatedTag('profile.interests', tag)}
                         </span>
                       ))}
-                      {tags.interests.length > 2 && !showAllTags && (
+                      {tags.interests?.length > 2 && !showAllTags && (
                         <span className={styles.moreCount} onClick={toggleShowAllTags}>
-                          +{tags.interests.length - 2}
+                          +{tags.interests?.length - 2 || 0}
                         </span>
                       )}
                     </div>
@@ -577,22 +591,22 @@ const UserCard = ({
                   <div className={styles.tagCategory}>
                     <h4 className={styles.categoryTitle}>{safeTranslate(t, 'profile.preferences', 'Preferences')}</h4>
                     <div className={styles.interestTags}>
-                      {(showAllTags ? tags.into : tags.into.slice(0, 2)).map((tag, idx) => (
+                      {(showAllTags ? tags.into : tags.into?.slice(0, 2)).map((tag, idx) => (
                         <span key={`into-${idx}`} className={`${styles.tag} ${
-                          tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
+                          tag?.toLowerCase?.()?.includes?.("women") || tag?.toLowerCase?.()?.includes?.("woman")
                             ? styles.identityWoman
-                            : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
+                            : tag?.toLowerCase?.()?.includes?.("men") || tag?.toLowerCase?.()?.includes?.("man")
                               ? styles.identityMan
-                              : tag.toLowerCase().includes("couple")
+                              : tag?.toLowerCase?.()?.includes?.("couple")
                                 ? styles.identityCouple
                                 : styles.intoTag
                         }`}>
                           {getTranslatedTag('profile.intoTags', tag)}
                         </span>
                       ))}
-                      {tags.into.length > 2 && !showAllTags && (
+                      {tags.into?.length > 2 && !showAllTags && (
                         <span className={styles.moreCount} onClick={toggleShowAllTags}>
-                          +{tags.into.length - 2}
+                          +{tags.into?.length - 2 || 0}
                         </span>
                       )}
                     </div>
@@ -600,7 +614,7 @@ const UserCard = ({
                 )}
 
                 {/* Global More/Less Toggle for all tags */}
-                {(tags.lookingFor.length > 2 || tags.into.length > 2 || tags.interests.length > 2) && (
+                {(tags.lookingFor?.length > 2 || tags.into?.length > 2 || tags.interests?.length > 2) && (
                   <div className={styles.tagsToggle}>
                     <span className={styles.toggleBtn} onClick={toggleShowAllTags}>
                       {showAllTags ? (
@@ -659,12 +673,14 @@ UserCard.propTypes = {
 // Use the withMemo HOC instead of React.memo
 export default withMemo(UserCard, (prevProps, nextProps) => {
   // Custom comparison function for UserCard
+  if (!prevProps?.user || !nextProps?.user) return false;
+  
   return (
-    prevProps.user._id === nextProps.user._id &&
+    prevProps.user?._id === nextProps.user?._id &&
     prevProps.isLiked === nextProps.isLiked &&
     prevProps.viewMode === nextProps.viewMode &&
     prevProps.hasUnreadMessages === nextProps.hasUnreadMessages &&
     prevProps.unreadMessageCount === nextProps.unreadMessageCount &&
-    prevProps.user.isOnline === nextProps.user.isOnline
+    prevProps.user?.isOnline === nextProps.user?.isOnline
   );
 }, { debug: process.env.NODE_ENV !== 'production' });

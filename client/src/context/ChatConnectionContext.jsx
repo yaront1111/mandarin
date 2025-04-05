@@ -26,21 +26,44 @@ export const ChatConnectionProvider = ({ children }) => {
     // Track if component is mounted for cleanup
     let isMounted = true;
     
+    // Track all timeouts for proper cleanup
+    const timeouts = [];
+    
+    const safeSetTimeout = (callback, delay) => {
+      const timeoutId = setTimeout(() => {
+        if (isMounted) {
+          callback();
+        }
+      }, delay);
+      timeouts.push(timeoutId);
+      return timeoutId;
+    };
+    
     const setupConnection = async () => {
       // Wait a bit to make sure auth is fully processed
       if (isAuthenticated && user?._id && token) {
         // Small delay to allow auth context to fully stabilize
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        if (isMounted) {
-          log.debug(`User authenticated, initializing socket`);
-          initializeSocket();
+        try {
+          await new Promise(resolve => {
+            const timeoutId = setTimeout(resolve, 500);
+            timeouts.push(timeoutId);
+          });
+          
+          if (isMounted) {
+            log.debug(`User authenticated, initializing socket`);
+            // Pass the safeSetTimeout to initializeSocket
+            initializeSocket(safeSetTimeout);
+          }
+        } catch (error) {
+          log.error("Error during connection setup:", error);
         }
       } else if (!isAuthenticated) {
         // Reset connection state when not authenticated
-        setConnected(false);
-        setConnecting(false);
-        setError(null);
+        if (isMounted) {
+          setConnected(false);
+          setConnecting(false);
+          setError(null);
+        }
       }
     };
     
@@ -49,6 +72,9 @@ export const ChatConnectionProvider = ({ children }) => {
     return () => {
       // Mark as unmounted to prevent state updates after unmount
       isMounted = false;
+      
+      // Clear all timeouts
+      timeouts.forEach(id => clearTimeout(id));
       
       // Clean up socket connection
       try {
@@ -63,7 +89,7 @@ export const ChatConnectionProvider = ({ children }) => {
   }, [isAuthenticated, user, token]);
 
   // Initialize the socket connection with more robust error handling
-  const initializeSocket = () => {
+  const initializeSocket = (safeSetTimeout = setTimeout) => {
     // Check authentication status first
     if (!isAuthenticated) {
       log.warn('Cannot initialize socket: Not authenticated');
@@ -257,8 +283,11 @@ export const ChatConnectionProvider = ({ children }) => {
         socketService.on('connect_error', connectErrorHandler)
       ];
       
-      // Setup auto-reconnect logic
-      const checkConnectionInterval = setInterval(() => {
+      // Setup auto-reconnect logic using the safe setTimeout
+      let checkConnectionIntervalId = null;
+      
+      // Function to check connection
+      const checkConnection = () => {
         if (!socketService.isConnected() && isAuthenticated && user?._id) {
           const shouldAttemptReconnect = reconnectAttempts < 5; // Limit attempts
           
@@ -268,12 +297,31 @@ export const ChatConnectionProvider = ({ children }) => {
             socketService.reconnect();
           }
         }
-      }, 30000); // Check every 30 seconds
+        
+        // Schedule next check using the safeSetTimeout
+        checkConnectionIntervalId = safeSetTimeout(checkConnection, 30000);
+      };
+      
+      // Start the connection check cycle
+      checkConnectionIntervalId = safeSetTimeout(checkConnection, 30000);
       
       // Return cleanup function
       return () => {
-        handlers.forEach(unsubscribe => unsubscribe());
-        clearInterval(checkConnectionInterval);
+        // Clear all socket event handlers
+        handlers.forEach(unsubscribe => {
+          try {
+            if (typeof unsubscribe === 'function') {
+              unsubscribe();
+            }
+          } catch (e) {
+            log.error("Error unsubscribing from socket event:", e);
+          }
+        });
+        
+        // Clear the connection check timeout
+        if (checkConnectionIntervalId) {
+          clearTimeout(checkConnectionIntervalId);
+        }
       };
     } catch (err) {
       log.error(`Error initializing socket: ${err.message}`);

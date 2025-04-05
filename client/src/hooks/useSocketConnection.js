@@ -14,123 +14,209 @@ export const useSocketConnection = (options = {}) => {
   // Keep track of registered event listeners for cleanup
   const eventListenersRef = useRef(new Map());
   
-  // Initialize socket connection
+  // Initialize socket connection with improved race condition handling
   useEffect(() => {
-    const { userId, token, autoConnect = true } = options;
+    // Create connection identifier to track this specific effect instance
+    const connectionEffectId = Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+    console.log(`Initializing socket connection effect [${connectionEffectId}]`);
     
-    // Determine if we should connect now
-    const shouldConnect = autoConnect && userId && token;
+    // Flag to track if this effect instance is still active
+    let isEffectActive = true;
     
-    // Get current connection status
-    const isCurrentlyConnected = socketService.isConnected();
+    // Safe state updater that checks if the effect is still active
+    const safeSetState = (stateSetter, newValue) => {
+      if (isEffectActive) {
+        stateSetter(newValue);
+      }
+    };
     
-    // Update our state to match actual socket state
-    if (isCurrentlyConnected !== connected) {
-      setConnected(isCurrentlyConnected);
-    }
+    // Extract options safely with defaults
+    const userId = options?.userId;
+    const token = options?.token;
+    const autoConnect = options?.autoConnect !== false; // Default to true
     
-    // Only attempt to connect if required credentials are available 
+    // Determine if we should connect now - with proper type checks
+    const shouldConnect = autoConnect && 
+                         typeof userId === 'string' && userId.length > 0 && 
+                         typeof token === 'string' && token.length > 0;
+    
+    // Synchronize our state with the actual socket state to avoid inconsistencies
+    const syncConnectionState = () => {
+      const actualConnected = socketService.isConnected();
+      if (actualConnected !== connected) {
+        safeSetState(setConnected, actualConnected);
+      }
+    };
+    
+    // First synchronize state
+    syncConnectionState();
+    
+    // Track if the connection attempt is running
+    let connectionAttemptRunning = false;
+    
+    // Only attempt to connect if required credentials are available
     // and we're not already connected and autoConnect is enabled
-    if (shouldConnect && !isCurrentlyConnected) {
-      connectSocket(userId, token);
+    if (shouldConnect && !socketService.isConnected() && !connectionAttemptRunning) {
+      connectionAttemptRunning = true;
+      console.log(`[${connectionEffectId}] Initiating connection with userId: ${userId}`);
+      
+      // Use a non-blocking approach to prevent blocking the effect
+      connectSocket(userId, token)
+        .then(success => {
+          if (!isEffectActive) return;
+          connectionAttemptRunning = false;
+          console.log(`[${connectionEffectId}] Connection attempt result: ${success ? 'connected' : 'failed'}`);
+        })
+        .catch(error => {
+          if (!isEffectActive) return;
+          connectionAttemptRunning = false;
+          console.error(`[${connectionEffectId}] Connection attempt error:`, error);
+        });
     }
     
-    // Setup connection status listeners
+    // Setup connection status listeners with improved error handling
     const handleConnect = () => {
-      setConnected(true);
-      setConnectionError(null);
-      setIsConnecting(false);
-      console.log("Socket connected successfully");
+      console.log(`[${connectionEffectId}] Socket connected successfully`);
+      safeSetState(setConnected, true);
+      safeSetState(setConnectionError, null);
+      safeSetState(setIsConnecting, false);
     };
     
     const handleDisconnect = (reason) => {
-      setConnected(false);
-      setIsConnecting(false);
-      console.log(`Socket disconnected: ${reason}`);
+      console.log(`[${connectionEffectId}] Socket disconnected: ${reason}`);
+      safeSetState(setConnected, false);
+      safeSetState(setIsConnecting, false);
       
       // If disconnected by server, set error
       if (reason === 'io server disconnect') {
-        setConnectionError('Server disconnected the socket');
+        safeSetState(setConnectionError, 'Server disconnected the socket');
       } else if (reason === 'transport close' || reason === 'transport error') {
         // Network issues - don't show error to user but log it
-        console.log("Network disconnect - will auto-reconnect");
+        console.log(`[${connectionEffectId}] Network disconnect - will auto-reconnect`);
       }
     };
     
     const handleError = (err) => {
       const errorMsg = err?.message || 'Connection error';
-      console.error(`Socket error: ${errorMsg}`);
-      setConnectionError(errorMsg);
-      setIsConnecting(false);
+      console.error(`[${connectionEffectId}] Socket error: ${errorMsg}`);
+      safeSetState(setConnectionError, errorMsg);
+      safeSetState(setIsConnecting, false);
     };
     
-    // Register socket event listeners
-    const connectListener = socketService.on('connect', handleConnect);
-    const disconnectListener = socketService.on('disconnect', handleDisconnect);
-    const errorListener = socketService.on('error', handleError);
-    
-    // Add connect error handler
-    const connectErrorListener = socketService.on('connect_error', (err) => {
-      console.error(`Socket connect error: ${err?.message}`);
-      setIsConnecting(false);
+    const handleConnectError = (err) => {
+      console.error(`[${connectionEffectId}] Socket connect error: ${err?.message}`);
+      safeSetState(setIsConnecting, false);
       
       // Don't show auth errors to user immediately - let retry happen first
       if (err?.message?.includes('auth') || err?.message?.includes('token')) {
-        console.log("Auth error in socket - will retry");
+        console.log(`[${connectionEffectId}] Auth error in socket - will retry`);
       } else {
-        setConnectionError(`Connect error: ${err?.message}`);
+        safeSetState(setConnectionError, `Connect error: ${err?.message}`);
       }
-    });
+    };
+    
+    // Register socket event listeners with error handling
+    let connectListener, disconnectListener, errorListener, connectErrorListener;
+    
+    try {
+      connectListener = socketService.on('connect', handleConnect);
+      disconnectListener = socketService.on('disconnect', handleDisconnect);
+      errorListener = socketService.on('error', handleError);
+      connectErrorListener = socketService.on('connect_error', handleConnectError);
+    } catch (error) {
+      console.error(`[${connectionEffectId}] Error registering socket event listeners:`, error);
+    }
     
     // Cleanup function to remove event listeners
     return () => {
-      connectListener();
-      disconnectListener();
-      errorListener();
-      connectErrorListener();
+      console.log(`[${connectionEffectId}] Cleaning up socket connection effect`);
+      isEffectActive = false;
+      
+      // Safely remove event listeners
+      const safeRemoveListener = (removeListener) => {
+        if (typeof removeListener === 'function') {
+          try {
+            removeListener();
+          } catch (error) {
+            console.error(`[${connectionEffectId}] Error removing listener:`, error);
+          }
+        }
+      };
+      
+      safeRemoveListener(connectListener);
+      safeRemoveListener(disconnectListener);
+      safeRemoveListener(errorListener);
+      safeRemoveListener(connectErrorListener);
       
       // Clean up any other event listeners we've registered
-      eventListenersRef.current.forEach(removeListener => {
-        if (typeof removeListener === 'function') {
-          removeListener();
-        }
-      });
-      eventListenersRef.current.clear();
+      if (eventListenersRef.current.size > 0) {
+        console.log(`[${connectionEffectId}] Cleaning up ${eventListenersRef.current.size} socket event listeners`);
+        eventListenersRef.current.forEach(safeRemoveListener);
+        eventListenersRef.current.clear();
+      }
     };
-  }, [options.userId, options.token, options.autoConnect]);
+  }, [options.userId, options.token, options.autoConnect, connectSocket, connected]);
   
   /**
-   * Connect to socket server
+   * Connect to socket server with enhanced race condition prevention
    * @param {string} userId - User ID for authentication
    * @param {string} token - Auth token
    * @returns {Promise} Connection result
    */
   const connectSocket = useCallback(async (userId, token) => {
-    // Don't reconnect if already connected
-    if (socketService.isConnected()) {
+    // Create a unique identifier for this connection attempt to track it
+    const connectionAttemptId = useRef(Date.now().toString() + Math.random().toString(36).substring(2, 9)).current;
+    
+    // Use a ref to track this specific connection attempt
+    const isActiveConnectionAttempt = useRef(true);
+    
+    // Check current connection state in an atomic way
+    const currentlyConnected = socketService.isConnected();
+    if (currentlyConnected) {
+      console.log('Socket already connected, skipping connection attempt');
       return true;
     }
     
-    // Don't attempt connection if we're already trying
-    if (isConnecting) {
+    // Use atomic operation to check and update connecting state
+    const wasAlreadyConnecting = isConnecting;
+    if (wasAlreadyConnecting) {
+      console.log('Connection already in progress, skipping duplicate attempt');
       return false;
     }
     
+    // Mark as connecting
+    console.log(`Starting connection attempt ${connectionAttemptId}`);
     setIsConnecting(true);
     setConnectionError(null);
     
     try {
-      await socketService.init(userId, token);
-      setConnected(true);
+      // Track the connection state to prevent race conditions
+      const connectionResult = await socketService.init(userId, token);
+      
+      // Check if this connection attempt is still relevant (not canceled or superseded)
+      if (!isActiveConnectionAttempt.current) {
+        console.log(`Connection attempt ${connectionAttemptId} was superseded, ignoring result`);
+        return false;
+      }
+      
+      // Update state based on the connection result
+      setConnected(!!connectionResult);
       setIsConnecting(false);
-      return true;
+      return !!connectionResult;
     } catch (err) {
-      setConnectionError(err.message || 'Failed to connect to socket server');
-      setIsConnecting(false);
-      setConnected(false);
+      // Only update state if this connection attempt is still active
+      if (isActiveConnectionAttempt.current) {
+        console.error(`Connection attempt ${connectionAttemptId} failed:`, err.message);
+        setConnectionError(err.message || 'Failed to connect to socket server');
+        setIsConnecting(false);
+        setConnected(false);
+      }
       return false;
+    } finally {
+      // Cleanup - mark this connection attempt as inactive
+      isActiveConnectionAttempt.current = false;
     }
-  }, [isConnecting]);
+  }, []);
   
   /**
    * Register an event listener with automatic tracking for cleanup
@@ -165,39 +251,100 @@ export const useSocketConnection = (options = {}) => {
   }, []);
   
   /**
-   * Emit an event to the server
+   * Emit an event to the server with improved race condition handling
    * @param {string} event - Event name
    * @param {any} data - Event data
    * @param {Function} ack - Acknowledgement callback
    * @returns {boolean} Whether emit was successful
    */
   const emit = useCallback((event, data, ack) => {
-    if (!socketService.isConnected()) {
+    // Capture connection state at the beginning to avoid race conditions
+    const isSocketConnected = socketService.isConnected();
+    
+    // If not connected, attempt to reconnect if appropriate
+    if (!isSocketConnected) {
+      console.log(`Socket disconnected when attempting to emit ${event}, checking reconnect options`);
+      
+      // Implement an emit queue for important events when disconnected
+      const importantEvents = ['message', 'read', 'typing', 'activity'];
+      if (importantEvents.includes(event) || event.includes('call')) {
+        console.log(`Queueing important event ${event} for later emission`);
+        // Note: socketService handles queuing internally
+      }
+      
       if (options.autoReconnect) {
-        // Try to reconnect if configured
-        const { userId, token } = options;
+        // Extract reconnection parameters safely
+        const userId = options?.userId;
+        const token = options?.token;
+        
+        // Only attempt reconnection with valid credentials
         if (userId && token) {
-          connectSocket(userId, token);
+          console.log(`Attempting reconnection before emitting ${event}`);
+          
+          // Don't await - we want a non-blocking implementation
+          // The socket service will queue important messages
+          connectSocket(userId, token).then(connected => {
+            if (connected) {
+              console.log(`Reconnection successful, socket service will handle queued events including ${event}`);
+              // The socketService will automatically process queued messages
+            }
+          });
+        } else {
+          console.warn('Cannot reconnect: missing userId or token');
         }
       }
+      
+      // Return false to indicate the immediate emission failed
       return false;
     }
     
-    return socketService.emit(event, data, ack);
+    // Connected, so attempt to emit the event
+    try {
+      return socketService.emit(event, data, ack);
+    } catch (error) {
+      console.error(`Error emitting ${event}:`, error);
+      return false;
+    }
   }, [options.autoReconnect, options.userId, options.token, connectSocket]);
   
   /**
-   * Create a custom hook for a specific socket event
+   * Create a custom hook for a specific socket event with enhanced cleanup
    * @param {string} event - Event name
    * @param {Function} handler - Event handler
    * @param {Array} deps - Dependencies for the effect
    */
-  const useSocketEvent = (event, handler, deps = []) => {
+  const useSocketEvent = useCallback((event, handler, deps = []) => {
     useEffect(() => {
-      const removeListener = on(event, handler);
-      return removeListener;
-    }, [event, ...deps]);
-  };
+      // Skip if invalid inputs
+      if (!event || typeof handler !== 'function') {
+        console.warn('Invalid parameters passed to useSocketEvent', { event, handlerType: typeof handler });
+        return () => {};
+      }
+      
+      // Create a stable reference to the handler to avoid unnecessary re-registrations
+      const stableHandler = (...args) => {
+        try {
+          handler(...args);
+        } catch (error) {
+          console.error(`Error in socket event handler for ${event}:`, error);
+        }
+      };
+      
+      console.log(`Registering socket event listener for ${event}`);
+      const removeListener = on(event, stableHandler);
+      
+      // Enhanced cleanup function
+      return () => {
+        console.log(`Cleaning up socket event listener for ${event}`);
+        try {
+          removeListener();
+        } catch (error) {
+          console.error(`Error cleaning up socket event listener for ${event}:`, error);
+        }
+      };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [event, on, ...deps]);
+  }, [on]);
   
   return {
     connected,

@@ -194,19 +194,26 @@ const StoriesCarousel = ({ onStoryClick }) => {
       )}
 
       <div className={styles.storiesCarousel} ref={carouselRef}>
-        {processedStories.map((story) => (
-          <StoryThumbnail
-            key={story._id || `story-${Math.random()}`}
-            story={story}
-            onClick={() => handleStoryClick(story._id)}
-            hasUnviewedStories={
-              typeof hasUnviewedStories === "function" && story.user
-                ? hasUnviewedStories(typeof story.user === "string" ? story.user : story.user._id)
-                : false
-            }
-            mediaType={story.mediaType} // Pass media type for coming soon stories
-          />
-        ))}
+        {processedStories.map((story, index) => {
+          // Create a stable, unique key using story ID if available, or index as fallback
+          // Avoid using Math.random() as it causes unnecessary re-renders
+          const storyKey = story._id ? `story-${story._id}` : `story-index-${index}`;
+          
+          return (
+            <StoryThumbnail
+              key={storyKey}
+              story={story}
+              onClick={() => handleStoryClick(story._id)}
+              hasUnviewedStories={
+                typeof hasUnviewedStories === "function" && story.user
+                  ? hasUnviewedStories(typeof story.user === "string" ? story.user : story.user._id)
+                  : false
+              }
+              mediaType={story.mediaType}
+              aria-label={`Story by ${story.user?.nickname || 'User'}`}
+            />
+          );
+        })}
       </div>
 
       {processedStories.length > 4 && (

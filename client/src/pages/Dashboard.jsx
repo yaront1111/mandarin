@@ -251,30 +251,72 @@ const Dashboard = () => {
 
   // Handle story creation ensuring no duplicate submissions.
   const handleCreateStory = (storyData) => {
+    // Early validation to prevent unnecessary API calls
     if (!createStory || creatingStory) {
       toast.info(
         creatingStory ? "Story creation in progress, please wait..." : "Story creation is not available right now",
       )
       return
     }
-    setCreatingStory(true)
+    
+    // Track mounted state to prevent updates after unmount
+    let isMounted = true;
+    setCreatingStory(true);
+    
+    // Add a timeout to prevent hanging
+    const timeoutId = setTimeout(() => {
+      if (isMounted) {
+        setCreatingStory(false);
+        toast.error("Story creation timed out. Please try again.");
+      }
+    }, 30000);
+    
     createStory(storyData)
       .then((response) => {
-        // Check for different valid response formats
-        if (response && (response.success === true || response._id || (response.data && response.data._id))) {
-          toast.success("Your story has been created!")
-          setShowStoryCreator(false)
+        if (!isMounted) return;
+        
+        clearTimeout(timeoutId);
+        
+        // Defensive programming: ensure we have a response object
+        const safeResponse = response || {};
+        
+        // Enhanced check for success with multiple valid formats
+        if (
+          safeResponse.success === true || 
+          safeResponse._id || 
+          (safeResponse.data && safeResponse.data._id) ||
+          safeResponse.success === "true" ||
+          safeResponse.success === 1
+        ) {
+          toast.success("Your story has been created!");
+          setShowStoryCreator(false);
         } else {
-          toast.error((response && response.error) || "Failed to create story")
+          const errorMessage = safeResponse.error || 
+                              safeResponse.message || 
+                              "Failed to create story";
+          
+          console.warn("Story creation failed with response:", safeResponse);
+          toast.error(errorMessage);
         }
       })
       .catch((error) => {
-        toast.error("An error occurred while creating your story")
-        console.error("Story creation error:", error)
+        if (!isMounted) return;
+        
+        clearTimeout(timeoutId);
+        console.error("Story creation error:", error);
+        toast.error(error?.message || "An error occurred while creating your story");
       })
       .finally(() => {
-        setCreatingStory(false)
-      })
+        if (isMounted) {
+          setCreatingStory(false);
+        }
+      });
+      
+    // Return cleanup function to ensure we don't update state after unmount
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
   }
 
   // Reset image errors when filter values change.
