@@ -2,12 +2,7 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import User from "../models/User.js";
-import Like from "../models/Like.js";
-import Message from "../models/Message.js";
-import Notification from "../models/Notification.js";
-import PhotoPermission from "../models/PhotoPermission.js";
-import Story from "../models/Story.js";
+import { User, Like, Message, Notification, PhotoPermission, Story } from "../models/index.js";
 import logger from "../logger.js";
 import { createAuditLog } from "../utils/auditLogger.js";
 

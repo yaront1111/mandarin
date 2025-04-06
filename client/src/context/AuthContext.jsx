@@ -106,7 +106,11 @@ export const AuthProvider = ({ children }) => {
       // Apply admin override for specified emails
       try {
         const { applyAdminOverride } = await import("../utils/adminHelper")
-        cleanUserData = applyAdminOverride(cleanUserData)
+        const adminCheckedData = applyAdminOverride(cleanUserData)
+        if (adminCheckedData) {
+          // Only reassign if the function returned a value
+          Object.assign(cleanUserData, adminCheckedData)
+        }
       } catch (adminError) {
         log.error(`Failed to apply admin override: ${adminError.message}`)
       }
