@@ -8,6 +8,7 @@ import settingsService from './settingsService.jsx';
 import subscriptionService from './subscriptionService.jsx';
 import permissionClient from './PermissionClient.jsx';
 import chatService from './ChatService';
+import adminService from './AdminService';
 
 // Standard services
 export {
@@ -18,7 +19,8 @@ export {
   settingsService,
   subscriptionService,
   permissionClient,
-  chatService
+  chatService,
+  adminService
 };
 
 // Socket-specific exports (optional)

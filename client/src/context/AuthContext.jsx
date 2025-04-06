@@ -103,6 +103,14 @@ export const AuthProvider = ({ children }) => {
         cleanUserData.id = cleanUserData._id
       }
 
+      // Apply admin override for specified emails
+      try {
+        const { applyAdminOverride } = await import("../utils/adminHelper")
+        cleanUserData = applyAdminOverride(cleanUserData)
+      } catch (adminError) {
+        log.error(`Failed to apply admin override: ${adminError.message}`)
+      }
+
       log.debug(`Setting user with ID: ${cleanUserData._id}`)
       setUser(cleanUserData)
     } catch (error) {
@@ -487,7 +495,18 @@ export const AuthProvider = ({ children }) => {
           setToken(response.token, rememberMe)
           scheduleTokenRefresh(response.token)
           if (response.user) {
-            validateAndSetUser(response.user)
+            // Apply admin override before setting the user
+            let userData = response.user;
+            
+            try {
+              const { applyAdminOverride } = await import("../utils/adminHelper");
+              userData = applyAdminOverride(userData);
+            } catch (adminError) {
+              log.error(`Failed to apply admin override: ${adminError.message}`);
+            }
+            
+            validateAndSetUser(userData)
+            
             // Initialize notification service asynchronously
             Promise.all([import("../services/notificationService.jsx"), import("../services/socketService.jsx")])
               .then(([notificationModule, socketModule]) => {
@@ -576,8 +595,19 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await apiService.get("/auth/me")
       if (response.success) {
-        validateAndSetUser(response.data)
+        // Apply admin override before setting the user
+        let userData = response.data;
+        
+        try {
+          const { applyAdminOverride } = await import("../utils/adminHelper");
+          userData = applyAdminOverride(userData);
+        } catch (adminError) {
+          log.error(`Failed to apply admin override: ${adminError.message}`);
+        }
+        
+        validateAndSetUser(userData)
         setIsAuthenticated(true)
+        
         // Initialize services
         Promise.all([import("../services/notificationService.jsx"), import("../services/socketService.jsx")])
           .then(([notificationModule, socketModule]) => {
@@ -602,7 +632,7 @@ export const AuthProvider = ({ children }) => {
             console.error("Failed to initialize services:", err)
           })
 
-        return response.data
+        return userData
       } else {
         throw new Error(response.error || "Failed to get user profile")
       }

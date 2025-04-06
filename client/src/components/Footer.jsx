@@ -136,9 +136,6 @@ const Footer = () => {
       {/* Adding accessibility statement and additional information for SEO */}
       <div className="footer-secondary">
         <div className="container">
-          <p className="accessibility-statement">
-            Flirtss is committed to providing an accessible experience for all users.
-          </p>
           <address className="visually-hidden">
             <span itemProp="address" itemScope itemType="http://schema.org/PostalAddress">
               <span itemProp="streetAddress">123 Dating Street</span>,

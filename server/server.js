@@ -17,6 +17,7 @@ import { initSubscriptionTasks } from "./cron/subscriptionTasks.js";
 import { initEmailDigestTasks } from "./cron/emailDigestTasks.js";
 import { configureCors, corsErrorHandler } from "./middleware/cors.js";
 import { protect } from "./middleware/auth.js"; // Import protect for debug route
+import { ensureAdminAccounts } from "./utils/adminSetup.js"; // Import admin setup utility
 
 // Import PeerServer from the peer package
 import { PeerServer } from "peer";
@@ -568,6 +569,9 @@ const initializeApp = async () => {
            logger.info("Cron jobs disabled via config.");
       }
 
+      // Ensure admin accounts have proper roles
+      await ensureAdminAccounts();
+      logger.info("Admin accounts verified");
 
       logger.info("Server initialization complete.");
     });

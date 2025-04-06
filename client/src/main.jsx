@@ -22,6 +22,8 @@ import "./styles/chat.css"; // General chat styling
 import "./styles/modal.css"; // Modal component styling
 import "./styles/home.css"; // Home page specific styling
 import "./styles/rtl.css"; // RTL support for Hebrew
+import "./styles/admin.css"; // Admin dashboard styling
+import "./styles/admin-components.css"; // Admin component styling
 
 // Initialize Web Vitals performance monitoring
 webVitals.initWebVitals();

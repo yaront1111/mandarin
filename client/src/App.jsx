@@ -21,6 +21,7 @@ import { ChatConnectionProvider } from "./context/ChatConnectionContext"
 import { useInitializeNotificationServiceNavigation } from "./services/notificationService.jsx"
 import ErrorBoundary from "./components/ErrorBoundary.jsx"
 import PrivateRoute from "./components/PrivateRoute.jsx"
+import AdminRoute from "./components/AdminRoute.jsx"
 import VerificationBanner from "./components/VerificationBanner.jsx"
 import { Footer } from "./components"
 import Login from "./pages/Login"
@@ -33,6 +34,7 @@ import NotFound from "./pages/NotFound"
 import Home from "./pages/Home"
 import Messages from "./pages/Messages.jsx"
 import Subscription from "./pages/Subscription"
+import Admin from "./pages/Admin.jsx"
 import VerifyEmail from "./pages/VerifyEmail.jsx"
 import { EmbeddedChat } from "./components"
 
@@ -181,6 +183,15 @@ function App() {
                           <PrivateRoute>
                             <Subscription />
                           </PrivateRoute>
+                        }
+                      />
+                      {/* Admin Routes */}
+                      <Route
+                        path="/admin/*"
+                        element={
+                          <AdminRoute>
+                            <Admin />
+                          </AdminRoute>
                         }
                       />
                       <Route path="*" element={<NotFound />} />
