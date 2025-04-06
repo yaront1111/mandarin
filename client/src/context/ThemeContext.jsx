@@ -2,7 +2,8 @@
 
 import { createContext, useContext, useState, useEffect } from "react"
 
-const ThemeContext = createContext()
+// Export ThemeContext directly so it can be imported in components if needed
+export const ThemeContext = createContext()
 
 export const ThemeProvider = ({ children }) => {
   const [theme, setTheme] = useState(() => {

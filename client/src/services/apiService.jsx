@@ -234,14 +234,14 @@ class ApiService {
     this.baseURL = "/api";
     apiLogger.info(`Initializing with baseURL: ${this.baseURL}`)
 
-    // Create axios instance
+    // Create axios instance with improved timeout settings
     this.api = axios.create({
       baseURL: this.baseURL,
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      timeout: 15000,
+      timeout: 20000, // Default timeout of 20 seconds for better reliability
     })
 
     // Initialize state and metrics
@@ -792,6 +792,17 @@ class ApiService {
       // Special debug logging for message-related API calls
       if (url.includes("/messages")) {
         apiLogger.info(`Message API call: POST ${url} data:${JSON.stringify(data)}`);
+      }
+      
+      // Special handling for email-related endpoints - they need longer timeouts
+      if (url.includes("/auth/resend-verification") || 
+          url.includes("/auth/forgot-password") ||
+          url.includes("/email")) {
+        // Apply extended timeout for email operations if not already specified
+        if (!options.timeout) {
+          options.timeout = 30000; // 30 seconds for email operations
+          apiLogger.debug(`Using extended timeout (30s) for email operation: ${url}`);
+        }
       }
       
       if (options.invalidateCache !== false) {

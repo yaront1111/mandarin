@@ -1017,10 +1017,10 @@ const Settings = () => {
               {activeTab === "account" && <FaUser className={styles.sectionIcon} />}
 
               <h2 className={styles.sectionTitle}>
-                {activeTab === "notifications" && "Notification Settings"}
-                {activeTab === "privacy" && "Privacy Settings"}
-                {activeTab === "appearance" && "Appearance Settings"}
-                {activeTab === "account" && "Account Settings"}
+                {activeTab === "notifications" && t('settings.notificationSettings', 'Notification Settings')}
+                {activeTab === "privacy" && t('settings.privacySettings', 'Privacy Settings')}
+                {activeTab === "appearance" && t('settings.appearanceSettings', 'Appearance Settings')}
+                {activeTab === "account" && t('settings.accountSettings', 'Account Settings')}
               </h2>
             </div>
 
@@ -1035,7 +1035,7 @@ const Settings = () => {
                   disabled={saving || !hasUnsavedChanges}
                 >
                   <FaSave />
-                  {saving ? "Saving..." : "Save Changes"}
+                  {saving ? t('settings.saving', 'Saving...') : t('settings.saveChanges', 'Save Changes')}
                 </button>
               </div>
             )}

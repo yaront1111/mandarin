@@ -1,6 +1,10 @@
 import { useEffect } from 'react';
+import { useTheme } from '../context/ThemeContext';
 
 const Footer = () => {
+  const { theme } = useTheme();
+  const isDarkMode = theme === "dark";
+  
   useEffect(() => {
     // Create and add Google Analytics script
     const gtagScript1 = document.createElement('script');
@@ -21,13 +25,18 @@ const Footer = () => {
     
     // Clean up function to remove scripts when component unmounts
     return () => {
-      document.head.removeChild(gtagScript1);
-      document.head.removeChild(gtagScript2);
+      try {
+        document.head.removeChild(gtagScript1);
+        document.head.removeChild(gtagScript2);
+      } catch (err) {
+        // Handle case where the script might have been removed already
+        console.log("Analytics scripts already removed");
+      }
     };
   }, []);
   
   return (
-    <footer className="site-footer">
+    <footer className={`site-footer ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
       <div className="footer-content">
         <p>© {new Date().getFullYear()} Flirtss. All rights reserved.</p>
         <div className="footer-links">

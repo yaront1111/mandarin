@@ -618,27 +618,53 @@ export const AuthProvider = ({ children }) => {
     }
   }, [])
 
-  // New function to resend verification email
+  // Function to resend verification email with improved timeout and error handling
   const resendVerificationEmail = useCallback(async () => {
     try {
-      const response = await apiService.post("/auth/resend-verification")
+      // Create a special config with higher timeout for email sending operation
+      const options = {
+        timeout: 30000, // Increase timeout to 30 seconds since email sending can be slow
+        headers: {
+          'x-no-cache': 'true' // Ensure we're not using cached responses
+        }
+      };
+      
+      // Show pending toast notification immediately
+      const pendingToastId = toast.info(
+        "Sending verification email...", 
+        { autoClose: false, isLoading: true }
+      );
+      
+      const response = await apiService.post("/auth/resend-verification", {}, options);
+      
+      // Close the pending toast
+      toast.dismiss(pendingToastId);
+      
       if (response.success) {
-        toast.success("Verification email sent! Please check your inbox.")
-        return true
+        toast.success("Verification email sent! Please check your inbox.");
+        return true;
       } else {
-        toast.error(response.error || "Failed to send verification email")
-        return false
+        toast.error(response.error || "Failed to send verification email");
+        return false;
       }
     } catch (error) {
-      console.error("Error resending verification email:", error)
+      console.error("Error resending verification email:", error);
 
-      // Handle rate limiting error
-      if (error.response && error.response.status === 429) {
-        toast.error(error.response.data.error || "Please wait before requesting another email")
+      // Handle different error types
+      if (error.originalError?.code === 'ECONNABORTED') {
+        // Timeout error
+        toast.error("Email server is responding slowly. Please try again later.");
+      } else if (error.response && error.response.status === 429) {
+        // Rate limiting error
+        toast.error(error.response.data.error || "Please wait before requesting another email");
+      } else if (error.isOffline) {
+        // Network offline error
+        toast.error("You are currently offline. Please check your connection.");
       } else {
-        toast.error("Failed to send verification email. Please try again later.")
+        // Generic error
+        toast.error("Unable to send verification email. Please try again later.");
       }
-      return false
+      return false;
     }
   }, [])
 

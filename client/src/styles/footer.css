@@ -1,10 +1,22 @@
 .site-footer {
-  background-color: #f7f7f7;
-  color: #333;
   padding: 1.5rem 0;
   margin-top: auto;
   width: 100%;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Light mode (default) */
+.site-footer.light-mode {
+  background-color: #f7f7f7;
+  color: #333;
   border-top: 1px solid #eaeaea;
+}
+
+/* Dark mode */
+.site-footer.dark-mode {
+  background-color: #1a1a1a;
+  color: #f0f0f0;
+  border-top: 1px solid #333;
 }
 
 .footer-content {
@@ -23,30 +35,59 @@
 }
 
 .footer-links a {
-  color: #666;
   text-decoration: none;
   transition: color 0.2s ease;
   font-size: 0.9rem;
 }
 
-.footer-links a:hover {
+/* Link colors for light mode */
+.light-mode .footer-links a {
+  color: #666;
+}
+
+.light-mode .footer-links a:hover {
   color: #ff6b6b;
   text-decoration: underline;
 }
 
-/* Dark theme support */
-[data-theme="dark"] .site-footer {
+/* Link colors for dark mode */
+.dark-mode .footer-links a {
+  color: #bbb;
+}
+
+.dark-mode .footer-links a:hover {
+  color: #ff8080;
+  text-decoration: underline;
+}
+
+/* Alternative theme support using data-theme attribute */
+[data-theme="dark"] .site-footer:not(.dark-mode):not(.light-mode) {
   background-color: #1a1a1a;
   color: #f0f0f0;
   border-top: 1px solid #333;
 }
 
-[data-theme="dark"] .footer-links a {
+[data-theme="dark"] .site-footer:not(.dark-mode):not(.light-mode) .footer-links a {
   color: #bbb;
 }
 
-[data-theme="dark"] .footer-links a:hover {
+[data-theme="dark"] .site-footer:not(.dark-mode):not(.light-mode) .footer-links a:hover {
   color: #ff8080;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .footer-content {
+    flex-direction: column;
+    text-align: center;
+    gap: 1rem;
+  }
+  
+  .footer-links {
+    margin-top: 0.5rem;
+    gap: 1rem;
+    justify-content: center;
+  }
 }
 
 /* Mobile responsiveness */
