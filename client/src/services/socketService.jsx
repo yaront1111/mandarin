@@ -64,12 +64,34 @@ class SocketService {
         this._processPendingMessages()
 
         // Dispatch reconnect event for other components
-        window.dispatchEvent(new CustomEvent("socketReconnected"))
+        window.dispatchEvent(new CustomEvent("socketReconnected", { 
+          detail: { 
+            connectionState: "connected",
+            timestamp: Date.now() 
+          } 
+        }))
+        
+        // Also dispatch a generic socket status event
+        window.dispatchEvent(new CustomEvent("socketStatusChanged", { 
+          detail: { 
+            status: "connected",
+            timestamp: Date.now() 
+          } 
+        }))
       })
 
       this.socket.on("disconnect", (reason) => {
         this._log(`Socket disconnected: ${reason}`)
         this.connectionState = "disconnected"
+
+        // Dispatch disconnect event
+        window.dispatchEvent(new CustomEvent("socketStatusChanged", { 
+          detail: { 
+            status: "disconnected", 
+            reason,
+            timestamp: Date.now() 
+          } 
+        }))
 
         // Start monitoring connection if not already monitoring
         this._startConnectionMonitor()
@@ -78,6 +100,15 @@ class SocketService {
       this.socket.on("connect_error", (error) => {
         this._log(`Socket connection error: ${error}`)
         this.connectionState = "error"
+        
+        // Dispatch error event
+        window.dispatchEvent(new CustomEvent("socketStatusChanged", { 
+          detail: { 
+            status: "error", 
+            error: error?.message || "Unknown error",
+            timestamp: Date.now() 
+          } 
+        }))
 
         // Start monitoring connection if not already monitoring
         this._startConnectionMonitor()

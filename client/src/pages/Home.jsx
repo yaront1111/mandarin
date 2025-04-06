@@ -3,6 +3,7 @@ import { useState, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { FaArrowRight, FaMapMarkerAlt, FaRegHeart, FaComment, FaUsers } from "react-icons/fa"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
+import { Helmet, generatePageSchema } from "../components"
 
 const Home = () => {
   const navigate = useNavigate()
@@ -120,8 +121,23 @@ const Home = () => {
     navigate("/register", { state: { email } })
   }
 
+  // Generate structured data for the homepage
+  const homePageSchema = generatePageSchema({
+    title: "Flirtss - Meet Local Singles & Find Your Perfect Match",
+    description: "Flirtss connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!",
+    url: "https://flirtss.com/",
+    image: "https://flirtss.com/images/social-preview.jpg",
+    lastUpdated: new Date()
+  })
+
   return (
     <div className="modern-home-page w-100 overflow-hidden">
+      <Helmet
+        title="Meet Local Singles & Find Your Perfect Match"
+        description="Flirtss connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!"
+        keywords="dating, singles, dating app, find love, relationships, match, chat, online dating"
+        structuredData={homePageSchema}
+      />
       {/* Modern Header */}
       <header className="modern-header glass-effect sticky-top shadow-sm">
         <div className="container d-flex justify-content-between align-items-center py-2">

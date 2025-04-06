@@ -76,7 +76,8 @@ package-lock
 
 # Yarn Integrity file
 .yarn-integrity
-
+test@flirtss.com: test123
+noreply@flirtss.com: noreply123
 
 # next.js build output
 .next

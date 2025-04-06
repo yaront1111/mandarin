@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { Routes, Route } from "react-router-dom"
 import { ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
+import { LocaleHelper } from "./components" // Import LocaleHelper for SEO
 import "./styles/base.css"
 import "./styles/components.css"
 import "./styles/pages.css"
@@ -115,6 +116,8 @@ function App() {
               <ChatConnectionProvider>
                 <StoriesProvider>
                   <NotificationProvider>
+                  {/* Add LocaleHelper for i18n SEO support */}
+                  <LocaleHelper />
                   <div className="app-wrapper">
                     {/* Add the verification banner at the top level */}
                     <VerificationBanner />

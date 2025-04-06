@@ -23,10 +23,11 @@ import {
   FaSpinner,
   FaTimes,
   FaEye,
+  FaExclamationTriangle,
 } from "react-icons/fa";
 import { useParams, useNavigate } from "react-router-dom";
 import { useUser, useAuth, useStories, useLanguage } from "../context";
-import { EmbeddedChat, Navbar } from "../components"; // Import Navbar if needed
+import { EmbeddedChat, Navbar, Helmet, generateProfileSchema } from "../components"; // Import Navbar if needed
 import StoriesViewer from "../components/Stories/StoriesViewer";
 import StoryThumbnail from "../components/Stories/StoryThumbnail";
 import { toast } from "react-toastify";
@@ -426,8 +427,37 @@ const UserProfile = () => {
   const capitalize = (str = "") => str.charAt(0).toUpperCase() + str.slice(1);
 
   // --- Main JSX ---
+  // Generate structured data for the profile page
+  const profileStructuredData = useMemo(() => {
+    if (!profileUser) return null;
+    
+    const profileUrl = `https://flirtss.com/user/${profileUser._id}`;
+    const mainPhotoUrl = profileUser.photos?.length > 0 
+      ? normalizePhotoUrl(profileUser.photos[0].url) 
+      : 'https://flirtss.com/placeholder.svg';
+      
+    return generateProfileSchema({
+      name: `${profileUser.nickname}, ${profileUser.details?.age || '?'}`,
+      description: profileUser.details?.bio || `${profileUser.nickname}'s profile on Flirtss`,
+      profileUrl: profileUrl,
+      imageUrl: mainPhotoUrl.startsWith('http') ? mainPhotoUrl : `https://flirtss.com${mainPhotoUrl}`,
+      gender: profileUser.details?.gender || null,
+      location: profileUser.details?.location || null
+    });
+  }, [profileUser]);
+
   return (
     <div className={`min-vh-100 bg-light-subtle ${isRTL ? 'rtl-layout' : ''}`} ref={profileRef} data-force-rtl={isRTL ? 'true' : null}>
+       {profileUser && (
+         <Helmet
+           title={`${profileUser.nickname}, ${profileUser.details?.age || '?'} - User Profile`}
+           description={profileUser.details?.bio || `Connect with ${profileUser.nickname} on Flirtss, from ${profileUser.details?.location || 'Somewhere'}`}
+           keywords={`dating, singles, ${profileUser.nickname}, ${profileUser.details?.location || ''}, ${(profileUser.details?.interests || []).join(', ')}`}
+           structuredData={profileStructuredData}
+           ogType="profile"
+           ogImage={profileUser.photos?.length > 0 ? normalizePhotoUrl(profileUser.photos[0].url) : '/placeholder.svg'}
+         />
+       )}
        <Navbar /> {/* Include Navbar if this is a top-level page */}
        <div className={`container max-w-xl py-4 px-3 ${isRTL ? 'rtl-layout' : ''}`} data-language={language}>
          <button 

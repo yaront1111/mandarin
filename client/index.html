@@ -4,10 +4,128 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/placeholder.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mandarin Dating</title>
+    
+    <!-- Structured Data - Website -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Flirtss",
+      "url": "https://flirtss.com/",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://flirtss.com/search?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+    
+    <!-- Structured Data - Organization -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "https://flirtss.com/#organization",
+      "name": "Flirtss",
+      "url": "https://flirtss.com/",
+      "logo": "https://flirtss.com/logo192.png",
+      "sameAs": [
+        "https://www.facebook.com/flirtss",
+        "https://www.instagram.com/flirtss",
+        "https://twitter.com/flirtss"
+      ],
+      "contactPoint": [
+        {
+          "@type": "ContactPoint",
+          "telephone": "+1-800-FLIRTSS",
+          "contactType": "customer service",
+          "contactOption": "TollFree",
+          "availableLanguage": ["English", "Hebrew"]
+        }
+      ]
+    }
+    </script>
+    
+    <!-- Structured Data - BreadcrumbList -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [{
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": "https://flirtss.com/"
+      }]
+    }
+    </script>
+    
+    <!-- Primary Meta Tags -->
+    <title>Flirtss - Meet Local Singles & Find Your Perfect Match</title>
+    <meta name="title" content="Flirtss - Meet Local Singles & Find Your Perfect Match">
+    <meta name="description" content="Flirtss connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://flirtss.com/">
+    <meta property="og:title" content="Flirtss - Meet Local Singles & Find Your Perfect Match">
+    <meta property="og:description" content="Find your perfect match with our advanced matching algorithm. Join thousands of singles looking for meaningful connections.">
+    <meta property="og:image" content="https://flirtss.com/images/social-preview.jpg">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://flirtss.com/">
+    <meta property="twitter:title" content="Flirtss - Meet Local Singles & Find Your Perfect Match">
+    <meta property="twitter:description" content="Find your perfect match with our advanced matching algorithm. Join thousands of singles looking for meaningful connections.">
+    <meta property="twitter:image" content="https://flirtss.com/images/social-preview.jpg">
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://flirtss.com/" />
+    
+    <!-- Preconnect to key domains for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Font optimization -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Core Web Vitals optimization -->
+    <meta name="theme-color" content="#ff4d8d">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- iOS support -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    
+    <!-- PWA Support -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Robots meta -->
+    <meta name="robots" content="index, follow">
+    
+    <!-- Add link tags for resource hints -->
+    <link rel="preload" href="/fonts/Poppins-Regular.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/Poppins-Medium.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="dns-prefetch" href="//api.flirtss.com">
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    
+    <!-- Service Worker Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/serviceWorker.js')
+            .then(function(registration) {
+              console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            })
+            .catch(function(error) {
+              console.log('ServiceWorker registration failed: ', error);
+            });
+        });
+      }
+    </script>
   </body>
 </html>

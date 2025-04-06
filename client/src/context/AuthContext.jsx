@@ -656,7 +656,27 @@ export const AuthProvider = ({ children }) => {
         toast.error("Email server is responding slowly. Please try again later.");
       } else if (error.response && error.response.status === 429) {
         // Rate limiting error
-        toast.error(error.response.data.error || "Please wait before requesting another email");
+        const errorMsg = error.response.data.error || "Please wait before requesting another email";
+        
+        // Extract minutes from error message if available
+        const minutesMatch = errorMsg.match(/wait (\d+) minutes/);
+        if (minutesMatch && minutesMatch[1]) {
+          const waitMinutes = parseInt(minutesMatch[1], 10);
+          
+          // Store the cooldown in localStorage to persist across page loads
+          const expiresAt = new Date(Date.now() + waitMinutes * 60000);
+          localStorage.setItem(
+            "verificationEmailCooldown", 
+            JSON.stringify({ 
+              expiresAt: expiresAt.toISOString() 
+            })
+          );
+          
+          // Show message with exact time left
+          toast.error(`Rate limit reached. Please wait ${waitMinutes} minutes before requesting another verification email.`);
+        } else {
+          toast.error(errorMsg);
+        }
       } else if (error.isOffline) {
         // Network offline error
         toast.error("You are currently offline. Please check your connection.");

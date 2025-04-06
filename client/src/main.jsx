@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter as Router } from "react-router-dom"; // <-- Import Router
 import App from "./App.jsx";
 import "./i18n"; // Import i18n configuration
+import { webVitals } from "./utils"; // Import Web Vitals for performance tracking
 if (typeof global === 'undefined') {
   window.global = window;
 }
@@ -21,6 +22,17 @@ import "./styles/chat.css"; // General chat styling
 import "./styles/modal.css"; // Modal component styling
 import "./styles/home.css"; // Home page specific styling
 import "./styles/rtl.css"; // RTL support for Hebrew
+
+// Initialize Web Vitals performance monitoring
+webVitals.initWebVitals();
+
+// Create custom event dispatcher for route changes
+const originalPushState = history.pushState;
+history.pushState = function(state, title, url) {
+  webVitals.dispatchRouteChangeStart();
+  originalPushState.apply(this, arguments);
+  webVitals.dispatchRouteChangeComplete();
+};
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

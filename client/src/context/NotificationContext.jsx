@@ -200,6 +200,28 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [isAuthenticated, user, fetchNotifications])
 
+  // Listen for global socket status change events
+  useEffect(() => {
+    const handleSocketStatusChanged = (event) => {
+      const { status } = event.detail || {}
+      console.log(`Socket status changed to: ${status} (global event)`)
+      
+      if (status === "connected") {
+        setSocketConnected(true)
+        // Refresh notifications when socket reconnects
+        fetchNotifications()
+      } else if (status === "disconnected" || status === "error") {
+        setSocketConnected(false)
+      }
+    }
+    
+    window.addEventListener("socketStatusChanged", handleSocketStatusChanged)
+    
+    return () => {
+      window.removeEventListener("socketStatusChanged", handleSocketStatusChanged)
+    }
+  }, [fetchNotifications])
+
   // Set up polling for notifications as a fallback for socket issues
   useEffect(() => {
     if (!isAuthenticated || !user) return

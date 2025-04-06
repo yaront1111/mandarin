@@ -31,6 +31,9 @@ import { ThemeToggle } from "./theme-toggle.tsx"
 // User Profile Modal
 import UserProfileModal from "./UserProfileModal"
 
+// SEO Components
+import { Helmet, LocaleHelper, generatePageSchema, generateProfileSchema, generateArticleSchema } from "./SEO"
+
 export {
   // Layout Components
   Navbar,
@@ -55,4 +58,10 @@ export {
   ThemeToggle,
   // User Profile Modal
   UserProfileModal,
+  // SEO Components
+  Helmet,
+  LocaleHelper,
+  generatePageSchema,
+  generateProfileSchema, 
+  generateArticleSchema
 }

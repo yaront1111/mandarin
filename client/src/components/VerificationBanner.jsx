@@ -6,7 +6,7 @@ import { useAuth } from "../context"
 import { useTheme } from "../context/ThemeContext"
 
 const VerificationBanner = () => {
-  const { user, resendVerificationEmail } = useAuth()
+  const { user, resendVerificationEmail, isAuthenticated, authChecked } = useAuth()
   const { theme } = useTheme()
   const isDarkMode = theme === "dark"
   const [showBanner, setShowBanner] = useState(true)
@@ -15,6 +15,12 @@ const VerificationBanner = () => {
 
   // Check if the banner has been dismissed
   useEffect(() => {
+    // Only run this check if user is authenticated and not verified
+    if (!isAuthenticated || !user || user?.isVerified) {
+      setShowBanner(false)
+      return;
+    }
+    
     const dismissed = localStorage.getItem("verificationBannerDismissed")
     if (dismissed) {
       const dismissedDate = new Date(dismissed)
@@ -28,8 +34,11 @@ const VerificationBanner = () => {
         localStorage.removeItem("verificationBannerDismissed")
         setShowBanner(true)
       }
+    } else {
+      // Explicitly set banner to show if not dismissed and user needs verification
+      setShowBanner(true)
     }
-  }, [])
+  }, [isAuthenticated, user])
 
   // Set up cooldown timer
   useEffect(() => {
@@ -39,6 +48,29 @@ const VerificationBanner = () => {
       timerId = setInterval(() => {
         setCooldown((prev) => prev - 1)
       }, 60000) // Update every minute
+    }
+
+    // Check localStorage for existing cooldown when mounting
+    const storedCooldown = localStorage.getItem("verificationEmailCooldown");
+    if (storedCooldown) {
+      try {
+        const cooldownData = JSON.parse(storedCooldown);
+        const expiresAt = new Date(cooldownData.expiresAt);
+        
+        if (expiresAt > new Date()) {
+          // Calculate remaining minutes
+          const remainingMinutes = Math.ceil((expiresAt - new Date()) / 60000);
+          if (remainingMinutes > 0) {
+            setCooldown(remainingMinutes);
+          }
+        } else {
+          // Cooldown has expired, remove it
+          localStorage.removeItem("verificationEmailCooldown");
+        }
+      } catch (error) {
+        console.error("Error parsing stored cooldown:", error);
+        localStorage.removeItem("verificationEmailCooldown");
+      }
     }
 
     return () => clearInterval(timerId)
@@ -57,7 +89,18 @@ const VerificationBanner = () => {
       try {
         const success = await resendVerificationEmail();
         if (success) {
-          setCooldown(30); // Set cooldown to 30 minutes (reduced from 60)
+          // Set cooldown to 30 minutes and store in localStorage
+          const cooldownMinutes = 30;
+          setCooldown(cooldownMinutes);
+          
+          // Store cooldown expiration in localStorage
+          const expiresAt = new Date(Date.now() + cooldownMinutes * 60000);
+          localStorage.setItem(
+            "verificationEmailCooldown", 
+            JSON.stringify({ 
+              expiresAt: expiresAt.toISOString() 
+            })
+          );
           return true;
         }
         return false;
@@ -95,7 +138,14 @@ const VerificationBanner = () => {
     localStorage.setItem("verificationBannerDismissed", new Date().toISOString())
   }
 
-  if (!user || user.isVerified || !showBanner) {
+  // Don't show if:
+  // 1. Auth check is not completed
+  // 2. Not authenticated
+  // 3. No user (not logged in) 
+  // 4. User is already verified
+  // 5. Banner has been dismissed
+  // 6. We don't have a valid user ID
+  if (!authChecked || !isAuthenticated || !user || user?.isVerified || !showBanner || !user?._id) {
     return null
   }
 
@@ -104,7 +154,7 @@ const VerificationBanner = () => {
       <div className="container">
         <div className="banner-content">
           <FaExclamationTriangle className="banner-icon" />
-          <p>Your email is not verified. Please verify your email address to unlock all features.</p>
+          <p>Your email is not verified. Please verify your email address to unlock all features. Check your inbox and spam folder for the verification email.</p>
           <div className="banner-actions">
             <button
               className="resend-btn"
