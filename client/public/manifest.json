@@ -1,0 +1,63 @@
+{
+  "name": "Flirtss - Meet Local Singles & Find Your Perfect Match",
+  "short_name": "Flirtss",
+  "description": "Flirtss connects singles for meaningful relationships with our advanced matching algorithm.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ff4d8d",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/logo192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Messages",
+      "short_name": "Messages",
+      "description": "View your messages",
+      "url": "/messages",
+      "icons": [{ "src": "/icons/message.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "Go to your dashboard",
+      "url": "/dashboard",
+      "icons": [{ "src": "/icons/dashboard.png", "sizes": "192x192" }]
+    }
+  ],
+  "categories": ["dating", "social", "lifestyle"],
+  "screenshots": [
+    {
+      "src": "/screenshots/home.jpg",
+      "type": "image/jpeg",
+      "sizes": "1280x720",
+      "platform": "wide"
+    },
+    {
+      "src": "/screenshots/mobile.jpg",
+      "type": "image/jpeg",
+      "sizes": "750x1334",
+      "platform": "narrow"
+    }
+  ],
+  "lang": "en-US",
+  "dir": "ltr",
+  "prefer_related_applications": false
+}

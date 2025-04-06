@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://flirtss.com/sitemap.xml
+
+# Disallow access to any API endpoints that might be exposed
+Disallow: /api/
+Disallow: */api/*
+
+# Disallow access to private user areas
+Disallow: /admin/
+Disallow: /internal/
+
+# Respect user privacy by not indexing profile pages of non-public profiles
+Disallow: /user/private/
