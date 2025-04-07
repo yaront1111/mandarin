@@ -178,6 +178,9 @@ class NotificationService {
 
     // Set up periodic check for socket connection
     this.reconnectTimer = setInterval(() => {
+      // Log current socket connection status for debugging
+      console.log(`[NotificationService] Socket connection status check - connected: ${socketService.isConnected()}, socket exists: ${!!socketService.socket}`);
+      
       if (!socketService.isConnected() && this.initialized) {
         if (this.socketReconnectAttempts < this.maxReconnectAttempts) {
           notificationLogger.info(`Attempting to reconnect socket for notifications (attempt ${this.socketReconnectAttempts + 1}/${this.maxReconnectAttempts})`);
@@ -197,8 +200,22 @@ class NotificationService {
       } else if (socketService.isConnected()) {
         // Reset counter when connected
         this.socketReconnectAttempts = 0;
+        
+        // If socket is connected, ensure listeners are registered
+        if (this.initialized && socketService.socket) {
+          notificationLogger.info("Socket is connected - ensuring notification listeners are registered");
+          this.registerSocketListeners();
+        }
       }
     }, 30000); // Check every 30 seconds initially
+    
+    // Also listen for socket connection events to immediately register listeners
+    window.addEventListener('socketConnected', () => {
+      console.log("[NotificationService] Received socketConnected event - registering listeners");
+      if (this.initialized) {
+        setTimeout(() => this.registerSocketListeners(), 1000); // Small delay to ensure socket is ready
+      }
+    });
   }
 
   /**
@@ -269,39 +286,82 @@ class NotificationService {
     // First clean up existing listeners to prevent duplicates
     this.cleanup();
 
-    // More resilient socket check - allow for both socketService and socketClient direct access
+    // More comprehensive socket check with detailed logging
     let isSocketReady = false;
+    let socketStatus = 'unknown';
     
     try {
-      // Primary check via socketService
-      if (socketService && socketService.isConnected()) {
-        isSocketReady = true;
-      } 
-      // Fallback: check socket client directly
-      else if (window.socketClient && window.socketClient.isConnected()) {
-        isSocketReady = true;
+      // Detailed logging for debugging socket connection status
+      if (socketService) {
+        console.log(`[NotificationService] Socket service exists: ${!!socketService}`);
+        if (socketService.socket) {
+          console.log(`[NotificationService] Socket object exists: ${!!socketService.socket}`);
+          console.log(`[NotificationService] Socket ID: ${socketService.socket.id || 'none'}`);
+          
+          // Check different ways to determine connection status
+          const isConnectedMethod = socketService.isConnected();
+          const directConnectedProp = socketService.socket.connected;
+          
+          console.log(`[NotificationService] Socket isConnected(): ${isConnectedMethod}`);
+          console.log(`[NotificationService] Socket.connected: ${directConnectedProp}`);
+          
+          // If any check says it's connected, treat it as connected
+          if (isConnectedMethod || directConnectedProp) {
+            isSocketReady = true;
+            socketStatus = 'connected';
+          } else {
+            socketStatus = 'socket-exists-but-disconnected';
+          }
+        } else {
+          socketStatus = 'socket-object-missing';
+        }
+      } else {
+        socketStatus = 'socket-service-missing';
       }
-      // Fallback: check if socket is defined with connected state
-      else if (socketService && socketService.socket && socketService.socket.connected) {
-        isSocketReady = true;
+      
+      // If primary check failed, try alternative methods
+      if (!isSocketReady) {
+        // Fallback: check socket client directly
+        if (window.socketClient && window.socketClient.isConnected && window.socketClient.isConnected()) {
+          isSocketReady = true;
+          socketStatus = 'connected-via-window-socketclient';
+        }
+        // Last resort: check socket.io global
+        else if (window.io && window.io.socket && window.io.socket.connected) {
+          isSocketReady = true;
+          socketStatus = 'connected-via-window-io';
+        }
       }
     } catch (err) {
-      console.error("Error checking socket connection status:", err);
+      console.error("[NotificationService] Error checking socket connection status:", err);
+      socketStatus = `error-${err.message}`;
     }
     
+    console.log(`[NotificationService] Socket status check result: ${socketStatus}, isReady: ${isSocketReady}`);
+    
     if (!isSocketReady) {
-      console.warn("NotificationService: Socket not connected. Will retry registration shortly.");
+      console.warn("[NotificationService] Socket not connected (status: " + socketStatus + "). Will retry registration shortly.");
       
-      // Schedule a retry in 2 seconds - this is the fix for "listeners not registered"
+      // Force socket connection check
+      if (socketService) {
+        console.log("[NotificationService] Attempting to reconnect socket");
+        try {
+          socketService.reconnect();
+        } catch (e) {
+          console.error("[NotificationService] Reconnect attempt failed:", e);
+        }
+      }
+      
+      // Schedule a retry in 3 seconds - this is the fix for "listeners not registered"
       setTimeout(() => {
-        console.log("NotificationService: Retrying socket listener registration...");
+        console.log("[NotificationService] Retrying socket listener registration...");
         this.registerSocketListeners();
-      }, 2000);
+      }, 3000);
       
       return;
     }
     
-    console.log("NotificationService: Socket connected. Registering listeners now.");
+    console.log("[NotificationService] Socket connected (" + socketStatus + "). Registering listeners now.");
 
     // Define all notification types in one place for easier management
     // Note that for messages, we map to the "messages" property in settings, even though the type is "message"
@@ -527,8 +587,9 @@ class NotificationService {
    * @returns {boolean} - Whether to show the notification
    */
   shouldShowNotification(notificationType) {
-    if (!this.initialized || !this.userSettings) {
-      console.log(`Notification check - not initialized yet, defaulting to show ${notificationType}`);
+    // IMPORTANT FIX: Default to showing notifications if not initialized
+    if (!this.initialized || !this.userSettings || !this.userSettings.notifications) {
+      console.log(`Notification check - not fully initialized yet, defaulting to show ${notificationType}`);
       return true;
     }
 
@@ -541,38 +602,31 @@ class NotificationService {
       return shouldShow;
     }
 
-    // Add special handling for message notifications
+    // Fix for message notifications: handle both "message" and "messages" settings
     if (notificationType === "message") {
       // Handle "messages" (plural) vs "message" (singular) mapping
-      // This could be a source of the bug - if we're setting "messages" but checking "message"
+      // Fix for the bug - we need to check both keys to ensure compatibility
       
-      // First check the direct match (message)
-      if (this.userSettings.notifications?.message !== undefined) {
-        const setting = this.userSettings.notifications.message;
-        const shouldShow = setting !== false;
-        console.log(`Message notification check - direct "message" setting:`, 
-          setting,
-          'typeof:', typeof setting,
-          'shouldShow:', shouldShow);
-        return shouldShow;
+      // Create a unified check that looks at both keys
+      const messageSettings = [
+        this.userSettings.notifications?.message,
+        this.userSettings.notifications?.messages
+      ];
+      
+      // If both settings are undefined, default to true
+      if (messageSettings[0] === undefined && messageSettings[1] === undefined) {
+        console.log("Message notification check - no message settings found, defaulting to true");
+        return true;
       }
       
-      // Then check the plural version (messages)
-      if (this.userSettings.notifications?.messages !== undefined) {
-        const setting = this.userSettings.notifications.messages;
-        const shouldShow = setting !== false;
-        console.log(`Message notification check - "messages" setting:`, 
-          setting,
-          'typeof:', typeof setting,
-          'shouldShow:', shouldShow);
-        return shouldShow;
-      }
+      // If either setting is explicitly false, don't show
+      const shouldShow = !(messageSettings[0] === false || messageSettings[1] === false);
       
-      // If neither is defined, default to true
-      console.log("Message notification check - no setting found, defaulting to true");
-      return true;
+      console.log(`Message notification check - "message" setting: ${messageSettings[0]}, "messages" setting: ${messageSettings[1]}, shouldShow: ${shouldShow}`);
+      return shouldShow;
     }
 
+    // General case for other notification types
     const shouldShow = this.userSettings.notifications?.[notificationType] !== false;
     console.log(`Notification ${notificationType} check - setting:`, 
       this.userSettings.notifications?.[notificationType], 

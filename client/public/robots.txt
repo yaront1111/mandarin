@@ -1,15 +1,35 @@
 User-agent: *
 Allow: /
 
+# Point to the sitemap for new content
 Sitemap: https://flirtss.com/sitemap.xml
 
-# Disallow access to any API endpoints that might be exposed
+# Disallow old/outdated content (customize these for your specific old content)
+Disallow: /old-site/
+Disallow: /outdated-content/
+Disallow: /archived/
+Disallow: /legacy/
+Disallow: /deprecated/
+
+# Disallow temporary content
+Disallow: /temp/
+Disallow: /dev/
+Disallow: /test/
+
+# Disallow access to any API endpoints
 Disallow: /api/
 Disallow: */api/*
 
 # Disallow access to private user areas
 Disallow: /admin/
 Disallow: /internal/
+Disallow: /account/
+Disallow: /settings/
 
-# Respect user privacy by not indexing profile pages of non-public profiles
+# Respect user privacy by not indexing private user content
 Disallow: /user/private/
+Disallow: /messages/
+Disallow: /chat/
+
+# Set a crawl delay to reduce server load (in seconds)
+Crawl-delay: 5

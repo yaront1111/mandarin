@@ -202,30 +202,66 @@ const NotificationsComponent = ({
   // Add a connection state flag to avoid false disconnection messages
   const [connectionState, setConnectionState] = useState(socketConnected ? "connected" : "disconnected");
   
-  // Force socket check on component mount with improved synchronization
+  // Force socket check on component mount with improved synchronization and troubleshooting
   useEffect(() => {
     // Check actual socket connection status directly
     const checkSocketStatus = async () => {
       try {
-        if (socketService && socketService.socket) {
-          // Get real connection status from the socket service
-          const isActuallyConnected = socketService.isConnected();
-          log.debug(`Initial socket check - Connected: ${isActuallyConnected}`);
+        console.log(`[Notifications] Checking socket status - context says: ${socketConnected}`);
+        
+        if (socketService) {
+          console.log(`[Notifications] SocketService exists: ${!!socketService}`);
           
-          // If state doesn't match reality, adjust the connection state here rather than
-          // waiting for context to catch up. This prevents UI inconsistency.
-          if (socketConnected !== isActuallyConnected) {
-            log.debug(`Aligning component connection state with actual socket state (${isActuallyConnected})`);
-            setConnectionState(isActuallyConnected ? "connected" : "disconnected");
+          if (socketService.socket) {
+            console.log(`[Notifications] Socket object exists with ID: ${socketService.socket.id || 'none'}`);
+            
+            // Get real connection status from the socket service using multiple checks
+            const isActuallyConnected = socketService.isConnected();
+            const socketDirectConnected = socketService.socket.connected;
+            
+            console.log(`[Notifications] Socket status checks - isConnected(): ${isActuallyConnected}, socket.connected: ${socketDirectConnected}`);
+            
+            // Use either method to determine if connected
+            const reallyConnected = isActuallyConnected || socketDirectConnected;
+            
+            // If state doesn't match reality, adjust the connection state
+            if (socketConnected !== reallyConnected || connectionState !== (reallyConnected ? "connected" : "disconnected")) {
+              console.log(`[Notifications] Aligning component connection state with actual socket state (${reallyConnected})`);
+              setConnectionState(reallyConnected ? "connected" : "disconnected");
+              
+              // If we detect a connection but context doesn't know about it yet,
+              // force a refresh of notifications
+              if (reallyConnected && !socketConnected) {
+                console.log("[Notifications] Detected socket is actually connected but context doesn't know - forcing refresh");
+                setTimeout(() => {
+                  refreshNotifications();
+                }, 1000);
+              }
+            }
+          } else {
+            console.log(`[Notifications] SocketService exists but socket object is missing`);
+            setConnectionState("disconnected");
           }
+        } else {
+          console.log(`[Notifications] SocketService is missing entirely`);
+          setConnectionState("disconnected");
         }
       } catch (err) {
         log.error("Error checking socket status:", err);
+        setConnectionState("disconnected");
       }
     };
     
+    // Run check immediately
     checkSocketStatus();
-  }, [socketConnected]);
+    
+    // Also set up a periodic check every 10 seconds to ensure connection state is accurate
+    const intervalCheck = setInterval(checkSocketStatus, 10000);
+    
+    return () => {
+      clearInterval(intervalCheck);
+    };
+  }, [socketConnected, refreshNotifications]);
 
   // Monitor socket connection status and refresh when reconnected
   useEffect(() => {
@@ -554,14 +590,40 @@ const NotificationsComponent = ({
             <span>Notifications</span>
             {activeFilter !== "all" && <span className="notification-filter-indicator">({activeFilter})</span>}
 
-            {/* Connection indicator */}
-            <div className="notification-connection-indicator" title={connectionState === "connected" ? "Connected" : "Disconnected - Notifications will be updated via polling"}>
+            {/* Connection indicator with click action to force reconnect */}
+            <div 
+              className="notification-connection-indicator" 
+              title={connectionState === "connected" ? "Connected" : "Disconnected - Notifications will be updated via polling"}
+              onClick={() => {
+                if (connectionState !== "connected" && socketService) {
+                  console.log("[Notifications] Manual socket reconnect requested");
+                  try {
+                    socketService.reconnect();
+                    toast.info("Attempting to reconnect socket...");
+                    setTimeout(() => refreshNotifications(), 2000);
+                  } catch (e) {
+                    console.error("[Notifications] Manual reconnect failed:", e);
+                  }
+                }
+              }}
+              style={{ cursor: connectionState !== "connected" ? "pointer" : "default" }}
+            >
               <span className={`connection-dot ${connectionState === "connected" ? "connected" : "disconnected"}`}></span>
               {connectionState === "disconnected" && <small className="connection-status-text">Offline</small>}
             </div>
           </div>
 
           <div className="notification-header-actions">
+            {/* Test notification button */}
+            <Button 
+              className="notification-header-action" 
+              onClick={handleAddTestNotification} 
+              title="Add test notification"
+              variant="link"
+              size="small"
+              icon={<FaBell />}
+            />
+            
             {/* Refresh button */}
             <Button 
               className="notification-header-action" 
