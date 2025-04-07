@@ -470,18 +470,20 @@
   background-color: rgba(var(--primary-rgb), 0.07);
 }
 
-.features-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.5rem;
-}
-
 @media (min-width: 768px) {
   .features-grid {
     grid-template-columns: repeat(3, 1fr);
   }
 }
 
+.features-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: space-around;
+}
 .feature-card {
   background-color: var(--white);
   padding: 2rem;
