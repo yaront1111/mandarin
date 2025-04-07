@@ -276,14 +276,33 @@ export const useChat = (recipientId = null) => {
       const uniqueMessages = [];
       const seenIds = new Set();
       
-      // Process messages to deduplicate
+      // Process messages to deduplicate with composite key
+      const seenTempIds = new Set();
+      
+      // Process messages to deduplicate using multiple criteria
       [...messages].reverse().forEach(msg => {
-        // Only add if we haven't seen this ID before
-        if (msg._id && !seenIds.has(msg._id)) {
+        // Create a composite key from ID and content hash if possible
+        const contentHash = msg.content ? hashString(msg.content + (msg.timestamp || '')) : '';
+        const compositeKey = msg._id || '';
+        
+        // Check if we've seen this message before using either permanent ID or content hash
+        if (compositeKey && !seenIds.has(compositeKey) && 
+            (!contentHash || !seenTempIds.has(contentHash))) {
           uniqueMessages.push(msg);
-          seenIds.add(msg._id);
+          if (compositeKey) seenIds.add(compositeKey);
+          if (contentHash) seenTempIds.add(contentHash);
         }
       });
+      
+      // Helper function to create a simple hash of message content
+      function hashString(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+          hash = ((hash << 5) - hash) + str.charCodeAt(i);
+          hash |= 0; // Convert to 32bit integer
+        }
+        return hash.toString();
+      }
       
       // Update state with unique messages
       setMessages(uniqueMessages);

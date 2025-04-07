@@ -372,10 +372,32 @@ const VideoCall = ({
     try {
       let stream = null;
 
+      // Check if getUserMedia is supported at all
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        log.error("Media devices API not supported in this browser");
+        toast.error("Your browser doesn't support video calls");
+        throw new Error("Media devices not supported in this browser");
+      }
+
+      // Detect device capabilities
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const isLowPowerDevice = isMobile && 
+                             (/iPhone\s(5|6|7|8)|iPad Mini|Android.*\sS[56]|Galaxy\sJ/.test(navigator.userAgent));
+      
+      // Adapt constraints based on device capabilities
+      const adaptedVideoConstraints = {
+        ...VIDEO_CONSTRAINTS,
+        // Lower resolution for low-power devices
+        width: isLowPowerDevice ? { ideal: 320, max: 480 } : VIDEO_CONSTRAINTS.width,
+        height: isLowPowerDevice ? { ideal: 240, max: 360 } : VIDEO_CONSTRAINTS.height,
+        // Prioritize front camera on mobile
+        facingMode: isMobile ? "user" : VIDEO_CONSTRAINTS.facingMode
+      };
+
       try {
         log.debug("Requesting user media with video and audio constraints.");
         stream = await navigator.mediaDevices.getUserMedia({
-          video: VIDEO_CONSTRAINTS,
+          video: adaptedVideoConstraints,
           audio: AUDIO_CONSTRAINTS
         });
         log.debug("Acquired video and audio stream.");
@@ -384,26 +406,50 @@ const VideoCall = ({
       } catch (err) {
         log.warn(`Media acquisition with audio+video failed: ${err.message}. Trying fallbacks.`);
 
-        // Fallback 1: Video only
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: VIDEO_CONSTRAINTS });
-          setIsLocalMuted(true);
-          setIsLocalVideoOff(false);
-          toast.warning("Microphone access failed. You are muted.");
-          log.warn("Acquired video-only stream.");
-        } catch (err2) {
-          log.warn(`Video-only acquisition failed: ${err2.message}. Trying audio only.`);
-
-          // Fallback 2: Audio only
+        // Fallback 1: Try with lower quality video
+        if (err.name === "OverconstrainedError" || err.name === "NotReadableError") {
           try {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS });
+            log.debug("Trying with lower quality video constraints");
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                width: { ideal: 320 },
+                height: { ideal: 240 },
+                frameRate: { max: 15 }
+              },
+              audio: AUDIO_CONSTRAINTS
+            });
             setIsLocalMuted(false);
-            setIsLocalVideoOff(true);
-            toast.warning("Camera access failed. Using audio only.");
-            log.warn("Acquired audio-only stream.");
-          } catch (err3) {
-            log.error(`All media acquisition attempts failed: ${err3.message}`);
-            throw new Error("Could not access camera or microphone. Check connections & browser permissions.");
+            setIsLocalVideoOff(false);
+            log.debug("Acquired low-quality video and audio stream.");
+          } catch (lowerQualityErr) {
+            log.warn(`Lower quality video also failed: ${lowerQualityErr.message}. Trying video-only.`);
+            // Continue to video-only fallback
+          }
+        }
+        
+        // If we still don't have a stream, try video only
+        if (!stream) {
+          // Fallback 2: Video only
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: adaptedVideoConstraints });
+            setIsLocalMuted(true);
+            setIsLocalVideoOff(false);
+            toast.warning("Microphone access failed. You are muted.");
+            log.warn("Acquired video-only stream.");
+          } catch (err2) {
+            log.warn(`Video-only acquisition failed: ${err2.message}. Trying audio only.`);
+
+            // Fallback 3: Audio only
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS });
+              setIsLocalMuted(false);
+              setIsLocalVideoOff(true);
+              toast.warning("Camera access failed. Using audio only.");
+              log.warn("Acquired audio-only stream.");
+            } catch (err3) {
+              log.error(`All media acquisition attempts failed: ${err3.message}`);
+              throw new Error("Could not access camera or microphone. Check connections & browser permissions.");
+            }
           }
         }
       }
@@ -448,7 +494,15 @@ const VideoCall = ({
     }
 
     try {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      // Enhanced audio context compatibility for all major browsers
+      const AudioContext = window.AudioContext || window.webkitAudioContext || 
+                          window.mozAudioContext || window.msAudioContext;
+      
+      if (!AudioContext) {
+        throw new Error("Web Audio API not supported in this browser");
+      }
+      
+      const audioContext = new AudioContext();
 
       // Local audio analyzer
       const localSource = audioContext.createMediaStreamSource(localStreamRef.current);
@@ -456,6 +510,10 @@ const VideoCall = ({
       localAnalyser.fftSize = 256;
       localSource.connect(localAnalyser);
 
+      // Use smaller FFT size on mobile or low-power devices
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      localAnalyser.fftSize = isMobile ? 128 : 256;
+            
       audioAnalyserRef.current = localAnalyser;
       audioDataRef.current = new Uint8Array(localAnalyser.frequencyBinCount);
 

@@ -115,8 +115,15 @@ class NetworkMonitor {
   constructor(onStatusChange) {
     this.isOnline = navigator.onLine
     this.onStatusChange = onStatusChange
-    window.addEventListener("online", this.handleOnline.bind(this))
-    window.addEventListener("offline", this.handleOffline.bind(this))
+    
+    // Bind methods once to preserve references
+    this.boundHandleOnline = this.handleOnline.bind(this)
+    this.boundHandleOffline = this.handleOffline.bind(this)
+    
+    // Add event listeners with bound methods
+    window.addEventListener("online", this.boundHandleOnline)
+    window.addEventListener("offline", this.boundHandleOffline)
+    
     networkLogger.info(`Network monitor initialized. Online: ${this.isOnline}`)
   }
 
@@ -133,8 +140,9 @@ class NetworkMonitor {
   }
 
   cleanup() {
-    window.removeEventListener("online", this.handleOnline.bind(this))
-    window.removeEventListener("offline", this.handleOffline.bind(this))
+    window.removeEventListener("online", this.boundHandleOnline)
+    window.removeEventListener("offline", this.boundHandleOffline)
+    networkLogger.info("Network monitor cleaned up")
   }
 }
 
@@ -739,11 +747,26 @@ class ApiService {
       // Sanitize any ID params in the request
       const sanitizedParams = { ...params };
       for (const key in sanitizedParams) {
+        // Check if this is any kind of ID field (id, userId, messageId, etc.)
         if (key.toLowerCase().includes('id') && sanitizedParams[key]) {
-          const sanitizedId = this.sanitizeObjectId(sanitizedParams[key]);
-          if (sanitizedId) {
-            apiLogger.debug(`Sanitized param ${key}: ${sanitizedParams[key]} -> ${sanitizedId}`);
-            sanitizedParams[key] = sanitizedId;
+          // Handle both string IDs and array of IDs
+          if (Array.isArray(sanitizedParams[key])) {
+            // Sanitize each ID in the array
+            sanitizedParams[key] = sanitizedParams[key].map(id => {
+              const sanitizedId = this.sanitizeObjectId(id);
+              return sanitizedId || id; // Keep original if sanitization fails
+            });
+          } else {
+            // Handle non-ObjectId format IDs by preserving them
+            // Only sanitize if it looks like a potential MongoDB ID
+            const value = sanitizedParams[key].toString();
+            if (/^[0-9a-f]{1,24}$/i.test(value)) {
+              const sanitizedId = this.sanitizeObjectId(value);
+              if (sanitizedId) {
+                apiLogger.debug(`Sanitized param ${key}: ${value} -> ${sanitizedId}`);
+                sanitizedParams[key] = sanitizedId;
+              }
+            }
           }
         }
       }

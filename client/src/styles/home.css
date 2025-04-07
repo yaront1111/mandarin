@@ -782,3 +782,51 @@
   backface-visibility: hidden;
   perspective: 1000px;
 }
+
+/* RTL support for homepage */
+html[dir="rtl"] .feature-card {
+  text-align: right;
+}
+
+html[dir="rtl"] .hero-actions form {
+  flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .footer-links {
+  padding-right: 0;
+}
+
+html[dir="rtl"] .header-actions {
+  flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .user-card-info {
+  text-align: right;
+}
+
+html[dir="rtl"] .user-card-info .user-location {
+  justify-content: flex-start;
+}
+
+html[dir="rtl"] .user-actions {
+  justify-content: flex-start;
+}
+
+/* Fix icon directions for RTL */
+html[dir="rtl"] .fa-arrow-right {
+  transform: scaleX(-1);
+}
+
+/* Language switcher styles */
+.language-switcher button {
+  width: 32px;
+  height: 32px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
+
+.language-switcher button:hover {
+  background-color: #f0f0f0;
+  transform: scale(1.05);
+}

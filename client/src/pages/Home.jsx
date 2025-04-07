@@ -4,11 +4,15 @@ import { Link, useNavigate } from "react-router-dom"
 import { FaArrowRight, FaMapMarkerAlt, FaRegHeart, FaComment, FaUsers } from "react-icons/fa"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
 import { Helmet, generatePageSchema } from "../components"
+import { useTranslation } from "react-i18next"
+import { useLanguage } from "../context/LanguageContext"
 
 const Home = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState("")
   const [onlineUsers, setOnlineUsers] = useState([])
+  const { t } = useTranslation()
+  const { isRTL, language, changeLanguage } = useLanguage()
 
   useEffect(() => {
     // Mock online users - in a real app this would come from an API
@@ -121,22 +125,24 @@ const Home = () => {
     navigate("/register", { state: { email } })
   }
 
-  // Generate structured data for the homepage
+  // Generate structured data for the homepage based on language
   const homePageSchema = generatePageSchema({
-    title: "Flirtss - Meet Local Singles & Find Your Perfect Match",
-    description: "Flirtss connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!",
+    title: t("home.siteTitle", "Flirtss - Meet Local Singles & Find Your Perfect Match"),
+    description: t("home.siteDescription", "Flirtss connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!"),
     url: "https://flirtss.com/",
     image: "https://flirtss.com/images/social-preview.jpg",
-    lastUpdated: new Date()
+    lastUpdated: new Date(),
+    inLanguage: language
   })
 
   return (
     <div className="modern-home-page w-100 overflow-hidden">
       <Helmet
-        title="Meet Local Singles & Find Your Perfect Match"
-        description="Flirtss connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!"
-        keywords="dating, singles, dating app, find love, relationships, match, chat, online dating"
+        title={t("home.siteTitle", "Meet Local Singles & Find Your Perfect Match")}
+        description={t("home.siteDescription", "Flirtss connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!")}
+        keywords={t("home.siteKeywords", "dating, singles, dating app, find love, relationships, match, chat, online dating")}
         structuredData={homePageSchema}
+        htmlAttributes={{ lang: language, dir: isRTL ? "rtl" : "ltr" }}
       />
       {/* Modern Header */}
       <header className="modern-header glass-effect sticky-top shadow-sm">
@@ -144,22 +150,32 @@ const Home = () => {
           <div className="logo gradient-text font-weight-bold text-nowrap">Mandarin</div>
           <nav className="d-none d-md-flex main-tabs gap-4">
             <Link to="/about" className="tab-button hover-opacity transition-all">
-              About
+              {t("home.aboutUs", "About")}
             </Link>
             <Link to="/safety" className="tab-button hover-opacity transition-all">
-              Safety
+              {t("home.safety", "Safety")}
             </Link>
             <Link to="/support" className="tab-button hover-opacity transition-all">
-              Support
+              {t("home.support", "Support")}
             </Link>
           </nav>
           <div className="header-actions d-flex align-items-center gap-2">
+            <div className="language-switcher me-2">
+              <button 
+                onClick={() => changeLanguage(language === 'en' ? 'he' : 'en')}
+                className="btn btn-sm btn-light rounded-circle"
+                aria-label={t("common.switchLanguage", "Switch language")}
+                title={language === 'en' ? 'עברית' : 'English'}
+              >
+                {language === 'en' ? 'HE' : 'EN'}
+              </button>
+            </div>
             <ThemeToggle />
             <Link to="/login" className="btn btn-outline btn-sm hover-scale transition-all">
-              Login
+              {t("common.login", "Login")}
             </Link>
             <Link to="/register" className="btn btn-primary btn-sm hover-scale transition-all">
-              Register
+              {t("common.register", "Register")}
             </Link>
           </div>
         </div>
@@ -168,23 +184,24 @@ const Home = () => {
       {/* Hero Section */}
       <section className="hero-section animate-fade-in py-5 position-relative overflow-hidden">
         <div className="hero-content mx-auto text-center p-4 max-w-lg">
-          <h1 className="animate-slide-up mb-4 text-shadow font-weight-bold">Find Your Perfect Connection</h1>
+          <h1 className="animate-slide-up mb-4 text-shadow font-weight-bold">
+            {t("home.findMatch", "Find Your Perfect Connection")}
+          </h1>
           <p className="animate-slide-up delay-200 mb-4 text-md opacity-90 line-height-relaxed">
-            Discover genuine connections in a safe, discreet environment designed for adults seeking meaningful
-            encounters.
+            {t("home.tagline", "Discover genuine connections in a safe, discreet environment designed for adults seeking meaningful encounters.")}
           </p>
           <div className="hero-actions animate-slide-up delay-300 mx-auto max-w-md">
             <form onSubmit={handleEmailSubmit} className="email-signup-form d-flex gap-2 shadow-md rounded-lg overflow-hidden">
               <input
                 type="email"
-                placeholder="Enter your email"
+                placeholder={t("auth.email", "Enter your email")}
                 className="form-control border-0 py-3 flex-grow-1"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
               <button type="submit" className="btn btn-primary btn-lg d-flex align-items-center gap-2 transition-transform hover-scale">
-                <span>Get Started</span> <FaArrowRight />
+                <span>{t("home.getStarted", "Get Started")}</span> <FaArrowRight />
               </button>
             </form>
           </div>
@@ -204,10 +221,10 @@ const Home = () => {
         <div className="container">
           <div className="section-header text-center mb-5">
             <h2 className="gradient-text animate-slide-up mb-3 d-flex align-items-center justify-content-center gap-2">
-              <FaUsers className="text-primary" /> <span>People Online Now</span>
+              <FaUsers className="text-primary" /> <span>{t("home.onlineMembers", "People Online Now")}</span>
             </h2>
             <p className="section-subtitle animate-slide-up delay-100 text-opacity-80 max-w-md mx-auto">
-              Connect with these amazing people who are currently active on Mandarin
+              {t("home.connectWithPeople", "Connect with these amazing people who are currently active on Mandarin")}
             </p>
           </div>
           
@@ -254,7 +271,7 @@ const Home = () => {
           
           <div className="view-more-container animate-slide-up delay-400 text-center mt-5">
             <button className="btn btn-secondary btn-lg d-inline-flex align-items-center gap-2 shadow-md hover-scale transition-all px-4 py-3" onClick={handleStartNow}>
-              <span>Join to See More</span> <FaArrowRight />
+              <span>{t("home.joinToSeeMore", "Join to See More")}</span> <FaArrowRight />
             </button>
           </div>
         </div>
@@ -266,18 +283,24 @@ const Home = () => {
           <div className="features-grid grid-cols-1 grid-cols-md-3 gap-4">
             <div className="feature-card animate-slide-up bg-white p-4 rounded-lg shadow-sm hover-shadow-md transition-all text-center">
               <div className="feature-icon privacy d-flex justify-content-center align-items-center mx-auto mb-3 rounded-circle bg-primary-50"></div>
-              <h3 className="font-weight-medium mb-3">Privacy First</h3>
-              <p className="text-opacity-70 line-height-relaxed">Your privacy is our top priority. Control who sees your profile and what information you share.</p>
+              <h3 className="font-weight-medium mb-3">{t("home.privacyFirst", "Privacy First")}</h3>
+              <p className="text-opacity-70 line-height-relaxed">
+                {t("home.privacyDescription", "Your privacy is our top priority. Control who sees your profile and what information you share.")}
+              </p>
             </div>
             <div className="feature-card animate-slide-up delay-100 bg-white p-4 rounded-lg shadow-sm hover-shadow-md transition-all text-center">
               <div className="feature-icon secure d-flex justify-content-center align-items-center mx-auto mb-3 rounded-circle bg-primary-50"></div>
-              <h3 className="font-weight-medium mb-3">Secure Communication</h3>
-              <p className="text-opacity-70 line-height-relaxed">End-to-end encrypted messaging ensures your conversations remain private and secure.</p>
+              <h3 className="font-weight-medium mb-3">{t("home.secureMessaging", "Secure Communication")}</h3>
+              <p className="text-opacity-70 line-height-relaxed">
+                {t("home.secureMessagingDescription", "End-to-end encrypted messaging ensures your conversations remain private and secure.")}
+              </p>
             </div>
             <div className="feature-card animate-slide-up delay-200 bg-white p-4 rounded-lg shadow-sm hover-shadow-md transition-all text-center">
               <div className="feature-icon match d-flex justify-content-center align-items-center mx-auto mb-3 rounded-circle bg-primary-50"></div>
-              <h3 className="font-weight-medium mb-3">Smart Matching</h3>
-              <p className="text-opacity-70 line-height-relaxed">Our advanced algorithm connects you with people who match your preferences and interests.</p>
+              <h3 className="font-weight-medium mb-3">{t("home.smartAlgorithm", "Smart Matching")}</h3>
+              <p className="text-opacity-70 line-height-relaxed">
+                {t("home.smartAlgorithmDescription", "Our advanced algorithm connects you with people who match your preferences and interests.")}
+              </p>
             </div>
           </div>
         </div>
@@ -288,11 +311,21 @@ const Home = () => {
         <div className="container footer-content d-flex flex-column flex-md-row justify-content-between align-items-center gap-4 mb-4">
           <div className="footer-logo gradient-text font-weight-bold text-xl">Mandarin</div>
           <div className="footer-links d-flex flex-wrap justify-content-center gap-3 gap-md-4">
-            <Link to="/about" className="text-decoration-none text-body hover-text-primary transition-all">About Us</Link>
-            <Link to="/safety" className="text-decoration-none text-body hover-text-primary transition-all">Safety</Link>
-            <Link to="/support" className="text-decoration-none text-body hover-text-primary transition-all">Support</Link>
-            <Link to="/terms" className="text-decoration-none text-body hover-text-primary transition-all">Terms</Link>
-            <Link to="/privacy" className="text-decoration-none text-body hover-text-primary transition-all">Privacy</Link>
+            <Link to="/about" className="text-decoration-none text-body hover-text-primary transition-all">
+              {t("home.aboutUs", "About Us")}
+            </Link>
+            <Link to="/safety" className="text-decoration-none text-body hover-text-primary transition-all">
+              {t("home.safety", "Safety")}
+            </Link>
+            <Link to="/support" className="text-decoration-none text-body hover-text-primary transition-all">
+              {t("home.support", "Support")}
+            </Link>
+            <Link to="/terms" className="text-decoration-none text-body hover-text-primary transition-all">
+              {t("home.terms", "Terms")}
+            </Link>
+            <Link to="/privacy" className="text-decoration-none text-body hover-text-primary transition-all">
+              {t("home.privacy", "Privacy")}
+            </Link>
           </div>
           <div className="footer-social d-flex gap-3">
             <a href="#" className="social-icon d-flex align-items-center justify-content-center rounded-circle bg-light hover-bg-primary hover-text-white transition-all shadow-sm">
@@ -307,7 +340,9 @@ const Home = () => {
           </div>
         </div>
         <div className="footer-bottom border-top py-3 text-center">
-          <p className="text-sm text-opacity-70 mb-0">© {new Date().getFullYear()} Mandarin Dating. All rights reserved.</p>
+          <p className="text-sm text-opacity-70 mb-0">
+            {t("home.copyright", "© {{year}} Mandarin Dating. All rights reserved.", { year: new Date().getFullYear() })}
+          </p>
         </div>
       </footer>
     </div>

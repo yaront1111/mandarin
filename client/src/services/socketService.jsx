@@ -596,7 +596,7 @@ class SocketService {
         this.socket.off("callInitiated", handleCallInitiated)
         this.socket.off("callError", handleCallError)
         resolve({ success: true, callId: callData.callId })
-      }, 5000)
+      }, 10000) // Increased to 10 seconds for better reliability on slower connections
     })
   }
 

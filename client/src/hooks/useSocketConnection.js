@@ -155,7 +155,7 @@ export const useSocketConnection = (options = {}) => {
         eventListenersRef.current.clear();
       }
     };
-  }, [options.userId, options.token, options.autoConnect, connectSocket, connected]);
+  }, [options.userId, options.token, options.autoConnect, connectSocket, connected, connectionEffectId]);
   
   /**
    * Connect to socket server with enhanced race condition prevention

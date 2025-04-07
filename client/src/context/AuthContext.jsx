@@ -77,10 +77,18 @@ export const AuthProvider = ({ children }) => {
           log.error(`Error extracting ID from token: ${err.message}`)
         }
 
-        // Last resort in development: use a placeholder ID
-        if ((!cleanUserData._id || !isValidId(cleanUserData._id)) && process.env.NODE_ENV === "development") {
-          log.warn("Development mode: Using placeholder ID as last resort")
-          cleanUserData._id = "5f50c31f72c5e315b4b3e1c5" // Valid MongoDB ObjectId format
+        // Last resort: generate a valid MongoDB ObjectId format using timestamp
+        if (!cleanUserData._id || !isValidId(cleanUserData._id)) {
+          log.warn("Using emergency ID generation as last resort")
+          // Generate a valid MongoDB ObjectId format using timestamp
+          const timestamp = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
+          const machineId = Math.floor(Math.random() * 16777216).toString(16).padStart(6, '0');
+          const processId = Math.floor(Math.random() * 65536).toString(16).padStart(4, '0');
+          const counter = Math.floor(Math.random() * 16777216).toString(16).padStart(6, '0');
+          cleanUserData._id = timestamp + machineId + processId + counter;
+          
+          // Log this emergency measure
+          log.warn(`Emergency ID generated: ${cleanUserData._id}`);
         }
       }
 
@@ -745,7 +753,7 @@ export const AuthProvider = ({ children }) => {
           setIsAuthenticated(true)
         }
       }
-    }, 8000) // Reduced to 8-second timeout for faster recovery
+    }, 15000) // Increased to 15-second timeout for better reliability in slow networks
 
     const checkAuth = async () => {
       try {

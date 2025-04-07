@@ -161,15 +161,19 @@ class SocketClient {
                     // Minimal event handlers
                     eventHandlers: {},
                     
-                    // Simple emit
+                    // Simple emit with proper Socket.io packet format
                     emit: (event, data) => {
                       if (rawSocket.readyState === WebSocket.OPEN) {
                         try {
-                          rawSocket.send(JSON.stringify({
-                            event,
-                            data,
+                          // Format as Socket.io compatible packet
+                          const packet = {
+                            type: 2, // EVENT packet type in Socket.io protocol
+                            nsp: '/',
+                            data: [event, data],
+                            // Include token for authentication
                             token
-                          }));
+                          };
+                          rawSocket.send(JSON.stringify(packet));
                           return true;
                         } catch (err) {
                           console.error(`Error sending via raw websocket: ${err.message}`);
@@ -241,12 +245,30 @@ class SocketClient {
                   
                   rawSocket.onmessage = (event) => {
                     try {
-                      const data = JSON.parse(event.data);
-                      if (data.event && this.socket.eventHandlers[data.event]) {
-                        this.socket.eventHandlers[data.event].forEach(cb => cb(data.data));
+                      // Handle Socket.io packet formats (numeric codes at start)
+                      let data = event.data;
+                      
+                      // Remove Socket.io packet prefixes if present (like "42" prefix)
+                      if (typeof data === 'string' && data.match(/^\d+/)) {
+                        data = data.replace(/^\d+/, '');
+                      }
+                      
+                      if (data && data.startsWith('{')) {
+                        const parsed = JSON.parse(data);
+                        // Handle both standard and Socket.io protocol formats
+                        if (Array.isArray(parsed.data)) {
+                          const [eventName, eventData] = parsed.data;
+                          if (this.socket.eventHandlers[eventName]) {
+                            this.socket.eventHandlers[eventName].forEach(cb => cb(eventData));
+                          }
+                        } else if (parsed.event) {
+                          if (this.socket.eventHandlers[parsed.event]) {
+                            this.socket.eventHandlers[parsed.event].forEach(cb => cb(parsed.data));
+                          }
+                        }
                       }
                     } catch (err) {
-                      console.error("Error parsing message:", err);
+                      console.error("Error parsing socket message:", err);
                     }
                   };
                   
@@ -561,19 +583,102 @@ class SocketClient {
 
   /**
    * Set up broadcast channel for cross-tab notification sync
+   * with fallback for browsers without BroadcastChannel support
    */
   setupNotificationSyncChannel() {
-    // Only run if the browser supports BroadcastChannel
-    if (typeof BroadcastChannel === "undefined") {
-      console.log("BroadcastChannel not supported, cross-tab sync disabled")
-      return null
-    }
+    // Create a unified interface for cross-tab communication
+    const createChannel = () => {
+      // Modern browsers - use BroadcastChannel API
+      if (typeof BroadcastChannel !== "undefined") {
+        console.log("Using native BroadcastChannel for cross-tab sync")
+        try {
+          const channel = new BroadcastChannel("notification_sync")
+          
+          return {
+            type: 'native',
+            postMessage: (message) => channel.postMessage(message),
+            onMessage: (handler) => {
+              channel.onmessage = handler;
+            },
+            close: () => channel.close(),
+          };
+        } catch (err) {
+          console.error("BroadcastChannel creation failed:", err)
+          // Fall through to localStorage fallback
+        }
+      }
+      
+      // Fallback for older browsers - use localStorage events
+      console.log("BroadcastChannel not supported, using localStorage fallback")
+      
+      const channelId = "notification_sync_" + Date.now();
+      let lastMessage = null;
+      
+      // Create unique ID for this tab
+      const tabId = Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+      
+      // Handler for storage events
+      const storageHandler = (event) => {
+        // Only process our own channel events
+        if (event.key !== 'broadcastChannel_notification_sync') return;
+        
+        try {
+          const message = JSON.parse(event.newValue);
+          
+          // Skip messages from this tab
+          if (message.tabId === tabId) return;
+          
+          // Prevent duplicate processing
+          const messageId = message.id || '';
+          if (lastMessage === messageId) return;
+          lastMessage = messageId;
+          
+          // Call the message handler if registered
+          if (this._channelMessageHandler) {
+            this._channelMessageHandler({ data: message.data });
+          }
+        } catch (err) {
+          console.error("Error processing localStorage message:", err);
+        }
+      };
+      
+      // Add storage event listener
+      window.addEventListener('storage', storageHandler);
+      
+      return {
+        type: 'fallback',
+        postMessage: (message) => {
+          try {
+            // Create a unique ID for this message
+            const messageId = Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+            
+            // Store in localStorage to trigger event in other tabs
+            localStorage.setItem('broadcastChannel_notification_sync', JSON.stringify({
+              tabId: tabId,
+              id: messageId,
+              data: message,
+              timestamp: Date.now()
+            }));
+          } catch (err) {
+            console.error("Error posting localStorage message:", err);
+          }
+        },
+        onMessage: (handler) => {
+          this._channelMessageHandler = handler;
+        },
+        close: () => {
+          window.removeEventListener('storage', storageHandler);
+          this._channelMessageHandler = null;
+        },
+      };
+    };
 
     try {
-      this.notificationSyncChannel = new BroadcastChannel("notification_sync")
+      // Create appropriate channel based on browser support
+      this.notificationSyncChannel = createChannel();
 
       // Listen for messages from other tabs
-      this.notificationSyncChannel.onmessage = (event) => {
+      this.notificationSyncChannel.onMessage((event) => {
         const { type, data } = event.data
 
         if (type === "NEW_NOTIFICATION") {
@@ -586,15 +691,16 @@ class SocketClient {
           console.log("Received mark-all-read event from another tab")
           window.dispatchEvent(new CustomEvent("allNotificationsRead"))
         }
-      }
+      })
 
-      console.log("Notification sync channel initialized")
+      console.log(`Notification sync channel initialized (${this.notificationSyncChannel.type})`)
       return this.notificationSyncChannel
     } catch (error) {
       console.error("Error setting up notification sync channel:", error)
       this.notificationSyncChannel = null
       return null
     }
+  }
   }
 
   /**
