@@ -701,7 +701,6 @@ class SocketClient {
       return null
     }
   }
-  }
 
   /**
    * Start heartbeat to monitor connection
