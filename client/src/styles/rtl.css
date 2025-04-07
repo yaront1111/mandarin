@@ -186,6 +186,38 @@ html[dir="rtl"] .photosSection,
   text-align: right !important;
 }
 
+/* Enhanced RTL styles for homepage */
+html[dir="rtl"] .hero-section p,
+.rtl-layout .hero-section p {
+  text-align: right !important;
+}
+
+html[dir="rtl"] .section-subtitle,
+.rtl-layout .section-subtitle {
+  text-align: right !important;
+}
+
+html[dir="rtl"] .email-signup-form,
+.rtl-layout .email-signup-form {
+  flex-direction: row-reverse !important;
+}
+
+html[dir="rtl"] .feature-card p,
+.rtl-layout .feature-card p {
+  text-align: right !important;
+}
+
+/* Fix arrow directions in buttons */
+html[dir="rtl"] button .fa-arrow-right,
+.rtl-layout button .fa-arrow-right {
+  transform: scaleX(-1) !important; 
+}
+
+html[dir="rtl"] button .fa-arrow-left,
+.rtl-layout button .fa-arrow-left {
+  transform: scaleX(-1) !important;
+}
+
 /* Always keep English content in LTR direction */
 html[dir="rtl"] .url,
 html[dir="rtl"] .code,

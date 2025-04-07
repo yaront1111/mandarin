@@ -127,10 +127,10 @@ const Home = () => {
 
   // Generate structured data for the homepage based on language
   const homePageSchema = generatePageSchema({
-    title: t("home.siteTitle", "Flirtss - Meet Local Singles & Find Your Perfect Match"),
-    description: t("home.siteDescription", "Flirtss connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!"),
-    url: "https://flirtss.com/",
-    image: "https://flirtss.com/images/social-preview.jpg",
+    title: t("home.siteTitle", "Mandarin - Meet Local Singles & Find Your Perfect Match"),
+    description: t("home.siteDescription", "Mandarin connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!"),
+    url: "https://mandarin.com/",
+    image: "https://mandarin.com/images/social-preview.jpg",
     lastUpdated: new Date(),
     inLanguage: language
   })
@@ -139,7 +139,7 @@ const Home = () => {
     <div className="modern-home-page w-100 overflow-hidden">
       <Helmet
         title={t("home.siteTitle", "Meet Local Singles & Find Your Perfect Match")}
-        description={t("home.siteDescription", "Flirtss connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!")}
+        description={t("home.siteDescription", "Mandarin connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!")}
         keywords={t("home.siteKeywords", "dating, singles, dating app, find love, relationships, match, chat, online dating")}
         structuredData={homePageSchema}
         htmlAttributes={{ lang: language, dir: isRTL ? "rtl" : "ltr" }}
@@ -201,7 +201,7 @@ const Home = () => {
                 required
               />
               <button type="submit" className="btn btn-primary btn-lg d-flex align-items-center gap-2 transition-transform hover-scale">
-                <span>{t("home.getStarted", "Get Started")}</span> <FaArrowRight />
+                <span>{t("home.getStarted", "Get Started")}</span> {isRTL ? <FaArrowLeft /> : <FaArrowRight />}
               </button>
             </form>
           </div>
@@ -271,7 +271,7 @@ const Home = () => {
           
           <div className="view-more-container animate-slide-up delay-400 text-center mt-5">
             <button className="btn btn-secondary btn-lg d-inline-flex align-items-center gap-2 shadow-md hover-scale transition-all px-4 py-3" onClick={handleStartNow}>
-              <span>{t("home.joinToSeeMore", "Join to See More")}</span> <FaArrowRight />
+              <span>{t("home.joinToSeeMore", "Join to See More")}</span> {isRTL ? <FaArrowLeft /> : <FaArrowRight />}
             </button>
           </div>
         </div>
