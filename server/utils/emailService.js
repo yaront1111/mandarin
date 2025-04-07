@@ -1,40 +1,87 @@
 // server/utils/emailService.js
-import nodemailer from "nodemailer"
-import config from "../config.js"
-import logger from "../logger.js"
 
-// Configure the transporter for your local Postfix SMTP server
-const transporter = nodemailer.createTransport({
-  host: "localhost", // Your local Postfix server
-  port: 25, // Standard SMTP port
-  secure: false, // Use TLS
-  auth: {
-    user: config.EMAIL_USER || "noreply@flirtss.com",
-    pass: config.EMAIL_PASSWORD || "ChangeThis456!" // Replace with your actual password
-  },
-  tls: {
-    // Only needed if you're using a self-signed certificate
-    rejectUnauthorized: false,
-  },
-})
+// Import the Resend SDK
+import { Resend } from 'resend';
+// Keep config for APP_NAME, APP_URL, etc.
+import config from '../config.js';
+// Keep your logger
+import logger from '../logger.js';
+// Load environment variables (ensure dotenv is configured in your app entry point)
+// require('dotenv').config(); // Or however you load .env
 
-// Function to send an email notification
-export const sendEmailNotification = async ({ to, subject, text, html }) => {
-  try {
-    const info = await transporter.sendMail({
-      from: `"${config.APP_NAME || 'Flirtss'}" <${config.EMAIL_FROM || 'noreply@flirtss.com'}>`, // Sender address (must be authorized)
-      to, // Recipient's email
-      subject, // Subject line
-      text, // Plain text body
-      html, // HTML body (optional)
-    })
-    logger.info(`Email sent to ${to}: ${info.messageId}`)
-    return info
-  } catch (err) {
-    logger.error(`Error sending email: ${err.message}`)
-    throw err
+// --- Resend Configuration ---
+// Initialize Resend with your API key from environment variables
+// Ensure RESEND_API_KEY is set in your .env file
+const resend = new Resend(config.RESEND_API_KEY || process.env.RESEND_API_KEY);
+
+// Default sender address - MUST be from your verified domain in Resend (flirtss.com)
+const DEFAULT_FROM_ADDRESS = `"${config.APP_NAME || 'Flirtss'}" <${config.EMAIL_FROM || 'noreply@flirtss.com'}>`;
+
+// --- Core Sending Function (Rewritten for Resend) ---
+
+/**
+ * Sends an email notification using Resend.
+ * @param {Object} options - Email options
+ * @param {string} options.to - Recipient email address.
+ * @param {string} options.subject - Email subject.
+ * @param {string} options.text - Plain text content for the email body.
+ * @param {string} options.html - HTML content for the email body.
+ * @param {string} [options.from=DEFAULT_FROM_ADDRESS] - Sender email address.
+ * @returns {Promise<object|null>} Resend API response data { id: '...' } or null on error.
+ */
+export const sendEmailNotification = async ({ to, subject, text, html, from = DEFAULT_FROM_ADDRESS }) => {
+  // Check if Resend API key is configured
+  if (!resend.apiKey) { // Note: Accessing apiKey directly might change in future SDK versions
+    logger.error('Resend API Key is not configured. Check RESEND_API_KEY environment variable.');
+    // Optionally throw an error or return a specific error object
+    return null;
   }
-}
+
+  // Basic validation
+  if (!to || !subject || (!text && !html)) {
+    logger.error('Missing required parameters for sendEmailNotification (to, subject, text/html).');
+    return null;
+  }
+
+  try {
+    logger.info(`Attempting to send email via Resend to: ${to}, Subject: ${subject}`);
+
+    // Use the Resend SDK to send the email
+    const { data, error } = await resend.emails.send({
+      from: from,
+      to: [to], // Resend expects 'to' to be an array
+      subject: subject,
+      text: text, // Include plain text version if available
+      html: html, // HTML version
+      // Add tags for categorization if desired
+      // tags: [{ name: 'category', value: 'notification' }],
+    });
+
+    // Handle potential errors returned by the Resend API
+    if (error) {
+      logger.error('Resend API Error:', {
+        message: error.message,
+        name: error.name,
+        // Avoid logging potentially sensitive details in production
+        // details: error,
+      });
+      return null; // Indicate failure
+    }
+
+    // Log success and return the response data (contains message ID)
+    logger.info(`Email sent successfully via Resend to ${to}. Message ID: ${data?.id}`);
+    return data; // e.g., { id: '...' }
+
+  } catch (err) {
+    // Catch unexpected errors during the API call or processing
+    logger.error(`Unexpected error sending email via Resend: ${err.message}`, { stack: err.stack });
+    // Optionally re-throw or return null/error object
+    return null;
+  }
+};
+
+
+// --- Specific Email Generation Functions (Unchanged Logic, Uses New Sender) ---
 
 /**
  * Generates and sends a verification email
@@ -42,33 +89,35 @@ export const sendEmailNotification = async ({ to, subject, text, html }) => {
  * @param {string} options.email - Recipient email
  * @param {string} options.nickname - User's nickname
  * @param {string} options.token - Verification token
- * @returns {Promise} - Nodemailer info object
+ * @returns {Promise<object|null>} - Resend response data or null
  */
 export const sendVerificationEmail = async ({ email, nickname, token }) => {
-  const appName = config.APP_NAME || "Flirtss"
-  const appUrl = config.APP_URL || "https://flirtss.com"
-  const verificationUrl = `${appUrl}/verify-email?token=${token}`
+  const appName = config.APP_NAME || "Flirtss";
+  const appUrl = config.APP_URL || "https://flirtss.com";
+  // Ensure the base URL doesn't have a trailing slash if adding path directly
+  const verificationUrl = `${appUrl.replace(/\/$/, '')}/verify-email?token=${token}`;
 
-  const subject = `Verify your email for ${appName}`
+  const subject = `Verify your email for ${appName}`;
 
-  // Plain text version
+  // Plain text version (keep as is)
   const text = `
     Hello ${nickname},
-    
+
     Thank you for registering with ${appName}!
-    
+
     Please verify your email address by clicking the link below:
     ${verificationUrl}
-    
+
     This link will expire in 24 hours.
-    
+
     If you did not create an account, please ignore this email.
-    
+
     Best regards,
     The ${appName} Team
-  `
+  `;
 
-  // HTML version
+  // HTML version (keep as is - ensure image paths are absolute URLs or embedded)
+  // Make sure image URLs like ${appUrl}/logo.png are correct and publicly accessible
   const html = `
     <!DOCTYPE html>
     <html>
@@ -99,17 +148,17 @@ export const sendVerificationEmail = async ({ email, nickname, token }) => {
           margin-bottom: 25px;
         }
         .logo {
-          max-width: 180px;
+          max-width: 180px; /* Ensure logo size is appropriate */
           height: auto;
           margin-bottom: 15px;
         }
         .button {
           display: inline-block;
           background: linear-gradient(135deg, #ff6b6b 0%, #ff2d73 100%);
-          color: white !important;
+          color: white !important; /* Ensure high contrast */
           text-decoration: none;
           padding: 14px 28px;
-          border-radius: 50px;
+          border-radius: 50px; /* Fully rounded */
           margin: 25px 0;
           font-weight: bold;
           font-size: 16px;
@@ -141,7 +190,7 @@ export const sendVerificationEmail = async ({ email, nickname, token }) => {
         .social-icon {
           display: inline-block;
           margin: 0 8px;
-          width: 32px;
+          width: 32px; /* Adjust size as needed */
           height: 32px;
         }
         h1 {
@@ -151,60 +200,65 @@ export const sendVerificationEmail = async ({ email, nickname, token }) => {
         p {
           color: #555;
         }
+        a { /* Ensure links are visible */
+            color: #ff2d73;
+            text-decoration: underline;
+        }
       </style>
     </head>
     <body>
       <div class="container">
         <div class="header">
-          <img src="${appUrl}/logo.png" alt="${appName} Logo" class="logo">
+          <img src="${config.APP_URL || 'https://flirtss.com'}/logo.png" alt="${appName} Logo" class="logo">
           <h1>${appName}</h1>
         </div>
-        
+
         <p>Hello ${nickname},</p>
-        
+
         <div class="verification-banner">
           <p><strong>Please verify your email to unlock all features</strong></p>
           <p>Thank you for registering with ${appName}! We're excited to have you join our community.</p>
         </div>
-        
+
         <p>Please verify your email address by clicking the button below:</p>
-        
+
         <div style="text-align: center;">
           <a href="${verificationUrl}" class="button">Verify Email Address</a>
         </div>
-        
+
         <p style="font-size: 14px; color: #777;">Or copy and paste this link into your browser:</p>
         <p style="word-break: break-all; font-size: 14px; background-color: #f8f8f8; padding: 10px; border-radius: 4px;"><a href="${verificationUrl}">${verificationUrl}</a></p>
-        
+
         <p><strong>Why verify?</strong> Verified members have full access to messaging, profile features, and more!</p>
-        
+
         <p>This verification link will expire in 24 hours.</p>
-        
+
         <p>If you did not create an account, please ignore this email.</p>
-        
+
         <p>Best regards,<br>The ${appName} Team</p>
-        
+
         <div class="footer">
           <p>&copy; ${new Date().getFullYear()} ${appName}. All rights reserved.</p>
           <p>This is an automated message, please do not reply.</p>
           <div class="social-icons">
-            <a href="#"><img src="${appUrl}/images/social/facebook.png" alt="Facebook" class="social-icon"></a>
-            <a href="#"><img src="${appUrl}/images/social/instagram.png" alt="Instagram" class="social-icon"></a>
-            <a href="#"><img src="${appUrl}/images/social/twitter.png" alt="Twitter" class="social-icon"></a>
+            <a href="#"><img src="${config.APP_URL || 'https://flirtss.com'}/images/social/facebook.png" alt="Facebook" class="social-icon"></a>
+            <a href="#"><img src="${config.APP_URL || 'https://flirtss.com'}/images/social/instagram.png" alt="Instagram" class="social-icon"></a>
+            <a href="#"><img src="${config.APP_URL || 'https://flirtss.com'}/images/social/twitter.png" alt="Twitter" class="social-icon"></a>
           </div>
         </div>
       </div>
     </body>
     </html>
-  `
+  `;
 
+  // Call the core sending function
   return sendEmailNotification({
     to: email,
     subject,
     text,
     html,
-  })
-}
+  });
+};
 
 /**
  * Generates and sends a new message notification email with user card
@@ -215,7 +269,7 @@ export const sendVerificationEmail = async ({ email, nickname, token }) => {
  * @param {string} options.messagePreview - Preview of the message content
  * @param {string} options.messageType - Type of message (text, image, etc.)
  * @param {string} options.conversationUrl - URL to the conversation
- * @returns {Promise} - Nodemailer info object
+ * @returns {Promise<object|null>} - Resend response data or null
  */
 export const sendNewMessageEmail = async ({
   recipientEmail,
@@ -225,35 +279,36 @@ export const sendNewMessageEmail = async ({
   messageType,
   conversationUrl,
 }) => {
-  const appName = config.APP_NAME || "Flirtss"
-  const appUrl = config.APP_URL || "https://flirtss.com"
+  const appName = config.APP_NAME || "Flirtss";
+  const appUrl = config.APP_URL || "https://flirtss.com";
 
   // Default values if sender info is incomplete
-  const senderName = sender?.nickname || "Someone"
-  const senderAge = sender?.details?.age ? `, ${sender.details.age}` : ""
-  const senderLocation = sender?.details?.location || "Unknown location"
-  const senderPhoto = sender?.photos?.length > 0 ? sender.photos[0].url : `${appUrl}/default-avatar.png`
-  const senderIdentity = sender?.details?.iAm || ""
-  const senderLookingFor = sender?.details?.lookingFor?.length > 0 ? sender.details.lookingFor[0] : ""
+  const senderName = sender?.nickname || "Someone";
+  const senderAge = sender?.details?.age ? `, ${sender.details.age}` : "";
+  const senderLocation = sender?.details?.location || "Unknown location";
+  // Ensure senderPhoto is an absolute URL
+  const senderPhoto = sender?.photos?.length > 0 ? sender.photos[0].url : `${appUrl.replace(/\/$/, '')}/default-avatar.png`;
+  const senderIdentity = sender?.details?.iAm || "";
+  const senderLookingFor = sender?.details?.lookingFor?.length > 0 ? sender.details.lookingFor[0] : "";
 
-  const subject = `${senderName} sent you a message on ${appName}`
+  const subject = `${senderName} sent you a message on ${appName}`;
 
-  // Plain text version
+  // Plain text version (Keep as is)
   const text = `
     Hello ${recipientName},
-    
+
     You have received a new message from ${senderName}${senderAge} on ${appName}.
-    
+
     Message preview: "${messagePreview}"
-    
+
     To view and reply to this message, click here:
     ${conversationUrl}
-    
+
     Best regards,
     The ${appName} Team
-  `
+  `;
 
-  // HTML version with user card
+  // HTML version (Keep as is - ensure image URLs are absolute)
   const html = `
     <!DOCTYPE html>
     <html>
@@ -284,7 +339,7 @@ export const sendNewMessageEmail = async ({
           border-bottom: 1px solid #e1e1e1;
           margin-bottom: 20px;
         }
-        .logo {
+        .logo { /* Added for consistency if needed */
           max-width: 150px;
           height: auto;
         }
@@ -316,9 +371,10 @@ export const sendNewMessageEmail = async ({
         }
         .user-photo {
           width: 100%;
-          height: 200px;
+          height: 200px; /* Adjust as needed */
           object-fit: cover;
           display: block;
+          background-color: #eee; /* Placeholder color */
         }
         .user-info {
           padding: 15px;
@@ -328,7 +384,7 @@ export const sendNewMessageEmail = async ({
           font-weight: bold;
           margin: 0 0 5px 0;
         }
-        .user-subtitle {
+        .user-subtitle { /* Not used in template, but keep style */
           color: #666;
           margin: 0 0 10px 0;
           font-size: 14px;
@@ -367,6 +423,10 @@ export const sendNewMessageEmail = async ({
           font-style: italic;
           border-left: 4px solid #ff4b7d;
         }
+        a { /* Ensure links are visible */
+            color: #ff4b7d;
+            text-decoration: underline;
+        }
       </style>
     </head>
     <body>
@@ -374,26 +434,24 @@ export const sendNewMessageEmail = async ({
         <div class="header">
           <h1>${appName}</h1>
         </div>
-        
+
         <p>Hello ${recipientName},</p>
-        
+
         <p>You have received a new message from:</p>
-        
-        <!-- User Card -->
+
         <div class="user-card">
           <img src="${senderPhoto}" alt="${senderName}" class="user-photo" />
           <div class="user-info">
             <h3 class="user-name">${senderName}${senderAge}</h3>
             <p class="user-location">📍 ${senderLocation}</p>
-            
+
             <div class="tag-container">
               ${senderIdentity ? `<span class="tag identity-tag">I am: ${senderIdentity}</span>` : ""}
               ${senderLookingFor ? `<span class="tag looking-for-tag">Into: ${senderLookingFor}</span>` : ""}
             </div>
           </div>
         </div>
-        
-        <!-- Message Preview -->
+
         <div class="message-preview">
           ${
             messageType === "text"
@@ -407,64 +465,33 @@ export const sendNewMessageEmail = async ({
                     : "Sent you a message"
           }
         </div>
-        
+
         <div style="text-align: center;">
           <a href="${conversationUrl}" class="button">View & Reply</a>
         </div>
-        
+
         <p>To view your messages and reply, you can also log in to your account.</p>
-        
+
         <div class="footer">
           <p>&copy; ${new Date().getFullYear()} ${appName}. All rights reserved.</p>
           <p>
-            <small>If you no longer wish to receive these emails, you can 
+            <small>If you no longer wish to receive these emails, you can
             <a href="${appUrl}/settings/notifications">update your notification preferences</a>.</small>
           </p>
         </div>
       </div>
     </body>
     </html>
-  `
+  `;
 
+  // Call the core sending function
   return sendEmailNotification({
     to: recipientEmail,
     subject,
     text,
     html,
-  })
-}
-
-// Test function to verify email configuration
-export const testEmailConfiguration = async (testEmail) => {
-  try {
-    const info = await transporter.sendMail({
-      from: `"Flirtss Test" <noreply@flirtss.com>`,
-      to: testEmail,
-      subject: "Flirtss Email Configuration Test",
-      text: "If you're reading this, your email configuration is working properly!",
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 8px;">
-          <h2 style="color: #ff4b7d;">Flirtss Email Test</h2>
-          <p>If you're reading this, your email configuration is working properly!</p>
-          <p>This is a test email sent from your Postfix SMTP server on flirtss.com.</p>
-          <p>Server time: ${new Date().toISOString()}</p>
-        </div>
-      `
-    })
-
-    return {
-      success: true,
-      messageId: info.messageId,
-      response: info.response
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error.message,
-      stack: error.stack
-    }
-  }
-}
+  });
+};
 
 /**
  * Sends a test notification email to verify user's notification settings
@@ -472,51 +499,50 @@ export const testEmailConfiguration = async (testEmail) => {
  * @param {string} options.email - Recipient email
  * @param {string} options.nickname - User's nickname
  * @param {Object} options.settings - User's notification settings
- * @returns {Promise<Object>} - Result object with success status
+ * @returns {Promise<object|null>} - Resend response data or null
  */
 export const sendTestNotificationEmail = async ({ email, nickname, settings }) => {
-  try {
-    const appName = config.APP_NAME || "Flirtss"
-    const appUrl = config.APP_URL || "https://flirtss.com"
-    
-    const subject = `Test Notification from ${appName}`
-    
-    // Get settings summary
-    const emailEnabled = settings?.notifications?.email !== false
-    const frequency = settings?.notifications?.emailDigestFrequency || 'instant'
-    const offlineOnly = settings?.notifications?.emailOfflineOnly !== false
-    
-    // Plain text version
-    const text = `
-      Hello ${nickname},
-      
-      This is a test notification email from ${appName}.
-      
-      Your current email notification settings:
-      
-      - Email notifications: ${emailEnabled ? 'Enabled' : 'Disabled'}
-      - Frequency: ${frequency}
-      - Offline only: ${offlineOnly ? 'Yes' : 'No'}
-      
-      If you received this email, your email notification settings are working correctly.
-      
-      You can update your notification preferences at any time in your settings:
-      ${appUrl}/settings
-      
-      Best regards,
-      The ${appName} Team
-    `
-    
-    // HTML version
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Test Notification</title>
-        <style>
-          body {
+  const appName = config.APP_NAME || "Flirtss";
+  const appUrl = config.APP_URL || "https://flirtss.com";
+
+  const subject = `Test Notification from ${appName}`;
+
+  // Get settings summary
+  const emailEnabled = settings?.notifications?.email !== false;
+  const frequency = settings?.notifications?.emailDigestFrequency || 'instant';
+  const offlineOnly = settings?.notifications?.emailOfflineOnly !== false;
+
+  // Plain text version (Keep as is)
+  const text = `
+    Hello ${nickname},
+
+    This is a test notification email from ${appName}.
+
+    Your current email notification settings:
+
+    - Email notifications: ${emailEnabled ? 'Enabled' : 'Disabled'}
+    - Frequency: ${frequency}
+    - Offline only: ${offlineOnly ? 'Yes' : 'No'}
+
+    If you received this email, your email notification settings are working correctly.
+
+    You can update your notification preferences at any time in your settings:
+    ${appUrl}/settings
+
+    Best regards,
+    The ${appName} Team
+  `;
+
+  // HTML version (Keep as is - ensure image URLs are absolute)
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Test Notification</title>
+      <style>
+         body {
             font-family: Arial, sans-serif;
             line-height: 1.6;
             color: #333;
@@ -591,88 +617,117 @@ export const sendTestNotificationEmail = async ({ email, nickname, settings }) =
             font-size: 12px;
             margin-left: 10px;
           }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <img src="${appUrl}/logo.png" alt="${appName} Logo" class="logo">
-            <h1>${appName} <span class="test-badge">TEST</span></h1>
-          </div>
-          
-          <p>Hello ${nickname},</p>
-          
-          <p>This is a test notification email from ${appName}.</p>
-          
-          <h2>Your Email Notification Settings</h2>
-          
-          <table class="settings-table">
-            <tr>
-              <th>Setting</th>
-              <th>Status</th>
-            </tr>
-            <tr>
-              <td>Email Notifications</td>
-              <td class="${emailEnabled ? 'enabled' : 'disabled'}">
-                ${emailEnabled ? 'Enabled' : 'Disabled'}
-              </td>
-            </tr>
-            <tr>
-              <td>Delivery Frequency</td>
-              <td>
-                ${frequency === 'instant' ? 'Instant' : 
-                  frequency === 'hourly' ? 'Hourly Digest' : 
-                  frequency === 'daily' ? 'Daily Digest' : 'Never'}
-              </td>
-            </tr>
-            <tr>
-              <td>Offline Messages Only</td>
-              <td>
-                ${offlineOnly ? 'Yes' : 'No'}
-              </td>
-            </tr>
-          </table>
-          
-          <p>If you received this email, your email notification settings are working correctly.</p>
-          
-          <div style="text-align: center;">
-            <a href="${appUrl}/settings" class="button">Manage Settings</a>
-          </div>
-          
-          <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} ${appName}. All rights reserved.</p>
-            <p>
-              <small>This is a test email. If you did not request this test, you can safely ignore it.</small>
-            </p>
-          </div>
+          a { /* Ensure links are visible */
+            color: #ff4b7d;
+            text-decoration: underline;
+          }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <img src="${appUrl.replace(/\/$/, '')}/logo.png" alt="${appName} Logo" class="logo">
+          <h1>${appName} <span class="test-badge">TEST</span></h1>
         </div>
-      </body>
-      </html>
-    `
-    
-    const info = await sendEmailNotification({
-      to: email,
-      subject,
-      text,
-      html
-    })
-    
-    return {
-      success: true,
-      messageId: info.messageId
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error.message
-    }
-  }
-}
 
+        <p>Hello ${nickname},</p>
+
+        <p>This is a test notification email from ${appName}.</p>
+
+        <h2>Your Email Notification Settings</h2>
+
+        <table class="settings-table">
+          <tr>
+            <th>Setting</th>
+            <th>Status</th>
+          </tr>
+          <tr>
+            <td>Email Notifications</td>
+            <td class="${emailEnabled ? 'enabled' : 'disabled'}">
+              ${emailEnabled ? 'Enabled' : 'Disabled'}
+            </td>
+          </tr>
+          <tr>
+            <td>Delivery Frequency</td>
+            <td>
+              ${frequency === 'instant' ? 'Instant' :
+                frequency === 'hourly' ? 'Hourly Digest' :
+                frequency === 'daily' ? 'Daily Digest' : 'Never'}
+            </td>
+          </tr>
+          <tr>
+            <td>Offline Messages Only</td>
+            <td>
+              ${offlineOnly ? 'Yes' : 'No'}
+            </td>
+          </tr>
+        </table>
+
+        <p>If you received this email, your email notification settings are working correctly.</p>
+
+        <div style="text-align: center;">
+          <a href="${appUrl}/settings" class="button">Manage Settings</a>
+        </div>
+
+        <div class="footer">
+          <p>&copy; ${new Date().getFullYear()} ${appName}. All rights reserved.</p>
+          <p>
+            <small>This is a test email. If you did not request this test, you can safely ignore it.</small>
+          </p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  // Call the core sending function
+  const result = await sendEmailNotification({
+    to: email,
+    subject,
+    html,
+    text // Include text version
+  });
+
+  // Return a consistent success/failure object for this specific function
+  return {
+      success: !!result, // True if result is not null
+      messageId: result?.id || null,
+      error: result ? null : "Failed to send email via Resend" // Basic error message
+  };
+};
+
+
+// --- Remove Old Test Function ---
+// The testEmailConfiguration function was specific to Nodemailer/Postfix.
+// Testing Resend involves sending a real email and checking the response/dashboard.
+// You can use sendTestNotificationEmail or create a simpler dedicated test.
+
+// Example of a simple dedicated test function (optional)
+export const testResendConnection = async (testEmail) => {
+    logger.info(`Sending Resend test email to: ${testEmail}`);
+    const result = await sendEmailNotification({
+        to: testEmail,
+        subject: `Resend Test from ${config.APP_NAME || 'Flirtss'}`,
+        text: `This is a test email sent using Resend from ${config.APP_URL}. Time: ${new Date().toISOString()}`,
+        html: `<p>This is a test email sent using <strong>Resend</strong> from ${config.APP_URL}.</p><p>Time: ${new Date().toISOString()}</p>`,
+    });
+    if (result) {
+        logger.info(`Resend test successful. Message ID: ${result.id}`);
+        return { success: true, messageId: result.id };
+    } else {
+        logger.error(`Resend test failed.`);
+        return { success: false, error: "Failed to send test email via Resend. Check logs and Resend configuration." };
+    }
+};
+
+
+// --- Exports ---
+// Export the functions for use in other parts of your application
 export default {
   sendEmailNotification,
   sendVerificationEmail,
   sendNewMessageEmail,
-  testEmailConfiguration,
-  sendTestNotificationEmail
-}
+  // testEmailConfiguration, // Removed
+  sendTestNotificationEmail,
+  testResendConnection, // Added new simple test
+};

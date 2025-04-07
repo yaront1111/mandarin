@@ -134,6 +134,7 @@ function App() {
                       <Route path="/verify-email" element={<VerifyEmail />} />
                       {/* New public pages */}
                       <Route path="/about-us" element={<AboutUs />} />
+                      <Route path="/about" element={<AboutUs />} />
                       <Route path="/safety" element={<Safety />} />
                       <Route path="/support" element={<Support />} />
                       <Route
