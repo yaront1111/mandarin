@@ -23,11 +23,11 @@ module.exports = {
     /^text-/,
     /^btn-/,
     /^card-/,
-    // Translate utility classes with fractions
-    /^translate-x-\d\/\d/,
-    /^translate-y-\d\/\d/,
-    /^translate-x-n\d\/\d/,
-    /^translate-y-n\d\/\d/,
+    // Fraction-based classes - instead of regex, use explicit class names
+    'translate-x-1/2', 'translate-x-1/3', 'translate-x-2/3', 'translate-x-1/4', 'translate-x-3/4',
+    'translate-y-1/2', 'translate-y-1/3', 'translate-y-2/3', 'translate-y-1/4', 'translate-y-3/4',
+    'translate-x-n1/2', 'translate-x-n1/3', 'translate-x-n2/3', 'translate-x-n1/4', 'translate-x-n3/4',
+    'translate-y-n1/2', 'translate-y-n1/3', 'translate-y-n2/3', 'translate-y-n1/4', 'translate-y-n3/4',
     // State-based classes
     'active',
     'disabled',
