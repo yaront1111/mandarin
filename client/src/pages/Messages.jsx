@@ -1296,6 +1296,7 @@ const Messages = () => {
             onEndCall={handleEndCall}
             isIncoming={incomingCall !== null && incomingCall.callerId === activeConversation.user._id}
             callId={incomingCall?.callId}
+            recipientName={activeConversation.user.nickname}
           />
         </div>
       )}

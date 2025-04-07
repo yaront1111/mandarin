@@ -498,7 +498,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     
     const storyUser = story.user || story.userData || {};
     if (!storyUser || typeof storyUser === "string") return "Unknown User";
-    return storyUser.nickname || storyUser.username || storyUser.name || "User";
+    return storyUser.nickname || "User";
   }, [currentStories, currentStoryIndex]);
 
   // Memoize the profile picture calculation

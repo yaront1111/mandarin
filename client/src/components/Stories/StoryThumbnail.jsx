@@ -24,7 +24,7 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser, me
   }, [story, propUser]);
 
   const userId = storyUser._id;
-  const userName = storyUser.nickname || storyUser.username || storyUser.name || "User";
+  const userName = storyUser.nickname || "User";
   const explicitAvatarSrc = storyUser.profilePicture || storyUser.avatar || null;
 
   // Determine the final avatar URL - use the proper URL pattern

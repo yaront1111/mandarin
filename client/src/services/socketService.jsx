@@ -564,7 +564,7 @@ class SocketService {
         userId: this.userId,
         caller: {
           userId: this.userId,
-          name: localStorage.getItem("userNickname") || "User",
+          nickname: localStorage.getItem("userNickname") || "User",
         },
         timestamp: Date.now(),
       }

@@ -195,7 +195,7 @@ const authenticateSocket = async (socket, data) => {
         _id: user._id.toString(), // Ensure string format
         id: user._id.toString(),   // Ensure string format and 'id' field
         email: user.email,
-        nickname: user.nickname || user.name,
+        nickname: user.nickname,
         role: user.role
         // Add other necessary non-sensitive fields
       }

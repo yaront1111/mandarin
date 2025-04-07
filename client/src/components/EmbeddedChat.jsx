@@ -324,7 +324,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
       // Set the incoming call data
       safeSetState(setIncomingCall, {
         callId: call.callId,
-        callerName: call.caller?.name || recipient.nickname,
+        callerName: recipient.nickname,
         callerId: call.userId,
         timestamp: call.timestamp
       });
