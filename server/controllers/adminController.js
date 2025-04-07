@@ -446,6 +446,185 @@ export const getSystemStats = async (req, res) => {
 };
 
 /**
+ * Get content statistics
+ */
+export const getContentStats = async (req, res) => {
+  try {
+    // Content statistics - photos, stories, etc.
+    const [
+      totalPhotos,
+      totalStories,
+      totalReportedContent,
+      totalModeratedContent
+    ] = await Promise.all([
+      User.aggregate([
+        { $project: { photoCount: { $size: "$photos" } } },
+        { $group: { _id: null, total: { $sum: "$photoCount" } } }
+      ]).then(result => (result[0]?.total || 0)),
+      Story.countDocuments(),
+      0, // Placeholder for reports count
+      0  // Placeholder for moderated content count
+    ]);
+
+    // Gather photo stats by status
+    const photosByStatus = {
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+      total: totalPhotos
+    };
+
+    // Stories stats by type
+    const storiesByType = await Story.aggregate([
+      { $group: { _id: "$contentType", count: { $sum: 1 } } }
+    ]);
+
+    // Format data for response
+    const formattedStoriesByType = {};
+    storiesByType.forEach(item => {
+      formattedStoriesByType[item._id || 'other'] = item.count;
+    });
+
+    // Create response object
+    const stats = {
+      photos: {
+        total: totalPhotos,
+        byStatus: photosByStatus
+      },
+      stories: {
+        total: totalStories,
+        byType: formattedStoriesByType
+      },
+      moderation: {
+        totalReported: totalReportedContent,
+        totalModerated: totalModeratedContent,
+        pendingModeration: totalReportedContent - totalModeratedContent
+      }
+    };
+
+    // Log the action
+    createAuditLog({
+      action: 'VIEW_CONTENT_STATS',
+      userId: req.user._id,
+      details: 'Content statistics viewed'
+    });
+
+    return res.json(createApiResponse(true, stats));
+  } catch (error) {
+    logger.error(`Error getting content stats: ${error.message}`, { stack: error.stack });
+    return res.status(500).json(createApiResponse(false, null, null, "Failed to retrieve content statistics"));
+  }
+};
+
+/**
+ * Get messaging statistics
+ */
+export const getMessagingStats = async (req, res) => {
+  try {
+    // Get date range from query params or use default (last 30 days)
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - (req.query.days ? parseInt(req.query.days, 10) : 30));
+
+    // Count total messages
+    const totalMessages = await Message.countDocuments();
+
+    // Messages per day over the past 30 days
+    const messagesByDay = await Message.aggregate([
+      { $match: { createdAt: { $gte: startDate, $lte: endDate } } },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$createdAt" },
+            month: { $month: "$createdAt" },
+            day: { $dayOfMonth: "$createdAt" }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1 } }
+    ]);
+
+    // Format the data for response
+    const formattedMessagesByDay = messagesByDay.map(day => ({
+      date: `${day._id.year}-${String(day._id.month).padStart(2, '0')}-${String(day._id.day).padStart(2, '0')}`,
+      count: day.count
+    }));
+
+    // Most active message senders
+    const topMessageSenders = await Message.aggregate([
+      { $group: { _id: "$sender", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "_id",
+          as: "userInfo"
+        }
+      },
+      { $unwind: { path: "$userInfo", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          userId: "$_id",
+          nickname: "$userInfo.nickname",
+          email: "$userInfo.email",
+          count: 1
+        }
+      }
+    ]);
+
+    // Most active conversation pairs
+    const topConversations = await Message.aggregate([
+      {
+        $group: {
+          _id: {
+            sender: "$sender",
+            recipient: "$recipient"
+          },
+          count: { $sum: 1 },
+          lastMessage: { $max: "$createdAt" }
+        }
+      },
+      { $sort: { count: -1 } },
+      { $limit: 10 }
+    ]);
+
+    // Create response object
+    const stats = {
+      overview: {
+        totalMessages,
+        averagePerDay: Math.round(formattedMessagesByDay.reduce((sum, day) => sum + day.count, 0) / formattedMessagesByDay.length) || 0,
+        messagesLast24h: formattedMessagesByDay.length > 0 ? formattedMessagesByDay[formattedMessagesByDay.length - 1].count : 0
+      },
+      activity: {
+        byDay: formattedMessagesByDay,
+        topSenders: topMessageSenders,
+        topConversations: topConversations.map(conv => ({
+          users: [conv._id.sender, conv._id.recipient],
+          messageCount: conv.count,
+          lastActivity: conv.lastMessage
+        }))
+      }
+    };
+
+    // Log the action
+    createAuditLog({
+      action: 'VIEW_MESSAGING_STATS',
+      userId: req.user._id,
+      details: 'Messaging statistics viewed'
+    });
+
+    return res.json(createApiResponse(true, stats));
+  } catch (error) {
+    logger.error(`Error getting messaging stats: ${error.message}`, { stack: error.stack });
+    return res.status(500).json(createApiResponse(false, null, null, "Failed to retrieve messaging statistics"));
+  }
+};
+
+/**
  * Get all users with filtering options
  */
 export const getAllUsers = async (req, res) => {

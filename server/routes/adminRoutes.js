@@ -14,6 +14,8 @@ router.get("/stats/overview", asyncHandler(adminController.getOverviewStats));
 router.get("/stats/users", asyncHandler(adminController.getUserStats));
 router.get("/stats/activity", asyncHandler(adminController.getActivityStats));
 router.get("/stats/system", asyncHandler(adminController.getSystemStats));
+router.get("/stats/content", asyncHandler(adminController.getContentStats));
+router.get("/stats/messaging", asyncHandler(adminController.getMessagingStats));
 
 // User management
 router.get("/users", asyncHandler(adminController.getAllUsers));
