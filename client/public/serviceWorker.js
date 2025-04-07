@@ -1,17 +1,12 @@
 // Service Worker for Flirtss
 const CACHE_NAME = 'flirtss-cache-v1';
+// Only include assets that definitely exist
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/favicon.ico',
-  '/logo192.png',
-  '/logo512.png',
-  '/apple-touch-icon.png',
   '/placeholder.svg',
-  '/images/social-preview.jpg',
-  '/robots.txt',
-  '/sitemap.xml'
+  '/robots.txt'
 ];
 
 // Install event - cache static assets

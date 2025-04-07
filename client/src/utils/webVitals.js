@@ -60,14 +60,17 @@ const reportWebVitals = (metric, options = {}) => {
     console.log(`%c${metric.name}: ${metricData.value} (${metric.rating})`, `color: ${color}; font-weight: bold;`);
   }
 
-  // Send analytics data to server
-  if (navigator.sendBeacon) {
+  // Send analytics data to server (only if endpoint exists)
+  if (navigator.sendBeacon && window.location.hostname !== 'flirtss.com') {
     try {
       const blob = new Blob([JSON.stringify({ webVitals: metricData })], { type: 'application/json' });
       navigator.sendBeacon('/api/analytics/web-vitals', blob);
     } catch (e) {
       // Silently fail if beacon is not available
     }
+  } else {
+    // Just log in console for now until analytics API is implemented
+    console.debug('Web Vital:', metricData.name, metricData.value);
   }
 };
 

@@ -321,7 +321,8 @@ const protect = async (req, res, next) => {
         nickname: user.nickname,
         role: user.role,
         // Add other fields needed by subsequent middleware/routes, excluding sensitive ones
-        settings: user.settings, // Example: include settings if needed
+        settings: user.settings, // Include settings if needed
+        blockedUsers: user.blockedUsers || [], // Include blockedUsers array (needed for blocked users routes)
         // DO NOT include password hash or other sensitive fields
     };
 
@@ -335,7 +336,9 @@ const protect = async (req, res, next) => {
         userNickname: req.user.nickname,
         userRole: req.user.role,
         requestPath: req.originalUrl,
-        requestMethod: req.method
+        requestMethod: req.method,
+        blockedUsersField: user.blockedUsers ? 'present' : 'not present',
+        userObjectFields: Object.keys(userToAttach)
     });
     // --- END ADDED LOGGING ---
 

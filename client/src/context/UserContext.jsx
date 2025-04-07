@@ -880,18 +880,36 @@ export const UserProvider = ({ children }) => {
    */
   const getBlockedUsers = useCallback(async () => {
     try {
-      const response = await apiService.get('/users/blocked');
+      // Ensure we have a valid user before making the request
+      if (!user || !user._id) {
+        console.warn("Cannot get blocked users - current user ID is missing");
+        return [];
+      }
+      
+      console.log(`Fetching blocked users for user ${user._id}`);
+      const response = await apiService.get('/users/blocked', {}, {
+        headers: { "x-no-cache": "true" } // Ensure we get fresh data
+      });
       
       if (response.success) {
+        console.log(`Successfully fetched ${response.count || 0} blocked users`);
         return response.data || [];
       }
+      
+      // Handle specific known errors
+      if (response.status === 401) {
+        console.warn("Authentication required to fetch blocked users");
+        return [];
+      }
+      
       throw new Error(response.error || "Failed to fetch blocked users");
     } catch (err) {
       const errorMsg = err.error || err.message || "Failed to fetch blocked users";
+      console.error(`Error in getBlockedUsers: ${errorMsg}`);
       dispatch({ type: "USER_ERROR", payload: errorMsg });
       return [];
     }
-  }, []);
+  }, [user]);
 
   /**
    * Block a user.

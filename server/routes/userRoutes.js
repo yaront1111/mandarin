@@ -1608,24 +1608,40 @@ router.get(
   "/blocked",
   protect,
   asyncHandler(async (req, res) => {
-    logger.debug(`Getting blocked users for ${req.user._id}`);
-
     try {
+      // Ensure we have a valid user ID
+      if (!req.user || !req.user._id) {
+        logger.error(`Missing user ID in request for blocked users`);
+        return res.status(400).json({
+          success: false,
+          error: "Invalid user information"
+        });
+      }
+      
+      logger.debug(`Getting blocked users for ${req.user._id}`);
+
       const user = await User.findById(req.user._id)
         .select("blockedUsers")
         .populate("blockedUsers", "nickname photos isOnline lastActive");
 
       if (!user) {
+        logger.warn(`User not found: ${req.user._id}`);
         return res.status(404).json({
           success: false,
           error: "User not found"
         });
       }
 
+      // Ensure blockedUsers is an array, even if it's undefined
+      const blockedUsers = user.blockedUsers || [];
+      
+      // Log the number of blocked users found
+      logger.debug(`Found ${blockedUsers.length} blocked users for user ${req.user._id}`);
+
       res.status(200).json({
         success: true,
-        count: user.blockedUsers.length,
-        data: user.blockedUsers
+        count: blockedUsers.length,
+        data: blockedUsers
       });
     } catch (err) {
       logger.error(`Error fetching blocked users: ${err.message}`);
