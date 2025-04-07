@@ -482,7 +482,6 @@ const seedDatabase = async () => {
           username,
           email: `${username}@example.com`,
           password: hashedPassword,
-          role: getRandomElement(roles),
           accountTier,
           details: userDetails,
           isOnline: Math.random() < 0.3,
