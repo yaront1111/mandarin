@@ -174,23 +174,30 @@ const Home = () => {
             <Link to="/login" className="btn btn-outline btn-sm hover-scale transition-all">
               {t("common.login", "Login")}
             </Link>
-            <Link to="/register" className="btn btn-primary btn-sm hover-scale transition-all">
+            <Link to="/register" className="btn btn-primary btn-sm hover-scale transition-all" data-discover="true" aria-label={t("common.register", "Register")}>
               {t("common.register", "Register")}
             </Link>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
+      {/* Hero Section - Optimized for CLS */}
       <section className="hero-section animate-fade-in py-5 position-relative overflow-hidden">
         <div className="hero-content mx-auto text-center p-4 max-w-lg">
-          <h1 className="animate-slide-up mb-4 text-shadow font-weight-bold">
-            {t("home.findMatch", "Find Your Perfect Connection")}
-          </h1>
-          <p className="animate-slide-up delay-200 mb-4 text-md opacity-90 line-height-relaxed">
-            {t("home.tagline", "Discover genuine connections in a safe, discreet environment designed for adults seeking meaningful encounters.")}
-          </p>
-          <div className="hero-actions animate-slide-up delay-300 mx-auto max-w-md">
+          {/* Pre-allocate fixed height to prevent layout shift */}
+          <div className="hero-heading-container" style={{ minHeight: '80px', width: '100%', marginBottom: '1rem' }}>
+            <h1 className="animate-slide-up mb-4 text-shadow font-weight-bold hero-heading">
+              {t("home.findMatch", "Find Your Perfect Connection")}
+            </h1>
+          </div>
+          {/* Fixed height for tagline to prevent layout shift */}
+          <div className="hero-tagline-container" style={{ minHeight: '60px', width: '100%', marginBottom: '1rem' }}>
+            <p className="animate-slide-up delay-200 mb-4 text-md opacity-90 line-height-relaxed">
+              {t("home.tagline", "Discover genuine connections in a safe, discreet environment designed for adults seeking meaningful encounters.")}
+            </p>
+          </div>
+          {/* Fixed height for action button to prevent layout shift */}
+          <div className="hero-actions animate-slide-up delay-300 mx-auto max-w-md" style={{ minHeight: '60px' }}>
             <form onSubmit={handleEmailSubmit} className="email-signup-form d-flex gap-2 shadow-md rounded-lg overflow-hidden">
               <input
                 type="email"
@@ -200,7 +207,11 @@ const Home = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
-              <button type="submit" className="btn btn-primary btn-lg d-flex align-items-center gap-2 transition-transform hover-scale">
+              <button 
+                type="submit" 
+                className="btn btn-primary btn-lg d-flex align-items-center gap-2 transition-transform hover-scale"
+                aria-label={t("home.getStarted", "Get Started")}
+              >
                 <span>{t("home.getStarted", "Get Started")}</span> {isRTL ? <FaArrowLeft /> : <FaArrowRight />}
               </button>
             </form>

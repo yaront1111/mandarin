@@ -7,10 +7,14 @@
     "dev": "vite",
     "build": "vite build --mode production",
     "build:analyze": "ANALYZE=true vite build --mode production",
-    "build:optimized": "npm run lint && npm run build",
+    "build:optimized": "npm run purge:css && npm run lint && npm run build",
     "preview": "vite preview",
     "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "serve:prod": "vite preview --host --port 3000"
+    "serve:prod": "vite preview --host --port 3000",
+    "purge:css": "purgecss --config purgecss.config.js",
+    "analyze:bundle": "vite build --mode analyze && open stats.html",
+    "optimize:images": "npx imagemin-cli public/images/**/* --out-dir=public/images/optimized",
+    "perf:audit": "npm run build:optimized && npm run serve:prod"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
@@ -44,15 +48,21 @@
     "@vitejs/plugin-legacy": "^6.0.2",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.21",
+    "babel-plugin-transform-react-remove-prop-types": "^0.4.24",
+    "critical": "^5.1.2",
     "cssnano": "^7.0.6",
     "eslint": "^9.22.0",
     "eslint-plugin-react": "^7.37.4",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
+    "imagemin-cli": "^7.0.0",
+    "purgecss": "^5.0.0",
     "rollup-plugin-visualizer": "^5.14.0",
     "vite": "^6.2.2",
     "vite-plugin-compression": "^0.5.1",
+    "vite-plugin-html": "^3.2.1",
     "vite-plugin-node-polyfills": "^0.23.0",
+    "vite-plugin-preload": "^0.3.1",
     "vite-plugin-purgecss": "^0.2.13"
   }
 }

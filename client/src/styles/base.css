@@ -559,6 +559,47 @@ html, body, #root {
   background-color: rgba(var(--neutral-500-rgb, 107, 114, 128), 0.7);
 }
 
+/* Performance Optimizations */
+/* CLS Optimization for Hero Section */
+.hero-heading-container {
+  min-height: 80px;
+  width: 100%;
+  margin-bottom: 1rem;
+  contain: layout;
+}
+
+.hero-tagline-container {
+  min-height: 60px;
+  width: 100%;
+  margin-bottom: 1rem;
+  contain: layout;
+}
+
+.hero-actions {
+  min-height: 60px;
+  contain: layout;
+}
+
+/* Content visibility optimizations */
+.online-users-section:not(:focus-within):not(:hover) {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 400px;
+}
+
+.features-section:not(:focus-within):not(:hover) {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 300px;
+}
+
+/* Font display optimizations */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap; /* Ensures text remains visible during font loading */
+  src: url('/font/inter-v12-latin-regular.woff2') format('woff2');
+}
+
 /* Responsive Images */
 .responsive-image {
   width: 100%;
