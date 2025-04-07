@@ -126,9 +126,11 @@ const Footer = () => {
           <p>© {new Date().getFullYear()} <span itemProp="name">Flirtss</span>. All rights reserved.</p>
         </div>
         <nav className="footer-links" aria-label="Footer navigation">
+          <a href="/about-us">About Us</a>
+          <a href="/safety">Safety</a>
+          <a href="/support">Support</a>
           <a href="/privacy" rel="nofollow">Privacy Policy</a>
           <a href="/terms" rel="nofollow">Terms of Service</a>
-          <a href="/contact">Contact Us</a>
           <a href="/sitemap.xml" aria-label="Sitemap">Sitemap</a>
         </nav>
       </div>

@@ -8,3 +8,6 @@ export { default as UserProfile } from './UserProfile';
 export { default as NotFound } from './NotFound';
 export { default as Subscription } from './Subscription';
 export { default as Messages } from './Messages';
+export { default as AboutUs } from './AboutUs';
+export { default as Safety } from './Safety';
+export { default as Support } from './Support';

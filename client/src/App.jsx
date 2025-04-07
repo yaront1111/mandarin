@@ -36,6 +36,9 @@ import Messages from "./pages/Messages.jsx"
 import Subscription from "./pages/Subscription"
 import Admin from "./pages/Admin.jsx"
 import VerifyEmail from "./pages/VerifyEmail.jsx"
+import AboutUs from "./pages/AboutUs"
+import Safety from "./pages/Safety"
+import Support from "./pages/Support"
 import { EmbeddedChat } from "./components"
 
 function App() {
@@ -129,6 +132,10 @@ function App() {
                       <Route path="/login" element={<Login />} />
                       <Route path="/register" element={<Register />} />
                       <Route path="/verify-email" element={<VerifyEmail />} />
+                      {/* New public pages */}
+                      <Route path="/about-us" element={<AboutUs />} />
+                      <Route path="/safety" element={<Safety />} />
+                      <Route path="/support" element={<Support />} />
                       <Route
                         path="/dashboard"
                         element={
