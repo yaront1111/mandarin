@@ -144,6 +144,39 @@ const urlNormalizationCache = new Map();
 const failedUrlsCache = new Set();
 
 /**
+ * Fix Unsplash image URLs to use a proxy or alternative service
+ * @param {string} url - Unsplash URL to fix
+ * @returns {string} Fixed URL
+ */
+export const fixUnsplashUrl = (url) => {
+  if (!url || !url.includes('unsplash.com')) return url;
+  
+  try {
+    // Extract the photo ID from the Unsplash URL
+    // Unsplash URLs follow the pattern: https://images.unsplash.com/photo-[ID]?...
+    const photoIdMatch = url.match(/photo-([^?]+)/);
+    
+    if (photoIdMatch && photoIdMatch[1]) {
+      const photoId = photoIdMatch[1];
+      
+      // Option 1: Use imgproxy.net (public service, may have rate limits)
+      // return `https://imgproxy.net/insecure/fit/800/800/ce/0/plain/https://images.unsplash.com/photo-${photoId}`;
+      
+      // Option 2: Use a different image hosting service (e.g., placeholder image)
+      return `https://picsum.photos/800/800?random=${photoId.substring(0, 8)}`;
+      
+      // Option 3: If you have your own proxy, use it here
+      // return `${window.location.origin}/api/proxy-image?url=${encodeURIComponent(url)}`;
+    }
+  } catch (error) {
+    console.error('Error fixing Unsplash URL:', error);
+  }
+  
+  // If all else fails, return a placeholder
+  return `${window.location.origin}/placeholder.svg`;
+};
+
+/**
  * Normalize photo URLs consistently across the app
  * @param {string} url - Photo URL to normalize
  * @returns {string} Normalized URL
@@ -163,8 +196,12 @@ export const normalizePhotoUrl = (url) => {
 
   let result;
   
+  // Handle Unsplash URLs specially since they have rate limits
+  if (url.includes('unsplash.com')) {
+    result = fixUnsplashUrl(url);
+  }
   // If it's the default avatar or placeholder, use absolute URL
-  if (url === '/default-avatar.png' || url === '/placeholder.svg') {
+  else if (url === '/default-avatar.png' || url === '/placeholder.svg') {
     result = `${window.location.origin}${url}`;
   }
   // If it's already a full URL, return it
@@ -178,7 +215,7 @@ export const normalizePhotoUrl = (url) => {
     const apiBase = window.location.origin;
     const avatarUrl = `${apiBase}/api/avatars/${url}`;
     // Only log in development mode
-    if (import.meta.env.MODE !== 'production') {
+    if (import.meta.env?.MODE !== 'production') {
       console.log(`Avatar URL generated: ${avatarUrl}`);
     }
     result = avatarUrl;

@@ -864,13 +864,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         [photoId]: true,
       }));
       
-      // Mark any unsplash URLs as failed to prevent retries
+      // Mark failed URLs to prevent retries, but we handle Unsplash URLs differently now
       const failedImage = profileUser?.photos?.find(p => p._id === photoId);
-      if (failedImage && failedImage.url && (
-        failedImage.url.includes('unsplash.com') ||
-        !failedImage.url.startsWith(window.location.origin)
-      )) {
+      if (failedImage && failedImage.url && !failedImage.url.startsWith(window.location.origin)) {
         try {
+          // We'll still mark it as failed for the cache, but our normalizePhotoUrl will handle unsplash URLs
           markUrlAsFailed(failedImage.url);
         } catch (error) {
           log.error(`Error marking URL as failed: ${error.message}`);

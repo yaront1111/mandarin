@@ -43,12 +43,7 @@ const Avatar = ({
         }
       }
       
-      // Skip unsplash URLs entirely since they are consistently failing
-      if (src && typeof src === 'string' && src.includes('unsplash.com')) {
-        setImgSrc(defaultAvatarPath);
-        setImageError(true);
-        return;
-      }
+      // We now handle Unsplash URLs in normalizePhotoUrl, so no need to skip them here
       
       setImgSrc(src || defaultAvatarPath);
       setImageError(false);
