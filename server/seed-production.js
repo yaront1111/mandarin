@@ -88,12 +88,17 @@ const lastNames = [
 
 // Generate couple names
 const generateCoupleName = () => {
-  const name1 = getRandomElement([...hebrewFemaleNames, ...hebrewMaleNames]);
-  let name2 = getRandomElement([...hebrewFemaleNames, ...hebrewMaleNames]);
+  // Include both Hebrew and English names for diversity
+  const allFirstNames = [...hebrewFemaleNames, ...hebrewMaleNames, ...firstNames];
+  const name1 = getRandomElement(allFirstNames);
+  let name2 = getRandomElement(allFirstNames);
   while (name1 === name2) {
-    name2 = getRandomElement([...hebrewFemaleNames, ...hebrewMaleNames]);
+    name2 = getRandomElement(allFirstNames);
   }
-  return `${name1} ו${name2}`;
+  
+  // Use '&' for English connection, 'ו' for Hebrew connection
+  const connector = Math.random() < 0.5 ? " & " : " and ";
+  return `${name1}${connector}${name2}`;
 };
 
 // Generate username based on name or use a cool nickname
@@ -138,9 +143,10 @@ const interestsBank = [
   "Concerts", "Festivals", "Yoga", "Meditation", "Running", "Swimming", "Hiking", "Biking", "Tennis"
 ];
 
-const iAmOptions = ["אישה", "גבר", "זוג", "woman", "man", "couple"];
+// Fixed enum values matching User model
+const iAmOptions = ["woman", "man", "couple"]; // Only English values valid in model
 
-const lookingForOptions = ["נשים", "גברים", "זוגות", "women", "men", "couples"];
+const lookingForOptions = ["women", "men", "couples"]; // Only these values are valid
 
 const intoTagsOptions = [
   // Hebrew options
@@ -168,52 +174,84 @@ const turnOnsOptions = [
   'Beards', 'Long hair', 'Shaved', 'Natural', 'Muscular', 'Curvy', 'Petite', 'Tall'
 ];
 
+// Fixed to match User model marital status enum
 const maritalStatusOptions = [
-  // Hebrew options
-  'רווק/ה', 'נשוי/אה', 'גרוש/ה', 'אלמן/ה', 'במערכת יחסים', 'זה מסובך', 'מערכת פתוחה', 'פוליאמורי/ת',
-  
-  // English options
-  'Single', 'Married', 'Divorced', 'Widowed', 'In relationship', 'It\'s complicated', 'Open relationship', 'Polyamorous'
+  // Valid enum values from User model
+  "Single", "Married", "Divorced", "Separated", "Widowed", 
+  "In a relationship", "It's complicated", "Open relationship", "Polyamorous"
 ];
 
-// Hebrew bio templates for more realistic profiles
-const hebrewBioTemplates = [
-  (details) => `היי שם! אני בן/בת ${details.age}, ${details.maritalStatus} ומתגורר/ת ב${details.location}. אוהב/ת ${details.interests[0] || 'לפגוש אנשים חדשים'} ו${details.interests[1] || 'לנהל שיחות טובות'}. מחפש/ת מישהו/י לחלוק איתו/ה חוויות מדהימות.`,
+// Gender-specific Hebrew bio templates for men
+const hebrewMaleBioTemplates = [
+  (details) => `היי שם! אני בן ${details.age}, ${details.maritalStatus} ומתגורר ב${details.location}. אוהב ${details.interests[0] || 'לפגוש אנשים חדשים'} ו${details.interests[1] || 'לנהל שיחות טובות'}. מחפש מישהי לחלוק איתה חוויות מדהימות.`,
 
-  (details) => `${details.maritalStatus} ${details.iAm} מ${details.location}. בן/בת ${details.age} עם המון אנרגיות. תשוקה ל${details.interests[0] || 'חיים'} ותמיד מוכן/ה ל${details.interests[1] || 'הרפתקאות'}. בוא/י נתחבר ונראה לאן זה יוביל!`,
+  (details) => `${details.maritalStatus} שמתגורר ב${details.location}. בן ${details.age} עם המון אנרגיות. תשוקה ל${details.interests[0] || 'חיים'} ותמיד מוכן ל${details.interests[1] || 'הרפתקאות'}. בואי נתחבר ונראה לאן זה יוביל!`,
 
-  (details) => `החיים קצרים מכדי לא ליהנות מהם! ${details.iAm} בן/בת ${details.age} שאוהב/ת ${details.interests[0] || 'זמנים טובים'}. כשאני לא עובד/ת, תמצאו אותי ${details.interests[1] ? 'נהנה/ית מ' + details.interests[1] : 'מגלה מקומות חדשים'}. מחפש/ת חיבורים אמיתיים ב${details.location}.`,
+  (details) => `החיים קצרים מכדי לא ליהנות מהם! גבר בן ${details.age} שאוהב ${details.interests[0] || 'זמנים טובים'}. כשאני לא עובד, תמצאו אותי ${details.interests[1] ? 'נהנה מ' + details.interests[1] : 'מגלה מקומות חדשים'}. מחפש חיבורים אמיתיים ב${details.location}.`,
 
-  (details) => `מקומי/ת מ${details.location}, בן/בת ${details.age}. ${details.maritalStatus} ונהנה/ית מהחיים. אני ממש מתעניין/ת ב${details.interests[0] || 'בידור'} ו${details.interests[1] || 'תרבות'}. מעריך/ה כנות, כבוד ותקשורת טובה. בוא/י נשוחח ונראה אם יש קליק.`,
+  (details) => `מקומי מ${details.location}, בן ${details.age}. ${details.maritalStatus} ונהנה מהחיים. אני ממש מתעניין ב${details.interests[0] || 'בידור'} ו${details.interests[1] || 'תרבות'}. מעריך כנות, כבוד ותקשורת טובה. בואי נשוחח ונראה אם יש קליק.`,
 
-  (details) => `סתם ${details.iAm} שנהנה/ית מהדברים הטובים בחיים. בן/בת ${details.age}, גר/ה ב${details.location} היפה. ${details.maritalStatus}. התשוקות שלי כוללות ${details.interests[0] || 'טיולים'} ו${details.interests[1] || 'מפגשים עם אנשים חדשים'}. שלח/י הודעה אם את/ה מעוניין/ת לדעת עוד.`,
-
-  (details) => `${details.iAm}, בן/בת ${details.age}, ${details.maritalStatus}. מבוסס/ת ב${details.location}. מחפש/ת זמנים כיפיים וקשרים משמעותיים. אוהב/ת ${details.interests[0] || 'הרפתקאות'} ו${details.interests[1] || 'תוכניות ספונטניות'}. אמור/י היי אם את/ה חושב/ת שנסתדר!`,
-
-  (details) => `חי/ה את החיים הטובים ביותר ב${details.location}! ${details.iAm} בן/בת ${details.age}, ${details.maritalStatus}. כשאני לא עובד/ת, אני נהנה/ית מ${details.interests[0] || 'חברה'} ו${details.interests[1] || 'רגיעה'}. פתוח/ה לחוויות חדשות ולפגישות עם אנשים מעניינים.`,
-
-  (details) => `${details.maritalStatus} ${details.iAm} מ${details.location}. בן/בת ${details.age} עם תשוקה ל${details.interests[0] || 'פגישות עם אנשים חדשים'} ו${details.interests[1] || 'ניסיון דברים חדשים'}. מחפש/ת חיבורים אמיתיים - החיים קצרים מכדי להסתפק בפחות!`,
-
-  (details) => `שלום מ${details.location}! אני ${details.iAm} בן/בת ${details.age}, ${details.maritalStatus} ונהנה/ית מהחיים. התחומים שלי כוללים ${details.interests[0] || 'חברותא'}, ${details.interests[1] || 'כיף'}, ויצירת קשרים משמעותיים. בוא/י נדבר!`,
-
-  (details) => `${details.iAm}, בן/בת ${details.age}. חי/ה ב${details.location} ואוהב/ת את זה! ${details.maritalStatus} ופתוח/ה לחוויות חדשות. יש לי תשוקה ל${details.interests[0] || 'חיים'} ו${details.interests[1] || 'חברה טובה'}. שלח/י הודעה אם אנחנו נראים מתאימים!`
+  (details) => `סתם גבר שנהנה מהדברים הטובים בחיים. בן ${details.age}, גר ב${details.location} היפה. ${details.maritalStatus}. התשוקות שלי כוללות ${details.interests[0] || 'טיולים'} ו${details.interests[1] || 'מפגשים עם אנשים חדשים'}. שלחי הודעה אם את מעוניינת לדעת עוד.`
 ];
 
-// Bio templates for more realistic profiles in English
-const englishBioTemplates = [
-  (details) => `Hey there! I'm ${details.age}, ${details.maritalStatus.toLowerCase()} and living in ${details.location}. I love ${details.interests[0] || 'meeting new people'} and ${details.interests[1] || 'having good conversations'}. Looking for someone to share amazing experiences with.`,
+// Gender-specific Hebrew bio templates for women
+const hebrewFemaleBioTemplates = [
+  (details) => `היי! אני בת ${details.age}, ${details.maritalStatus} ומתגוררת ב${details.location}. אוהבת ${details.interests[0] || 'לפגוש אנשים חדשים'} ו${details.interests[1] || 'לנהל שיחות טובות'}. מחפשת מישהו לחלוק איתו חוויות מדהימות.`,
 
-  (details) => `${details.maritalStatus} ${details.iAm} based in ${details.location}. ${details.age} years young and full of energy. Passionate about ${details.interests[0] || 'life'} and always up for ${details.interests[1] || 'adventures'}. Let's connect and see where it goes!`,
+  (details) => `${details.maritalStatus} מ${details.location}. בת ${details.age} עם המון אנרגיות. תשוקה ל${details.interests[0] || 'חיים'} ותמיד מוכנה ל${details.interests[1] || 'הרפתקאות'}. בוא נתחבר ונראה לאן זה יוביל!`,
 
-  (details) => `Life is too short not to enjoy it! ${details.age}-year-old ${details.iAm} who loves ${details.interests[0] || 'good times'}. When I'm not working, you'll find me ${details.interests[1] ? 'enjoying ' + details.interests[1] : 'exploring new places'}. Looking for genuine connections in ${details.location}.`,
+  (details) => `החיים קצרים מכדי לא ליהנות מהם! אישה בת ${details.age} שאוהבת ${details.interests[0] || 'זמנים טובים'}. כשאני לא עובדת, אני ${details.interests[1] ? 'נהנית מ' + details.interests[1] : 'מגלה מקומות חדשים'}. מחפשת חיבורים אמיתיים ב${details.location}.`,
+
+  (details) => `מקומית מ${details.location}, בת ${details.age}. ${details.maritalStatus} ונהנית מהחיים. אני מתעניינת ב${details.interests[0] || 'בידור'} ו${details.interests[1] || 'תרבות'}. מעריכה כנות, כבוד ותקשורת טובה. בוא נשוחח ונראה אם יש קליק.`,
+
+  (details) => `אישה שנהנית מהדברים הטובים בחיים. בת ${details.age}, גרה ב${details.location} היפה. ${details.maritalStatus}. התשוקות שלי כוללות ${details.interests[0] || 'טיולים'} ו${details.interests[1] || 'מפגשים עם אנשים חדשים'}. שלח הודעה אם אתה מעוניין לדעת עוד.`
+];
+
+// Hebrew bio templates for couples
+const hebrewCoupleBioTemplates = [
+  (details) => `זוג מ${details.location}, ממוצע גיל ${details.age}. ${details.maritalStatus}. אנחנו אוהבים ${details.interests[0] || 'ספונטניות'} ו${details.interests[1] || 'מפגשים חברותיים'}. מחפשים זוגות או יחידים לבילויים משותפים.`,
+
+  (details) => `זוג אוהב הרפתקאות מ${details.location}. אנחנו ${details.maritalStatus} ומחפשים להכיר אנשים חדשים. אוהבים ${details.interests[0] || 'טיולים'} ו${details.interests[1] || 'בילויים משותפים'}. אם אתם מחפשים חברים חדשים, בואו ניצור קשר!`,
+
+  (details) => `זוג מחובר וחם מ${details.location}. יחד כבר כמה שנים טובות, ${details.maritalStatus}. אנחנו אוהבים לבלות ${details.interests[0] ? 'ב' + details.interests[0] : 'במקומות חדשים'} ומחפשים קשרים חדשים ומעניינים.`
+];
+
+// English bio templates for men
+const englishMaleBioTemplates = [
+  (details) => `Hey there! I'm ${details.age}, ${details.maritalStatus.toLowerCase()} and living in ${details.location}. I love ${details.interests[0] || 'meeting new people'} and ${details.interests[1] || 'having good conversations'}. Looking for someone special to share amazing experiences with.`,
+
+  (details) => `${details.maritalStatus} guy based in ${details.location}. ${details.age} years young and full of energy. Passionate about ${details.interests[0] || 'life'} and always up for ${details.interests[1] || 'adventures'}. Let's connect and see where it goes!`,
+
+  (details) => `Life is too short not to enjoy it! ${details.age}-year-old man who loves ${details.interests[0] || 'good times'}. When I'm not working, you'll find me ${details.interests[1] ? 'enjoying ' + details.interests[1] : 'exploring new places'}. Looking for genuine connections in ${details.location}.`,
 
   (details) => `${details.location} native, ${details.age} years old. ${details.maritalStatus} and enjoying life. I'm deeply into ${details.interests[0] || 'entertainment'} and ${details.interests[1] || 'culture'}. I value honesty, respect, and good communication. Let's chat and see if we click.`,
 
-  (details) => `Just a ${details.iAm} who enjoys the finer things in life. ${details.age}, living in beautiful ${details.location}. ${details.maritalStatus}. My passions include ${details.interests[0] || 'traveling'} and ${details.interests[1] || 'meeting new people'}. Message me if you're interested in knowing more.`
+  (details) => `Just a guy who enjoys the finer things in life. ${details.age}, living in beautiful ${details.location}. ${details.maritalStatus}. My passions include ${details.interests[0] || 'traveling'} and ${details.interests[1] || 'meeting new people'}. Message me if you're interested in knowing more.`
 ];
 
-// Combined bio templates
-const bioTemplates = [...hebrewBioTemplates, ...englishBioTemplates];
+// English bio templates for women
+const englishFemaleBioTemplates = [
+  (details) => `Hello! I'm ${details.age}, ${details.maritalStatus.toLowerCase()} and living in ${details.location}. I enjoy ${details.interests[0] || 'meeting new people'} and ${details.interests[1] || 'meaningful conversations'}. Looking for someone genuine to share adventures with.`,
+
+  (details) => `${details.maritalStatus} woman from ${details.location}. ${details.age} years young with a zest for life. Love ${details.interests[0] || 'spontaneity'} and always ready for ${details.interests[1] || 'new experiences'}. Let's see if we connect!`,
+
+  (details) => `Life is meant to be enjoyed! ${details.age}-year-old woman who loves ${details.interests[0] || 'good company'}. In my free time, I'm usually ${details.interests[1] ? 'enjoying ' + details.interests[1] : 'discovering new places'}. Seeking meaningful connections here in ${details.location}.`,
+
+  (details) => `From ${details.location}, ${details.age} years old. ${details.maritalStatus} and loving life. Passionate about ${details.interests[0] || 'arts'} and ${details.interests[1] || 'culture'}. I appreciate authenticity, kindness, and good conversation. Message me if you'd like to chat.`,
+
+  (details) => `Woman who appreciates life's simple pleasures. ${details.age}, living in gorgeous ${details.location}. ${details.maritalStatus}. I love ${details.interests[0] || 'travel'} and ${details.interests[1] || 'meeting interesting people'}. Say hi if you'd like to know more about me.`
+];
+
+// English bio templates for couples
+const englishCoupleBioTemplates = [
+  (details) => `Couple from ${details.location}, both in our ${details.age}s. ${details.maritalStatus} and looking to meet new people. We enjoy ${details.interests[0] || 'socializing'} and ${details.interests[1] || 'trying new things'}. Looking for other couples or singles for fun times.`,
+
+  (details) => `Fun-loving couple based in ${details.location}. We're ${details.maritalStatus} and looking to expand our social circle. Into ${details.interests[0] || 'dining out'} and ${details.interests[1] || 'weekend adventures'}. If you're open-minded and friendly, let's connect!`,
+
+  (details) => `Adventurous pair from ${details.location}. Together for several years, ${details.maritalStatus}. We love ${details.interests[0] || 'exploring'} and meeting new people. Looking for genuine connections with like-minded individuals or couples.`
+];
+
+// There are no more generic templates, only specific ones for each type
 
 // --- Enhanced Photo Collections ---
 // First, create a directory to save our seed photos
@@ -353,43 +391,43 @@ const seedDatabase = async () => {
 
         // Generate appropriate name based on user type
         let nickname;
-        if (iAm === 'זוג' || iAm === 'couple') {
+        if (iAm === 'couple') {
           nickname = generateCoupleName();
-        } else if (iAm === 'אישה' || iAm === 'woman') {
+        } else if (iAm === 'woman') {
           nickname = getRandomElement([...hebrewFemaleNames, ...firstNames.slice(0, 20)]); // Use female names
         } else { // man
           nickname = getRandomElement([...hebrewMaleNames, ...firstNames.slice(40)]); // Use male names
         }
 
         // Add a last name sometimes for individuals
-        if ((iAm !== 'זוג' && iAm !== 'couple') && Math.random() > 0.5) {
+        if (iAm !== 'couple' && Math.random() > 0.5) {
           nickname = `${nickname} ${getRandomElement(lastNames)}`;
         }
 
         // Generate matching username or use a cool nickname
         const username = generateUsername(nickname);
 
-        // Generate appropriate looking for options
+        // Generate appropriate looking for options (using valid values only)
         let lookingFor;
-        if (iAm === 'זוג' || iAm === 'couple') {
+        if (iAm === 'couple') {
           // Couples typically look for women, men, or other couples
           lookingFor = getRandomUniqueElements(lookingForOptions, getRandomInt(1, 3));
-        } else if (iAm === 'אישה' || iAm === 'woman') {
+        } else if (iAm === 'woman') {
           // More variety in what women might look for
           lookingFor = getRandomUniqueElements(lookingForOptions, getRandomInt(1, 3));
         } else { // man
           // Men might look for women, couples, or less frequently men
           const preferences = Math.random() < 0.8 ? 
-            ['נשים', 'זוגות', 'women', 'couples'] : 
+            ['women', 'couples'] : // Most common preferences for men
             lookingForOptions;
           lookingFor = getRandomUniqueElements(preferences, getRandomInt(1, preferences.length));
         }
 
-        // Select gender based on iAm
+        // Select gender based on iAm (using only valid values)
         let gender;
-        if (iAm === 'אישה' || iAm === 'woman') {
+        if (iAm === 'woman') {
           gender = 'female';
-        } else if (iAm === 'גבר' || iAm === 'man') {
+        } else if (iAm === 'man') {
           gender = 'male';
         } else { // couple
           gender = getRandomElement(['male', 'female']); // Represent primary account holder
@@ -397,7 +435,7 @@ const seedDatabase = async () => {
 
         // Set age ranges more realistically
         let age;
-        if (iAm === 'זוג' || iAm === 'couple') {
+        if (iAm === 'couple') {
           age = getRandomInt(25, 55); // Couples tend to be a bit older
         } else {
           age = getRandomInt(21, 60); // Individual age range
@@ -405,9 +443,9 @@ const seedDatabase = async () => {
 
         // Select appropriate account tier
         let accountTier;
-        if (iAm === 'אישה' || iAm === 'woman') {
+        if (iAm === 'woman') {
           accountTier = Math.random() < 0.7 ? 'FEMALE' : getRandomElement(['FREE', 'PAID']);
-        } else if (iAm === 'זוג' || iAm === 'couple') {
+        } else if (iAm === 'couple') {
           accountTier = Math.random() < 0.6 ? 'COUPLE' : getRandomElement(['FREE', 'PAID']);
         } else { // man
           accountTier = Math.random() < 0.4 ? 'PAID' : 'FREE';
@@ -429,8 +467,11 @@ const seedDatabase = async () => {
 
         // Select marital status appropriate to user type
         let maritalStatus;
-        if (iAm === 'זוג' || iAm === 'couple') {
-          maritalStatus = getRandomElement(['נשוי/אה', 'במערכת יחסים', 'מערכת פתוחה', 'פוליאמורי/ת', 'Married', 'In relationship', 'Open relationship']);
+        if (iAm === 'couple') {
+          // Couples are more likely to be married or in various relationship types
+          maritalStatus = getRandomElement([
+            'Married', 'In a relationship', 'Open relationship', 'Polyamorous'
+          ]);
         } else {
           maritalStatus = getRandomElement(maritalStatusOptions);
         }
@@ -449,10 +490,24 @@ const seedDatabase = async () => {
           seedGenerated: true // Mark as generated by seed for future reference
         };
 
-        // Generate bio using templates - 70% Hebrew, 30% English
-        const bioTemplate = Math.random() < 0.7 ? 
-          getRandomElement(hebrewBioTemplates) : 
-          getRandomElement(englishBioTemplates);
+        // Select bio template based on user type and language preference (70% Hebrew, 30% English)
+        let bioTemplate;
+        const useHebrew = Math.random() < 0.7;
+
+        if (iAm === 'man') {
+          bioTemplate = useHebrew ? 
+            getRandomElement(hebrewMaleBioTemplates) : 
+            getRandomElement(englishMaleBioTemplates);
+        } else if (iAm === 'woman') {
+          bioTemplate = useHebrew ? 
+            getRandomElement(hebrewFemaleBioTemplates) : 
+            getRandomElement(englishFemaleBioTemplates);
+        } else { // couple
+          bioTemplate = useHebrew ? 
+            getRandomElement(hebrewCoupleBioTemplates) : 
+            getRandomElement(englishCoupleBioTemplates);
+        }
+        
         userDetails.bio = bioTemplate(userDetails);
 
         // Create the final user object
@@ -531,10 +586,10 @@ const seedDatabase = async () => {
       const userType = user.details?.iAm || 'default';
       let photoCollection;
       
-      // Map Hebrew types to English collection keys
-      if (userType === 'אישה') photoCollection = photoCollections.woman;
-      else if (userType === 'גבר') photoCollection = photoCollections.man;
-      else if (userType === 'זוג') photoCollection = photoCollections.couple;
+      // Select appropriate photo collection based on user type
+      if (userType === 'woman') photoCollection = photoCollections.woman;
+      else if (userType === 'man') photoCollection = photoCollections.man;
+      else if (userType === 'couple') photoCollection = photoCollections.couple;
       else photoCollection = photoCollections[userType] || photoCollections.man;
 
       // Determine how many photos based on account tier
@@ -619,11 +674,11 @@ const seedDatabase = async () => {
       logger.info(`Seeding ${likesToCreate} additional likes with improved distribution...`);
       let likesCreated = 0;
 
-      // Create a map of users by type for more realistic matching
+      // Create a map of users by type for more realistic matching (using only valid values)
       const usersByType = {
-        woman: createdUsers.filter(u => u.details?.iAm === 'woman' || u.details?.iAm === 'אישה').map(u => u._id.toString()),
-        man: createdUsers.filter(u => u.details?.iAm === 'man' || u.details?.iAm === 'גבר').map(u => u._id.toString()),
-        couple: createdUsers.filter(u => u.details?.iAm === 'couple' || u.details?.iAm === 'זוג').map(u => u._id.toString())
+        woman: createdUsers.filter(u => u.details?.iAm === 'woman').map(u => u._id.toString()),
+        man: createdUsers.filter(u => u.details?.iAm === 'man').map(u => u._id.toString()),
+        couple: createdUsers.filter(u => u.details?.iAm === 'couple').map(u => u._id.toString())
       };
 
       for (let i = 0; i < likesToCreate; i++) {
@@ -641,12 +696,12 @@ const seedDatabase = async () => {
         let potentialRecipients = [];
 
         sender.details.lookingFor.forEach(lookingFor => {
-          // Handle both Hebrew and English lookingFor options
-          if (lookingFor === 'women' || lookingFor === 'נשים') {
+          // Use only valid lookingFor values
+          if (lookingFor === 'women') {
             potentialRecipients = [...potentialRecipients, ...usersByType.woman];
-          } else if (lookingFor === 'men' || lookingFor === 'גברים') {
+          } else if (lookingFor === 'men') {
             potentialRecipients = [...potentialRecipients, ...usersByType.man];
-          } else if (lookingFor === 'couples' || lookingFor === 'זוגות') {
+          } else if (lookingFor === 'couples') {
             potentialRecipients = [...potentialRecipients, ...usersByType.couple];
           }
         });
@@ -715,22 +770,22 @@ const seedDatabase = async () => {
           // Find potential requesters based on what type the owner is and who might be interested
           let potentialRequesters = [];
           
-          // Handle both Hebrew and English iAm values
+          // Use only valid iAm values
           const ownerType = owner.details.iAm;
           
-          if (ownerType === 'woman' || ownerType === 'אישה') {
+          if (ownerType === 'woman') {
             // Women's photos might be requested by men, couples, and some women
             potentialRequesters = [
-              ...createdUsers.filter(u => (u.details?.iAm === 'man' || u.details?.iAm === 'גבר')).map(u => u._id.toString()),
-              ...createdUsers.filter(u => (u.details?.iAm === 'couple' || u.details?.iAm === 'זוג')).map(u => u._id.toString()),
-              ...createdUsers.filter(u => (u.details?.iAm === 'woman' || u.details?.iAm === 'אישה')).filter(() => Math.random() < 0.3).map(u => u._id.toString())
+              ...createdUsers.filter(u => u.details?.iAm === 'man').map(u => u._id.toString()),
+              ...createdUsers.filter(u => u.details?.iAm === 'couple').map(u => u._id.toString()),
+              ...createdUsers.filter(u => u.details?.iAm === 'woman').filter(() => Math.random() < 0.3).map(u => u._id.toString())
             ];
-          } else if (ownerType === 'man' || ownerType === 'גבר') {
+          } else if (ownerType === 'man') {
             // Men's photos might be requested by women, couples, and some men
             potentialRequesters = [
-              ...createdUsers.filter(u => (u.details?.iAm === 'woman' || u.details?.iAm === 'אישה')).map(u => u._id.toString()),
-              ...createdUsers.filter(u => (u.details?.iAm === 'couple' || u.details?.iAm === 'זוג')).map(u => u._id.toString()),
-              ...createdUsers.filter(u => (u.details?.iAm === 'man' || u.details?.iAm === 'גבר')).filter(() => Math.random() < 0.3).map(u => u._id.toString())
+              ...createdUsers.filter(u => u.details?.iAm === 'woman').map(u => u._id.toString()),
+              ...createdUsers.filter(u => u.details?.iAm === 'couple').map(u => u._id.toString()),
+              ...createdUsers.filter(u => u.details?.iAm === 'man').filter(() => Math.random() < 0.3).map(u => u._id.toString())
             ];
           } else { // couple
             // Couple photos might be requested by everyone
