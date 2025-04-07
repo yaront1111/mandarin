@@ -239,7 +239,7 @@ const seedDatabase = async () => {
 
       // Add a last name sometimes for individuals
       if (iAm !== 'couple' && Math.random() > 0.5) {
-        nickname = `${nickname} ${getRandomElement(lastNames)}`;
+        nickname = `${nickname}`;
       }
 
       // Generate matching username
