@@ -724,6 +724,12 @@ router.post(
         }
 
         const isFirstPhoto = !req.user.photos || req.user.photos.length === 0 //
+        
+        // Initialize the photos array if it doesn't exist
+        if (!req.user.photos) {
+          req.user.photos = [];
+        }
+        
         req.user.photos.push(photo) //
         await req.user.save() //
 
