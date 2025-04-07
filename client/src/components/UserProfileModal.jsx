@@ -947,8 +947,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
     try {
       await sendMessage(userId);
-      navigate("/messages");
-      onClose();
+      setShowChat(true); // Open embedded chat instead of navigating
     } catch (error) {
       log.error("Error sending message:", error);
       toast.error(safeTranslate(t, "errors.conversationFailed", "Failed to start conversation"));
