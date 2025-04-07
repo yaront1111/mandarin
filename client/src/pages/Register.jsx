@@ -795,12 +795,12 @@ const Register = () => {
   const renderStep1 = () => (
     <>
       <div className={styles.stepHeader}>
-        <h3>Create Your Account</h3>
-        <p>Enter your basic information</p>
+        <h3>{t('register.createYourAccount', 'Create Your Account')}</h3>
+        <p>{t('register.enterBasicInfo', 'Enter your basic information')}</p>
       </div>
       <div className={styles.formGroup}>
         <label className={styles.formLabel} htmlFor="nickname">
-          Nickname
+          {t('register.nickname', 'Nickname')}
         </label>
         <div className={styles.inputWrapper}>
           <FaUser className={styles.inputIcon} />
@@ -808,7 +808,7 @@ const Register = () => {
             type="text"
             id="nickname"
             name="nickname"
-            placeholder="Choose a nickname"
+            placeholder={t('register.chooseNickname', 'Choose a nickname')}
             className={styles.input}
             value={formData.nickname}
             onChange={handleChange}
@@ -822,13 +822,13 @@ const Register = () => {
           </p>
         ) : (
           <p className={styles.helpText}>
-            Your public display name (can contain letters, numbers, and underscores)
+            {t('register.nicknameHelp', 'Your public display name (can contain letters, numbers, and underscores)')}
           </p>
         )}
       </div>
       <div className={styles.formGroup}>
         <label className={styles.formLabel} htmlFor="email">
-          Email Address
+          {t('register.emailAddress', 'Email Address')}
         </label>
         <div className={styles.inputWrapper}>
           <FaEnvelope className={styles.inputIcon} />
@@ -836,7 +836,7 @@ const Register = () => {
             type="email"
             id="email"
             name="email"
-            placeholder="Enter your email"
+            placeholder={t('register.enterEmail', 'Enter your email')}
             className={styles.input}
             value={formData.email}
             onChange={handleChange}
@@ -849,13 +849,13 @@ const Register = () => {
           </p>
         ) : (
           <p className={styles.helpText}>
-            We'll never share your email with anyone else
+            {t('register.emailHelp', 'We\'ll never share your email with anyone else')}
           </p>
         )}
       </div>
       <div className={styles.formGroup}>
         <label className={styles.formLabel} htmlFor="password">
-          Password
+          {t('auth.password', 'Password')}
         </label>
         <div className={styles.inputWrapper}>
           <FaLock className={styles.inputIcon} />
@@ -863,7 +863,7 @@ const Register = () => {
             type={showPassword ? "text" : "password"}
             id="password"
             name="password"
-            placeholder="Create a password"
+            placeholder={t('register.createPassword', 'Create a password')}
             className={styles.input}
             value={formData.password}
             onChange={handleChange}
@@ -873,7 +873,7 @@ const Register = () => {
             className={styles.togglePassword}
             onClick={togglePasswordVisibility}
             tabIndex={-1}
-            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-label={showPassword ? t('common.hidePassword', 'Hide password') : t('common.showPassword', 'Show password')}
           >
             {showPassword ? <FaEyeSlash /> : <FaEye />}
           </button>
@@ -885,13 +885,13 @@ const Register = () => {
           </p>
         ) : (
           <p className={styles.helpText}>
-            Must be at least 8 characters with uppercase, lowercase, number, and special character
+            {t('register.passwordHelp', 'Must be at least 8 characters with uppercase, lowercase, number, and special character')}
           </p>
         )}
       </div>
       <div className={styles.formGroup}>
         <label className={styles.formLabel} htmlFor="confirmPassword">
-          Confirm Password
+          {t('auth.confirmPassword', 'Confirm Password')}
         </label>
         <div className={styles.inputWrapper}>
           <FaLock className={styles.inputIcon} />
@@ -899,7 +899,7 @@ const Register = () => {
             type={showPassword ? "text" : "password"}
             id="confirmPassword"
             name="confirmPassword"
-            placeholder="Confirm password"
+            placeholder={t('register.confirmPassword', 'Confirm password')}
             className={styles.input}
             value={formData.confirmPassword}
             onChange={handleChange}
@@ -915,7 +915,7 @@ const Register = () => {
       <div className={styles.formActions}>
         <div></div> {/* Empty div for flex spacing */}
         <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleNextStep} disabled={isSubmitting}>
-          Continue <FaArrowRight />
+          {t('register.continue', 'Continue')} {isRTL ? <FaArrowLeft /> : <FaArrowRight />}
         </button>
       </div>
     </>
@@ -925,12 +925,12 @@ const Register = () => {
   const renderStep2 = () => (
     <>
       <div className={styles.stepHeader}>
-        <h3>Tell Us About Yourself</h3>
-        <p>Add some basic profile details</p>
+        <h3>{t('register.tellAboutYourself', 'Tell Us About Yourself')}</h3>
+        <p>{t('register.addBasicProfileDetails', 'Add some basic profile details')}</p>
       </div>
       <div className={styles.formGroup}>
         <label className={styles.formLabel} htmlFor="dateOfBirth">
-          Date of Birth
+          {t('register.dateOfBirth', 'Date of Birth')}
         </label>
         <div className={styles.inputWrapper}>
           <FaCalendarAlt className={styles.inputIcon} />
@@ -951,13 +951,13 @@ const Register = () => {
           </p>
         ) : (
           <p className={styles.helpText}>
-            You must be at least 18 years old to use this service
+            {t('register.dobHelp', 'You must be at least 18 years old to use this service')}
           </p>
         )}
       </div>
 
       <div className={styles.formGroup}>
-        <label className={styles.formLabel}>I am a</label>
+        <label className={styles.formLabel}>{t('register.iAmA', 'I am a')}</label>
         <div className={styles.tagContainer}>
           {iAmOptions.map((option) => (
             <button
@@ -966,7 +966,7 @@ const Register = () => {
               className={`${styles.tag} ${formData.iAm === option ? styles.selected : ""}`}
               onClick={() => handleIAmSelection(option)}
             >
-              {option.charAt(0).toUpperCase() + option.slice(1)}
+              {t(`profile.identity.${option}`, option.charAt(0).toUpperCase() + option.slice(1))}
               {formData.iAm === option && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
@@ -981,7 +981,7 @@ const Register = () => {
 
       <div className={styles.formGroup}>
         <label className={styles.formLabel} htmlFor="location">
-          Location
+          {t('register.location', 'Location')}
         </label>
         <div className={styles.inputWrapper}>
           <FaMapMarkerAlt className={styles.inputIcon} />
@@ -989,7 +989,7 @@ const Register = () => {
             type="text"
             id="location"
             name="location"
-            placeholder="City, Country"
+            placeholder={t('register.enterLocation', 'City, Country')}
             className={styles.input}
             value={formData.location}
             onChange={handleLocationChange}
@@ -1009,16 +1009,16 @@ const Register = () => {
           </p>
         ) : (
           <p className={styles.helpText}>
-            Your general location (e.g., Tel Aviv, Israel)
+            {t('register.locationHelp', 'Your general location (e.g., Tel Aviv, Israel)')}
           </p>
         )}
       </div>
       <div className={styles.formActions}>
         <button type="button" className={`${styles.button} ${styles.buttonOutline}`} onClick={handlePrevStep}>
-          <FaArrowLeft /> Back
+          {isRTL ? <FaArrowRight /> : <FaArrowLeft />} {t('register.back', 'Back')}
         </button>
         <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleNextStep} disabled={isSubmitting}>
-          Continue <FaArrowRight />
+          {t('register.continue', 'Continue')} {isRTL ? <FaArrowLeft /> : <FaArrowRight />}
         </button>
       </div>
     </>
@@ -1028,8 +1028,8 @@ const Register = () => {
   const renderStep3 = () => (
     <>
       <div className={styles.stepHeader}>
-        <h3>Upload Your Photo</h3>
-        <p>Add a profile photo to improve your visibility</p>
+        <h3>{t('register.uploadPhoto', 'Upload Your Photo')}</h3>
+        <p>{t('register.addProfilePhoto', 'Add a profile photo to improve your visibility')}</p>
       </div>
       
       <div className={styles.photoUploadContainer}>
@@ -1046,20 +1046,19 @@ const Register = () => {
           />
           
           {previewImage ? (
-            <img src={previewImage} alt="Profile Preview" className={styles.profileImagePreview} />
+            <img src={previewImage} alt={t('profile.profilePreview', 'Profile Preview')} className={styles.profileImagePreview} />
           ) : (
             <>
               <FaCamera className={styles.photoUploadIcon} />
               <p className={styles.photoUploadText}>
-                Click to upload a profile photo
+                {t('register.clickToUpload', 'Click to upload a profile photo')}
               </p>
             </>
           )}
         </div>
         
         <p className={styles.uploadGuidelines}>
-          Photos should be clear, recent and show your face. 
-          <br />Maximum size: 5MB. Formats: JPG, JPEG, PNG.
+          {t('register.photoGuidelines', 'Photos should be clear, recent and show your face. Maximum size: 5MB. Formats: JPG, JPEG, PNG.')}
         </p>
         
         {formErrors.profilePhoto && (
@@ -1072,10 +1071,10 @@ const Register = () => {
         {previewImage && (
           <div className={styles.photoActions}>
             <button type="button" className={`${styles.photoActionButton} ${styles.changePhotoButton}`} onClick={triggerFileInput}>
-              <FaEdit /> Change Photo
+              <FaEdit /> {t('register.changePhoto', 'Change Photo')}
             </button>
             <button type="button" className={`${styles.photoActionButton} ${styles.removePhotoButton}`} onClick={handleRemovePhoto}>
-              <FaTrash /> Remove
+              <FaTrash /> {t('register.removePhoto', 'Remove')}
             </button>
           </div>
         )}
@@ -1083,10 +1082,10 @@ const Register = () => {
       
       <div className={styles.formActions}>
         <button type="button" className={`${styles.button} ${styles.buttonOutline}`} onClick={handlePrevStep} disabled={isSubmitting}>
-          <FaArrowLeft /> Back
+          {isRTL ? <FaArrowRight /> : <FaArrowLeft />} {t('register.back', 'Back')}
         </button>
         <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleNextStep} disabled={isSubmitting}>
-          Continue <FaArrowRight />
+          {t('register.continue', 'Continue')} {isRTL ? <FaArrowLeft /> : <FaArrowRight />}
         </button>
       </div>
     </>
@@ -1096,23 +1095,23 @@ const Register = () => {
   const renderStep4 = () => (
     <>
       <div className={styles.stepHeader}>
-        <h3>Your Preferences</h3>
-        <p>Tell us about yourself and what you're looking for</p>
+        <h3>{t('register.yourPreferences', 'Your Preferences')}</h3>
+        <p>{t('register.tellAboutPreferences', 'Tell us about yourself and what you\'re looking for')}</p>
       </div>
 
       <div className={styles.formGroup}>
-        <label className={styles.formLabel}>Marital Status</label>
+        <label className={styles.formLabel}>{t('register.maritalStatus', 'Marital Status')}</label>
         <select
           className={styles.input}
           name="maritalStatus"
           value={formData.maritalStatus}
           onChange={handleMaritalStatusChange}
-          style={{ paddingLeft: "1rem" }}
+          style={{ paddingLeft: isRTL ? "0.5rem" : "1rem", paddingRight: isRTL ? "1rem" : "0.5rem", textAlign: isRTL ? "right" : "left" }}
         >
-          <option value="">Select your status</option>
+          <option value="">{t('register.selectStatus', 'Select your status')}</option>
           {maritalStatusOptions.map((status) => (
             <option key={status} value={status}>
-              {status}
+              {t(`profile.maritalStatus.${status.toLowerCase().replace(/ /g, '_')}`, status)}
             </option>
           ))}
         </select>
@@ -1125,8 +1124,8 @@ const Register = () => {
       </div>
 
       <div className={styles.formGroup}>
-        <label className={styles.formLabel}>Looking For</label>
-        <p className={styles.helpText}>Select up to 3 options</p>
+        <label className={styles.formLabel}>{t('register.lookingFor', 'Looking For')}</label>
+        <p className={styles.helpText}>{t('register.selectUpTo3', 'Select up to 3 options')}</p>
         <div className={styles.tagContainer}>
           {lookingForOptions.map((option) => (
             <button
@@ -1136,7 +1135,7 @@ const Register = () => {
               onClick={() => toggleGoal(option)}
               disabled={!formData.lookingFor.includes(option) && formData.lookingFor.length >= 3}
             >
-              {option.charAt(0).toUpperCase() + option.slice(1)}
+              {t(`profile.lookingFor.${option}`, option.charAt(0).toUpperCase() + option.slice(1))}
               {formData.lookingFor.includes(option) && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
@@ -1150,8 +1149,8 @@ const Register = () => {
       </div>
 
       <div className={styles.formGroup}>
-        <label className={styles.formLabel}>Interests</label>
-        <p className={styles.helpText}>Select up to 10 interests</p>
+        <label className={styles.formLabel}>{t('register.interests', 'Interests')}</label>
+        <p className={styles.helpText}>{t('register.selectUpTo10', 'Select up to 10 interests')}</p>
         <div className={styles.tagContainer}>
           {availableInterests.map((interest) => (
             <button
@@ -1161,7 +1160,7 @@ const Register = () => {
               onClick={() => toggleInterest(interest)}
               disabled={!formData.interests.includes(interest) && formData.interests.length >= 10}
             >
-              {interest}
+              {t(`profile.interests.${interest.toLowerCase().replace(/ /g, '_')}`, interest)}
               {formData.interests.includes(interest) && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
@@ -1175,8 +1174,8 @@ const Register = () => {
       </div>
 
       <div className={styles.formGroup}>
-        <label className={styles.formLabel}>I'm into</label>
-        <p className={styles.helpText}>Select up to 20 tags</p>
+        <label className={styles.formLabel}>{t('register.iAmInto', 'I\'m into')}</label>
+        <p className={styles.helpText}>{t('register.selectUpTo20', 'Select up to 20 tags')}</p>
         <div className={styles.tagContainer}>
           {intoTagsOptions.map((tag) => (
             <button
@@ -1186,7 +1185,7 @@ const Register = () => {
               onClick={() => toggleIntoTag(tag)}
               disabled={!formData.intoTags.includes(tag) && formData.intoTags.length >= 20}
             >
-              {tag}
+              {t(`profile.intoTags.${tag.toLowerCase().replace(/ /g, '_')}`, tag)}
               {formData.intoTags.includes(tag) && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
@@ -1200,8 +1199,8 @@ const Register = () => {
       </div>
 
       <div className={styles.formGroup}>
-        <label className={styles.formLabel}>It turns me on</label>
-        <p className={styles.helpText}>Select up to 20 tags</p>
+        <label className={styles.formLabel}>{t('register.itTurnsMeOn', 'It turns me on')}</label>
+        <p className={styles.helpText}>{t('register.selectUpTo20', 'Select up to 20 tags')}</p>
         <div className={styles.tagContainer}>
           {turnOnsOptions.map((tag) => (
             <button
@@ -1211,7 +1210,7 @@ const Register = () => {
               onClick={() => toggleTurnOn(tag)}
               disabled={!formData.turnOns.includes(tag) && formData.turnOns.length >= 20}
             >
-              {tag}
+              {t(`profile.turnOns.${tag.toLowerCase().replace(/ /g, '_')}`, tag)}
               {formData.turnOns.includes(tag) && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
@@ -1233,9 +1232,9 @@ const Register = () => {
             checked={formData.agreeTerms} 
             onChange={handleChange} 
           />
-          I agree to the{" "}
+          {t('register.agreeToTerms', 'I agree to the')}{" "}
           <Link to="/terms" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>
-            Terms of Service
+            {t('register.termsOfService', 'Terms of Service')}
           </Link>
         </label>
         {formErrors.agreeTerms && (
@@ -1255,9 +1254,9 @@ const Register = () => {
             checked={formData.agreePrivacy} 
             onChange={handleChange} 
           />
-          I agree to the{" "}
+          {t('register.agreeToPrivacy', 'I agree to the')}{" "}
           <Link to="/privacy" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>
-            Privacy Policy
+            {t('register.privacyPolicy', 'Privacy Policy')}
           </Link>
         </label>
         {formErrors.agreePrivacy && (
@@ -1277,13 +1276,13 @@ const Register = () => {
             checked={formData.newsletter} 
             onChange={handleChange} 
           />
-          I want to receive news and special offers (optional)
+          {t('register.receiveNews', 'I want to receive news and special offers (optional)')}
         </label>
       </div>
 
       <div className={styles.formActions}>
         <button type="button" className={`${styles.button} ${styles.buttonOutline}`} onClick={handlePrevStep} disabled={isSubmitting}>
-          <FaArrowLeft /> Back
+          {isRTL ? <FaArrowRight /> : <FaArrowLeft />} {t('register.back', 'Back')}
         </button>
         <button 
           type="submit" 
@@ -1294,11 +1293,11 @@ const Register = () => {
           {isSubmitting ? (
             <>
               <span className={styles.spinner}></span>
-              <span>Creating account...</span>
+              <span>{t('register.creatingAccount', 'Creating account...')}</span>
             </>
           ) : (
             <>
-              <span>Create Account</span> <FaCheck />
+              <span>{t('register.createAccount', 'Create Account')}</span> <FaCheck />
             </>
           )}
         </button>
@@ -1331,7 +1330,7 @@ const Register = () => {
           <Link to="/" className={styles.pageTitle}>
             Mandarin
           </Link>
-          <p className={styles.subtitle}>{t('register.createAccount')}</p>
+          <p className={styles.subtitle}>{t('register.createAccount', 'Create Account')}</p>
         </div>
 
         {formErrors.general && (
@@ -1349,24 +1348,24 @@ const Register = () => {
 
         {currentStep === 1 && (
           <>
-            <div className={styles.divider}>OR SIGN UP WITH</div>
+            <div className={styles.divider}>{t('register.orSignUpWith', 'OR SIGN UP WITH')}</div>
             <div className={styles.socialButtons}>
               <button className={styles.socialButton}>
                 <FaGoogle className={styles.googleIcon} />
-                <span>Sign up with Google</span>
+                <span>{t('register.signUpWithGoogle', 'Sign up with Google')}</span>
               </button>
               <button className={styles.socialButton}>
                 <FaFacebook className={styles.facebookIcon} />
-                <span>Sign up with Facebook</span>
+                <span>{t('register.signUpWithFacebook', 'Sign up with Facebook')}</span>
               </button>
             </div>
           </>
         )}
 
         <div className={styles.footer}>
-          Already have an account?{" "}
+          {t('register.alreadyHaveAccount', 'Already have an account?')}{" "}
           <Link to="/login" className={styles.footerLink}>
-            Sign In
+            {t('register.signIn', 'Sign In')}
           </Link>
         </div>
       </div>
