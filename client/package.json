@@ -8,6 +8,7 @@
     "build": "vite build --mode production",
     "build:analyze": "ANALYZE=true vite build --mode production",
     "build:optimized": "npm run purge:css && npm run lint && npm run build",
+    "build:no-purge": "DISABLE_PURGECSS=true vite build --mode production",
     "preview": "vite preview",
     "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "serve:prod": "vite preview --host --port 3000",

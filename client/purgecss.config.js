@@ -23,6 +23,11 @@ module.exports = {
     /^text-/,
     /^btn-/,
     /^card-/,
+    // Translate utility classes with fractions
+    /^translate-x-\d\/\d/,
+    /^translate-y-\d\/\d/,
+    /^translate-x-n\d\/\d/,
+    /^translate-y-n\d\/\d/,
     // State-based classes
     'active',
     'disabled',
@@ -39,5 +44,7 @@ module.exports = {
   keyframes: true,
   fontFace: true,
   variables: true,
-  rejected: true
+  rejected: true,
+  // Escape special characters in selectors
+  defaultExtractor: content => content.match(/[A-Za-z0-9-_:/\\]+/g) || []
 };

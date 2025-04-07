@@ -13,6 +13,8 @@ import preload from 'vite-plugin-preload';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
+    // Filter out disabled plugins
+    ...[
     react({
       // Minimize React runtime
       jsxRuntime: 'automatic',
@@ -22,8 +24,8 @@ export default defineConfig({
         ],
       }
     }),
-    // Enable PurgeCSS to eliminate unused CSS
-    purgecss({
+    // Enable PurgeCSS to eliminate unused CSS (skip if DISABLE_PURGECSS is set)
+    !process.env.DISABLE_PURGECSS && purgecss({
       // Use the existing purgecss config
       content: ['./src/**/*.{jsx,js,tsx,ts}', './index.html', './public/**/*.{js,html}'],
       variables: true,
@@ -35,11 +37,20 @@ export default defineConfig({
           /^rtl-/, 'dark-mode', 'light-mode', 'direction-changing',
           /^toast/, /^Toastify/, /^swiper/, /^gradient-/, /^loading-/,
           /^modal-/, /^h\d-/, /^bg-/, /^text-/, /^btn-/, /^card-/,
+          // Translate utility classes with fractions 
+          /translate-x-[0-9]\/[0-9]/, /translate-y-[0-9]\/[0-9]/,
+          /translate-x-n[0-9]\/[0-9]/, /translate-y-n[0-9]\/[0-9]/,
           'active', 'disabled', 'show', 'hide', 'open', 'closed',
           'expanded', 'collapsed', 'visible', 'invisible', 'visually-hidden',
           'hero-heading-container', 'hero-tagline-container'
         ],
         deep: [/^animate/, /^transition/, /^transform/, /^hover/]
+      },
+      // Custom CSS extractor that handles special characters
+      defaultExtractor: content => {
+        // This pattern will match all alphanumeric characters, hyphens, 
+        // underscores, colons, slashes, and escape characters
+        return content.match(/[A-Za-z0-9-_:/\\]+/g) || [];
       }
     }),
     // Generate critical CSS inline in the HTML
@@ -90,7 +101,7 @@ export default defineConfig({
       gzipSize: true,
       brotliSize: true,
     })
-  ],
+  ].filter(Boolean)],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
