@@ -1067,4 +1067,77 @@ router.delete(
   })
 );
 
+/**
+ * @route   POST /api/messages/start
+ * @desc    Start a new conversation or redirect to existing one
+ * @access  Private
+ */
+router.post(
+  "/start",
+  protect,
+  asyncHandler(async (req, res) => {
+    const { recipient } = req.body;
+    const senderObjectId = safeObjectId(req.user._id);
+    
+    logger.debug(`Attempting to start or find conversation between ${senderObjectId} and ${recipient}`);
+
+    if (!recipient) {
+      return res.status(400).json({ success: false, error: "Recipient ID is required." });
+    }
+
+    // Validate recipient ID format
+    const recipientObjectId = safeObjectId(recipient);
+    if (!recipientObjectId) {
+      logger.warn(`Invalid recipient ID format in start conversation: ${recipient}`);
+      return res.status(400).json({ success: false, error: "Invalid recipient ID format." });
+    }
+
+    // Prevent starting conversation with self
+    if (recipientObjectId.equals(senderObjectId)) {
+      logger.warn(`User ${senderObjectId} attempted to start conversation with themselves`);
+      return res.status(400).json({ success: false, error: "Cannot start conversation with yourself." });
+    }
+
+    // Verify recipient exists
+    const recipientUser = await User.findById(recipientObjectId);
+    if (!recipientUser) {
+      logger.warn(`Recipient user ${recipientObjectId} not found`);
+      return res.status(404).json({ success: false, error: "Recipient user not found." });
+    }
+
+    try {
+      // Check if conversation already exists
+      const existingConversation = await Message.findOne({
+        $or: [
+          { sender: senderObjectId, recipient: recipientObjectId },
+          { sender: recipientObjectId, recipient: senderObjectId }
+        ]
+      }).sort({ createdAt: -1 });
+
+      // Return conversation data
+      const conversationData = {
+        recipient: {
+          _id: recipientUser._id,
+          nickname: recipientUser.nickname,
+          photos: recipientUser.photos && recipientUser.photos.length > 0 
+            ? [recipientUser.photos[0]] 
+            : [],
+          isOnline: recipientUser.isOnline || false,
+          lastActive: recipientUser.lastActive || null
+        },
+        // Return existing message if available
+        message: existingConversation ? existingConversation.toObject() : null,
+        // Flag for client to know if this is a new or existing conversation
+        isNewConversation: !existingConversation
+      };
+
+      logger.info(`Conversation ${existingConversation ? 'found' : 'initiated'} between ${senderObjectId} and ${recipientObjectId}`);
+      return res.status(200).json({ success: true, data: conversationData });
+    } catch (error) {
+      logger.error(`Error starting conversation: ${error.message}`, error);
+      return res.status(500).json({ success: false, error: "Failed to start conversation." });
+    }
+  })
+);
+
 export default router;

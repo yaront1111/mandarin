@@ -38,11 +38,53 @@ const Footer = () => {
     }, 1500); // Delay to prioritize main content rendering
   };
   
+  // Add JSON-LD structured data instead of using microdata
+  useEffect(() => {
+    // Create organization schema
+    const organizationSchema = {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Flirtss",
+      "url": "https://flirtss.com",
+      "email": "contact@flirtss.com",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "123 Dating Street",
+        "addressLocality": "Web City",
+        "addressRegion": "WC",
+        "postalCode": "12345",
+        "addressCountry": "Israel"
+      }
+    };
+
+    // Add schema to head as JSON-LD (modern approach)
+    const script = document.createElement('script');
+    script.type = 'application/ld+json';
+    script.innerHTML = JSON.stringify(organizationSchema);
+    script.id = 'organization-schema';
+    
+    // Remove any existing schema with this ID
+    const existingScript = document.getElementById('organization-schema');
+    if (existingScript) {
+      existingScript.remove();
+    }
+    
+    document.head.appendChild(script);
+    
+    // Cleanup on unmount
+    return () => {
+      const scriptToRemove = document.getElementById('organization-schema');
+      if (scriptToRemove) {
+        scriptToRemove.remove();
+      }
+    };
+  }, []);
+
   return (
     <footer className={`site-footer ${isDarkMode ? 'dark-mode' : 'light-mode'}`} role="contentinfo" aria-label="Site footer">
       <div className="footer-content">
-        <div itemScope itemType="http://schema.org/Organization">
-          <p>© {new Date().getFullYear()} <span itemProp="name">Flirtss</span>. All rights reserved.</p>
+        <div>
+          <p>© {new Date().getFullYear()} Flirtss. All rights reserved.</p>
         </div>
         <nav className="footer-links" aria-label="Footer navigation">
           <a href="/about">About Us</a>
@@ -59,14 +101,8 @@ const Footer = () => {
         <div className="container">
           {/* Use hidden but accessible content for SEO and screen readers */}
           <address className="visually-hidden">
-            <span itemProp="address" itemScope itemType="http://schema.org/PostalAddress">
-              <span itemProp="streetAddress">123 Dating Street</span>,
-              <span itemProp="addressLocality">Web City</span>,
-              <span itemProp="addressRegion">WC</span>
-              <span itemProp="postalCode">12345</span>
-              <span itemProp="addressCountry">Israel</span>
-            </span>
-            <a href="mailto:contact@flirtss.com" className="visually-hidden" itemProp="email">contact@flirtss.com</a>
+            123 Dating Street, Web City, WC 12345 Israel
+            <a href="mailto:contact@flirtss.com" className="visually-hidden">contact@flirtss.com</a>
           </address>
         </div>
       </div>
