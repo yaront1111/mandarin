@@ -187,7 +187,7 @@
   border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
   color: var(--text-medium, #555);
   padding: 0 var(--space-md, 1rem);
-  height: 36px;
+  height: 48px;
   border-radius: var(--radius-full, 9999px);
   display: flex;
   align-items: center;
