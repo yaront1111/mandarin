@@ -1,17 +1,12 @@
 // Service Worker for Flirtss
 const CACHE_NAME = 'flirtss-cache-v1';
+// Only include assets that definitely exist
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/favicon.ico',
-  '/logo192.png',
-  '/logo512.png',
-  '/apple-touch-icon.png',
   '/placeholder.svg',
-  '/images/social-preview.jpg',
-  '/robots.txt',
-  '/sitemap.xml'
+  '/robots.txt'
 ];
 
 // Install event - cache static assets
@@ -22,7 +17,24 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('Caching static assets');
-        return cache.addAll(STATIC_ASSETS);
+        // Cache each asset individually to prevent failure of the entire batch
+        const cachePromises = STATIC_ASSETS.map(url => {
+          // This approach fetches and caches each asset individually
+          return fetch(url)
+            .then(response => {
+              if (!response || response.status !== 200) {
+                console.log(`Failed to cache: ${url}`);
+                return;
+              }
+              return cache.put(url, response);
+            })
+            .catch(error => {
+              console.log(`Failed to cache: ${url}`, error);
+              // Continue with other assets even if one fails
+              return Promise.resolve();
+            });
+        });
+        return Promise.all(cachePromises);
       })
   );
 });
