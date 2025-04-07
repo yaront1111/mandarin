@@ -1,29 +1,57 @@
 // src/main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter as Router } from "react-router-dom"; // <-- Import Router
+import { BrowserRouter as Router } from "react-router-dom";
 import App from "./App.jsx";
-import "./i18n"; // Import i18n configuration
-import { webVitals } from "./utils"; // Import Web Vitals for performance tracking
+import { webVitals } from "./utils"; 
+
+// Set global for compatibility
 if (typeof global === 'undefined') {
   window.global = window;
 }
-import ErrorBoundary from "./components/ErrorBoundary.jsx";
+
+// Critical CSS that must be loaded immediately for core layout
 import "./styles/base.css";
-import "./styles/layout.css"; // Modern layout system
-import "./styles/components.css"; // Updated with 2025 Design System
-import "./styles/pages.css";
+import "./styles/layout.css";
 import "./styles/utilities.css";
-// Assuming these are needed globally as well
-import "./styles/settings.css"; // Using regular CSS for settings
-import "./styles/notifications.css";
-import "./styles/stories.css"; // Using regular CSS for stories
-import "./styles/chat.css"; // General chat styling
-import "./styles/modal.css"; // Modal component styling
-import "./styles/home.css"; // Home page specific styling
-import "./styles/rtl.css"; // RTL support for Hebrew
-import "./styles/admin.css"; // Admin dashboard styling
-import "./styles/admin-components.css"; // Admin component styling
+
+// Core error boundary for app-wide error handling
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
+
+// Dynamic import of i18n to reduce initial bundle size
+const loadI18n = () => import("./i18n");
+
+// Function to load non-critical CSS
+const loadNonCriticalCSS = () => {
+  // Create a function to load CSS files in a non-blocking way
+  const loadCSS = (href) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    document.head.appendChild(link);
+  };
+
+  // Use dynamic imports for non-critical CSS
+  import("./styles/components.css");
+  import("./styles/pages.css");
+  
+  // Defer loading of less critical CSS
+  setTimeout(() => {
+    import("./styles/settings.css");
+    import("./styles/notifications.css");
+    import("./styles/stories.css");
+    import("./styles/chat.css");
+    import("./styles/modal.css");
+    import("./styles/home.css");
+    import("./styles/rtl.css");
+  }, 500);
+  
+  // Load admin CSS only if admin route is accessed
+  if (window.location.pathname.includes('/admin')) {
+    import("./styles/admin.css");
+    import("./styles/admin-components.css");
+  }
+};
 
 // Initialize Web Vitals performance monitoring
 webVitals.initWebVitals();
@@ -36,12 +64,28 @@ history.pushState = function(state, title, url) {
   webVitals.dispatchRouteChangeComplete();
 };
 
+// Run this immediately to get i18n loading
+loadI18n();
+
+// Add script for deferred loading of non-critical resources
+window.addEventListener('load', () => {
+  // Defer non-critical CSS loading
+  setTimeout(loadNonCriticalCSS, 100);
+  
+  // Load Google Analytics and fonts
+  const gtagScript = document.createElement('script');
+  gtagScript.src = '/gtag-loader.js';
+  gtagScript.async = true;
+  document.body.appendChild(gtagScript);
+});
+
+// Render the application
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <Router> {/* <---- Add the Router wrapper here */}
-      <ErrorBoundary> {/* ErrorBoundary is now inside Router */}
+    <Router>
+      <ErrorBoundary>
         <App />
       </ErrorBoundary>
-    </Router> {/* <---- Close the Router wrapper */}
+    </Router>
   </React.StrictMode>,
 );

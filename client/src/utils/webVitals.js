@@ -119,14 +119,27 @@ export const initWebVitals = () => {
   }
 
   // Dynamically import web-vitals library
-  import('web-vitals').then(({ getCLS, getFID, getLCP, getFCP, getTTFB, getINP }) => {
-    getCLS(metric => reportWebVitals(metric));
-    getFID(metric => reportWebVitals(metric));
-    getLCP(metric => reportWebVitals(metric));
-    getFCP(metric => reportWebVitals(metric));
-    getTTFB(metric => reportWebVitals(metric));
-    // INP is a new metric still in development
-    getINP(metric => reportWebVitals(metric));
+  import('web-vitals').then((webVitals) => {
+    try {
+      // Access functions safely with error handling
+      const { getCLS, getFID, getLCP, getFCP, getTTFB } = webVitals;
+      
+      // Register core web vitals
+      if (typeof getCLS === 'function') getCLS(metric => reportWebVitals(metric));
+      if (typeof getFID === 'function') getFID(metric => reportWebVitals(metric));
+      if (typeof getLCP === 'function') getLCP(metric => reportWebVitals(metric));
+      if (typeof getFCP === 'function') getFCP(metric => reportWebVitals(metric));
+      if (typeof getTTFB === 'function') getTTFB(metric => reportWebVitals(metric));
+      
+      // Safely try to use INP if available
+      if (typeof webVitals.getINP === 'function') {
+        webVitals.getINP(metric => reportWebVitals(metric));
+      }
+    } catch (error) {
+      console.warn('Error initializing Web Vitals:', error);
+    }
+  }).catch(error => {
+    console.warn('Failed to load web-vitals library:', error);
   });
 
   // Add custom performance timing for route changes

@@ -1243,15 +1243,25 @@ class ApiService {
 // Create singleton instance
 const apiService = new ApiService()
 
-// Register cleanup on window unload
+// Register cleanup on beforeunload and pagehide (modern replacement for unload)
 if (typeof window !== "undefined") {
-  window.addEventListener("unload", () => {
+  // Use pagehide for modern browsers (replacing unload which is deprecated)
+  window.addEventListener("pagehide", () => {
     apiService.pendingRequests.forEach((request) => {
       if (request.config?.cancelToken?.cancel) {
         request.config.cancelToken.cancel("Navigation canceled request")
       }
     })
-  })
+  });
+  
+  // Fallback to beforeunload for older browsers
+  window.addEventListener("beforeunload", () => {
+    apiService.pendingRequests.forEach((request) => {
+      if (request.config?.cancelToken?.cancel) {
+        request.config.cancelToken.cancel("Navigation canceled request")
+      }
+    })
+  });
 }
 
 export default apiService

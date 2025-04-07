@@ -5,65 +5,67 @@
     <link rel="icon" type="image/svg+xml" href="/placeholder.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
-    <!-- Structured Data - Website -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "Flirtss",
-      "url": "https://flirtss.com/",
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "https://flirtss.com/search?q={search_term_string}",
-        "query-input": "required name=search_term_string"
-      }
-    }
-    </script>
+    <!-- Security headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://api.flirtss.com wss://api.flirtss.com:* wss://flirtss.com:* https://www.googletagmanager.com; img-src 'self' data: https://*.flirtss.com https://flirtss.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; frame-src 'self'; object-src 'none'; base-uri 'self';" />
+    <meta http-equiv="Strict-Transport-Security" content="max-age=31536000; includeSubDomains; preload" />
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
     
-    <!-- Structured Data - Organization -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "@id": "https://flirtss.com/#organization",
-      "name": "Flirtss",
-      "url": "https://flirtss.com/",
-      "logo": "https://flirtss.com/logo192.png",
-      "sameAs": [
-        "https://www.facebook.com/flirtss",
-        "https://www.instagram.com/flirtss",
-        "https://twitter.com/flirtss"
-      ],
-      "contactPoint": [
-        {
-          "@type": "ContactPoint",
-          "telephone": "+1-800-FLIRTSS",
-          "contactType": "customer service",
-          "contactOption": "TollFree",
-          "availableLanguage": ["English", "Hebrew"]
-        }
-      ]
-    }
-    </script>
-    
-    <!-- Structured Data - BreadcrumbList -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "BreadcrumbList",
-      "itemListElement": [{
-        "@type": "ListItem",
-        "position": 1,
-        "name": "Home",
-        "item": "https://flirtss.com/"
-      }]
-    }
-    </script>
-    
-    <!-- Primary Meta Tags -->
+    <!-- Primary Meta Tags (critical for FCP) -->
     <title>Flirtss - Meet Local Singles & Find Your Perfect Match</title>
     <meta name="title" content="Flirtss - Meet Local Singles & Find Your Perfect Match">
     <meta name="description" content="Flirtss connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!">
+    
+    <!-- Core Web Vitals optimization -->
+    <meta name="theme-color" content="#ff4d8d">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- Preconnect to domains for performance (very high priority) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://www.googletagmanager.com">
+    
+    <!-- DNS prefetch (lower priority) -->
+    <link rel="dns-prefetch" href="//api.flirtss.com">
+    
+    <!-- Preconnect to Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- iOS support -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    
+    <!-- PWA Support -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Non-blocking font loader script -->
+    <script>
+      // Inline the font loader to avoid a render-blocking request
+      (function() {
+        // Create a non-blocking link for Google Fonts
+        var fontLink = document.createElement('link');
+        fontLink.rel = 'preload';
+        fontLink.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap';
+        fontLink.as = 'style';
+        fontLink.onload = function() {
+          this.onload = null;
+          this.rel = 'stylesheet';
+        };
+        document.head.appendChild(fontLink);
+        
+        // Set a fallback in case the font fails to load
+        setTimeout(function() {
+          if (fontLink.rel !== 'stylesheet') {
+            fontLink.rel = 'stylesheet';
+          }
+        }, 2000);
+      })();
+    </script>
+
+    <!-- Robots meta -->
+    <meta name="robots" content="index, follow">
+    
+    <!-- Non-critical metadata below - will not block rendering -->
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
@@ -82,50 +84,115 @@
     <!-- Canonical URL -->
     <link rel="canonical" href="https://flirtss.com/" />
     
-    <!-- Preconnect to key domains for performance -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    
-    <!-- Font optimization -->
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
-    <!-- Core Web Vitals optimization -->
-    <meta name="theme-color" content="#ff4d8d">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    
-    <!-- iOS support -->
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-    
-    <!-- PWA Support -->
-    <link rel="manifest" href="/manifest.json">
-    
-    <!-- Robots meta -->
-    <meta name="robots" content="index, follow">
-    
-    <!-- Add link tags for resource hints -->
-    <link rel="preload" href="/fonts/Poppins-Regular.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="/fonts/Poppins-Medium.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="dns-prefetch" href="//api.flirtss.com">
+    <!-- Deferred load of structured data after paint -->
+    <script type="text/javascript">
+      document.addEventListener('DOMContentLoaded', function() {
+        // Load structured data after initial paint
+        setTimeout(function() {
+          // Website schema
+          var websiteSchema = document.createElement('script');
+          websiteSchema.type = 'application/ld+json';
+          websiteSchema.textContent = JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "Flirtss",
+            "url": "https://flirtss.com/",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "https://flirtss.com/search?q={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          });
+          document.head.appendChild(websiteSchema);
+          
+          // Organization schema
+          var orgSchema = document.createElement('script');
+          orgSchema.type = 'application/ld+json';
+          orgSchema.textContent = JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "@id": "https://flirtss.com/#organization",
+            "name": "Flirtss",
+            "url": "https://flirtss.com/",
+            "logo": "https://flirtss.com/logo192.png",
+            "sameAs": [
+              "https://www.facebook.com/flirtss",
+              "https://www.instagram.com/flirtss",
+              "https://twitter.com/flirtss"
+            ],
+            "contactPoint": [
+              {
+                "@type": "ContactPoint",
+                "telephone": "+1-800-FLIRTSS",
+                "contactType": "customer service",
+                "contactOption": "TollFree",
+                "availableLanguage": ["English", "Hebrew"]
+              }
+            ]
+          });
+          document.head.appendChild(orgSchema);
+          
+          // Breadcrumb schema
+          var breadcrumbSchema = document.createElement('script');
+          breadcrumbSchema.type = 'application/ld+json';
+          breadcrumbSchema.textContent = JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            "itemListElement": [{
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://flirtss.com/"
+            }]
+          });
+          document.head.appendChild(breadcrumbSchema);
+        }, 1000); // Wait 1 second after DOMContentLoaded
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    
+    <!-- Preload critical scripts -->
+    <link rel="preload" href="/src/main.jsx" as="script" type="module">
+    
+    <!-- Main application script -->
     <script type="module" src="/src/main.jsx"></script>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     
-    <!-- Service Worker Registration -->
+    <!-- Load the non-critical scripts after critical content -->
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/serviceWorker.js')
-            .then(function(registration) {
-              console.log('ServiceWorker registration successful with scope: ', registration.scope);
-            })
-            .catch(function(error) {
-              console.log('ServiceWorker registration failed: ', error);
-            });
-        });
+      // Helper function to load scripts in order of priority
+      function loadScript(src, async = true, defer = true) {
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = async;
+        script.defer = defer;
+        document.body.appendChild(script);
+        return script;
       }
+      
+      // Load scripts in order of importance after page load
+      window.addEventListener('load', function() {
+        // Set a small timeout to allow main content to render first
+        setTimeout(function() {
+          // First load font-loader which is higher priority
+          loadScript('/font-loader.js');
+          
+          // Then register service worker after a delay
+          setTimeout(function() {
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.register('/serviceWorker.js')
+                .then(function(registration) {
+                  console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                })
+                .catch(function(error) {
+                  console.log('ServiceWorker registration failed: ', error);
+                });
+            }
+          }, 3000);
+        }, 500);
+      });
     </script>
   </body>
 </html>

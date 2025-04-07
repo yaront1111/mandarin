@@ -1,7 +1,7 @@
 "use client"
 
 // client/src/App.jsx
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense, lazy } from "react"
 import { Routes, Route } from "react-router-dom"
 import { ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
@@ -24,22 +24,28 @@ import PrivateRoute from "./components/PrivateRoute.jsx"
 import AdminRoute from "./components/AdminRoute.jsx"
 import VerificationBanner from "./components/VerificationBanner.jsx"
 import { Footer } from "./components"
+import { lazyLoad } from "./utils/lazyLoad"
+import LoadingSpinner from "./components/common/LoadingSpinner"
+
+// Eagerly load critical paths
+import Home from "./pages/Home"
 import Login from "./pages/Login"
 import Register from "./pages/Register"
-import Dashboard from "./pages/Dashboard"
-import UserProfile from "./pages/UserProfile"
-import Profile from "./pages/Profile"
-import Settings from "./pages/Settings.jsx"
-import NotFound from "./pages/NotFound"
-import Home from "./pages/Home"
-import Messages from "./pages/Messages.jsx"
-import Subscription from "./pages/Subscription"
-import Admin from "./pages/Admin.jsx"
-import VerifyEmail from "./pages/VerifyEmail.jsx"
-import AboutUs from "./pages/AboutUs"
-import Safety from "./pages/Safety"
-import Support from "./pages/Support"
-import { EmbeddedChat } from "./components"
+
+// Lazy load non-critical components
+const Dashboard = lazy(() => import("./pages/Dashboard"))
+const UserProfile = lazy(() => import("./pages/UserProfile"))
+const Profile = lazy(() => import("./pages/Profile"))
+const Settings = lazy(() => import("./pages/Settings.jsx"))
+const NotFound = lazy(() => import("./pages/NotFound"))
+const Messages = lazy(() => import("./pages/Messages.jsx"))
+const Subscription = lazy(() => import("./pages/Subscription"))
+const Admin = lazy(() => import("./pages/Admin.jsx"))
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail.jsx"))
+const AboutUs = lazy(() => import("./pages/AboutUs"))
+const Safety = lazy(() => import("./pages/Safety"))
+const Support = lazy(() => import("./pages/Support"))
+const EmbeddedChat = lazy(() => import("./components/EmbeddedChat").then(module => ({ default: module.EmbeddedChat })))
 
 function App() {
   // Call the hook here to set up navigation for the notification service
@@ -128,20 +134,48 @@ function App() {
                     <VerificationBanner />
 
                     <Routes>
+                      {/* Critical paths loaded eagerly */}
                       <Route path="/" element={<Home />} />
                       <Route path="/login" element={<Login />} />
                       <Route path="/register" element={<Register />} />
-                      <Route path="/verify-email" element={<VerifyEmail />} />
-                      {/* New public pages */}
-                      <Route path="/about-us" element={<AboutUs />} />
-                      <Route path="/about" element={<AboutUs />} />
-                      <Route path="/safety" element={<Safety />} />
-                      <Route path="/support" element={<Support />} />
+                      
+                      {/* Lazy-loaded routes with Suspense */}
+                      <Route path="/verify-email" element={
+                        <Suspense fallback={<LoadingSpinner />}>
+                          <VerifyEmail />
+                        </Suspense>
+                      } />
+                      
+                      {/* Public pages */}
+                      <Route path="/about-us" element={
+                        <Suspense fallback={<LoadingSpinner />}>
+                          <AboutUs />
+                        </Suspense>
+                      } />
+                      <Route path="/about" element={
+                        <Suspense fallback={<LoadingSpinner />}>
+                          <AboutUs />
+                        </Suspense>
+                      } />
+                      <Route path="/safety" element={
+                        <Suspense fallback={<LoadingSpinner />}>
+                          <Safety />
+                        </Suspense>
+                      } />
+                      <Route path="/support" element={
+                        <Suspense fallback={<LoadingSpinner />}>
+                          <Support />
+                        </Suspense>
+                      } />
+                      
+                      {/* Protected routes */}
                       <Route
                         path="/dashboard"
                         element={
                           <PrivateRoute>
-                            <Dashboard />
+                            <Suspense fallback={<LoadingSpinner />}>
+                              <Dashboard />
+                            </Suspense>
                           </PrivateRoute>
                         }
                       />
@@ -149,7 +183,9 @@ function App() {
                         path="/user/:id"
                         element={
                           <PrivateRoute>
-                            <UserProfile />
+                            <Suspense fallback={<LoadingSpinner />}>
+                              <UserProfile />
+                            </Suspense>
                           </PrivateRoute>
                         }
                       />
@@ -157,7 +193,9 @@ function App() {
                         path="/profile"
                         element={
                           <PrivateRoute>
-                            <Profile />
+                            <Suspense fallback={<LoadingSpinner />}>
+                              <Profile />
+                            </Suspense>
                           </PrivateRoute>
                         }
                       />
@@ -165,7 +203,9 @@ function App() {
                         path="/messages"
                         element={
                           <PrivateRoute>
-                            <Messages />
+                            <Suspense fallback={<LoadingSpinner />}>
+                              <Messages />
+                            </Suspense>
                           </PrivateRoute>
                         }
                       />
@@ -173,7 +213,9 @@ function App() {
                         path="/messages/:userId"
                         element={
                           <PrivateRoute>
-                            <Messages />
+                            <Suspense fallback={<LoadingSpinner />}>
+                              <Messages />
+                            </Suspense>
                           </PrivateRoute>
                         }
                       />
@@ -181,7 +223,9 @@ function App() {
                         path="/settings"
                         element={
                           <PrivateRoute>
-                            <Settings />
+                            <Suspense fallback={<LoadingSpinner />}>
+                              <Settings />
+                            </Suspense>
                           </PrivateRoute>
                         }
                       />
@@ -189,28 +233,41 @@ function App() {
                         path="/subscription"
                         element={
                           <PrivateRoute>
-                            <Subscription />
+                            <Suspense fallback={<LoadingSpinner />}>
+                              <Subscription />
+                            </Suspense>
                           </PrivateRoute>
                         }
                       />
+                      
                       {/* Admin Routes */}
                       <Route
                         path="/admin/*"
                         element={
                           <AdminRoute>
-                            <Admin />
+                            <Suspense fallback={<LoadingSpinner />}>
+                              <Admin />
+                            </Suspense>
                           </AdminRoute>
                         }
                       />
-                      <Route path="*" element={<NotFound />} />
+                      
+                      {/* Fallback route */}
+                      <Route path="*" element={
+                        <Suspense fallback={<LoadingSpinner />}>
+                          <NotFound />
+                        </Suspense>
+                      } />
                     </Routes>
 
                     {/* Footer appears on all pages */}
                     <Footer />
 
-                    {/* Global floating chat window */}
+                    {/* Global floating chat window - lazy loaded */}
                     {isChatOpen && chatRecipient && (
-                      <EmbeddedChat recipient={chatRecipient} isOpen={isChatOpen} onClose={handleCloseChat} />
+                      <Suspense fallback={<div className="loading-chat">Loading chat...</div>}>
+                        <EmbeddedChat recipient={chatRecipient} isOpen={isChatOpen} onClose={handleCloseChat} />
+                      </Suspense>
                     )}
 
                     <ToastContainer

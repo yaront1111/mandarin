@@ -1,123 +1,42 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTheme } from '../context/ThemeContext';
 
 const Footer = () => {
   const { theme } = useTheme();
   const isDarkMode = theme === "dark";
+  const scriptsLoaded = useRef(false);
   
   useEffect(() => {
-    // Create and add Google Analytics script
-    const gtagScript1 = document.createElement('script');
-    gtagScript1.async = true;
-    gtagScript1.src = "https://www.googletagmanager.com/gtag/js?id=G-Y9EQ02574T";
+    // Skip loading scripts if they've already been loaded (prevent duplicates)
+    if (scriptsLoaded.current) return;
     
-    const gtagScript2 = document.createElement('script');
-    gtagScript2.innerHTML = `
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-Y9EQ02574T');
-    `;
+    // Defer non-critical script loading until after page load
+    if (document.readyState === 'complete') {
+      loadDeferredScripts();
+    } else {
+      window.addEventListener('load', loadDeferredScripts);
+    }
     
-    // Add modern schema.org structured data
-    const structuredDataScript = document.createElement('script');
-    structuredDataScript.type = 'application/ld+json';
-    structuredDataScript.innerHTML = `
-      {
-        "@context": "https://schema.org",
-        "@type": "WebSite",
-        "name": "Flirtss",
-        "url": "${window.location.origin}",
-        "description": "Flirtss connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm.",
-        "keywords": "dating, singles, relationships, online dating, match, flirt",
-        "inLanguage": ["en", "he"],
-        "potentialAction": {
-          "@type": "SearchAction",
-          "target": "${window.location.origin}/search?q={search_term_string}",
-          "query-input": "required name=search_term_string"
-        }
-      }
-    `;
-    
-    // Add Organization structured data
-    const organizationDataScript = document.createElement('script');
-    organizationDataScript.type = 'application/ld+json';
-    organizationDataScript.innerHTML = `
-      {
-        "@context": "https://schema.org",
-        "@type": "Organization",
-        "name": "Flirtss",
-        "alternateName": "Flirtss Dating",
-        "url": "${window.location.origin}",
-        "logo": "${window.location.origin}/placeholder.svg",
-        "description": "Flirtss is a modern dating platform helping singles connect for meaningful relationships.",
-        "contactPoint": {
-          "@type": "ContactPoint",
-          "contactType": "customer support",
-          "email": "support@flirtss.com",
-          "availableLanguage": ["English", "Hebrew"]
-        },
-        "sameAs": []
-      }
-    `;
-    
-    // Add FaqPage structured data for better search visibility
-    const faqDataScript = document.createElement('script');
-    faqDataScript.type = 'application/ld+json';
-    faqDataScript.innerHTML = `
-      {
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        "mainEntity": [
-          {
-            "@type": "Question",
-            "name": "Is Flirtss free to use?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Yes, Flirtss offers a free basic membership with essential features. Premium subscription options are available for enhanced functionality and an ad-free experience."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "How does Flirtss matching algorithm work?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Our advanced matching algorithm uses your profile information, interests, and preferences to suggest compatible matches. The more you interact with the platform, the better our suggestions become."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "Is my personal information safe on Flirtss?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Yes, we take privacy seriously. Flirtss uses state-of-the-art encryption and security measures to protect your personal information. We never share your data with third parties without consent."
-            }
-          }
-        ]
-      }
-    `;
-    
-    // Add scripts to document head
-    document.head.appendChild(gtagScript1);
-    document.head.appendChild(gtagScript2);
-    document.head.appendChild(structuredDataScript);
-    document.head.appendChild(organizationDataScript);
-    document.head.appendChild(faqDataScript);
-    
-    // Clean up function to remove scripts when component unmounts
+    // Cleanup function
     return () => {
-      try {
-        document.head.removeChild(gtagScript1);
-        document.head.removeChild(gtagScript2);
-        document.head.removeChild(structuredDataScript);
-        document.head.removeChild(organizationDataScript);
-        document.head.removeChild(faqDataScript);
-      } catch (err) {
-        // Handle case where the script might have been removed already
-        console.log("Analytics or structured data scripts already removed");
-      }
+      window.removeEventListener('load', loadDeferredScripts);
     };
   }, []);
+  
+  // Function to load scripts in a non-blocking way
+  const loadDeferredScripts = () => {
+    if (scriptsLoaded.current) return;
+    
+    // Dynamically load scripts only after page has loaded (non-blocking)
+    setTimeout(() => {
+      // Mark as loaded to prevent duplicate loading
+      scriptsLoaded.current = true;
+      
+      // Add scripts using a script loader to index.html instead of here
+      // This is already handled by the deferred script loading in index.html
+      // and the gtag-loader.js file
+    }, 1500); // Delay to prioritize main content rendering
+  };
   
   return (
     <footer className={`site-footer ${isDarkMode ? 'dark-mode' : 'light-mode'}`} role="contentinfo" aria-label="Site footer">
@@ -135,9 +54,10 @@ const Footer = () => {
         </nav>
       </div>
       
-      {/* Adding accessibility statement and additional information for SEO */}
+      {/* Adding accessibility statement using semantic HTML */}
       <div className="footer-secondary">
         <div className="container">
+          {/* Use hidden but accessible content for SEO and screen readers */}
           <address className="visually-hidden">
             <span itemProp="address" itemScope itemType="http://schema.org/PostalAddress">
               <span itemProp="streetAddress">123 Dating Street</span>,
