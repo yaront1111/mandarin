@@ -99,6 +99,7 @@ const config = {
   EMAIL_USER: process.env.EMAIL_USER,
   EMAIL_PASSWORD: process.env.EMAIL_PASSWORD,
   EMAIL_FROM: process.env.EMAIL_FROM || "noreply@mandarindating.com",
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
 
   // Database settings
   MONGODB_URI: process.env.MONGODB_URI || "mongodb://localhost:27017/mandarin",

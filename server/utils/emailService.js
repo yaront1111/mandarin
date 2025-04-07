@@ -12,7 +12,14 @@ import logger from '../logger.js';
 // --- Resend Configuration ---
 // Initialize Resend with your API key from environment variables
 // Ensure RESEND_API_KEY is set in your .env file
-const resend = new Resend(config.RESEND_API_KEY || process.env.RESEND_API_KEY);
+const resend = new Resend(config.RESEND_API_KEY);
+
+// Log whether Resend API key is available
+if (!config.RESEND_API_KEY) {
+  logger.error('RESEND_API_KEY is not defined in config');
+} else {
+  logger.info('RESEND_API_KEY is configured');
+}
 
 // Default sender address - MUST be from your verified domain in Resend (flirtss.com)
 const DEFAULT_FROM_ADDRESS = `"${config.APP_NAME || 'Flirtss'}" <${config.EMAIL_FROM || 'noreply@flirtss.com'}>`;
@@ -31,40 +38,61 @@ const DEFAULT_FROM_ADDRESS = `"${config.APP_NAME || 'Flirtss'}" <${config.EMAIL_
  */
 export const sendEmailNotification = async ({ to, subject, text, html, from = DEFAULT_FROM_ADDRESS }) => {
   // Check if Resend API key is configured
-  if (!resend.apiKey) { // Note: Accessing apiKey directly might change in future SDK versions
-    logger.error('Resend API Key is not configured. Check RESEND_API_KEY environment variable.');
-    // Optionally throw an error or return a specific error object
+  if (!config.RESEND_API_KEY) { 
+    logger.error('Resend API Key is not configured. Check RESEND_API_KEY in .env and config.js');
     return null;
   }
 
   // Basic validation
   if (!to || !subject || (!text && !html)) {
-    logger.error('Missing required parameters for sendEmailNotification (to, subject, text/html).');
+    logger.error('Missing required parameters for sendEmailNotification:', { 
+      to: !!to, 
+      subject: !!subject, 
+      text: !!text, 
+      html: !!html 
+    });
     return null;
   }
 
   try {
     logger.info(`Attempting to send email via Resend to: ${to}, Subject: ${subject}`);
+    
+    // Log the Resend configuration data for debugging (without sensitive parts)
+    logger.info('Resend configuration:', {
+      fromAddress: from,
+      hasApiKey: !!config.RESEND_API_KEY,
+      apiKeyLength: config.RESEND_API_KEY ? config.RESEND_API_KEY.length : 0
+    });
+
+    // Check if Resend SDK is properly initialized
+    if (!resend || typeof resend.emails?.send !== 'function') {
+      logger.error('Resend SDK is not properly initialized');
+      return null;
+    }
 
     // Use the Resend SDK to send the email
-    const { data, error } = await resend.emails.send({
+    const result = await resend.emails.send({
       from: from,
       to: [to], // Resend expects 'to' to be an array
       subject: subject,
       text: text, // Include plain text version if available
       html: html, // HTML version
       // Add tags for categorization if desired
-      // tags: [{ name: 'category', value: 'notification' }],
+      tags: [{ name: 'category', value: 'notification' }],
     });
+
+    // Extract data and error from result
+    const { data, error } = result || {};
 
     // Handle potential errors returned by the Resend API
     if (error) {
       logger.error('Resend API Error:', {
         message: error.message,
         name: error.name,
-        // Avoid logging potentially sensitive details in production
-        // details: error,
+        code: error.statusCode,
       });
+      
+      logger.debug('Full Resend error object:', JSON.stringify(error, null, 2));
       return null; // Indicate failure
     }
 
@@ -74,8 +102,20 @@ export const sendEmailNotification = async ({ to, subject, text, html, from = DE
 
   } catch (err) {
     // Catch unexpected errors during the API call or processing
-    logger.error(`Unexpected error sending email via Resend: ${err.message}`, { stack: err.stack });
-    // Optionally re-throw or return null/error object
+    logger.error(`Unexpected error sending email via Resend: ${err.message}`, { 
+      stack: err.stack,
+      name: err.name,
+      code: err.code
+    });
+    
+    // Log more debug information
+    logger.debug('Error context:', {
+      to,
+      subject,
+      hasText: !!text,
+      hasHtml: !!html
+    });
+    
     return null;
   }
 };
@@ -502,198 +542,238 @@ export const sendNewMessageEmail = async ({
  * @returns {Promise<object|null>} - Resend response data or null
  */
 export const sendTestNotificationEmail = async ({ email, nickname, settings }) => {
-  const appName = config.APP_NAME || "Flirtss";
-  const appUrl = config.APP_URL || "https://flirtss.com";
+  try {
+    if (!email) {
+      logger.error('Cannot send test email: Missing recipient email address');
+      return {
+        success: false,
+        error: "Missing recipient email address"
+      };
+    }
 
-  const subject = `Test Notification from ${appName}`;
+    logger.info(`Sending test email to ${email} (nickname: ${nickname || 'User'})`);
+    
+    const appName = config.APP_NAME || "Flirtss";
+    const appUrl = config.APP_URL || "https://flirtss.com";
 
-  // Get settings summary
-  const emailEnabled = settings?.notifications?.email !== false;
-  const frequency = settings?.notifications?.emailDigestFrequency || 'instant';
-  const offlineOnly = settings?.notifications?.emailOfflineOnly !== false;
+    const subject = `Test Notification from ${appName}`;
 
-  // Plain text version (Keep as is)
-  const text = `
-    Hello ${nickname},
+    // Get settings summary with fallbacks to prevent undefined errors
+    const emailEnabled = settings?.notifications?.email !== false;
+    const frequency = settings?.notifications?.emailDigestFrequency || 'instant';
+    const offlineOnly = settings?.notifications?.emailOfflineOnly !== false;
 
-    This is a test notification email from ${appName}.
+    // Log the request details for debugging
+    logger.info('Test email details:', {
+      to: email,
+      subject,
+      settings: JSON.stringify({
+        emailEnabled,
+        frequency,
+        offlineOnly
+      })
+    });
 
-    Your current email notification settings:
+    // Plain text version (Keep as is)
+    const text = `
+      Hello ${nickname || 'User'},
 
-    - Email notifications: ${emailEnabled ? 'Enabled' : 'Disabled'}
-    - Frequency: ${frequency}
-    - Offline only: ${offlineOnly ? 'Yes' : 'No'}
+      This is a test notification email from ${appName}.
 
-    If you received this email, your email notification settings are working correctly.
+      Your current email notification settings:
 
-    You can update your notification preferences at any time in your settings:
-    ${appUrl}/settings
+      - Email notifications: ${emailEnabled ? 'Enabled' : 'Disabled'}
+      - Frequency: ${frequency}
+      - Offline only: ${offlineOnly ? 'Yes' : 'No'}
 
-    Best regards,
-    The ${appName} Team
-  `;
+      If you received this email, your email notification settings are working correctly.
 
-  // HTML version (Keep as is - ensure image URLs are absolute)
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Test Notification</title>
-      <style>
-         body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f9f9f9;
-          }
-          .container {
-            border: 1px solid #e1e1e1;
-            border-radius: 8px;
-            padding: 20px;
-            background-color: #fff;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-          }
-          .header {
-            text-align: center;
-            padding-bottom: 15px;
-            border-bottom: 1px solid #e1e1e1;
-            margin-bottom: 20px;
-          }
-          .logo {
-            max-width: 150px;
-            height: auto;
-            margin-bottom: 10px;
-          }
-          .button {
-            display: inline-block;
-            background-color: #ff4b7d;
-            color: white !important;
-            text-decoration: none;
-            padding: 12px 24px;
-            border-radius: 4px;
-            margin: 20px 0;
-            font-weight: bold;
-            text-align: center;
-          }
-          .footer {
-            margin-top: 30px;
-            text-align: center;
-            font-size: 12px;
-            color: #888;
-            padding-top: 15px;
-            border-top: 1px solid #e1e1e1;
-          }
-          .settings-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-          }
-          .settings-table th, .settings-table td {
-            padding: 10px;
-            text-align: left;
-            border-bottom: 1px solid #e1e1e1;
-          }
-          .settings-table th {
-            background-color: #f5f5f5;
-          }
-          .enabled {
-            color: #28a745;
-            font-weight: bold;
-          }
-          .disabled {
-            color: #dc3545;
-          }
-          .test-badge {
-            display: inline-block;
-            background-color: #6c757d;
-            color: white;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            margin-left: 10px;
-          }
-          a { /* Ensure links are visible */
-            color: #ff4b7d;
-            text-decoration: underline;
-          }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <img src="${appUrl.replace(/\/$/, '')}/logo.png" alt="${appName} Logo" class="logo">
-          <h1>${appName} <span class="test-badge">TEST</span></h1>
+      You can update your notification preferences at any time in your settings:
+      ${appUrl}/settings
+
+      Best regards,
+      The ${appName} Team
+    `;
+
+    // HTML version (Keep as is - ensure image URLs are absolute)
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Test Notification</title>
+        <style>
+           body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              max-width: 600px;
+              margin: 0 auto;
+              padding: 20px;
+              background-color: #f9f9f9;
+            }
+            .container {
+              border: 1px solid #e1e1e1;
+              border-radius: 8px;
+              padding: 20px;
+              background-color: #fff;
+              box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            }
+            .header {
+              text-align: center;
+              padding-bottom: 15px;
+              border-bottom: 1px solid #e1e1e1;
+              margin-bottom: 20px;
+            }
+            .logo {
+              max-width: 150px;
+              height: auto;
+              margin-bottom: 10px;
+            }
+            .button {
+              display: inline-block;
+              background-color: #ff4b7d;
+              color: white !important;
+              text-decoration: none;
+              padding: 12px 24px;
+              border-radius: 4px;
+              margin: 20px 0;
+              font-weight: bold;
+              text-align: center;
+            }
+            .footer {
+              margin-top: 30px;
+              text-align: center;
+              font-size: 12px;
+              color: #888;
+              padding-top: 15px;
+              border-top: 1px solid #e1e1e1;
+            }
+            .settings-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 20px 0;
+            }
+            .settings-table th, .settings-table td {
+              padding: 10px;
+              text-align: left;
+              border-bottom: 1px solid #e1e1e1;
+            }
+            .settings-table th {
+              background-color: #f5f5f5;
+            }
+            .enabled {
+              color: #28a745;
+              font-weight: bold;
+            }
+            .disabled {
+              color: #dc3545;
+            }
+            .test-badge {
+              display: inline-block;
+              background-color: #6c757d;
+              color: white;
+              padding: 3px 8px;
+              border-radius: 4px;
+              font-size: 12px;
+              margin-left: 10px;
+            }
+            a { /* Ensure links are visible */
+              color: #ff4b7d;
+              text-decoration: underline;
+            }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <img src="${appUrl.replace(/\/$/, '')}/logo.png" alt="${appName} Logo" class="logo">
+            <h1>${appName} <span class="test-badge">TEST</span></h1>
+          </div>
+
+          <p>Hello ${nickname || 'User'},</p>
+
+          <p>This is a test notification email from ${appName}.</p>
+
+          <h2>Your Email Notification Settings</h2>
+
+          <table class="settings-table">
+            <tr>
+              <th>Setting</th>
+              <th>Status</th>
+            </tr>
+            <tr>
+              <td>Email Notifications</td>
+              <td class="${emailEnabled ? 'enabled' : 'disabled'}">
+                ${emailEnabled ? 'Enabled' : 'Disabled'}
+              </td>
+            </tr>
+            <tr>
+              <td>Delivery Frequency</td>
+              <td>
+                ${frequency === 'instant' ? 'Instant' :
+                  frequency === 'hourly' ? 'Hourly Digest' :
+                  frequency === 'daily' ? 'Daily Digest' : 'Never'}
+              </td>
+            </tr>
+            <tr>
+              <td>Offline Messages Only</td>
+              <td>
+                ${offlineOnly ? 'Yes' : 'No'}
+              </td>
+            </tr>
+          </table>
+
+          <p>If you received this email, your email notification settings are working correctly.</p>
+
+          <div style="text-align: center;">
+            <a href="${appUrl}/settings" class="button">Manage Settings</a>
+          </div>
+
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} ${appName}. All rights reserved.</p>
+            <p>
+              <small>This is a test email. If you did not request this test, you can safely ignore it.</small>
+            </p>
+          </div>
         </div>
+      </body>
+      </html>
+    `;
 
-        <p>Hello ${nickname},</p>
+    // Call the core sending function
+    logger.info('Attempting to send test email via Resend');
+    const result = await sendEmailNotification({
+      to: email,
+      subject,
+      html,
+      text // Include text version
+    });
 
-        <p>This is a test notification email from ${appName}.</p>
-
-        <h2>Your Email Notification Settings</h2>
-
-        <table class="settings-table">
-          <tr>
-            <th>Setting</th>
-            <th>Status</th>
-          </tr>
-          <tr>
-            <td>Email Notifications</td>
-            <td class="${emailEnabled ? 'enabled' : 'disabled'}">
-              ${emailEnabled ? 'Enabled' : 'Disabled'}
-            </td>
-          </tr>
-          <tr>
-            <td>Delivery Frequency</td>
-            <td>
-              ${frequency === 'instant' ? 'Instant' :
-                frequency === 'hourly' ? 'Hourly Digest' :
-                frequency === 'daily' ? 'Daily Digest' : 'Never'}
-            </td>
-          </tr>
-          <tr>
-            <td>Offline Messages Only</td>
-            <td>
-              ${offlineOnly ? 'Yes' : 'No'}
-            </td>
-          </tr>
-        </table>
-
-        <p>If you received this email, your email notification settings are working correctly.</p>
-
-        <div style="text-align: center;">
-          <a href="${appUrl}/settings" class="button">Manage Settings</a>
-        </div>
-
-        <div class="footer">
-          <p>&copy; ${new Date().getFullYear()} ${appName}. All rights reserved.</p>
-          <p>
-            <small>This is a test email. If you did not request this test, you can safely ignore it.</small>
-          </p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-
-  // Call the core sending function
-  const result = await sendEmailNotification({
-    to: email,
-    subject,
-    html,
-    text // Include text version
-  });
-
-  // Return a consistent success/failure object for this specific function
-  return {
-      success: !!result, // True if result is not null
-      messageId: result?.id || null,
-      error: result ? null : "Failed to send email via Resend" // Basic error message
-  };
+    if (result) {
+      logger.info(`Test email sent successfully to ${email}, message ID: ${result.id}`);
+      return {
+        success: true,
+        messageId: result.id,
+        error: null
+      };
+    } else {
+      logger.error(`Failed to send test email to ${email}`);
+      return {
+        success: false,
+        messageId: null,
+        error: "Failed to send email via Resend - see server logs for details"
+      };
+    }
+  } catch (error) {
+    logger.error(`Exception in sendTestNotificationEmail: ${error.message}`, { stack: error.stack });
+    return {
+      success: false,
+      messageId: null,
+      error: `Error sending test email: ${error.message}`
+    };
+  }
 };
 
 
