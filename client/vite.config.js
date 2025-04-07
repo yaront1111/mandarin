@@ -25,7 +25,7 @@ export default defineConfig({
       }
     }),
     // Enable PurgeCSS to eliminate unused CSS (skip if DISABLE_PURGECSS is set)
-    !process.env.DISABLE_PURGECSS && purgecss({
+    process.env.DISABLE_PURGECSS === 'true' ? null : purgecss({
       // Use the existing purgecss config
       content: ['./src/**/*.{jsx,js,tsx,ts}', './index.html', './public/**/*.{js,html}'],
       variables: true,
@@ -37,20 +37,21 @@ export default defineConfig({
           /^rtl-/, 'dark-mode', 'light-mode', 'direction-changing',
           /^toast/, /^Toastify/, /^swiper/, /^gradient-/, /^loading-/,
           /^modal-/, /^h\d-/, /^bg-/, /^text-/, /^btn-/, /^card-/,
-          // Translate utility classes with fractions 
-          /translate-x-[0-9]\/[0-9]/, /translate-y-[0-9]\/[0-9]/,
-          /translate-x-n[0-9]\/[0-9]/, /translate-y-n[0-9]\/[0-9]/,
+          // Explicitly list all fraction classes instead of using regex
+          'translate-x-1/2', 'translate-x-1/3', 'translate-x-2/3', 'translate-x-1/4', 'translate-x-3/4',
+          'translate-y-1/2', 'translate-y-1/3', 'translate-y-2/3', 'translate-y-1/4', 'translate-y-3/4',
+          'translate-x-n1/2', 'translate-x-n1/3', 'translate-x-n2/3', 'translate-x-n1/4', 'translate-x-n3/4',
+          'translate-y-n1/2', 'translate-y-n1/3', 'translate-y-n2/3', 'translate-y-n1/4', 'translate-y-n3/4',
           'active', 'disabled', 'show', 'hide', 'open', 'closed',
           'expanded', 'collapsed', 'visible', 'invisible', 'visually-hidden',
           'hero-heading-container', 'hero-tagline-container'
         ],
         deep: [/^animate/, /^transition/, /^transform/, /^hover/]
       },
+      skippedContentGlobs: ['**/utilities.css'], // Skip processing utilities.css file completely
       // Custom CSS extractor that handles special characters
       defaultExtractor: content => {
-        // This pattern will match all alphanumeric characters, hyphens, 
-        // underscores, colons, slashes, and escape characters
-        return content.match(/[A-Za-z0-9-_:/\\]+/g) || [];
+        return content.match(/[\w-/:]+(?<!:)/g) || [];
       }
     }),
     // Generate critical CSS inline in the HTML
