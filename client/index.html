@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover, height=device-height" />
     
     <!-- Security headers -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval' data:; connect-src 'self' https://api.flirtss.com wss://api.flirtss.com:* wss://flirtss.com:* https://www.googletagmanager.com https://fonts.gstatic.com; img-src 'self' data: https://*.flirtss.com https://flirtss.com https://images.unsplash.com https://picsum.photos; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com; frame-src 'self'; object-src 'none'; base-uri 'self';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval' data:; connect-src 'self' https://api.flirtss.com wss://api.flirtss.com:* wss://flirtss.com:* https://www.googletagmanager.com https://fonts.gstatic.com https://images.unsplash.com; img-src 'self' data: https://*.flirtss.com https://flirtss.com https://images.unsplash.com https://*.unsplash.com https://picsum.photos; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com; frame-src 'self'; object-src 'none'; base-uri 'self';" />
     <meta http-equiv="Strict-Transport-Security" content="max-age=31536000; includeSubDomains; preload" />
     <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
     
@@ -179,11 +179,11 @@
       window.addEventListener('load', function() {
         // Set a small timeout to allow main content to render first
         setTimeout(function() {
-          // First load font-loader which is higher priority
-          loadScript('/font-loader.js');
-          
-          // Load our font downloader to handle missing fonts
+          // First load font-downloader.js which enhances image handling
           loadScript('/font-downloader.js');
+          
+          // Then load font-loader which handles fonts
+          loadScript('/font-loader.js');
           
           // Then register service worker after a delay
           setTimeout(function() {

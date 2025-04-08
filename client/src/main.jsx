@@ -67,6 +67,49 @@ const setupGlobalAPIErrorHandler = () => {
   };
 };
 
+// Setup enhanced photo URL handling for seed images
+const setupPhotoUrlEnhancement = () => {
+  // Override the normalizePhotoUrl function to handle Unsplash URLs
+  window.normalizePhotoUrl = function(url) {
+    if (!url) return "/placeholder.svg";
+    
+    // Handle Unsplash URLs from seed-production.js
+    if (url.startsWith("http")) return url;
+    
+    // Handle internal paths
+    if (url.includes("/images/") || url.includes("/photos/")) {
+      return url.startsWith("/uploads") ? url : `/uploads${url.startsWith("/") ? "" : "/"}${url}`;
+    }
+     
+    if (url.startsWith("/uploads/")) {
+      return url;
+    }
+    
+    // Default case
+    return `/uploads/images/${url.split('/').pop()}`;
+  };
+  
+  // Create a global function to patch image errors with fallbacks
+  window.patchImageErrors = function() {
+    document.querySelectorAll('img').forEach(img => {
+      if (!img.hasAttribute('data-error-handled')) {
+        img.setAttribute('data-error-handled', 'true');
+        img.addEventListener('error', function() {
+          if (!this.src.includes('placeholder.svg')) {
+            this.src = '/placeholder.svg';
+          }
+        });
+      }
+    });
+  };
+  
+  // Periodically check for new images that need error handling (for dynamically added images)
+  setInterval(window.patchImageErrors, 2000);
+  
+  // Patch existing images immediately
+  window.patchImageErrors();
+};
+
 // Function to load non-critical CSS
 const loadNonCriticalCSS = () => {
   // Create a function to load CSS files in a non-blocking way
@@ -113,11 +156,21 @@ history.pushState = function(state, title, url) {
 // Run these immediately 
 loadI18n();
 setupGlobalAPIErrorHandler();
+setupPhotoUrlEnhancement();
 
 // Add script for deferred loading of non-critical resources
 window.addEventListener('load', () => {
   // Defer non-critical CSS loading
   setTimeout(loadNonCriticalCSS, 100);
+  
+  // Load font enhancement script
+  const loadFontDownloader = () => {
+    const script = document.createElement('script');
+    script.src = '/font-downloader.js';
+    script.async = true;
+    document.body.appendChild(script);
+  };
+  setTimeout(loadFontDownloader, 300);
   
   // Load Google Analytics
   // Instead of creating a script element directly, use a more CSP-friendly approach

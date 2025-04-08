@@ -46,15 +46,21 @@ const Spinner = () => (
 
 // Helper function to normalize photo URLs
 const normalizePhotoUrl = (url) => {
+  // Use the global function if available, otherwise fallback to local implementation
+  if (typeof window !== 'undefined' && window.normalizePhotoUrl) {
+    return window.normalizePhotoUrl(url);
+  }
+  
+  // Local fallback implementation
   if (!url) return "/placeholder.svg";
   if (url.startsWith("http")) return url;
   if (url.includes("/images/") || url.includes("/photos/")) {
      return url.startsWith("/uploads") ? url : `/uploads${url.startsWith("/") ? "" : "/"}${url}`;
   }
-   if (url.startsWith("/uploads/")) {
-       return url;
-   }
-   return `/uploads/images/${url.split('/').pop()}`;
+  if (url.startsWith("/uploads/")) {
+     return url;
+  }
+  return `/uploads/images/${url.split('/').pop()}`;
 };
 
 // Helper function to safely translate profile fields

@@ -97,15 +97,6 @@ const Footer = () => {
       </div>
       
       {/* Adding accessibility statement using semantic HTML */}
-      <div className="footer-secondary">
-        <div className="container">
-          {/* Use hidden but accessible content for SEO and screen readers */}
-          <address className="visually-hidden">
-            123 Dating Street, Web City, WC 12345 Israel
-            <a href="mailto:contact@flirtss.com" className="visually-hidden">contact@flirtss.com</a>
-          </address>
-        </div>
-      </div>
     </footer>
   );
 };

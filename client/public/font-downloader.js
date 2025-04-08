@@ -1,4 +1,4 @@
-// Simplified Font Downloader Script (immediate fallback to Google Fonts)
+// Simplified Font Downloader Script with Image URL Enhancement
 (function() {
   // Log function that's less verbose
   function log(message, level = 'debug') {
@@ -120,6 +120,60 @@
     document.head.appendChild(link);
   }
 
+  // Add support for Unsplash and external image URLs
+  function enhanceImageHandling() {
+    // Override the normalizePhotoUrl function globally for all components
+    window.enhanceNormalizePhotoUrl = function(url) {
+      if (!url) return "/placeholder.svg";
+      
+      // If it's already an absolute URL (external or internal), return as is
+      if (url.startsWith("http")) return url;
+      
+      // If it's an Unsplash URL (from seeded users), return as is
+      if (url.includes("unsplash.com")) return url;
+      
+      // Handle internal paths
+      if (url.includes("/images/") || url.includes("/photos/")) {
+        return url.startsWith("/uploads") ? url : `/uploads${url.startsWith("/") ? "" : "/"}${url}`;
+      }
+      
+      if (url.startsWith("/uploads/")) {
+        return url;
+      }
+      
+      // Default case - assume it's a relative path to images directory
+      return `/uploads/images/${url.split('/').pop()}`;
+    };
+    
+    // Add a global event listener to intercept image errors and provide fallbacks
+    document.addEventListener('error', function(event) {
+      if (event.target.tagName.toLowerCase() === 'img') {
+        // If image failed to load and is not already a placeholder
+        if (
+          !event.target.src.includes('/placeholder.svg') && 
+          !event.target.getAttribute('data-fallback-tried')
+        ) {
+          log(`Image failed to load: ${event.target.src}`, 'warn');
+          event.target.setAttribute('data-fallback-tried', 'true');
+          event.target.src = '/placeholder.svg';
+        }
+      }
+    }, true); // Capture phase to catch events before they reach the target
+
+    // Add global CSS for cleaner image error handling
+    const imgStyle = document.createElement('style');
+    imgStyle.textContent = `
+      img.error, img[data-fallback-tried="true"] {
+        opacity: 0.7;
+        background-color: #f5f5f5;
+      }
+    `;
+    document.head.appendChild(imgStyle);
+    
+    log('Enhanced image handling initialized');
+  }
+
   // Run immediately
   setupFonts();
+  enhanceImageHandling();
 })();
