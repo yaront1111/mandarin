@@ -1,98 +1,56 @@
-// Font loader with preloading strategy - optimized to avoid render blocking
+// Font loader with direct Google Fonts integration and system fallbacks
 (function() {
-  // Function to create and append font stylesheet
-  function loadFont() {
+  // Function to add Google Fonts
+  function loadGoogleFonts() {
+    console.log("Loading fonts from Google Fonts");
+    
+    // Create link for Google Fonts for Poppins and Inter
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@300;400;500;600;700&display=swap';
+    document.head.appendChild(link);
+  }
+  
+  // Function to set up system font fallbacks
+  function setupSystemFonts() {
+    console.log("Setting up system font fallbacks");
+    
     // Add font-display:swap to ensure text remains visible during font loading
     var style = document.createElement('style');
     style.textContent = `
-      /* Primary font - Poppins */
-      @font-face {
-        font-family: 'Poppins';
-        font-style: normal;
-        font-weight: 300;
-        font-display: swap;
-        src: local('Poppins Light'), local('Poppins-Light'),
-             url('/fonts/poppins-v20-latin-300.woff2') format('woff2'),
-             url('/fonts/poppins-v20-latin-300.woff') format('woff');
-      }
-      @font-face {
-        font-family: 'Poppins';
-        font-style: normal;
-        font-weight: 400;
-        font-display: swap;
-        src: local('Poppins Regular'), local('Poppins-Regular'),
-             url('/fonts/poppins-v20-latin-regular.woff2') format('woff2'),
-             url('/fonts/poppins-v20-latin-regular.woff') format('woff');
-      }
-      @font-face {
-        font-family: 'Poppins';
-        font-style: normal;
-        font-weight: 500;
-        font-display: swap;
-        src: local('Poppins Medium'), local('Poppins-Medium'),
-             url('/fonts/poppins-v20-latin-500.woff2') format('woff2'),
-             url('/fonts/poppins-v20-latin-500.woff') format('woff');
-      }
-      @font-face {
-        font-family: 'Poppins';
-        font-style: normal;
-        font-weight: 600;
-        font-display: swap;
-        src: local('Poppins SemiBold'), local('Poppins-SemiBold'),
-             url('/fonts/poppins-v20-latin-600.woff2') format('woff2'),
-             url('/fonts/poppins-v20-latin-600.woff') format('woff');
-      }
-      @font-face {
-        font-family: 'Poppins';
-        font-style: normal;
-        font-weight: 700;
-        font-display: swap;
-        src: local('Poppins Bold'), local('Poppins-Bold'),
-             url('/fonts/poppins-v20-latin-700.woff2') format('woff2'),
-             url('/fonts/poppins-v20-latin-700.woff') format('woff');
+      /* Primary font with local fallbacks */
+      :root {
+        --font-primary: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        --font-secondary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
       }
       
-      /* Secondary font - Inter */
-      @font-face {
-        font-family: 'Inter';
-        font-style: normal;
-        font-weight: 400;
-        font-display: swap;
-        src: local('Inter Regular'), local('Inter-Regular'),
-             url('/fonts/inter-v12-latin-regular.woff2') format('woff2'),
-             url('/fonts/inter-v12-latin-regular.woff') format('woff');
+      body {
+        font-family: var(--font-primary);
       }
-      @font-face {
-        font-family: 'Inter';
-        font-style: normal;
-        font-weight: 500;
-        font-display: swap;
-        src: local('Inter Medium'), local('Inter-Medium'),
-             url('/fonts/inter-v12-latin-500.woff2') format('woff2'),
-             url('/fonts/inter-v12-latin-500.woff') format('woff');
-      }
-      @font-face {
-        font-family: 'Inter';
-        font-style: normal;
-        font-weight: 600;
-        font-display: swap;
-        src: local('Inter SemiBold'), local('Inter-SemiBold'),
-             url('/fonts/inter-v12-latin-600.woff2') format('woff2'),
-             url('/fonts/inter-v12-latin-600.woff') format('woff');
+      
+      /* Ensure text is visible during font load */
+      html, body {
+        font-display: swap !important;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
     `;
     document.head.appendChild(style);
-    
-    // Add a data attribute to indicate fonts have been loaded
+  }
+  
+  // Try to load fonts from Google first
+  loadGoogleFonts();
+  
+  // Also set up system font fallbacks for reliability
+  setupSystemFonts();
+  
+  // Set a flag to indicate fonts are being loaded
+  document.documentElement.setAttribute('data-fonts-loading', 'true');
+  
+  // Mark fonts as loaded after they're likely to have loaded
+  setTimeout(function() {
     document.documentElement.setAttribute('data-fonts-loaded', 'true');
-  }
-
-  // Load fonts after a very brief delay to prioritize critical content
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      setTimeout(loadFont, 50);
-    });
-  } else {
-    setTimeout(loadFont, 50);
-  }
+    document.documentElement.removeAttribute('data-fonts-loading');
+  }, 2000);
 })();
