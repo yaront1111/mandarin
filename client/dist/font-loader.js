@@ -1,78 +1,87 @@
-// Font loader with preloading strategy - optimized to avoid render blocking
+// Ultra Simple Font Loader (System-first with Google Fonts fallback)
 (function() {
-  // Function to create and append font stylesheet
-  function loadFont() {
-    // Create a non-blocking link for Google Fonts
-    var fontLink = document.createElement('link');
-    fontLink.rel = 'preload';
-    fontLink.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap';
-    fontLink.as = 'style';
-    document.head.appendChild(fontLink);
-    
-    // Convert to stylesheet after preloading
-    fontLink.onload = function() {
-      // Change from preload to stylesheet
-      fontLink.rel = 'stylesheet';
-      
-      // Add a data attribute to indicate fonts have been loaded
-      document.documentElement.setAttribute('data-fonts-loaded', 'true');
-    };
-    
-    // Fallback in case onload doesn't fire
-    setTimeout(function() {
-      if (fontLink.rel !== 'stylesheet') {
-        fontLink.rel = 'stylesheet';
-      }
-    }, 2000);
-    
-    // Add font-display:swap to ensure text remains visible during font loading
+  // Apply system fonts immediately to prevent FOUT (Flash of Unstyled Text)
+  (function applySystemFonts() {
     var style = document.createElement('style');
     style.textContent = `
-      @font-face {
-        font-family: 'Poppins';
-        font-style: normal;
-        font-weight: 300;
-        font-display: swap;
-        src: url(https://fonts.gstatic.com/s/poppins/v20/pxiByp8kv8JHgFVrLDz8Z1xlFQ.woff2) format('woff2');
+      /* System-first font stack */
+      :root {
+        --font-primary: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, 
+          Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", "Poppins", sans-serif;
+        --font-secondary: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, 
+          Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", "Inter", sans-serif;
+        --font-display: swap;
       }
-      @font-face {
-        font-family: 'Poppins';
-        font-style: normal;
-        font-weight: 400;
-        font-display: swap;
-        src: url(https://fonts.gstatic.com/s/poppins/v20/pxiEyp8kv8JHgFVrJJfecg.woff2) format('woff2');
+      
+      /* Apply immediately */
+      body, button, input, select, textarea {
+        font-family: var(--font-primary);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
-      @font-face {
-        font-family: 'Poppins';
-        font-style: normal;
-        font-weight: 500;
-        font-display: swap;
-        src: url(https://fonts.gstatic.com/s/poppins/v20/pxiByp8kv8JHgFVrLGT9Z1xlFQ.woff2) format('woff2');
+      
+      h1, h2, h3, h4, h5, h6 {
+        font-family: var(--font-secondary);
       }
-      @font-face {
-        font-family: 'Poppins';
-        font-style: normal;
-        font-weight: 600;
-        font-display: swap;
-        src: url(https://fonts.gstatic.com/s/poppins/v20/pxiByp8kv8JHgFVrLEj6Z1xlFQ.woff2) format('woff2');
+      
+      /* Fix common mobile issues */
+      html {
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+        height: -webkit-fill-available;
       }
-      @font-face {
-        font-family: 'Poppins';
-        font-style: normal;
-        font-weight: 700;
-        font-display: swap;
-        src: url(https://fonts.gstatic.com/s/poppins/v20/pxiByp8kv8JHgFVrLCz7Z1xlFQ.woff2) format('woff2');
+      
+      /* Prevent input zooming on iOS */
+      @media (max-width: 768px) {
+        input, textarea, select, button {
+          font-size: 16px !important;
+        }
       }
     `;
     document.head.appendChild(style);
-  }
-
-  // Load fonts after a very brief delay to prioritize critical content
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      setTimeout(loadFont, 50);
-    });
-  } else {
-    setTimeout(loadFont, 50);
-  }
+  })();
+  
+  // Load Google Fonts as an enhancement, not a requirement
+  (function loadGoogleFonts() {
+    // Use minimal character set
+    var fontUrl = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Poppins:wght@400;500;600&display=swap&text=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:;';
+    
+    // Add preconnect for better performance
+    var preconnect1 = document.createElement('link');
+    preconnect1.rel = 'preconnect';
+    preconnect1.href = 'https://fonts.googleapis.com';
+    document.head.appendChild(preconnect1);
+    
+    var preconnect2 = document.createElement('link');
+    preconnect2.rel = 'preconnect';
+    preconnect2.href = 'https://fonts.gstatic.com';
+    preconnect2.crossOrigin = 'anonymous';
+    document.head.appendChild(preconnect2);
+    
+    // Load fonts async with fallback
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = fontUrl;
+    
+    // If fonts load successfully, update variables to include them
+    link.onload = function() {
+      var fontUpdateStyle = document.createElement('style');
+      fontUpdateStyle.textContent = `
+        :root {
+          --font-primary: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, 
+            Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+          --font-secondary: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, 
+            Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+        }
+      `;
+      document.head.appendChild(fontUpdateStyle);
+    };
+    
+    // Silent fail - we're using system fonts already
+    link.onerror = function() {
+      // Just keep using system fonts
+    };
+    
+    document.head.appendChild(link);
+  })();
 })();

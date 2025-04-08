@@ -1,41 +1,24 @@
-// Service Worker for Flirtss
-const CACHE_NAME = 'flirtss-cache-v1';
-// Only include assets that definitely exist
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/placeholder.svg',
-  '/robots.txt'
-];
+// Ultra Simple Service Worker for Flirtss
+// Version that only handles the bare minimum and avoids caching errors
+const CACHE_NAME = 'flirtss-cache-v4';
 
-// Install event - cache static assets
+// Empty minimal assets list - we'll handle caching individually
+const MINIMAL_ASSETS = [];
+
+// Install event - skip caching on install to avoid errors
 self.addEventListener('install', event => {
   self.skipWaiting();
   
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Caching static assets');
-        // Cache each asset individually to prevent failure of the entire batch
-        const cachePromises = STATIC_ASSETS.map(url => {
-          // This approach fetches and caches each asset individually
-          return fetch(url)
-            .then(response => {
-              if (!response || response.status !== 200) {
-                console.log(`Failed to cache: ${url}`);
-                return;
-              }
-              return cache.put(url, response);
-            })
-            .catch(error => {
-              console.log(`Failed to cache: ${url}`, error);
-              // Continue with other assets even if one fails
-              return Promise.resolve();
-            });
-        });
-        return Promise.all(cachePromises);
-      })
+    (async () => {
+      try {
+        // Just open the cache but don't try to preload anything
+        await caches.open(CACHE_NAME);
+        console.log('Service worker installed successfully');
+      } catch (error) {
+        console.error('Service worker installation failed:', error.message);
+      }
+    })()
   );
 });
 
@@ -44,21 +27,32 @@ self.addEventListener('activate', event => {
   const cacheWhitelist = [CACHE_NAME];
   
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    (async () => {
+      try {
+        // Get all cache names
+        const cacheNames = await caches.keys();
+        
+        // Delete old caches
+        await Promise.all(
+          cacheNames
+            .filter(cacheName => cacheName !== CACHE_NAME)
+            .map(cacheName => {
+              console.log('Deleting old cache:', cacheName);
+              return caches.delete(cacheName);
+            })
+        );
+        
+        // Take control of all clients
+        await self.clients.claim();
+        console.log('Service worker now controlling all clients');
+      } catch (error) {
+        console.error('Error during service worker activation:', error.message);
+      }
+    })()
   );
 });
 
-// Fetch event - network first with cache fallback strategy for HTML pages
-// Cache first with network fallback for static assets
+// Fetch event - network-only policy to prevent caching issues
 self.addEventListener('fetch', event => {
   // Skip cross-origin requests
   if (!event.request.url.startsWith(self.location.origin)) {
@@ -72,221 +66,157 @@ self.addEventListener('fetch', event => {
   
   const requestUrl = new URL(event.request.url);
   
-  // For API requests, don't cache
-  if (requestUrl.pathname.startsWith('/api/')) {
+  // Don't handle API or socket requests
+  if (requestUrl.pathname.startsWith('/api/') || 
+      requestUrl.pathname.startsWith('/socket.io/')) {
     return;
   }
   
-  // HTML pages - Network first, cache fallback, cache update
+  // Don't handle font requests at all - let the browser handle them
+  if (requestUrl.pathname.includes('/fonts/') || 
+      requestUrl.pathname.endsWith('.woff2') || 
+      requestUrl.pathname.endsWith('.woff') || 
+      requestUrl.pathname.endsWith('.ttf')) {
+    return;
+  }
+  
+  // For HTML requests or app routes - Network with minimal fallback
   if (requestUrl.pathname === '/' || 
       requestUrl.pathname.endsWith('.html') || 
       !requestUrl.pathname.includes('.')) {
     
     event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          // Cache a copy of the response
-          const clonedResponse = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, clonedResponse);
+      (async () => {
+        try {
+          // Always try network first, don't attempt to cache
+          return await fetch(event.request);
+        } catch (networkError) {
+          console.log('Network request failed, attempt minimal fallback');
+          
+          try {
+            // Only try to get index.html from cache as a last resort
+            const indexFallback = await caches.match('/index.html');
+            if (indexFallback) {
+              return indexFallback;
+            }
+          } catch (cacheError) {
+            // Ignore cache errors
+          }
+          
+          // Return a simple offline message
+          return new Response('You are offline. Please check your connection.', {
+            status: 503,
+            headers: { 'Content-Type': 'text/plain' }
           });
-          return response;
-        })
-        .catch(() => {
-          return caches.match(event.request)
-            .then(cachedResponse => {
-              if (cachedResponse) {
-                return cachedResponse;
-              }
-              // If no match in cache, fall back to the index page for SPA
-              return caches.match('/index.html');
-            });
-        })
+        }
+      })()
     );
     return;
   }
   
-  // For static assets - Cache first, network fallback
-  event.respondWith(
-    caches.match(event.request)
-      .then(cachedResponse => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-        
-        return fetch(event.request)
-          .then(response => {
-            // Don't cache bad responses
-            if (!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
-            }
-            
-            // Cache the new resource
-            const responseToCache = response.clone();
-            caches.open(CACHE_NAME)
-              .then(cache => {
-                cache.put(event.request, responseToCache);
-              });
-              
-            return response;
-          });
-      })
+  // For all other assets - network-only strategy to avoid caching issues
+  // Only fall back to cache for critical assets
+  const isCriticalAsset = (
+    requestUrl.pathname === '/manifest.json' || 
+    requestUrl.pathname === '/default-avatar.png' ||
+    requestUrl.pathname.includes('logo')
   );
-});
-
-// Background sync for offline form submissions
-self.addEventListener('sync', event => {
-  if (event.tag === 'sync-messages') {
-    event.waitUntil(syncMessages());
+  
+  if (isCriticalAsset) {
+    event.respondWith(
+      (async () => {
+        try {
+          return await fetch(event.request);
+        } catch (error) {
+          const cachedResponse = await caches.match(event.request);
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          
+          // Let the browser handle the failure for non-critical assets
+          return new Response('Resource unavailable', { 
+            status: 503, 
+            headers: { 'Content-Type': 'text/plain' } 
+          });
+        }
+      })()
+    );
   }
+  // For non-critical assets, let the browser handle them normally
 });
 
-// Push notifications
+// Push notification with better error handling
 self.addEventListener('push', event => {
   if (!event.data) return;
   
-  try {
-    const data = event.data.json();
-    
-    const options = {
-      body: data.body || 'New notification from Flirtss',
-      icon: '/logo192.png',
-      badge: '/logo192.png',
-      data: {
-        url: data.url || '/'
-      },
-      vibrate: [100, 50, 100],
-      actions: [
-        {
-          action: 'view',
-          title: 'View'
+  event.waitUntil(
+    (async () => {
+      try {
+        // Try to parse the data
+        let data;
+        try {
+          data = event.data.json();
+        } catch (parseError) {
+          // Fallback if JSON parsing fails
+          data = {
+            title: 'New notification',
+            body: event.data.text() || 'You have a new notification',
+            url: '/'
+          };
         }
-      ]
-    };
-    
-    event.waitUntil(
-      self.registration.showNotification(data.title || 'Flirtss Notification', options)
-    );
-  } catch (error) {
-    console.error('Push notification error:', error);
-  }
+        
+        // Check if notification permission is granted
+        if (self.Notification && self.Notification.permission === 'granted') {
+          // Basic notification options with fallbacks
+          const options = {
+            body: data.body || 'New notification from Flirtss',
+            icon: '/default-avatar.png', // Use default avatar as fallback
+            badge: '/default-avatar.png',
+            data: {
+              url: data.url || '/'
+            },
+            vibrate: [100, 50, 100],
+            requireInteraction: false
+          };
+          
+          // Show the notification
+          await self.registration.showNotification(
+            data.title || 'Flirtss Notification', 
+            options
+          );
+        }
+      } catch (error) {
+        console.error('Push notification error:', error.message);
+      }
+    })()
+  );
 });
 
-// Notification click handler
+// Simplified notification click handler
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   
-  if (event.action === 'view' || !event.action) {
-    event.waitUntil(
-      clients.matchAll({ type: 'window' }).then(windowClients => {
-        // Check if there is already a window/tab open with the target URL
-        const url = event.notification.data.url;
+  event.waitUntil(
+    (async () => {
+      try {
+        const url = event.notification.data?.url || '/';
+        const clients = await self.clients.matchAll({ type: 'window' });
         
-        for (let i = 0; i < windowClients.length; i++) {
-          const client = windowClients[i];
+        // Try to focus an existing window first
+        for (const client of clients) {
           if (client.url === url && 'focus' in client) {
-            return client.focus();
+            await client.focus();
+            return;
           }
         }
         
-        // If no window/tab is open, open a new one
-        if (clients.openWindow) {
-          return clients.openWindow(url);
+        // Otherwise open a new window
+        if (self.clients.openWindow) {
+          await self.clients.openWindow(url);
         }
-      })
-    );
-  }
-});
-
-// Helper function to sync messages
-async function syncMessages() {
-  try {
-    // Get all queued messages from IndexedDB
-    const db = await openMessagesDatabase();
-    const messages = await getQueuedMessages(db);
-    
-    if (messages.length === 0) return;
-    
-    // Try to send each message
-    const successes = [];
-    
-    for (const message of messages) {
-      try {
-        const response = await fetch('/api/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${message.token}`
-          },
-          body: JSON.stringify(message.data)
-        });
-        
-        if (response.ok) {
-          successes.push(message.id);
-        }
-      } catch (err) {
-        console.error('Failed to sync message:', err);
+      } catch (error) {
+        console.error('Error handling notification click:', error.message);
       }
-    }
-    
-    // Remove successfully sent messages from the queue
-    if (successes.length > 0) {
-      await removeQueuedMessages(db, successes);
-    }
-    
-  } catch (err) {
-    console.error('Error syncing messages:', err);
-  }
-}
-
-// IndexedDB helper functions
-function openMessagesDatabase() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('flirtss-messages', 1);
-    
-    request.onerror = event => reject(event.target.error);
-    
-    request.onupgradeneeded = event => {
-      const db = event.target.result;
-      const store = db.createObjectStore('messages', { keyPath: 'id' });
-      store.createIndex('timestamp', 'timestamp');
-    };
-    
-    request.onsuccess = event => resolve(event.target.result);
-  });
-}
-
-function getQueuedMessages(db) {
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(['messages'], 'readonly');
-    const store = transaction.objectStore('messages');
-    const request = store.getAll();
-    
-    request.onerror = event => reject(event.target.error);
-    request.onsuccess = event => resolve(event.target.result);
-  });
-}
-
-function removeQueuedMessages(db, ids) {
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(['messages'], 'readwrite');
-    const store = transaction.objectStore('messages');
-    
-    let completed = 0;
-    
-    ids.forEach(id => {
-      const request = store.delete(id);
-      
-      request.onerror = event => reject(event.target.error);
-      
-      request.onsuccess = () => {
-        completed++;
-        if (completed === ids.length) {
-          resolve();
-        }
-      };
-    });
-    
-    transaction.onerror = event => reject(event.target.error);
-  });
-}
+    })()
+  );
+});

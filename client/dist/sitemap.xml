@@ -1,51 +1,72 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- Main pages -->
   <url>
     <loc>https://flirtss.com/</loc>
-    <lastmod>2025-04-06</lastmod>
+    <lastmod>2025-04-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
+  
+  <!-- Authentication pages -->
   <url>
     <loc>https://flirtss.com/login</loc>
-    <lastmod>2025-04-06</lastmod>
+    <lastmod>2025-04-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://flirtss.com/register</loc>
-    <lastmod>2025-04-06</lastmod>
+    <lastmod>2025-04-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
+
+  <!-- Public pages -->
   <url>
-    <loc>https://flirtss.com/dashboard</loc>
-    <lastmod>2025-04-06</lastmod>
-    <changefreq>weekly</changefreq>
+    <loc>https://flirtss.com/about-us</loc>
+    <lastmod>2025-04-08</lastmod>
+    <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flirtss.com/profile</loc>
-    <lastmod>2025-04-06</lastmod>
+    <loc>https://flirtss.com/support</loc>
+    <lastmod>2025-04-08</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://flirtss.com/messages</loc>
-    <lastmod>2025-04-06</lastmod>
-    <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://flirtss.com/settings</loc>
-    <lastmod>2025-04-06</lastmod>
+    <loc>https://flirtss.com/safety</loc>
+    <lastmod>2025-04-08</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://flirtss.com/subscription</loc>
-    <lastmod>2025-04-06</lastmod>
+    <lastmod>2025-04-08</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <priority>0.8</priority>
   </url>
+  
+  <!-- Legal pages -->
+  <url>
+    <loc>https://flirtss.com/terms</loc>
+    <lastmod>2025-04-08</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://flirtss.com/privacy</loc>
+    <lastmod>2025-04-08</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://flirtss.com/cookies</loc>
+    <lastmod>2025-04-08</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  
+  <!-- Note: Private or account-specific pages should not be included in the sitemap -->
 </urlset>

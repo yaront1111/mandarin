@@ -1,15 +1,121 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <title>Mandarin Dating</title>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-  </body>
-</html>
+<!doctype html><html lang="en"><head><script type="module" crossorigin src="/assets/polyfills-DovPXL3p.js"></script><meta charset="UTF-8"/><link rel="icon" type="image/svg+xml" href="/placeholder.svg"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=0,viewport-fit=cover,height=device-height"/><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval' data:; connect-src 'self' https://api.flirtss.com wss://api.flirtss.com:* wss://flirtss.com:* https://www.googletagmanager.com https://fonts.gstatic.com; img-src 'self' data: https://*.flirtss.com https://flirtss.com https://images.unsplash.com https://picsum.photos; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com; frame-src 'self'; object-src 'none'; base-uri 'self';"/><meta http-equiv="Strict-Transport-Security" content="max-age=31536000; includeSubDomains; preload"/><meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin"/><title>Flirtss - Meet Local Singles &amp; Find Your Perfect Match</title><meta name="title" content="Flirtss - Meet Local Singles &amp; Find Your Perfect Match"/><meta name="description" content="Flirtss connects singles for meaningful relationships. Find your perfect match with our advanced matching algorithm. Join for free and start chatting today!"/><meta name="theme-color" content="#ff4d8d"/><meta name="apple-mobile-web-app-capable" content="yes"/><meta name="mobile-web-app-capable" content="yes"/><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""/><link rel="preconnect" href="https://www.googletagmanager.com"/><link rel="dns-prefetch" href="//api.flirtss.com"/><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Poppins:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/><link rel="apple-touch-icon" href="/apple-touch-icon.png"/><link rel="manifest" href="/manifest.json"/><script>// Inline the font loader to avoid a render-blocking request
+      (function () {
+        // Create a non-blocking link for Google Fonts
+        var fontLink = document.createElement("link");
+        fontLink.rel = "preload";
+        fontLink.href =
+          "https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap";
+        fontLink.as = "style";
+        fontLink.onload = function () {
+          this.onload = null;
+          this.rel = "stylesheet";
+        };
+        document.head.appendChild(fontLink);
+
+        // Set a fallback in case the font fails to load
+        setTimeout(function () {
+          if (fontLink.rel !== "stylesheet") {
+            fontLink.rel = "stylesheet";
+          }
+        }, 2000);
+      })();</script><meta name="robots" content="index, follow"/><meta property="og:type" content="website"/><meta property="og:url" content="https://flirtss.com/"/><meta property="og:title" content="Flirtss - Meet Local Singles &amp; Find Your Perfect Match"/><meta property="og:description" content="Find your perfect match with our advanced matching algorithm. Join thousands of singles looking for meaningful connections."/><meta property="og:image" content="https://flirtss.com/images/social-preview.jpg"/><meta property="twitter:card" content="summary_large_image"/><meta property="twitter:url" content="https://flirtss.com/"/><meta property="twitter:title" content="Flirtss - Meet Local Singles &amp; Find Your Perfect Match"/><meta property="twitter:description" content="Find your perfect match with our advanced matching algorithm. Join thousands of singles looking for meaningful connections."/><meta property="twitter:image" content="https://flirtss.com/images/social-preview.jpg"/><link rel="canonical" href="https://flirtss.com/"/><script>document.addEventListener("DOMContentLoaded", function () {
+        // Load structured data after initial paint
+        setTimeout(function () {
+          // Website schema
+          var websiteSchema = document.createElement("script");
+          websiteSchema.type = "application/ld+json";
+          websiteSchema.textContent = JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: "Flirtss",
+            url: "https://flirtss.com/",
+            potentialAction: {
+              "@type": "SearchAction",
+              target: "https://flirtss.com/search?q={search_term_string}",
+              "query-input": "required name=search_term_string",
+            },
+          });
+          document.head.appendChild(websiteSchema);
+
+          // Organization schema
+          var orgSchema = document.createElement("script");
+          orgSchema.type = "application/ld+json";
+          orgSchema.textContent = JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "@id": "https://flirtss.com/#organization",
+            name: "Flirtss",
+            url: "https://flirtss.com/",
+            logo: "https://flirtss.com/logo192.png",
+            sameAs: [
+              "https://www.facebook.com/flirtss",
+              "https://www.instagram.com/flirtss",
+              "https://twitter.com/flirtss",
+            ],
+            contactPoint: [
+              {
+                "@type": "ContactPoint",
+                telephone: "+1-800-FLIRTSS",
+                contactType: "customer service",
+                contactOption: "TollFree",
+                availableLanguage: ["English", "Hebrew"],
+              },
+            ],
+          });
+          document.head.appendChild(orgSchema);
+
+          // Breadcrumb schema
+          var breadcrumbSchema = document.createElement("script");
+          breadcrumbSchema.type = "application/ld+json";
+          breadcrumbSchema.textContent = JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              {
+                "@type": "ListItem",
+                position: 1,
+                name: "Home",
+                item: "https://flirtss.com/",
+              },
+            ],
+          });
+          document.head.appendChild(breadcrumbSchema);
+        }, 1000); // Wait 1 second after DOMContentLoaded
+      });</script><script type="module" crossorigin="" src="/assets/index-C8VdEsV7.js"></script><link rel="modulepreload" crossorigin="" href="/assets/vendor-vendor-other-DP6afrpz.js"/><link rel="modulepreload" crossorigin="" href="/assets/vendor-vendor-react-core-juyGFyXU.js"/><link rel="modulepreload" crossorigin="" href="/assets/vendor-vendor-ui-DRfImHpQ.js"/><link rel="modulepreload" crossorigin="" href="/assets/vendor-vendor-icons-Bip0k9z7.js"/><link rel="modulepreload" crossorigin="" href="/assets/vendor-vendor-react-ecosystem-IuMFwO8u.js"/><link rel="modulepreload" crossorigin="" href="/assets/vendor-vendor-i18n-Cu7X7p-a.js"/><link rel="modulepreload" crossorigin="" href="/assets/modules/core-app-BY_oree3.js"/><link rel="modulepreload" crossorigin="" href="/assets/feature-settings-Bnpm7Cui.js"/><link rel="modulepreload" crossorigin="" href="/assets/pages-core-CY1YCmLT.js"/><link rel="stylesheet" crossorigin="" href="/assets/css/vendor-ui-GNLSjkBZ.css"/><link rel="stylesheet" crossorigin="" href="/assets/css/feature-admin-DSjk3Ix7.css"/><link rel="stylesheet" crossorigin="" href="/assets/css/feature-settings-_wwfo4WI.css"/><link rel="stylesheet" crossorigin="" href="/assets/css/feature-stories-BaVqwBs2.css"/><link rel="stylesheet" crossorigin="" href="/assets/css/pages-core-KH6E-eJ9.css"/><link rel="stylesheet" crossorigin="" href="/assets/css/critical-B3zbR0W4.css"/><link rel="modulepreload" href="/assets/feature-admin-IO_KCjCo.js"/><link rel="modulepreload" href="/assets/feature-stories-BG9BeHZi.js"/><link rel="modulepreload" href="/assets/feature-video-call-CkqPgCWh.js"/><link rel="modulepreload" href="/assets/modules/AboutUs-CLcaI7rx.js"/><link rel="modulepreload" href="/assets/modules/Dashboard-NgzUMP2Q.js"/><link rel="modulepreload" href="/assets/modules/Messages-D2S2pm6d.js"/><link rel="modulepreload" href="/assets/modules/Profile-ZoDxW1CH.js"/><link rel="modulepreload" href="/assets/modules/Safety-DgvzaV8o.js"/><link rel="modulepreload" href="/assets/modules/Subscription-Cv7KVasy.js"/><link rel="modulepreload" href="/assets/modules/Support-oQojJmCK.js"/><link rel="modulepreload" href="/assets/modules/UserProfile-bUf5TdZt.js"/><link rel="modulepreload" href="/assets/polyfills-DovPXL3p.js"/><link rel="stylesheet" href="/assets/css/admin-components-BnizDjG8.css"/><link rel="stylesheet" href="/assets/css/chat-DFh10zfo.css"/><link rel="stylesheet" href="/assets/css/Dashboard-B9Ab4g3U.css"/><link rel="stylesheet" href="/assets/css/home-DMGNsC21.css"/><link rel="stylesheet" href="/assets/css/Messages-CLA4V8G5.css"/><link rel="stylesheet" href="/assets/css/modal-BXAorlzk.css"/><link rel="stylesheet" href="/assets/css/Profile-uuRp_MCB.css"/><link rel="stylesheet" href="/assets/css/rtl-CNXZ_DRd.css"/><link rel="stylesheet" href="/assets/css/Subscription-CF_VGKDQ.css"/><script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script><script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script></head><body><div id="root"></div><link rel="preload" href="/assets/main-2RyX98NK.jsx" as="script" crossorigin=""/><noscript>You need to enable JavaScript to run this app.</noscript><script>// Helper function to load scripts in order of priority
+      function loadScript(src, async = true, defer = true) {
+        const script = document.createElement("script");
+        script.src = src;
+        script.async = async;
+        script.defer = defer;
+        document.body.appendChild(script);
+        return script;
+      }
+
+      // Load scripts in order of importance after page load
+      window.addEventListener("load", function () {
+        // Set a small timeout to allow main content to render first
+        setTimeout(function () {
+          // First load font-loader which is higher priority
+          loadScript("/font-loader.js");
+
+          // Load our font downloader to handle missing fonts
+          loadScript("/font-downloader.js");
+
+          // Then register service worker after a delay
+          setTimeout(function () {
+            if ("serviceWorker" in navigator) {
+              navigator.serviceWorker
+                .register("/serviceWorker.js")
+                .then(function (registration) {
+                  console.log(
+                    "ServiceWorker registration successful with scope: ",
+                    registration.scope
+                  );
+                })
+                .catch(function (error) {
+                  console.log("ServiceWorker registration failed: ", error);
+                });
+            }
+          }, 3000);
+        }, 500);
+      });</script><script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script><script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-CxBMkELv.js"></script><script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/index-legacy-sR_Q9fUC.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script></body></html>
