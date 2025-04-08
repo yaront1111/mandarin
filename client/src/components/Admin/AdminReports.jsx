@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import '../../styles/admin.css';
 import AdminLayout from './AdminLayout';
 import adminService from '../../services/AdminService';
+import { toast } from 'react-toastify';
 
 const AdminReports = () => {
   const [loading, setLoading] = useState(true);
@@ -30,14 +31,29 @@ const AdminReports = () => {
         limit: 10
       });
 
-      if (response.success) {
-        setReports(response.data.reports);
-        setTotalReports(response.data.totalReports);
-        setTotalPages(response.data.totalPages);
-        setCurrentPage(response.data.currentPage);
+      if (response.success && response.data) {
+        // API returned data
+        setReports(response.data.reports || []);
+        setTotalReports(response.data.totalReports || 0);
+        setTotalPages(response.data.totalPages || 1);
+        setCurrentPage(response.data.currentPage || 1);
+      } else if (response.message === "Reports functionality not yet implemented") {
+        // Handle the case where backend API is not implemented
+        console.warn("Reports functionality not yet implemented on the backend");
+        setReports([]);
+        setTotalReports(0);
+        setTotalPages(1);
+      } else {
+        console.error('Failed to fetch reports:', response.error || 'Unknown error');
+        setReports([]);
+        setTotalReports(0);
+        setTotalPages(1);
       }
     } catch (error) {
       console.error('Error fetching reports:', error);
+      setReports([]);
+      setTotalReports(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
@@ -46,6 +62,18 @@ const AdminReports = () => {
   useEffect(() => {
     fetchReports();
   }, [statusFilter, typeFilter, sortOrder, currentPage]);
+  
+  // Show a notification on first mount if the feature is not fully implemented
+  useEffect(() => {
+    const hasShownNotification = localStorage.getItem('reports_notification_shown');
+    if (!hasShownNotification) {
+      toast.info("The reports management functionality is currently under development. Some features may be limited.", {
+        autoClose: 8000,
+        position: "top-center"
+      });
+      localStorage.setItem('reports_notification_shown', 'true');
+    }
+  }, []);
 
   useEffect(() => {
     // Debounce search input
@@ -114,9 +142,19 @@ const AdminReports = () => {
         if (statusFilter === 'pending') {
           fetchReports();
         }
+      } else if (response.message === "Report update functionality not yet implemented") {
+        // Handle the case where backend API is not implemented
+        console.warn("Report update functionality not yet implemented on the backend");
+        handleCloseModal();
+        // Show message to user or handle gracefully
+        alert("This feature is currently under development. The action has been logged but not processed.");
+      } else {
+        console.error(`Error ${action} report:`, response.error || 'Unknown error');
+        alert("Error processing this action. Please try again later.");
       }
     } catch (error) {
       console.error(`Error ${action} report:`, error);
+      alert("Error processing this action. Please try again later.");
     } finally {
       setActionInProgress(false);
     }

@@ -132,6 +132,9 @@
       // If it's an Unsplash URL (from seeded users), return as is
       if (url.includes("unsplash.com")) return url;
       
+      // If it's a Picsum URL, return as is
+      if (url.includes("picsum.photos") || url.includes("fastly.picsum.photos")) return url;
+      
       // Handle internal paths
       if (url.includes("/images/") || url.includes("/photos/")) {
         return url.startsWith("/uploads") ? url : `/uploads${url.startsWith("/") ? "" : "/"}${url}`;

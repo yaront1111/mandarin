@@ -17,169 +17,56 @@ const AdminAuditLogs = () => {
   });
   const [sortOrder, setSortOrder] = useState('timestamp_desc');
   
-  // Mock data for audit logs
+  // Fetch audit logs from API
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       
       try {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Generate random dates within the last 30 days
-        const getRandomDate = () => {
-          const now = new Date();
-          const daysAgo = Math.floor(Math.random() * 30);
-          const hoursAgo = Math.floor(Math.random() * 24);
-          const minutesAgo = Math.floor(Math.random() * 60);
-          return new Date(now - (daysAgo * 24 * 60 * 60 * 1000) - (hoursAgo * 60 * 60 * 1000) - (minutesAgo * 60 * 1000));
+        // Prepare API query parameters
+        const params = {
+          page: currentPage,
+          limit: 15,
+          sort: sortOrder
         };
         
-        // Action types
-        const actionTypes = [
-          'user.create',
-          'user.update',
-          'user.delete',
-          'user.login',
-          'user.verify',
-          'user.suspend',
-          'content.approve',
-          'content.reject',
-          'content.delete',
-          'report.resolve',
-          'report.dismiss',
-          'settings.update',
-          'subscription.create',
-          'subscription.cancel',
-          'admin.login',
-          'system.backup',
-          'system.restore'
-        ];
-        
-        // Users who performed actions
-        const users = [
-          { id: 'admin1', name: 'Admin User', email: 'admin@example.com', role: 'admin' },
-          { id: 'admin2', name: 'System Admin', email: 'sysadmin@example.com', role: 'admin' },
-          { id: 'moderator1', name: 'Content Moderator', email: 'moderator@example.com', role: 'moderator' },
-          { id: 'yaront111', name: 'Yaron Torgeman', email: 'yaront111@gmail.com', role: 'admin' }
-        ];
-        
-        // Generate mock audit logs
-        const mockLogs = Array.from({ length: 100 }, (_, i) => {
-          const actionType = actionTypes[Math.floor(Math.random() * actionTypes.length)];
-          const user = users[Math.floor(Math.random() * users.length)];
-          const timestamp = getRandomDate();
-          
-          // Generate details based on action type
-          let details = {};
-          let targetId = null;
-          let targetType = null;
-          
-          if (actionType.startsWith('user.')) {
-            targetType = 'user';
-            targetId = `user${Math.floor(Math.random() * 1000)}`;
-            
-            if (actionType === 'user.create') {
-              details = { email: `user${Math.floor(Math.random() * 1000)}@example.com` };
-            } else if (actionType === 'user.update') {
-              details = { fields: ['profile', 'settings', 'email'][Math.floor(Math.random() * 3)] };
-            } else if (actionType === 'user.login') {
-              details = { ip: `192.168.1.${Math.floor(Math.random() * 255)}` };
-            } else if (actionType === 'user.suspend') {
-              details = { reason: ['violation', 'spam', 'scam'][Math.floor(Math.random() * 3)] };
-            }
-          } else if (actionType.startsWith('content.')) {
-            targetType = ['photo', 'profile', 'message'][Math.floor(Math.random() * 3)];
-            targetId = `${targetType}${Math.floor(Math.random() * 1000)}`;
-            
-            if (actionType === 'content.reject') {
-              details = { reason: ['inappropriate', 'fake', 'spam'][Math.floor(Math.random() * 3)] };
-            }
-          } else if (actionType.startsWith('report.')) {
-            targetType = 'report';
-            targetId = `report${Math.floor(Math.random() * 100)}`;
-            details = { type: ['user', 'photo', 'message'][Math.floor(Math.random() * 3)] };
-          } else if (actionType === 'settings.update') {
-            targetType = 'settings';
-            details = { category: ['general', 'security', 'messaging'][Math.floor(Math.random() * 3)] };
-          } else if (actionType.startsWith('subscription.')) {
-            targetType = 'subscription';
-            targetId = `sub${Math.floor(Math.random() * 500)}`;
-            details = { plan: ['monthly', 'annual', 'premium'][Math.floor(Math.random() * 3)] };
-          } else if (actionType.startsWith('system.')) {
-            targetType = 'system';
-            details = { size: `${Math.floor(Math.random() * 100) + 10}MB` };
-          }
-          
-          return {
-            id: `log${i}`,
-            timestamp: timestamp.toISOString(),
-            action: actionType,
-            user: {
-              id: user.id,
-              name: user.name,
-              email: user.email,
-              role: user.role
-            },
-            targetType,
-            targetId,
-            details,
-            ip: `192.168.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
-          };
-        });
-        
-        // Sort logs by timestamp (newest first)
-        mockLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        
-        // Filter logs based on action filter
-        let filteredLogs = [...mockLogs];
-        
+        // Add filters to params if they're set
         if (actionFilter !== 'all') {
-          filteredLogs = filteredLogs.filter(log => log.action.startsWith(actionFilter));
+          params.action = actionFilter;
         }
         
-        // Filter by user if userFilter is provided
         if (userFilter) {
-          const lowerUserFilter = userFilter.toLowerCase();
-          filteredLogs = filteredLogs.filter(
-            log => log.user.name.toLowerCase().includes(lowerUserFilter) || 
-                   log.user.email.toLowerCase().includes(lowerUserFilter)
-          );
+          params.user = userFilter;
         }
         
-        // Filter by date range if provided
         if (dateRange.from) {
-          const fromDate = new Date(dateRange.from);
-          filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= fromDate);
+          params.startDate = dateRange.from;
         }
         
         if (dateRange.to) {
-          const toDate = new Date(dateRange.to);
-          toDate.setHours(23, 59, 59, 999); // End of the day
-          filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) <= toDate);
+          params.endDate = dateRange.to;
         }
         
-        // Apply sorting
-        const [field, direction] = sortOrder.split('_');
-        filteredLogs.sort((a, b) => {
-          if (field === 'timestamp') {
-            const dateA = new Date(a.timestamp);
-            const dateB = new Date(b.timestamp);
-            return direction === 'asc' ? dateA - dateB : dateB - dateA;
-          }
-          return 0;
-        });
+        // Call the API
+        const response = await adminService.getAuditLogs(params);
         
-        // Pagination
-        const limit = 15;
-        const offset = (currentPage - 1) * limit;
-        const paginatedLogs = filteredLogs.slice(offset, offset + limit);
-        
-        setAuditLogs(paginatedLogs);
-        setTotalLogs(filteredLogs.length);
-        setTotalPages(Math.ceil(filteredLogs.length / limit));
+        if (response.success) {
+          setAuditLogs(response.data || []);
+          setTotalLogs(response.pagination?.total || 0);
+          setTotalPages(response.pagination?.totalPages || 1);
+        } else {
+          console.error('Failed to fetch audit logs:', response.error);
+          // Fallback to empty data if API fails
+          setAuditLogs([]);
+          setTotalLogs(0);
+          setTotalPages(1);
+        }
       } catch (error) {
         console.error('Error fetching audit logs:', error);
+        // Handle error state
+        setAuditLogs([]);
+        setTotalLogs(0);
+        setTotalPages(1);
       } finally {
         setLoading(false);
       }

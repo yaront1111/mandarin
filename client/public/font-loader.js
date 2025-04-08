@@ -43,45 +43,55 @@
   
   // Load Google Fonts as an enhancement, not a requirement
   (function loadGoogleFonts() {
-    // Use minimal character set
-    var fontUrl = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Poppins:wght@400;500;600&display=swap&text=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:;';
-    
-    // Add preconnect for better performance
-    var preconnect1 = document.createElement('link');
-    preconnect1.rel = 'preconnect';
-    preconnect1.href = 'https://fonts.googleapis.com';
-    document.head.appendChild(preconnect1);
-    
-    var preconnect2 = document.createElement('link');
-    preconnect2.rel = 'preconnect';
-    preconnect2.href = 'https://fonts.gstatic.com';
-    preconnect2.crossOrigin = 'anonymous';
-    document.head.appendChild(preconnect2);
-    
-    // Load fonts async with fallback
-    var link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = fontUrl;
-    
-    // If fonts load successfully, update variables to include them
-    link.onload = function() {
-      var fontUpdateStyle = document.createElement('style');
-      fontUpdateStyle.textContent = `
-        :root {
-          --font-primary: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, 
-            Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
-          --font-secondary: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, 
-            Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    try {
+      // Use minimal character set
+      var fontUrl = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Poppins:wght@400;500;600&display=swap&text=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:;';
+      
+      // Add preconnect for better performance
+      var preconnect1 = document.createElement('link');
+      preconnect1.rel = 'preconnect';
+      preconnect1.href = 'https://fonts.googleapis.com';
+      document.head.appendChild(preconnect1);
+      
+      var preconnect2 = document.createElement('link');
+      preconnect2.rel = 'preconnect';
+      preconnect2.href = 'https://fonts.gstatic.com';
+      preconnect2.crossOrigin = 'anonymous';
+      document.head.appendChild(preconnect2);
+      
+      // Load fonts async with fallback
+      var link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = fontUrl;
+      
+      // If fonts load successfully, update variables to include them
+      link.onload = function() {
+        var fontUpdateStyle = document.createElement('style');
+        fontUpdateStyle.textContent = `
+          :root {
+            --font-primary: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, 
+              Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+            --font-secondary: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, 
+              Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+          }
+        `;
+        document.head.appendChild(fontUpdateStyle);
+        
+        console.log('Google Fonts loaded successfully');
+      };
+      
+      // Silent fail - we're using system fonts already
+      link.onerror = function(err) {
+        console.warn('Google Fonts failed to load:', err);
+        // Log CSP errors for debugging but still use system fonts
+        if (err && err.target && err.target.src) {
+          console.warn('Font resource that failed:', err.target.src);
         }
-      `;
-      document.head.appendChild(fontUpdateStyle);
-    };
-    
-    // Silent fail - we're using system fonts already
-    link.onerror = function() {
-      // Just keep using system fonts
-    };
-    
-    document.head.appendChild(link);
+      };
+      
+      document.head.appendChild(link);
+    } catch (error) {
+      console.error('Error in font loader:', error);
+    }
   })();
 })();

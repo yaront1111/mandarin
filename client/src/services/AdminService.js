@@ -29,11 +29,44 @@ class AdminService {
   // User management
   async getUsers(params = {}) {
     const response = await apiService.get('/admin/users', params);
+    
+    // Map profilePicture/avatar to profileImage for UI consistency
+    if (response.success && response.data?.users) {
+      response.data.users = response.data.users.map(user => {
+        // Create a shallow copy to avoid modifying original data
+        const mappedUser = { ...user };
+        
+        // If user has profilePicture but no profileImage, map it
+        if (mappedUser.profilePicture && !mappedUser.profileImage) {
+          mappedUser.profileImage = mappedUser.profilePicture;
+        }
+        // If user has avatar but no profileImage, map that as well
+        else if (!mappedUser.profileImage && mappedUser.avatar) {
+          mappedUser.profileImage = mappedUser.avatar;
+        }
+        
+        return mappedUser;
+      });
+    }
+    
     return response;
   }
 
   async getUser(userId) {
     const response = await apiService.get(`/admin/users/${userId}`);
+    
+    // Map profilePicture to profileImage for UI consistency
+    if (response.success && response.data) {
+      // If user has profilePicture but no profileImage, map it
+      if (response.data.profilePicture && !response.data.profileImage) {
+        response.data.profileImage = response.data.profilePicture;
+      }
+      // If user has avatar but no profileImage, map that as well
+      else if (!response.data.profileImage && response.data.avatar) {
+        response.data.profileImage = response.data.avatar;
+      }
+    }
+    
     return response;
   }
 

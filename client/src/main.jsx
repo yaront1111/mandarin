@@ -76,6 +76,9 @@ const setupPhotoUrlEnhancement = () => {
     // Handle Unsplash URLs from seed-production.js
     if (url.startsWith("http")) return url;
     
+    // Explicitly support Picsum URLs
+    if (url.includes("picsum.photos") || url.includes("fastly.picsum.photos")) return url;
+    
     // Handle internal paths
     if (url.includes("/images/") || url.includes("/photos/")) {
       return url.startsWith("/uploads") ? url : `/uploads${url.startsWith("/") ? "" : "/"}${url}`;
@@ -95,7 +98,15 @@ const setupPhotoUrlEnhancement = () => {
       if (!img.hasAttribute('data-error-handled')) {
         img.setAttribute('data-error-handled', 'true');
         img.addEventListener('error', function() {
-          if (!this.src.includes('placeholder.svg')) {
+          const src = this.src;
+          if (!src.includes('placeholder.svg')) {
+            console.warn('Image failed to load:', src);
+            
+            // Check if it's a picsum URL that failed to load
+            if (src.includes('picsum.photos') || src.includes('fastly.picsum.photos')) {
+              console.warn('Picsum photo failed to load, using placeholder instead');
+            }
+            
             this.src = '/placeholder.svg';
           }
         });

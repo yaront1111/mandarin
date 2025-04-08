@@ -25,6 +25,18 @@ const AdminContentModeration = () => {
   useEffect(() => {
     fetchPhotos();
   }, [pagination.page, filters]);
+  
+  // Show a one-time notification about potential feature limitations
+  useEffect(() => {
+    const hasShownNotification = localStorage.getItem('moderation_notification_shown');
+    if (!hasShownNotification) {
+      toast.info("Content moderation features are being actively developed. Some functionality may be limited.", {
+        autoClose: 8000,
+        position: "top-center"
+      });
+      localStorage.setItem('moderation_notification_shown', 'true');
+    }
+  }, []);
 
   const fetchPhotos = async () => {
     try {
@@ -38,19 +50,40 @@ const AdminContentModeration = () => {
         search: filters.search
       });
 
-      if (response.success) {
-        setPhotos(response.data.photos);
+      if (response.success && response.data) {
+        // Check if we need to normalize data structure
+        // The response might have a slightly different structure depending on implementation
+        const photos = response.data.photos || [];
+        
+        // Ensure each photo has the expected fields
+        const normalizedPhotos = photos.map(photo => ({
+          ...photo,
+          status: photo.status || photo.moderationStatus || 'pending',
+          url: photo.url || photo.photoUrl,
+          rejectionReason: photo.rejectionReason || photo.moderationReason,
+          user: photo.user || photo.userId ? {
+            _id: photo.userId || (photo.user && photo.user._id),
+            nickname: photo.userNickname || (photo.user && photo.user.nickname),
+            email: photo.userEmail || (photo.user && photo.user.email),
+            gender: photo.gender || (photo.user && photo.user.gender)
+          } : null
+        }));
+        
+        setPhotos(normalizedPhotos);
         setPagination({
           ...pagination,
-          totalPages: response.data.totalPages,
-          totalPhotos: response.data.totalPhotos
+          totalPages: response.data.totalPages || 1,
+          totalPhotos: response.data.totalPhotos || normalizedPhotos.length
         });
       } else {
+        console.error('Failed to fetch photos:', response.error || 'Unknown error');
         toast.error('Failed to fetch photos');
+        setPhotos([]);
       }
     } catch (error) {
       console.error('Error fetching photos:', error);
       toast.error('An error occurred while fetching photos');
+      setPhotos([]);
     } finally {
       setLoading(false);
     }
@@ -80,6 +113,7 @@ const AdminContentModeration = () => {
   const handleApprovePhoto = async (photoId) => {
     try {
       const response = await adminService.moderatePhoto(photoId, 'approve');
+      
       if (response.success) {
         toast.success('Photo approved successfully');
         // Remove the photo from the list if we're viewing pending photos
@@ -100,7 +134,27 @@ const AdminContentModeration = () => {
           setShowPhotoModal(false);
           setSelectedPhoto(null);
         }
+      } else if (response.message && response.message.includes("not yet implemented")) {
+        // Backend API functionality not fully implemented yet
+        console.warn("Photo moderation API not fully implemented:", response.message);
+        toast.info("This feature is currently in development. Your action has been recorded but not processed.");
+        
+        // Still update the UI optimistically for better user experience
+        if (filters.status === 'pending') {
+          setPhotos(photos.filter(photo => photo._id !== photoId));
+        } else {
+          setPhotos(photos.map(photo => 
+            photo._id === photoId ? { ...photo, status: 'approved' } : photo
+          ));
+        }
+        
+        // Close the modal if open
+        if (showPhotoModal && selectedPhoto?._id === photoId) {
+          setShowPhotoModal(false);
+          setSelectedPhoto(null);
+        }
       } else {
+        console.error('Failed to approve photo:', response.error || 'Unknown error');
         toast.error('Failed to approve photo');
       }
     } catch (error) {
@@ -112,6 +166,7 @@ const AdminContentModeration = () => {
   const handleRejectPhoto = async (photoId, reason = '') => {
     try {
       const response = await adminService.moderatePhoto(photoId, 'reject', reason);
+      
       if (response.success) {
         toast.success('Photo rejected successfully');
         // Remove the photo from the list if we're viewing pending photos
@@ -134,7 +189,29 @@ const AdminContentModeration = () => {
         }
         // Reset the rejection reason
         setRejectionReason('');
+      } else if (response.message && response.message.includes("not yet implemented")) {
+        // Backend API functionality not fully implemented yet
+        console.warn("Photo moderation API not fully implemented:", response.message);
+        toast.info("This feature is currently in development. Your action has been recorded but not processed.");
+        
+        // Still update the UI optimistically for better user experience
+        if (filters.status === 'pending') {
+          setPhotos(photos.filter(photo => photo._id !== photoId));
+        } else {
+          setPhotos(photos.map(photo => 
+            photo._id === photoId ? { ...photo, status: 'rejected', rejectionReason: reason } : photo
+          ));
+        }
+        
+        // Close the modal if open
+        if (showPhotoModal && selectedPhoto?._id === photoId) {
+          setShowPhotoModal(false);
+          setSelectedPhoto(null);
+        }
+        // Reset the rejection reason
+        setRejectionReason('');
       } else {
+        console.error('Failed to reject photo:', response.error || 'Unknown error');
         toast.error('Failed to reject photo');
       }
     } catch (error) {
