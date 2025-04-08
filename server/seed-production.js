@@ -5,6 +5,7 @@ import bcrypt from 'bcrypt';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import process from 'process';
 
 // --- Configuration ---
 const MONGO_URI = 'mongodb://localhost:27017/mandarin';
@@ -14,6 +15,9 @@ const NUM_LIKES_TO_SEED = 400;
 const NUM_PHOTO_REQUESTS_TO_SEED = 200;
 const SALT_ROUNDS = 12;
 const ADMIN_EMAIL = 'yaront111@gmail.com';
+
+// Check for --clean flag to completely clean the database
+const CLEAN_DATABASE = process.argv.includes('--clean');
 
 // --- Import Mongoose Models ---
 import User from './models/User.js';
@@ -264,11 +268,87 @@ const photoCollections = {
   ]
 };
 
+// Helper function for generating couple names
+const generateCoupleName = () => {
+  // Include both Hebrew names for couples
+  const allFirstNames = [...hebrewFemaleNames, ...hebrewMaleNames];
+  const name1 = getRandomElement(allFirstNames);
+  let name2 = getRandomElement(allFirstNames);
+  while (name1 === name2) {
+    name2 = getRandomElement(allFirstNames);
+  }
+
+  // Use Hebrew connector occasionally
+  const connector = Math.random() < 0.3 ? " ו" : (Math.random() < 0.5 ? " & " : " and ");
+  return `${name1}${connector}${name2}`;
+};
+
+// Generate username based on name or use a cool nickname
+const generateUsername = (name) => {
+  // 60% chance to use a cool nickname for adult dating sites
+  if (Math.random() < 0.6) {
+    return getRandomElement(hebrewNicknames) + getRandomInt(1, 99);
+  }
+
+  // Otherwise derive from name
+  const parts = name.toLowerCase().replace(/[^a-zא-ת0-9]/g, ' ').split(' ').filter(p => p);
+  if (parts.length === 0) return `user_${getRandomInt(1000, 9999)}`;
+
+  const base = parts.join('');
+  const num = getRandomInt(0, 999);
+  return num > 0 ? `${base}${num}` : base;
+};
+
+// --- Clean Database Function ---
+const cleanDatabase = async () => {
+  logger.warn('CLEANING DATABASE: Removing all data from collections...');
+  
+  // Get all collections in the database
+  const collections = mongoose.connection.collections;
+  
+  // Drop all collections except for system collections
+  for (const collectionName in collections) {
+    if (!collectionName.startsWith('system.')) {
+      try {
+        await collections[collectionName].deleteMany({});
+        logger.info(`Cleared collection: ${collectionName}`);
+      } catch (err) {
+        logger.error(`Error clearing collection ${collectionName}: ${err.message}`);
+      }
+    }
+  }
+  
+  logger.warn('DATABASE CLEANED: All collections have been emptied.');
+  
+  // Re-create admin user
+  const adminPassword = await bcrypt.hash('admin123', SALT_ROUNDS);
+  const adminUser = new User({
+    nickname: 'Admin',
+    username: 'admin',
+    email: ADMIN_EMAIL,
+    password: adminPassword,
+    role: 'admin',
+    accountTier: 'PAID',
+    isVerified: true,
+    active: true
+  });
+  
+  await adminUser.save();
+  logger.info(`Re-created admin user ${ADMIN_EMAIL}`);
+  
+  return true;
+};
+
 // --- Main Seeding Function ---
 const seedDatabase = async () => {
   try {
     await mongoose.connect(MONGO_URI);
     logger.info('MongoDB Connected for production seeding...');
+
+    // Clean the database if requested
+    if (CLEAN_DATABASE) {
+      await cleanDatabase();
+    }
 
     // --- Check for Admin User ---
     const adminExists = await User.findOne({ email: ADMIN_EMAIL });
@@ -305,29 +385,36 @@ const seedDatabase = async () => {
     const existingUserCount = await User.countDocuments({});
     logger.info(`Found ${existingUserCount} existing users.`);
 
-    if (existingUserCount > NUM_USERS) {
-      logger.warn(`Database already has ${existingUserCount} users, which exceeds the target of ${NUM_USERS}.`);
-      logger.warn('Skipping user creation but will add missing data to existing users if needed.');
+    // Calculate how many more users we need to create
+    let usersToCreate = 0;
+    
+    if (CLEAN_DATABASE) {
+      usersToCreate = NUM_USERS; // Create full set after cleaning
     } else {
-      // Calculate how many more users we need to create
-      const usersToCreate = NUM_USERS - existingUserCount;
-      logger.info(`Will create ${usersToCreate} additional users.`);
-
-      // --- Clear Existing Fake Data (but preserve real users) ---
-      if (usersToCreate > 0) {
+      if (existingUserCount < NUM_USERS) {
+        usersToCreate = NUM_USERS - existingUserCount;
+        
+        // Clear existing seed-generated data but preserve real users
         logger.warn('Removing seed-generated data only...');
         await User.deleteMany({ 'details.seedGenerated': true });
         await Like.deleteMany({});
         await PhotoPermission.deleteMany({});
         logger.info('Seed-generated data cleared.');
+      } else {
+        logger.warn(`Database already has ${existingUserCount} users, which exceeds the target of ${NUM_USERS}.`);
+        logger.warn('Skipping user creation but will add missing data to existing users if needed.');
       }
+    }
+    
+    logger.info(`Will create ${usersToCreate} users.`);
 
-      // Get all existing users again (after deletion of seed users)
-      const existingUsers = await User.find({});
-      const createdUserIds = existingUsers.map(user => user._id.toString());
-      let createdUsers = [...existingUsers];
-
-      // --- 1. Seed Users with Better Israeli Adult-Oriented Data ---
+    // Get existing users after possible deletion
+    const existingUsers = await User.find({});
+    const createdUserIds = existingUsers.map(user => user._id.toString());
+    let createdUsers = [...existingUsers];
+    
+    // --- 1. Seed Users with Better Israeli Adult-Oriented Data ---
+    if (usersToCreate > 0) {
       logger.info(`Seeding ${usersToCreate} users with realistic adult dating profiles...`);
       for (let i = 0; i < usersToCreate; i++) {
         // Decide user type first to guide other selections
@@ -520,13 +607,6 @@ const seedDatabase = async () => {
       }
     }
 
-    // The rest of the script remains the same...
-    // (Photo, likes, and photo permission seeding)
-
-    // Reload all users after creation to ensure we're working with the latest data
-    createdUsers = await User.find({});
-    const createdUserIds = createdUsers.map(user => user._id.toString());
-
     // --- 2. Seed Photos with appropriate images ---
     logger.info('Seeding photos for users with appropriate images...');
     const allPrivatePhotoIdsWithOwner = [];
@@ -629,9 +709,116 @@ const seedDatabase = async () => {
 
     logger.info(`Finished seeding photos. ${allPrivatePhotoIdsWithOwner.length} private photos recorded.`);
 
-    // --- Seeding likes and photo permissions remains the same ---
-    // The rest of the seed script continues as before...
+    // --- 3. Seed Likes (interactions between users) ---
+    logger.info(`Seeding ${NUM_LIKES_TO_SEED} likes between users...`);
+    
+    if (createdUserIds.length >= 2) {
+      for (let i = 0; i < NUM_LIKES_TO_SEED; i++) {
+        // Get random user IDs
+        let fromUserId = getRandomElement(createdUserIds);
+        let toUserId = getRandomElement(createdUserIds);
+        
+        // Ensure we're not liking ourselves
+        while (fromUserId === toUserId) {
+          toUserId = getRandomElement(createdUserIds);
+        }
+        
+        try {
+          // Create like with 80% being mutual
+          const isMutual = Math.random() < 0.8;
+          
+          const like = new Like({
+            fromUser: fromUserId,
+            toUser: toUserId,
+            createdAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 30)),
+            status: isMutual ? 'mutual' : 'pending'
+          });
+          
+          await like.save();
+          
+          // If mutual, create the reciprocal like
+          if (isMutual) {
+            const reciprocalLike = new Like({
+              fromUser: toUserId,
+              toUser: fromUserId,
+              createdAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 30)),
+              status: 'mutual'
+            });
+            
+            await reciprocalLike.save();
+            i++; // Count this as another seeded like
+          }
+        } catch (error) {
+          logger.error(`Error creating like from ${fromUserId} to ${toUserId}: ${error.message}`);
+          // If it's a duplicate key error, just continue
+          if (error.code !== 11000) {
+            throw error;
+          }
+        }
+      }
+      
+      logger.info('Likes seeded successfully');
+    } else {
+      logger.warn('Not enough users to seed likes. Skipping.');
+    }
 
+    // --- 4. Seed Photo Permissions ---
+    logger.info(`Seeding ${NUM_PHOTO_REQUESTS_TO_SEED} photo permissions...`);
+    
+    if (allPrivatePhotoIdsWithOwner.length > 0 && createdUserIds.length > 1) {
+      // For each permission we want to seed
+      for (let i = 0; i < NUM_PHOTO_REQUESTS_TO_SEED; i++) {
+        // Get a random private photo
+        const randomPhotoWithOwner = getRandomElement(allPrivatePhotoIdsWithOwner);
+        const ownerId = randomPhotoWithOwner.ownerId;
+        const photoId = randomPhotoWithOwner.photoId;
+        
+        // Get a random user that isn't the owner
+        let requesterId;
+        do {
+          requesterId = getRandomElement(createdUserIds);
+        } while (requesterId === ownerId);
+        
+        // Determine if this permission is approved, pending, or denied
+        let status;
+        const randomStatus = Math.random();
+        if (randomStatus < 0.7) {
+          status = 'approved'; // 70% approved
+        } else if (randomStatus < 0.9) {
+          status = 'pending';  // 20% pending
+        } else {
+          status = 'denied';   // 10% denied
+        }
+        
+        try {
+          const photoPermission = new PhotoPermission({
+            photo: photoId,
+            owner: ownerId,
+            requester: requesterId,
+            status: status,
+            requestDate: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 14)),
+            responseDate: status !== 'pending' ? 
+              new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 7)) : 
+              null
+          });
+          
+          await photoPermission.save();
+        } catch (error) {
+          logger.error(`Error creating photo permission: ${error.message}`);
+          // If it's a duplicate key error, just continue
+          if (error.code !== 11000) {
+            throw error;
+          }
+        }
+      }
+      
+      logger.info('Photo permissions seeded successfully');
+    } else {
+      logger.warn('Not enough private photos or users to seed photo permissions. Skipping.');
+    }
+    
+    logger.info('Database seeding completed successfully!');
+    
   } catch (error) {
     logger.error('Production database seeding failed:', error);
   } finally {
@@ -640,36 +827,17 @@ const seedDatabase = async () => {
   }
 };
 
-// Helper function for generating couple names
-const generateCoupleName = () => {
-  // Include both Hebrew names for couples
-  const allFirstNames = [...hebrewFemaleNames, ...hebrewMaleNames];
-  const name1 = getRandomElement(allFirstNames);
-  let name2 = getRandomElement(allFirstNames);
-  while (name1 === name2) {
-    name2 = getRandomElement(allFirstNames);
-  }
-
-  // Use Hebrew connector occasionally
-  const connector = Math.random() < 0.3 ? " ו" : (Math.random() < 0.5 ? " & " : " and ");
-  return `${name1}${connector}${name2}`;
-};
-
-// Generate username based on name or use a cool nickname
-const generateUsername = (name) => {
-  // 60% chance to use a cool nickname for adult dating sites
-  if (Math.random() < 0.6) {
-    return getRandomElement(hebrewNicknames) + getRandomInt(1, 99);
-  }
-
-  // Otherwise derive from name
-  const parts = name.toLowerCase().replace(/[^a-zא-ת0-9]/g, ' ').split(' ').filter(p => p);
-  if (parts.length === 0) return `user_${getRandomInt(1000, 9999)}`;
-
-  const base = parts.join('');
-  const num = getRandomInt(0, 999);
-  return num > 0 ? `${base}${num}` : base;
-};
+// Log info about running modes
+if (CLEAN_DATABASE) {
+  console.log('=================================');
+  console.log('RUNNING WITH --clean OPTION: The database will be completely wiped before seeding!');
+  console.log('=================================');
+} else {
+  console.log('=================================');
+  console.log('RUNNING WITHOUT --clean OPTION: Only seed-generated data will be removed.');
+  console.log('To completely clean the database, use: node seed-production.js --clean');
+  console.log('=================================');
+}
 
 // Run the seeding function
 seedDatabase();
