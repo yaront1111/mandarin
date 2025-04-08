@@ -9,7 +9,7 @@ const VerificationBanner = () => {
   const { user, resendVerificationEmail, isAuthenticated, authChecked } = useAuth()
   const { theme } = useTheme()
   const isDarkMode = theme === "dark"
-  const [showBanner, setShowBanner] = useState(true)
+  const [showBanner, setShowBanner] = useState(false)
   const [resending, setResending] = useState(false)
   const [cooldown, setCooldown] = useState(0)
 
@@ -21,6 +21,7 @@ const VerificationBanner = () => {
       return;
     }
     
+    // We got here, so user is authenticated and not verified
     const dismissed = localStorage.getItem("verificationBannerDismissed")
     if (dismissed) {
       const dismissedDate = new Date(dismissed)
@@ -146,6 +147,11 @@ const VerificationBanner = () => {
   // 5. Banner has been dismissed
   // 6. We don't have a valid user ID
   if (!authChecked || !isAuthenticated || !user || user?.isVerified || !showBanner || !user?._id) {
+    return null
+  }
+  
+  // Double-check authentication status - don't show when not logged in
+  if (!isAuthenticated) {
     return null
   }
 

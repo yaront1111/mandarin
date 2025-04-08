@@ -1,12 +1,14 @@
 // Service Worker for Flirtss
-const CACHE_NAME = 'flirtss-cache-v1';
+const CACHE_NAME = 'flirtss-cache-v2'; // Updated version number
 // Only include assets that definitely exist
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/placeholder.svg',
-  '/robots.txt'
+  '/robots.txt',
+  '/default-avatar.png', // Added fallback avatar
+  '/font-loader.js'      // Make sure font loader is cached
 ];
 
 // Install event - cache static assets
@@ -17,24 +19,43 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('Caching static assets');
-        // Cache each asset individually to prevent failure of the entire batch
-        const cachePromises = STATIC_ASSETS.map(url => {
-          // This approach fetches and caches each asset individually
-          return fetch(url)
-            .then(response => {
-              if (!response || response.status !== 200) {
-                console.log(`Failed to cache: ${url}`);
-                return;
-              }
-              return cache.put(url, response);
-            })
-            .catch(error => {
-              console.log(`Failed to cache: ${url}`, error);
-              // Continue with other assets even if one fails
-              return Promise.resolve();
+        
+        // First check if we can cache all at once
+        return cache.addAll(STATIC_ASSETS.filter(url => url !== '/'))
+          .then(() => {
+            // Cache home page separately
+            return fetch('/')
+              .then(response => {
+                if (response && response.status === 200) {
+                  return cache.put('/', response);
+                }
+              })
+              .catch(error => {
+                console.warn('Could not cache homepage:', error);
+                return Promise.resolve();
+              });
+          })
+          .catch(error => {
+            console.warn('Failed to cache all assets at once, trying individually:', error);
+            
+            // Fallback to individual caching if batch fails
+            const cachePromises = STATIC_ASSETS.map(url => {
+              return fetch(url)
+                .then(response => {
+                  if (!response || response.status !== 200) {
+                    console.log(`Failed to cache: ${url}`);
+                    return;
+                  }
+                  return cache.put(url, response);
+                })
+                .catch(error => {
+                  console.log(`Failed to cache: ${url}`, error);
+                  // Continue with other assets even if one fails
+                  return Promise.resolve();
+                });
             });
-        });
-        return Promise.all(cachePromises);
+            return Promise.all(cachePromises);
+          });
       })
   );
 });

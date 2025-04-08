@@ -72,11 +72,20 @@ window.addEventListener('load', () => {
   // Defer non-critical CSS loading
   setTimeout(loadNonCriticalCSS, 100);
   
-  // Load Google Analytics and fonts
-  const gtagScript = document.createElement('script');
-  gtagScript.src = '/gtag-loader.js';
-  gtagScript.async = true;
-  document.body.appendChild(gtagScript);
+  // Load Google Analytics
+  // Instead of creating a script element directly, use a more CSP-friendly approach
+  const loadGtagScript = () => {
+    const script = document.createElement('script');
+    script.src = '/gtag-loader.js';
+    script.async = true;
+    script.onerror = () => {
+      console.error('Failed to load Google Analytics script');
+    };
+    document.body.appendChild(script);
+  };
+  
+  // Delay loading of analytics to prioritize core content
+  setTimeout(loadGtagScript, 2000);
 });
 
 // Render the application
