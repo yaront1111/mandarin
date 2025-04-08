@@ -65,6 +65,26 @@ const translateProfileField = (i18n, field, key) => {
     // For Hebrew translations, we first try direct lookups
     // Handle special case for profile fields
     if (typeof field === 'string') {
+      // Special handling - common prefixes to check and remove
+      const prefixes = ['profile.interests.', 'profile.intoTags.', 'profile.turnOns.', 'profile.lookingFor.'];
+      
+      for (const prefix of prefixes) {
+        if (field.startsWith(prefix)) {
+          // Extract value after the prefix
+          const extractedField = field.substring(prefix.length);
+          if (extractedField) {
+            // 1. Try getting translation through nested key
+            const nestedTranslation = i18n(`${prefix}${extractedField}`);
+            if (nestedTranslation !== `${prefix}${extractedField}` && nestedTranslation !== field) {
+              return nestedTranslation;
+            }
+            
+            // 2. If no translation, make it human readable
+            return extractedField.replace(/_/g, ' ');
+          }
+        }
+      }
+      
       // Handle Hebrew tags with underscores - they should be presented as spaces
       if (field.includes('_')) {
         // Replace underscores with spaces for display
@@ -72,27 +92,173 @@ const translateProfileField = (i18n, field, key) => {
         return readableField;
       }
       
-      // 1. First try the direct field value translation from top-level
-      const directFieldTranslation = i18n(field);
-      if (directFieldTranslation !== field && directFieldTranslation !== `${field}`) {
-        return directFieldTranslation;
-      }
-      
-      // 2. Next try the nested structure with the specific key
-      const nestedKey = `${key}.${field}`;
-      const nestedTranslation = i18n(nestedKey);
-      if (nestedTranslation !== nestedKey && nestedTranslation !== `${nestedKey}`) {
-        return nestedTranslation;
-      }
-      
-      // Special handling for profile.interests.X format
-      if (field.startsWith('profile.interests.')) {
-        // Extract interest value after the prefix
-        const interest = field.split('profile.interests.')[1];
-        if (interest) {
-          // Convert interest with underscores to spaces for readability
-          return interest.replace(/_/g, ' ');
+      // Check for direct translation from profile section
+      if (key) {
+        const profileKey = `${key}.${field}`;
+        const nestedTranslation = i18n(profileKey);
+        if (nestedTranslation !== profileKey && nestedTranslation !== field) {
+          return nestedTranslation;
         }
+      }
+      
+      // Try direct translation
+      const directTranslation = i18n(field);
+      if (directTranslation !== field) {
+        return directTranslation;
+      }
+      
+      // Specific translations for common Hebrew tags
+      const hebrewTerms = {
+        'נשים': 'נשים',
+        'גברים': 'גברים',
+        'זוגות': 'זוגות',
+        'מחפש': 'מחפש',
+        'נשוי/אה': 'נשוי/אה',
+        'רווק/ה': 'רווק/ה',
+        'גרוש/ה': 'גרוש/ה',
+        'פרוד/ה': 'פרוד/ה',
+        'אלמן/ה': 'אלמן/ה',
+        'דייטים': 'דייטים',
+        'קז\'ואל': 'קז\'ואל',
+        'חברות': 'חברות',
+        'לטווח ארוך': 'לטווח ארוך',
+        'טיולים': 'טיולים',
+        'פעילויות חוץ': 'פעילויות חוץ',
+        'סרטים': 'סרטים',
+        'מוזיקה': 'מוזיקה',
+        'כושר': 'כושר',
+        'אוכל': 'אוכל',
+        'אמנות': 'אמנות',
+        'קריאה': 'קריאה',
+        'משחקים': 'משחקים',
+        'צילום': 'צילום',
+        'ריקוד': 'ריקוד',
+        'בישול': 'בישול',
+        'ספורט': 'ספורט',
+        'הרפתקאות': 'הרפתקאות',
+        'מעוניין/ת ב': 'מעוניין/ת ב',
+        'מפגשים': 'מפגשים',
+        'משחקי שליטה': 'משחקי שליטה',
+        'שלישיות': 'שלישיות',
+        'כיף וירטואלי': 'כיף וירטואלי',
+        'צ\'אט חם': 'צ\'אט חם',
+        'שיתוף תמונות': 'שיתוף תמונות',
+        'שיחות וידאו': 'שיחות וידאו',
+        'קוקולד': 'קוקולד',
+        'גולדן שאוור': 'גולדן שאוור',
+        'סטראפ-און': 'סטראפ-און',
+        'ביסקסואליות כפויה': 'ביסקסואליות כפויה',
+        'שליטה ארוטית': 'שליטה ארוטית',
+        'השפלה': 'השפלה',
+        'קרוס-דרסינג': 'קרוס-דרסינג',
+        'הערצה': 'הערצה',
+        'פטיש כפות רגליים': 'פטיש כפות רגליים',
+        'אוראלי': 'אוראלי',
+        'מאחור': 'מאחור',
+        'משחקי תפקידים': 'משחקי תפקידים',
+        'צעצועים': 'צעצועים',
+        'עיסויים': 'עיסויים',
+        'פורפליי': 'פורפליי',
+        'מפגשים קלילים': 'מפגשים קלילים',
+        'הגשמת פנטזיות': 'הגשמת פנטזיות',
+        'ביזארי': 'ביזארי',
+        'חינוך': 'חינוך',
+        'התנסויות': 'התנסויות',
+        'טנטרה': 'טנטרה',
+        'מה מדליק אותי': 'מה מדליק אותי',
+        'ישבן סקסי': 'ישבן סקסי',
+        'דיבור מלוכלך': 'דיבור מלוכלך',
+        'אגרסיביות': 'אגרסיביות',
+        'לאט ובעדינות': 'לאט ובעדינות',
+        'במקום ציבורי': 'במקום ציבורי',
+        'פינוק': 'פינוק',
+        'לבוש סקסי': 'לבוש סקסי',
+        'ביגוד עור/לטקס': 'ביגוד עור/לטקס',
+        'צפייה בפורנו': 'צפייה בפורנו',
+        'גוף חטוב': 'גוף חטוב',
+        'להתרחץ ביחד': 'להתרחץ ביחד',
+        'כתיבה ארוטית': 'כתיבה ארוטית',
+        'קשר עין': 'קשר עין',
+        'להיות מפונק/ת': 'להיות מפונק/ת',
+        'לדחוף גבולות': 'לדחוף גבולות',
+        'רגליים סקסיות': 'רגליים סקסיות',
+        'חיזורים': 'חיזורים',
+      };
+      
+      // Check for direct Hebrew term translation
+      if (hebrewTerms[field]) {
+        return hebrewTerms[field];
+      }
+      
+      // For English terms, check their translations
+      const englishToHebrew = {
+        'Dating': 'דייטים',
+        'Casual': 'קז\'ואל',
+        'Friendship': 'חברות',
+        'Long-term': 'לטווח ארוך',
+        'Travel': 'טיולים',
+        'Outdoors': 'פעילויות חוץ',
+        'Movies': 'סרטים',
+        'Music': 'מוזיקה',
+        'Fitness': 'כושר',
+        'Food': 'אוכל',
+        'Art': 'אמנות',
+        'Reading': 'קריאה',
+        'Gaming': 'משחקים',
+        'Photography': 'צילום',
+        'Dancing': 'ריקוד',
+        'Cooking': 'בישול',
+        'Sports': 'ספורט',
+        'Adventure': 'הרפתקאות',
+        'Meetups': 'מפגשים',
+        'Power play': 'משחקי שליטה',
+        'Threesomes': 'שלישיות',
+        'Online fun': 'כיף וירטואלי',
+        'Hot chat': 'צ\'אט חם',
+        'Photo sharing': 'שיתוף תמונות',
+        'Camera chat': 'שיחות וידאו',
+        'Cuckold': 'קוקולד',
+        'Golden showers': 'גולדן שאוור',
+        'Strap-on': 'סטראפ-און',
+        'Forced bi': 'ביסקסואליות כפויה',
+        'Erotic domination': 'שליטה ארוטית',
+        'Humiliation': 'השפלה',
+        'Crossdressing': 'קרוס-דרסינג',
+        'Worship': 'הערצה',
+        'Foot fetish': 'פטיש כפות רגליים',
+        'Oral': 'אוראלי',
+        'From behind': 'מאחור',
+        'Role-play': 'משחקי תפקידים',
+        'Toys': 'צעצועים',
+        'Massages': 'עיסויים',
+        'Foreplay': 'פורפליי',
+        'Casual meetups': 'מפגשים קלילים',
+        'Fantasy fulfillment': 'הגשמת פנטזיות',
+        'Bizarre': 'ביזארי',
+        'Education': 'חינוך',
+        'Experiences': 'התנסויות',
+        'Tantra': 'טנטרה',
+        'Sexy ass': 'ישבן סקסי',
+        'Dirty talk': 'דיבור מלוכלך',
+        'Aggressive': 'אגרסיביות',
+        'Slow and gentle': 'לאט ובעדינות',
+        'In a public place': 'במקום ציבורי',
+        'Pampering': 'פינוק',
+        'Sexy clothing': 'לבוש סקסי',
+        'Leather/latex clothing': 'ביגוד עור/לטקס',
+        'Watching porn': 'צפייה בפורנו',
+        'Fit body': 'גוף חטוב',
+        'Bathing together': 'להתרחץ ביחד',
+        'Erotic writing': 'כתיבה ארוטית',
+        'Eye contact': 'קשר עין',
+        'Being pampered': 'להיות מפונק/ת',
+        'Pushing boundaries': 'לדחוף גבולות',
+        'Sexy legs': 'רגליים סקסיות',
+        'Teasing': 'חיזורים',
+      };
+      
+      if (englishToHebrew[field]) {
+        return englishToHebrew[field];
       }
     }
     
@@ -815,7 +981,9 @@ const UserProfile = () => {
               {/* Into */}
               {profileUser.details?.intoTags?.length > 0 && 
                 <div className="mb-5 animate-fade-in">
-                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">{t('profile.imInto')}</h2>
+                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">
+                    {language === 'he' ? 'מעוניין/ת ב' : t('profile.imInto')}
+                  </h2>
                   <div className="d-flex flex-wrap gap-2">
                     {profileUser.details.intoTags.map(t => 
                       <span key={t} className="bg-secondary-50 text-secondary border border-secondary-100 px-3 py-2 rounded-pill text-sm font-weight-medium shadow-sm hover-transform-y-n1 transition-all">
@@ -829,7 +997,9 @@ const UserProfile = () => {
               {/* Turn Ons */}
               {profileUser.details?.turnOns?.length > 0 && 
                 <div className="mb-5 animate-fade-in">
-                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">{t('profile.turnOns')}</h2>
+                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">
+                    {language === 'he' ? 'מה מדליק אותי' : t('profile.turnOns')}
+                  </h2>
                   <div className="d-flex flex-wrap gap-2">
                     {profileUser.details.turnOns.map(t => 
                       <span key={t} className="bg-danger-50 text-danger border border-danger-100 px-3 py-2 rounded-pill text-sm font-weight-medium shadow-sm hover-transform-y-n1 transition-all">
@@ -843,7 +1013,9 @@ const UserProfile = () => {
               {/* Interests */}
               {profileUser.details?.interests?.length > 0 && (
                 <div className="mb-5 animate-fade-in">
-                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">{t('profile.interests')}</h2>
+                  <h2 className="font-weight-bold text-xl mb-3 pb-2 border-bottom">
+                    {language === 'he' ? 'תחומי עניין' : t('profile.interests')}
+                  </h2>
                   <div className="d-flex flex-wrap gap-2">
                     {(showAllInterests ? profileUser.details.interests : profileUser.details.interests.slice(0, 8)).map(interest => (
                       <span key={interest} className={`px-3 py-2 rounded-pill text-sm font-weight-medium shadow-sm hover-transform-y-n1 transition-all d-inline-flex align-items-center gap-2 ${commonInterests.includes(interest) ? "bg-success-50 text-success-700 border border-success-100" : "bg-light text-opacity-70 border"}`}>
@@ -855,7 +1027,7 @@ const UserProfile = () => {
                         className="border-0 bg-transparent text-primary text-sm font-weight-medium px-3 py-2 hover-bg-primary-50 rounded-pill transition-all"
                         onClick={() => setShowAllInterests(true)}
                       >
-                        +{profileUser.details.interests.length - 8} {t('common.viewMore')}
+                        +{profileUser.details.interests.length - 8} {language === 'he' ? 'צפה בעוד' : t('common.viewMore')}
                       </button>
                     }
                   </div>
@@ -866,7 +1038,7 @@ const UserProfile = () => {
               {commonInterests.length > 0 && !isOwnProfile && 
                 <div className="bg-success-50 border border-success-100 rounded-lg p-4 mb-5 shadow-sm">
                   <h2 className="font-weight-bold text-xl mb-3 d-flex align-items-center gap-2 text-success-700">
-                    <FaCheck /> Common Interests
+                    <FaCheck /> {language === 'he' ? 'תחומי עניין משותפים' : 'Common Interests'}
                   </h2>
                   <div className="d-flex flex-wrap gap-2">
                     {commonInterests.map(i => 

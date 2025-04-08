@@ -275,10 +275,6 @@ export const StoriesProvider = ({ children }) => {
           response = await storiesService.createStory(normalizedData, onProgress)
         }
 
-        if (!response.success) {
-          throw new Error(response.message || "Failed to create story")
-        }
-
         // Extract story from response (handling different API response formats)
         const newStory = response.data || response.story
 
@@ -298,7 +294,6 @@ export const StoriesProvider = ({ children }) => {
         return response
       } catch (err) {
         console.error("Error creating story:", err)
-        toast.error(err.message || "Failed to create story")
         return { success: false, message: err.message || "Failed to create story" }
       } finally {
         setLoading(false)
