@@ -49,24 +49,32 @@ const hebrewMaleNames = [
   'דור', 'יואב', 'טל', 'שחר', 'עידן', 'אופיר', 'מתן', 'אריאל', 'יאיר', 'עמרי'
 ];
 
-// Flirtatious Israeli dating site nicknames - more suggestive
+// Flirtatious Israeli dating site nicknames - more suggestive and adult-oriented
 const hebrewNicknames = [
   // More suggestive male nicknames
   'גבר_חם', 'ישראלי_סקסי', 'תל_אביבי_לוהט', 'חתיך_בפוטנציאל', 'מפנק_ומפונק', 'פנוי_להכיר',
   'חזק_ועדין', 'שיודע_מה_רוצה', 'מחפש_ריגושים', 'דיסקרטי_ואיכותי', 'רומנטיקן_סוער',
   'מנוסה_וחושני', 'גבר_ביטחון', 'מפתיע_במיטה', 'חוש_הומור_חריף', 'הרפתקן_במיטה',
   'ספורטיבי_וסקסי', 'ישראלי_חושני', 'חם_וחשוק', 'לוהט_בתחום', 'גבר_פראי',
+  'גבר_בשל', 'לילות_לוהטים', 'הנאות_אסורות', 'ישראלי_אתלטי', 'עיניים_כחולות_ודומיננטי', 
+  'משחרר_עכבות', 'גבר_חזק_ורגיש', 'שרירי_ומפנק', 'דירה_דיסקרטית', 'נשוי_ומסקרן',
+  'גרוש_במיטבו', 'ירושלמי_משוחרר', 'מסג_חושני', 'בן40_וסוער', 'הדבר_האמיתי',
 
   // More suggestive female nicknames
   'מתוקה_ופיקנטית', 'בחורה_חושנית', 'אישה_סקסית', 'משחררת_רסן', 'מפנקת_בטירוף',
   'מעוניינת_בהנאות', 'חושנית_ולוהטת', 'נועזת_וסקסית', 'אוהבת_פינוקים', 'אישה_מסקרנת',
   'פראית_ועדינה', 'תל_אביבית_חמה', 'ספונטנית_במיטה', 'יודעת_מה_רוצה', 'בחורה_חריפה',
   'רעננה_ורותחת', 'אישה_משוחררת', 'לוהטת_ונועזת', 'מגרה_חושים', 'יפה_ומושכת',
+  'רגליים_ארוכות', 'נשואה_משועממת', 'מפתיעה_במיטה', 'לוהטת_מבפנים', 'שדיים_מושלמים', 
+  'בת30_ונועזת', 'בלונדינית_סקסית', 'קעקועים_מסקרנים', 'אוהבת_לשחק', 'אדומת_שיער_וסקסית',
+  'גבוהה_ומפתה', 'אישה_בשלה', 'בת_טובים_חושנית', 'נשית_ומסחררת', 'מחפשת_ריגושים',
 
   // Couple nicknames for adult context
   'זוג_פתוח', 'צמד_חושני', 'זוג_מסקרן', 'פנויים_להכיר', 'אוהבים_וחוקרים',
   'חברים_בלב_ובגוף', 'מנוסים_ופתוחים', 'משחררים_עכבות', 'זוג_משוחרר', 'ספונטניים_ביחד',
-  'מחפשים_חברים', 'נשואים_ופתוחים', 'זוג_דיסקרטי', 'אוהבים_לגוון', 'זוג_איכותי'
+  'מחפשים_חברים', 'נשואים_ופתוחים', 'זוג_דיסקרטי', 'אוהבים_לגוון', 'זוג_איכותי',
+  'היא_ביונית_הוא_סקרן', 'מחפשים_בחורה', 'פתוחים_להכל', 'נשואים_נועזים', 'מחפשים_שלישיה',
+  'אוהבים_להתנסות', 'היא_בת25_הוא_40', 'דירה_פרטית_בתא', 'נפגשים_להנאות', 'מזמינים_להצטרף'
 ];
 
 // Israeli locations with Hebrew
@@ -139,86 +147,110 @@ const maritalStatusOptions = [
 
 // Hebrew bio templates for men - more suggestive/flirtatious
 const hebrewMaleBioTemplates = [
-  (details) => `היי! אני בן ${details.age}, ${details.maritalStatus.toLowerCase()} ומחפש הרפתקאות מיוחדות. גר ב${details.location} ואוהב ${details.interests[0] || 'מפגשים חושניים'} ו${details.interests[1] || 'קשרים אינטימיים'}. אנרגטי, מפנק ויודע מה אני רוצה. מחפש מישהי/מישהו שיודעים לקחת את הזמן וליהנות מהדרך...`,
+  (details) => `היי! אני בן ${details.age}, ${details.maritalStatus.toLowerCase()} ומחפש הרפתקאות מיוחדות. גר ב${details.location} ואוהב ${details.interests[0] || 'מפגשים חושניים'} ו${details.interests[1] || 'קשרים אינטימיים'}. אנרגטי, מפנק ויודע מה אני רוצה. מחפש מישהי/מישהו שיודעים לקחת את הזמן וליהנות מהדרך... 😉`,
 
-  (details) => `גבר ${details.maritalStatus.toLowerCase() || 'פנוי'} בן ${details.age} מאזור ${details.location}. אוהב ${details.interests[0] || 'לפנק'} ו${details.interests[1] || 'להיות ספונטני'}. מחפש חברות אינטימית עם כימיה טובה, בלי מחויבות אבל עם המון כבוד והדדיות. אוהב את החיים ואת הרגעים המיוחדים שהם מביאים איתם.`,
+  (details) => `גבר ${details.maritalStatus.toLowerCase() || 'פנוי'} בן ${details.age} מאזור ${details.location}. אוהב ${details.interests[0] || 'לפנק'} ו${details.interests[1] || 'להיות ספונטני'}. מחפש חברות אינטימית עם כימיה טובה, בלי מחויבות אבל עם המון כבוד והדדיות. אוהב את החיים ואת הרגעים המיוחדים שהם מביאים איתם. דירה דיסקרטית ופרטיות מלאה.`,
 
-  (details) => `בן ${details.age} מ${details.location}, מחפש מישהי שאוהבת ${details.interests[0] || 'לגלות עולמות חדשים'} כמוני. מעניין, פתוח, אוהב לפנק ולהיות מפונק. בעל חוש הומור ויודע להעריך רגעים טובים. ${details.maritalStatus}, דיסקרטי ומחפש מישהי שיודעת מה היא רוצה בדיוק כמוני.`,
+  (details) => `בן ${details.age} מ${details.location}, מחפש מישהי שאוהבת ${details.interests[0] || 'לגלות עולמות חדשים'} כמוני. מפנק, גבוה ונראה טוב, מבין בחיים ובנשים. מחובר לגוף, לעונג ולרגשות. ${details.maritalStatus}, דיסקרטי ומחפש מישהי שיודעת מה היא רוצה בדיוק כמוני. יכול לארח במקום שקט ואלגנטי.`,
 
-  (details) => `חם, חושני ובעל ניסיון. בן ${details.age}, גר ב${details.location}. ${details.maritalStatus} ומחפש קשר עם כימיה ואינטימיות, בלי סיבוכים. פתוח ל${details.interests[0] || 'חוויות חדשות'} ו${details.interests[1] || 'הרפתקאות'}. אם את אישה שיודעת מה היא רוצה - יש לנו על מה לדבר.`,
+  (details) => `חם, חושני ובעל ניסיון רב. בן ${details.age}, גר ב${details.location}. ${details.maritalStatus} ומחפש קשר עם כימיה ואינטימיות חזקה, בלי סיבוכים. פתוח ל${details.interests[0] || 'חוויות חדשות'} ו${details.interests[1] || 'הרפתקאות מרגשות'}. נדיב, אסתטי, ספורטיבי ועם ראש פתוח. אם את אישה שיודעת מה היא רוצה - יש לנו על מה לדבר. 😏`,
 
-  (details) => `ישראלי אותנטי, בן ${details.age}, חי ב${details.location}. ${details.maritalStatus || 'רווק'} שמחפש להכיר מישהי מיוחדת לבילויים משותפים ורגעים מהנים. אוהב ${details.interests[0] || 'טיולים'}, ${details.interests[1] || 'בישול'} ורגעים אינטימיים. דיסקרטי, מכבד ויודע לתת מקום. בואי נדבר ונראה אם יש כימיה...`
+  (details) => `ישראלי אותנטי, בן ${details.age}, חי ב${details.location}. ${details.maritalStatus || 'רווק'} שמחפש להכיר מישהי מיוחדת לבילויים משותפים ורגעים מהנים. אוהב ${details.interests[0] || 'טיולים'}, ${details.interests[1] || 'בישול'} ורגעים אינטימיים מפתיעים. דיסקרטי, מכבד ויודע לתת מקום. דירה פרטית ומעוצבת. בואי נדבר ונראה אם יש כימיה...`,
+  
+  (details) => `גבר בשל בן ${details.age}, 1.85, ספורטיבי ומפנק. גר ב${details.location}, ${details.maritalStatus || 'גרוש'} עם ראש צעיר וגוף שמור. מחפש מפגשים איכותיים עם אישה חושנית שאוהבת ליהנות. אוהב ${details.interests[0] || 'לפנק'} ו${details.interests[1] || 'להעניק'} במיוחד. דיסקרטיות מלאה ומקום מסודר. מבטיח שלא תתאכזבי... 🔥`,
+  
+  (details) => `תל אביבי אמיתי, ${details.age}, נראה טוב, ממומש עם קריירה מצליחה. חי ב${details.location}, ${details.maritalStatus || 'רווק'} ויודע מה אני מחפש. אוהב נשים בטוחות בעצמן שיודעות ליהנות מהחיים. מתחבר ל${details.interests[0] || 'חושניות'} וחוקר ${details.interests[1] || 'עולמות חדשים'}. יודע להקשיב, להרגיש ולהעניק. מבטיח חוויה בלתי נשכחת.`
 ];
 
 // Hebrew bio templates for women - more suggestive/flirtatious
 const hebrewFemaleBioTemplates = [
-  (details) => `היי, אני בת ${details.age} מ${details.location}. אישה ${details.maritalStatus.toLowerCase() || 'פנויה'}, עצמאית ופתוחה לחוויות חדשות. אוהבת ${details.interests[0] || 'לצחוק'} ו${details.interests[1] || 'לחוות רגעים אינטימיים'}. מחפשת גבר בטוח בעצמו שיודע מה הוא רוצה ויודע גם לתת. האם זה אתה?`,
+  (details) => `היי, אני בת ${details.age} מ${details.location}. אישה ${details.maritalStatus.toLowerCase() || 'פנויה'}, עצמאית ופתוחה לחוויות חדשות. אוהבת ${details.interests[0] || 'לצחוק'} ו${details.interests[1] || 'לחוות רגעים אינטימיים'}. מחפשת גבר בטוח בעצמו שיודע מה הוא רוצה ויודע גם לתת. נראית טוב, סקסית, ויודעת מה אני רוצה. האם זה אתה? 😘`,
 
-  (details) => `בת ${details.age}, חושנית ומלאת תשוקה. גרה ב${details.location}, ${details.maritalStatus.toLowerCase() || 'רווקה'} ומחפשת קשר דיסקרטי עם כימיה טובה. אוהבת ${details.interests[0] || 'ערבים רומנטיים'} ו${details.interests[1] || 'חוויות ספונטניות'}. מעריכה גבר שיודע לפנק ולהעניק תשומת לב. אם אתה כזה, אשמח להכיר.`,
+  (details) => `בת ${details.age}, חושנית ומלאת תשוקה. גרה ב${details.location}, ${details.maritalStatus.toLowerCase() || 'רווקה'} ומחפשת קשר דיסקרטי עם כימיה חזקה. אוהבת ${details.interests[0] || 'ערבים רומנטיים'} ו${details.interests[1] || 'חוויות ספונטניות'}. גוף מעוצב, 1.70, חטובה וסקסית. מעריכה גבר שיודע לפנק ולהעניק תשומת לב. דיסקרטיות מלאה. אם אתה כזה, אשמח להכיר.`,
 
-  (details) => `אישה מסקרנת בת ${details.age} מ${details.location}. ${details.maritalStatus || 'פנויה'}, חושנית ואוהבת את החיים. מחפשת להכיר גבר איכותי לבילויים משותפים ורגעים מיוחדים. יודעת ליהנות מ${details.interests[0] || 'ערב טוב'} ומ${details.interests[1] || 'קשר עם כימיה'}. דיסקרטיות חשובה לי. מעוניין?`,
+  (details) => `אישה מסקרנת בת ${details.age} מ${details.location}. ${details.maritalStatus || 'פנויה'}, חושנית ואוהבת את החיים. מחפשת להכיר גבר איכותי ומפנק לבילויים משותפים ורגעים מיוחדים. יודעת ליהנות מ${details.interests[0] || 'ערב טוב'} ומ${details.interests[1] || 'קשר עם כימיה חזקה'}. דיסקרטיות חשובה לי. מבטיחה חוויה מיוחדת במינה למי שיודע להעריך. מעוניין? 🔥`,
 
-  (details) => `בת ${details.age}, נשית ומפתה, מאזור ${details.location}. ${details.maritalStatus.toLowerCase()} שמחפשת קשר אינטימי, כנה ומהנה. אוהבת ${details.interests[0] || 'לפנק'} ולהתפנק. אם אתה גבר בטוח בעצמו שיודע מה הוא רוצה, שמחפש רגעים איכותיים ללא מחויבות - כנראה שנתאים.`,
+  (details) => `בת ${details.age}, נשית, מפתה ומגרה, מאזור ${details.location}. ${details.maritalStatus.toLowerCase()} ומחפשת קשר אינטימי, סוער ומהנה. חמה, רכה וחושנית. אוהבת ${details.interests[0] || 'לפנק'} ולהתפנק במיוחד. מסחררת חושים ויודעת לגרום לך לשכוח מהכל. אם אתה גבר בטוח בעצמו שיודע מה הוא רוצה, שמחפש רגעים איכותיים ללא מחויבות - כנראה שנתאים. מבטיחה לא להשאיר אותך אדיש... 😏`,
 
-  (details) => `ישראלית אמיתית, בת ${details.age}, חיה ב${details.location}. ${details.maritalStatus || 'פנויה'} שאוהבת ליהנות מהחיים. מחפשת חיבור עם גבר שיודע להעריך אישה ואת הרגעים הקטנים. אוהבת ${details.interests[0] || 'בילויים זוגיים'} ו${details.interests[1] || 'רגעים אינטימיים'}. הכימיה היא המפתח, הדיסקרטיות מובטחת.`
+  (details) => `ישראלית אמיתית, בת ${details.age}, חיה ב${details.location}. ${details.maritalStatus || 'פנויה'} שאוהבת ליהנות מהחיים. גוף סקסי, חטוב ומפנק. מחפשת חיבור עם גבר שיודע להעריך אישה ואת הרגעים הקטנים והגדולים. אוהבת ${details.interests[0] || 'בילויים זוגיים'} ו${details.interests[1] || 'משחקים אינטימיים'}. הכימיה היא המפתח, הדיסקרטיות מובטחת והסיפוק... בטוח! 💋`,
+  
+  (details) => `בלונדינית סקסית בת ${details.age}, גוף חטוב ומשגע, מתגוררת ב${details.location}. ${details.maritalStatus || 'גרושה'} ומחפשת ריגושים חדשים. אוהבת ${details.interests[0] || 'מפגשים אינטימיים'} ו${details.interests[1] || 'הנאות מפתיעות'}. מתמסרת, יודעת לקחת יוזמה ולהפתיע. מחפשת גבר מנוסה, אסתטי וחושני שיודע להעריך אישה אמיתית. אפשר להגשים יחד פנטזיות... 🔥`,
+  
+  (details) => `תל אביבית אמיתית וסקסית בת ${details.age}. ${details.maritalStatus || 'נשואה'} שמחפשת ריגושים דיסקרטיים. מחפשת מישהו שיודע להעריך אישה בשלה ומנוסה, שמחוברת לגוף שלה ולתשוקותיה. אוהבת ${details.interests[0] || 'מפגשים סוערים'} ו${details.interests[1] || 'חוויות מעצימות'}. במיטה אני מפתיעה, חמה ומלאת תשוקה. סקרן לגלות? 💋`
 ];
 
 // Hebrew bio templates for couples - more suggestive
 const hebrewCoupleBioTemplates = [
-  (details) => `זוג נשוי ומחובר מ${details.location}, היא בת ${details.age-2}, הוא בן ${details.age+2}. מחפשים להכיר זוגות/יחידים איכותיים להיכרות ואולי יותר. אוהבים ${details.interests[0] || 'בילויים משותפים'} ו${details.interests[1] || 'מפגשים דיסקרטיים'}. כימיה והיגיינה חשובים לנו. רק פניות רציניות.`,
+  (details) => `זוג נשוי ומחובר מ${details.location}, היא בת ${details.age-2}, הוא בן ${details.age+2}. נראים טוב, ספורטיביים וצעירים ברוחנו. מחפשים להכיר זוגות/יחידים איכותיים להיכרות ואולי יותר. אוהבים ${details.interests[0] || 'בילויים משותפים'} ו${details.interests[1] || 'מפגשים דיסקרטיים'}. היא דו, הוא סטרייט, שנינו פתוחים לחוויות. כימיה והיגיינה חשובים לנו. דירה דיסקרטית במרכז. רק פניות רציניות. 🔥`,
 
-  (details) => `זוג ${details.maritalStatus.toLowerCase()} מאזור ${details.location}. שנינו בשנות ה-${Math.floor(details.age/10)*10}, נראים טוב, פתוחים לחוויות חדשות. מחפשים זוגות/נשים/גברים לבילויים משותפים, ללא מחויבות אבל עם המון כיף. אוהבים ${details.interests[0] || 'מסיבות פרטיות'} ו${details.interests[1] || 'ערבים רומנטיים'}. נשמח להכיר.`,
+  (details) => `זוג ${details.maritalStatus.toLowerCase()} מאזור ${details.location}. היא ${details.age-3}, חטובה ומשגעת. הוא ${details.age+2}, שרירי ומרשים. שנינו נראים טוב, פתוחים לחוויות חדשות ואוהבים לחקור. מחפשים זוגות/נשים/גברים לבילויים משותפים, ללא מחויבות אבל עם המון כיף וכימיה. אוהבים ${details.interests[0] || 'מסיבות פרטיות'} ו${details.interests[1] || 'ערבים אינטימיים'}. יכולים לארח במקום דיסקרטי ומפנק. נשמח להכיר... 😉`,
 
-  (details) => `זוג איכותי, נשוי ופתוח מ${details.location}. מחפשים להרחיב את המעגל החברתי שלנו עם אנשים כמונו שאוהבים את החיים ואת ההנאות שהם מציעים. אוהבים ${details.interests[0] || 'מפגשים דיסקרטיים'} ו${details.interests[1] || 'חברויות אינטימיות'}. הכימיה והחיבור האישי חשובים לנו מאוד. אנשים איכותיים, צרו קשר.`,
+  (details) => `זוג איכותי, נשוי ופתוח מ${details.location}. שנינו נראים פצצה, אתלטיים וסקסיים. מחפשים להרחיב את המעגל החברתי שלנו עם אנשים כמונו שאוהבים את החיים ואת ההנאות שהם מציעים. אוהבים ${details.interests[0] || 'מפגשים דיסקרטיים'} ו${details.interests[1] || 'חברויות אינטימיות'}. היא ביונית, הוא סקרן. הכימיה והחיבור האישי חשובים לנו מאוד. מעוניינים במיוחד בזוגות ונשים דו. אנשים איכותיים, צרו קשר. 💋`,
 
-  (details) => `זוג חם ואיכותי מאזור ${details.location}, היא בת ${details.age-3}, הוא בן ${details.age+3}. ${details.maritalStatus} ומחפשים להכיר זוגות דומים או יחידים מעניינים. אוהבים ${details.interests[0] || 'חוויות חדשות'} ו${details.interests[1] || 'היכרויות מרגשות'}. מעוניינים במפגשים דיסקרטיים עם אנשים שיודעים מה הם רוצים.`,
+  (details) => `זוג חם ואיכותי מאזור ${details.location}, היא בת ${details.age-3}, חטובה ומפתה, הוא בן ${details.age+3}, חזק ומפנק. ${details.maritalStatus} ומחפשים להכיר זוגות דומים או יחידים מעניינים. אוהבים ${details.interests[0] || 'חוויות חדשות'} ו${details.interests[1] || 'היכרויות מרגשות'}. שנינו אוהבים לפנק ולהתפנק, מלאי תשוקה ודמיון. מעוניינים במפגשים דיסקרטיים עם אנשים שיודעים מה הם רוצים. דירה דיסקרטית ומעוצבת. 🔥`,
 
-  (details) => `זוג ישראלי אותנטי מ${details.location}, בתחילת שנות ה-${Math.floor(details.age/10)*10}. אנחנו ${details.maritalStatus.toLowerCase()}, פתוחים ואוהבים לחקור. מחפשים זוגות או יחידים לבילויים משותפים ואולי יותר. לא ממהרים לשום מקום, מעדיפים להכיר לעומק ולבנות כימיה אמיתית. אוהבים ${details.interests[0] || 'ערבי גיבוש'} ו${details.interests[1] || 'מפגשים ספונטניים'}.`
+  (details) => `זוג ישראלי אותנטי מ${details.location}, בתחילת שנות ה-${Math.floor(details.age/10)*10}. אנחנו ${details.maritalStatus.toLowerCase()}, פתוחים ואוהבים לחקור. היא מדהימה, 1.68, גוף מעוצב וסקסית בטירוף. הוא גבוה, חטוב ומנוסה. מחפשים זוגות או יחידים לבילויים משותפים ואולי יותר. לא ממהרים לשום מקום, מעדיפים להכיר לעומק ולבנות כימיה אמיתית. אוהבים ${details.interests[0] || 'ערבי גיבוש'} ו${details.interests[1] || 'מפגשים ספונטניים'}. היא אוהבת במיוחד נשים... 💋`,
+  
+  (details) => `זוג שובב ונועז מ${details.location}. היא ${details.age-4} בלונדינית חטובה, הוא ${details.age+1} גבוה וספורטיבי. ${details.maritalStatus} ומחפשים להכיר זוגות ויחידים לחוויות משגעות. אוהבים ${details.interests[0] || 'הרפתקאות אינטימיות'} ו${details.interests[1] || 'מסיבות פרטיות'}. מנוסים, פתוחים ואיכותיים. דירה דיסקרטית ופרטיות מובטחת. אוהבים במיוחד בחורות דו, זוגות צעירים ואנשים פתוחים לחוויות חדשות. נשמח להכיר... 🔥`,
+  
+  (details) => `זוג מושלם מ${details.location}, היא ${details.age-2} סקסית להחריד, הוא ${details.age+3} מרשים ודומיננטי. ${details.maritalStatus}, מנוסים ויודעים בדיוק מה אנחנו רוצים. מחפשים זוגות, בחורות דו ובחורים מרשימים לזמן איכות וחוויות סוערות. אוהבים ${details.interests[0] || 'משחקי תפקידים'} ו${details.interests[1] || 'מסיבות חושניות'}. יש לנו דירה דיסקרטית במיקום מרכזי. היגיינה, כימיה והדדיות חשובים לנו. רק רציניים שיודעים להעריך. 💋`
 ];
 
 // English bio templates for men - more suggestive
 const englishMaleBioTemplates = [
-  (details) => `Hey there! ${details.age} year old ${details.maritalStatus.toLowerCase()} man from ${details.location}. Looking for intimate connections without complications. I love ${details.interests[0] || 'good company'} and ${details.interests[1] || 'exciting encounters'}. Know what I want and how to please. Let's talk and see where it goes...`,
+  (details) => `Hey there! ${details.age} year old ${details.maritalStatus.toLowerCase()} man from ${details.location}. Looking for intimate connections without complications. I love ${details.interests[0] || 'good company'} and ${details.interests[1] || 'exciting encounters'}. Athletic build, 6'1", know what I want and how to please. Can host in a discrete, elegant place. Let's talk and see where it goes... 😉`,
 
-  (details) => `${details.maritalStatus} man, ${details.age}, living in ${details.location}. Seeking fun, passionate connections with no strings attached. I enjoy ${details.interests[0] || 'intimate evenings'} and ${details.interests[1] || 'new experiences'}. Discreet, respectful, and very attentive. If you're looking for quality time with chemistry, I'm your guy.`,
+  (details) => `${details.maritalStatus} man, ${details.age}, living in ${details.location}. Seeking fun, passionate connections with no strings attached. I enjoy ${details.interests[0] || 'intimate evenings'} and ${details.interests[1] || 'new experiences'}. Discreet, respectful, fit and very attentive. Particularly skilled with my hands and more. If you're looking for quality time with chemistry, I'm your guy. Guaranteed satisfaction. 😏`,
 
-  (details) => `${details.age} year old Israeli guy who knows how to have a good time. Based in ${details.location}, ${details.maritalStatus.toLowerCase()} and looking for special connections. I'm passionate about ${details.interests[0] || 'good wine'} and ${details.interests[1] || 'better company'}. Direct, honest, and ready to explore. What are you waiting for?`,
+  (details) => `${details.age} year old Israeli guy who knows how to have a good time. Based in ${details.location}, ${details.maritalStatus.toLowerCase()} and looking for special connections. Tall, athletic, and very well-built. I'm passionate about ${details.interests[0] || 'good wine'} and ${details.interests[1] || 'better company'}. Direct, honest, and ready to explore your deepest desires. Private apartment in central location. What are you waiting for? 🔥`,
 
-  (details) => `Confident ${details.maritalStatus.toLowerCase()} man from ${details.location}, ${details.age} years young and full of energy. Looking for intimate friendships and passionate encounters. Enjoy ${details.interests[0] || 'good conversation'} that leads to ${details.interests[1] || 'exciting chemistry'}. Discreet, clean, and ready to connect.`,
+  (details) => `Confident ${details.maritalStatus.toLowerCase()} man from ${details.location}, ${details.age} years young and full of energy. Looking for intimate friendships and passionate encounters without limitations. Athletic body, 6'0", and generous in all ways. Enjoy ${details.interests[0] || 'good conversation'} that leads to ${details.interests[1] || 'exciting chemistry'}. Discreet, clean, and ready to connect. I promise an unforgettable experience. 💪`,
 
-  (details) => `Mature man, ${details.age}, from beautiful ${details.location}. ${details.maritalStatus} seeking special connections with like-minded adults. I value chemistry, respect, and discretion. My passions include ${details.interests[0] || 'private encounters'} and ${details.interests[1] || 'sensual moments'}. Let's meet for drinks and see if we click.`
+  (details) => `Mature man, ${details.age}, from beautiful ${details.location}. ${details.maritalStatus} seeking special connections with like-minded adults. I value chemistry, respect, and discretion. My passions include ${details.interests[0] || 'private encounters'} and ${details.interests[1] || 'sensual moments'}. Well-established, educated, and generous. Private apartment available. Let's meet for drinks and see if we click. I'll make it worth your while... 😎`,
+  
+  (details) => `Sophisticated gentleman, ${details.age}, from ${details.location}. ${details.maritalStatus}. Athletic, 6'2", well-endowed, and know how to use it. Seeking passionate women for discreet, intense encounters. I love ${details.interests[0] || 'exploring fantasies'} and ${details.interests[1] || 'pushing boundaries'}. Generous, attentive, and focused on your pleasure. Can host in luxury apartment. Let me show you what you've been missing... 🔥`,
+  
+  (details) => `${details.maritalStatus} man, ${details.age}, living in ${details.location}. Athletic build with skilled hands and an adventurous mind. Looking for women who appreciate a man who knows what he's doing. I enjoy ${details.interests[0] || 'sensual massage'} and ${details.interests[1] || 'slow, intense encounters'}. Experienced, discrete, and attentive to your every need. Private place available. Ready to make you forget everything else? 💋`
 ];
 
 // English bio templates for women - more suggestive
 const englishFemaleBioTemplates = [
-  (details) => `${details.age}, sensual woman from ${details.location}. ${details.maritalStatus} and looking for discreet connections. I love ${details.interests[0] || 'intimate evenings'} and ${details.interests[1] || 'passionate encounters'}. Seeking confident men who know how to treat a woman right. Chemistry is essential, discretion guaranteed.`,
+  (details) => `${details.age}, sensual woman from ${details.location}. ${details.maritalStatus} and looking for discreet connections. Fit, curvy in all the right places, and incredibly passionate. I love ${details.interests[0] || 'intimate evenings'} and ${details.interests[1] || 'wild encounters'}. Seeking confident men who know how to treat a woman right. I promise to exceed your expectations in every way. Chemistry is essential, discretion guaranteed. 💋`,
 
-  (details) => `Playful and passionate woman, ${details.age}, living in ${details.location}. ${details.maritalStatus} and open to new adventures. Enjoy ${details.interests[0] || 'flirting'} and ${details.interests[1] || 'exploring desires'}. Looking for a man who's confident, attentive, and knows what he wants. Are you up for some fun?`,
+  (details) => `Playful and passionate woman, ${details.age}, living in ${details.location}. ${details.maritalStatus} and open to new adventures. 5'6", toned body, and insatiable appetite. Enjoy ${details.interests[0] || 'flirting'} and ${details.interests[1] || 'exploring desires'} without limits. Looking for a man who's confident, attentive, and knows what he wants. I'm wild in private and know how to please. Are you up for some mind-blowing fun? 🔥`,
 
-  (details) => `Confident Israeli woman, ${details.age}, from ${details.location}. ${details.maritalStatus || 'Single'} and seeking special connections without complications. I appreciate ${details.interests[0] || 'chemistry'} and ${details.interests[1] || 'genuine attraction'}. If you're a man who values quality over quantity, we should definitely talk.`,
+  (details) => `Confident Israeli woman, ${details.age}, from ${details.location}. ${details.maritalStatus || 'Single'} and seeking special connections without complications. Stunning figure, long legs, and skills that will leave you breathless. I appreciate ${details.interests[0] || 'chemistry'} and ${details.interests[1] || 'genuine attraction'}. If you're a man who values quality over quantity, I guarantee an experience you won't forget. Let me show you what you've been missing... 😘`,
 
-  (details) => `${details.maritalStatus} woman from ${details.location}, ${details.age} and feeling adventurous. Looking for exciting encounters with respectful, confident men. I'm passionate about ${details.interests[0] || 'intimate connections'} and ${details.interests[1] || 'sensual experiences'}. Life is short - let's enjoy it together.`,
+  (details) => `${details.maritalStatus} woman from ${details.location}, ${details.age} and feeling adventurous. Gorgeous curves, soft skin, and a wild side waiting to be unleashed. Looking for exciting encounters with respectful, confident men. I'm passionate about ${details.interests[0] || 'intimate connections'} and ${details.interests[1] || 'sensual experiences'} that push boundaries. Life is short - let's enjoy every moment together in ways you've only dreamed about. 😏`,
 
-  (details) => `Feminine and sensual, ${details.age} from ${details.location}. ${details.maritalStatus} seeking special connections with men who appreciate a confident woman. I enjoy ${details.interests[0] || 'romantic evenings'} that lead to ${details.interests[1] || 'passionate nights'}. No games, just genuine chemistry and mutual pleasure.`
+  (details) => `Feminine and sensual, ${details.age} from ${details.location}. ${details.maritalStatus} seeking special connections with men who appreciate a confident woman. Perfect body, skilled hands, and an eager mouth. I enjoy ${details.interests[0] || 'romantic evenings'} that lead to ${details.interests[1] || 'passionate nights'} of pure pleasure. No games, just genuine chemistry and mutual satisfaction that will leave you wanting more. Ready to experience heaven? 💋`,
+  
+  (details) => `Elegant yet wild, ${details.age}, blonde bombshell from ${details.location}. ${details.maritalStatus || 'Married'} seeking discreet adventures. 5'7", toned body, and insatiable desires. I'm skilled in ${details.interests[0] || 'the art of pleasure'} and love ${details.interests[1] || 'exploring fantasies'} without judgment. Looking for a generous man who appreciates a woman who knows exactly what she wants and how to get it. Can you handle me? 🔥`,
+  
+  (details) => `Stunning Israeli beauty, ${details.age}, living in ${details.location}. ${details.maritalStatus} with a body that turns heads and skills that drop jaws. Seeking select gentlemen for unforgettable encounters. I excel at ${details.interests[0] || 'intense intimacy'} and ${details.interests[1] || 'fulfilling desires'} you didn't know you had. I promise discretion, passion, and an experience beyond your wildest dreams. Are you worthy? 😘`
 ];
 
 // English bio templates for couples - more suggestive
 const englishCoupleBioTemplates = [
-  (details) => `Adventurous couple from ${details.location}, both in our ${Math.floor(details.age/10)*10}s. ${details.maritalStatus} and looking to connect with other open-minded couples or singles. We enjoy ${details.interests[0] || 'private parties'} and ${details.interests[1] || 'intimate gatherings'}. Chemistry and discretion are essential. Let's meet and see where it leads.`,
+  (details) => `Adventurous couple from ${details.location}, both in our ${Math.floor(details.age/10)*10}s. She's stunning with perfect curves, he's athletic and well-endowed. ${details.maritalStatus} and looking to connect with other open-minded couples or singles. We enjoy ${details.interests[0] || 'private parties'} and ${details.interests[1] || 'intimate gatherings'} that end with a bang. She's bi-curious, he's straight, both experienced. Chemistry and discretion are essential. Let's meet and see where it leads... 🔥`,
 
-  (details) => `Married couple in ${details.location}, she's ${details.age-2}, he's ${details.age+2}. Looking for other couples or select singles for fun and friendship, maybe more. We enjoy ${details.interests[0] || 'social encounters'} and ${details.interests[1] || 'exploring fantasies'} with the right people. Respectful, attractive, and discreet.`,
+  (details) => `Married couple in ${details.location}, she's ${details.age-2} (blonde, 5'5", incredible body), he's ${details.age+2} (tall, muscular, generous). Looking for other couples or select singles for fun and friendship, maybe more. We enjoy ${details.interests[0] || 'social encounters'} and ${details.interests[1] || 'exploring fantasies'} with the right people. She loves women, he enjoys watching and joining. Respectful, attractive, and discreet with private place. Ready to spice up your life? 💋`,
 
-  (details) => `Experienced couple, ${details.maritalStatus.toLowerCase()}, from ${details.location}. Looking to spice things up with like-minded adults. We're passionate about ${details.interests[0] || 'meeting new people'} and ${details.interests[1] || 'intimate connections'}. Clean, discreet, and ready to explore. No pressure, just good vibes.`,
+  (details) => `Experienced couple, ${details.maritalStatus.toLowerCase()}, from ${details.location}. She's a knockout redhead with curves in all the right places, he's fit and knows how to please. Looking to spice things up with like-minded adults. We're passionate about ${details.interests[0] || 'meeting new people'} and ${details.interests[1] || 'intimate connections'} that push boundaries. She's bi and loves to play, he's skilled and attentive. Clean, discreet, and ready to explore. No pressure, just intense pleasure. 😏`,
 
-  (details) => `Attractive Israeli couple in our ${Math.floor(details.age/10)*10}s from ${details.location}. ${details.maritalStatus} and open to new experiences with the right people. We enjoy ${details.interests[0] || 'private gatherings'} and ${details.interests[1] || 'sensual evenings'}. Looking for quality connections, not quantity. Hygiene and chemistry are non-negotiable.`,
+  (details) => `Attractive Israeli couple in our ${Math.floor(details.age/10)*10}s from ${details.location}. She's a petite stunner with perfect breasts, he's tall and commanding. ${details.maritalStatus} and open to new experiences with the right people. We enjoy ${details.interests[0] || 'private gatherings'} and ${details.interests[1] || 'sensual evenings'} that fulfill fantasies. Particularly interested in single women and select couples. Looking for quality connections, not quantity. Hygiene and chemistry are non-negotiable. Let's create unforgettable memories... 🔥`,
 
-  (details) => `Fun, fit couple from ${details.location}. She's ${details.age-4}, he's ${details.age+4}, both attractive and open-minded. ${details.maritalStatus}, looking for couples or singles to share special moments. We love ${details.interests[0] || 'adventurous encounters'} and ${details.interests[1] || 'exploring boundaries'}. Let's meet for drinks first and see if we click.`
+  (details) => `Fun, fit couple from ${details.location}. She's ${details.age-4} (gorgeous brunette, 34D-24-36), he's ${details.age+4} (athletic build, very well-equipped). Both attractive and open-minded. ${details.maritalStatus}, looking for couples or singles to share special moments that transcend the ordinary. We love ${details.interests[0] || 'adventurous encounters'} and ${details.interests[1] || 'exploring boundaries'} in ways that leave everyone satisfied. Can host in our private apartment. Let's meet for drinks first and see if we click. The night could end spectacularly... 💋`,
+  
+  (details) => `Elite couple from ${details.location}, both fitness models with perfect bodies. She's ${details.age-3}, blonde bombshell with skills that will blow your mind. He's ${details.age+2}, muscular and dominant. ${details.maritalStatus} seeking select couples and singles for extraordinary experiences. We excel at ${details.interests[0] || 'creating unforgettable memories'} and ${details.interests[1] || 'fulfilling secret desires'}. She's bi and loves women, he's experienced and generous. Luxury apartment available. Only serious inquiries from quality people. Ready for the best night of your life? 🔥`,
+  
+  (details) => `Sexy couple in ${details.location}, looking for adventure. She's ${details.age-2}, curves in all the right places, insatiable appetite. He's ${details.age+3}, tall, dark, and skilled beyond words. ${details.maritalStatus} and seeking playmates who appreciate the finer things in life. We love ${details.interests[0] || 'intense encounters'} and ${details.interests[1] || 'pushing boundaries'} that leave everyone breathless. Particularly interested in single women and select couples. Can host in our discrete, luxury apartment. Are you worthy of our attention? 💋`
 ];
 
 // --- Enhanced photo collections with more realistic adult dating options ---
 const photoCollections = {
   woman: [
-    // Tasteful yet suggestive photos without showing faces
+    // Tasteful yet suggestive photos without showing faces - original set
     "https://images.unsplash.com/photo-1583900985737-6d0495555783?q=80&w=800", // Woman in silhouette
     "https://images.unsplash.com/photo-1512486130939-2c4f79935e4f?q=80&w=800", // Woman shadowy profile
     "https://images.unsplash.com/photo-1509967419530-da38b4704bc6?q=80&w=800", // From behind at sunset
@@ -232,10 +264,24 @@ const photoCollections = {
     "https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?q=80&w=800", // Woman on beach at sunset
     "https://images.unsplash.com/photo-1543857778-c4a1a3e0b2eb?q=80&w=800", // Woman by window silhouette
     "https://images.unsplash.com/photo-1586807480822-0e95ba6666ad?q=80&w=800", // Woman in bedroom from behind
-    "https://images.unsplash.com/photo-1594038302480-c867665379c2?q=80&w=800"  // Woman in lingerie shadow
+    "https://images.unsplash.com/photo-1594038302480-c867665379c2?q=80&w=800",  // Woman in lingerie shadow
+    
+    // More adult-oriented photos for women - expanded set
+    "https://images.unsplash.com/photo-1588544108061-3c44c505d45d?q=80&w=800", // Woman in bed sheets
+    "https://images.unsplash.com/photo-1540174401473-df5f1c06c716?q=80&w=800", // Woman in lingerie cropped
+    "https://images.unsplash.com/photo-1528046279030-0bfb3d3f4de6?q=80&w=800", // Woman's silhouette in doorway
+    "https://images.unsplash.com/photo-1568379783521-911c2724c33e?q=80&w=800", // Woman in hotel room
+    "https://images.unsplash.com/photo-1590066233913-941dd51a2a63?q=80&w=800", // Woman silhouette by window
+    "https://images.unsplash.com/photo-1586768005910-0576724ffe6b?q=80&w=800", // Woman in shower silhouette
+    "https://images.unsplash.com/photo-1582639590011-f5a8416d1101?q=80&w=800", // Woman with rose petals
+    "https://images.unsplash.com/photo-1575439476101-9e35d3a95186?q=80&w=800", // Woman on satin sheets
+    "https://images.unsplash.com/photo-1499603732040-179b50c68549?q=80&w=800", // Woman in bathtub
+    "https://images.unsplash.com/photo-1581338834647-b0fb40704e21?q=80&w=800", // Legs in stockings
+    "https://images.unsplash.com/photo-1561908818-526e68ace6f8?q=80&w=800", // Woman's back in lingerie
+    "https://images.unsplash.com/photo-1603766806347-54cdf3745953?q=80&w=800"  // Woman in heels from behind
   ],
   man: [
-    // Tasteful yet suggestive male photos without showing faces
+    // Tasteful yet suggestive male photos without showing faces - original set
     "https://images.unsplash.com/photo-1567013275689-c179a874478f?q=80&w=800", // Man's back muscles
     "https://images.unsplash.com/photo-1520975954732-35dd22299614?q=80&w=800", // Man in suit from behind
     "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=800", // Man's profile dark lighting
@@ -248,10 +294,24 @@ const photoCollections = {
     "https://images.unsplash.com/photo-1515122616000-5badf9ded1c4?q=80&w=800", // Man in gym from behind
     "https://images.unsplash.com/photo-1586396874197-dc473d3e89bc?q=80&w=800", // Man in shadow profile
     "https://images.unsplash.com/photo-1563630423918-b58f07336ac5?q=80&w=800", // Man silhouette at window
-    "https://images.unsplash.com/photo-1504257432389-52343af06ae3?q=80&w=800"  // Man shirtless from behind
+    "https://images.unsplash.com/photo-1504257432389-52343af06ae3?q=80&w=800",  // Man shirtless from behind
+    
+    // More adult-oriented photos for men - expanded set
+    "https://images.unsplash.com/photo-1571902943202-507ec2618e8f?q=80&w=800", // Man in water shirtless
+    "https://images.unsplash.com/photo-1534368786749-b63e05c92463?q=80&w=800", // Man's abs closeup
+    "https://images.unsplash.com/photo-1570939274717-7eda259b50ed?q=80&w=800", // Man in bed sheets
+    "https://images.unsplash.com/photo-1571879946812-fc9b0f28c5e6?q=80&w=800", // Man in mirror shirtless
+    "https://images.unsplash.com/photo-1528454657389-9f59d6c04307?q=80&w=800", // Man with towel silhouette
+    "https://images.unsplash.com/photo-1616958192292-97078e1efef4?q=80&w=800", // Man in bedroom shadow
+    "https://images.unsplash.com/photo-1534359265607-b8cbe1e4d2b6?q=80&w=800", // Muscular man from behind
+    "https://images.unsplash.com/photo-1624374984056-10cc8fc83ffe?q=80&w=800", // Man in boxers from behind
+    "https://images.unsplash.com/photo-1580824456030-76715b515cfd?q=80&w=800", // Man in bathtub shadow
+    "https://images.unsplash.com/photo-1558022013-ae0e0501a564?q=80&w=800", // Man getting out of shower
+    "https://images.unsplash.com/photo-1590608897129-79da98d15969?q=80&w=800", // Man with six-pack abs
+    "https://images.unsplash.com/photo-1567013127542-490d757e6aa2?q=80&w=800"  // Man's back with tattoos
   ],
   couple: [
-    // Tasteful yet suggestive couple photos without showing faces
+    // Tasteful yet suggestive couple photos without showing faces - original set
     "https://images.unsplash.com/photo-1500917293891-ef795e70e1f6?q=80&w=800", // Couple embracing shadows
     "https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=800", // Couple from behind sunset
     "https://images.unsplash.com/photo-1545193410-42d16995ba83?q=80&w=800", // Couple silhouette
@@ -264,7 +324,21 @@ const photoCollections = {
     "https://images.unsplash.com/photo-1495490311930-678c8ecb13d1?q=80&w=800", // Couple kissing silhouette
     "https://images.unsplash.com/photo-1580503029029-6104a3293b9b?q=80&w=800", // Couple in shadows intimate
     "https://images.unsplash.com/photo-1435164205788-305635a36ec2?q=80&w=800", // Couple in bed from above
-    "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?q=80&w=800"  // Couple from behind beach
+    "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?q=80&w=800",  // Couple from behind beach
+    
+    // More adult-oriented photos for couples - expanded set
+    "https://images.unsplash.com/photo-1517837543605-e89f1541d19d?q=80&w=800", // Couple in bed intimate
+    "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?q=80&w=800", // Couple kissing closeup
+    "https://images.unsplash.com/photo-1529369890332-8c57dadca1b0?q=80&w=800", // Couple in shower silhouette
+    "https://images.unsplash.com/photo-1516026672322-bc52d61a55d5?q=80&w=800", // Couple embracing in underwear
+    "https://images.unsplash.com/photo-1548089256-cfdecee379b2?q=80&w=800", // Couple intertwined in bed
+    "https://images.unsplash.com/photo-1509506489701-dfe23b067808?q=80&w=800", // Couple in bath together
+    "https://images.unsplash.com/photo-1520052205864-92d242b3a76b?q=80&w=800", // Couple's legs intertwined
+    "https://images.unsplash.com/photo-1515962187632-65c1da999718?q=80&w=800", // Couple kissing on bed
+    "https://images.unsplash.com/photo-1542056647-07114eb1e84f?q=80&w=800", // Couple in revealing clothing
+    "https://images.unsplash.com/photo-1504090885647-2ca19c8c45b6?q=80&w=800", // Couple in pool intimate
+    "https://images.unsplash.com/photo-1502517015259-bf5394c3df2b?q=80&w=800", // Couple intimate silhouette
+    "https://images.unsplash.com/photo-1628157239582-25632655a869?q=80&w=800"  // Couple in bed sheets only
   ]
 };
 
@@ -326,7 +400,7 @@ const cleanDatabase = async () => {
     nickname: 'Admin',
     username: 'admin',
     email: ADMIN_EMAIL,
-    password: adminPassword,
+    password: 'bdkf6uv1',
     role: 'admin',
     accountTier: 'PAID',
     isVerified: true,
