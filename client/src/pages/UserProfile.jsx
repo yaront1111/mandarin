@@ -65,6 +65,13 @@ const translateProfileField = (i18n, field, key) => {
     // For Hebrew translations, we first try direct lookups
     // Handle special case for profile fields
     if (typeof field === 'string') {
+      // Handle Hebrew tags with underscores - they should be presented as spaces
+      if (field.includes('_')) {
+        // Replace underscores with spaces for display
+        const readableField = field.replace(/_/g, ' ');
+        return readableField;
+      }
+      
       // 1. First try the direct field value translation from top-level
       const directFieldTranslation = i18n(field);
       if (directFieldTranslation !== field && directFieldTranslation !== `${field}`) {
@@ -76,6 +83,16 @@ const translateProfileField = (i18n, field, key) => {
       const nestedTranslation = i18n(nestedKey);
       if (nestedTranslation !== nestedKey && nestedTranslation !== `${nestedKey}`) {
         return nestedTranslation;
+      }
+      
+      // Special handling for profile.interests.X format
+      if (field.startsWith('profile.interests.')) {
+        // Extract interest value after the prefix
+        const interest = field.split('profile.interests.')[1];
+        if (interest) {
+          // Convert interest with underscores to spaces for readability
+          return interest.replace(/_/g, ' ');
+        }
       }
     }
     
@@ -717,27 +734,30 @@ const UserProfile = () => {
               <div className="d-flex flex-wrap gap-4 mb-5 text-sm text-opacity-60">
                 <div className="d-flex align-items-center gap-2">
                   <FaRegClock className="text-opacity-50" />
-                  <span>{t('profile.lastActive', { 
-                    date: profileUser.lastActive 
+                  {/* Directly construct the string for better template handling */}
+                  <span>
+                    {language === 'he' ? 'פעילות אחרונה: ' : t('profile.lastActive', { date: '' }).split('{{date}}')[0]}
+                    {profileUser.lastActive 
                       ? formatDate(profileUser.lastActive, { 
                           showTime: false, 
                           locale: language === 'he' ? 'he-IL' : 'en-US',
                           formatType: language === 'he' ? 'profile' : '' 
                         }) 
-                      : 'N/A' 
-                  })}</span>
+                      : 'N/A'}
+                  </span>
                 </div>
                 <div className="d-flex align-items-center gap-2">
                   <FaCalendarAlt className="text-opacity-50" />
-                  <span>{t('profile.memberSince', { 
-                    date: profileUser.createdAt 
+                  <span>
+                    {language === 'he' ? 'חבר מאז: ' : t('profile.memberSince', { date: '' }).split('{{date}}')[0]}
+                    {profileUser.createdAt 
                       ? formatDate(profileUser.createdAt, { 
                           showTime: false, 
                           locale: language === 'he' ? 'he-IL' : 'en-US',
                           formatType: language === 'he' ? 'profile' : '' 
                         }) 
-                      : 'N/A' 
-                  })}</span>
+                      : 'N/A'}
+                  </span>
                 </div>
               </div>
               
@@ -852,7 +872,7 @@ const UserProfile = () => {
                     {commonInterests.map(i => 
                       <div key={i} className="bg-white px-3 py-2 rounded-pill d-flex align-items-center gap-2 text-sm shadow-sm">
                         <FaCheck className="text-success text-xs" />
-                        <span>{i}</span>
+                        <span>{translateProfileField(t, i, 'profile.interests')}</span>
                       </div>
                     )}
                   </div>
