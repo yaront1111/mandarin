@@ -120,8 +120,25 @@ export default defineConfig({
     },
   },
   css: {
-    // Simple CSS optimization
+    // Enhanced CSS optimization and fix for fraction class names like translate-x-1/2
     devSourcemap: true,
+    postcss: {
+      plugins: [
+        {
+          // Custom plugin to escape fraction-like class names before minification
+          postcssPlugin: 'escape-fraction-classes',
+          AtRule: {
+            // No operations needed for at-rules
+          },
+          Rule(rule) {
+            if (rule.selector && rule.selector.includes('/')) {
+              // Replace problematic selectors that use fractions like translate-x-1/2
+              rule.selector = rule.selector.replace(/([0-9]+)\/([0-9]+)/g, '$1\\/$2');
+            }
+          }
+        }
+      ]
+    }
   },
   build: {
     outDir: "dist",
@@ -165,6 +182,24 @@ export default defineConfig({
           },
         }),
       ],
+      // Ignore dynamic imports for specific modules to reduce warnings
+      onwarn(warning, warn) {
+        // Ignore specific warnings about mixed imports
+        if (
+          warning.code === 'MIXED_EXPORTS' || 
+          (warning.message && (
+            warning.message.includes('tokenStorage.js') || 
+            warning.message.includes('apiService.jsx') ||
+            warning.message.includes('AuthContext.jsx') ||
+            warning.message.includes('socketService.jsx') ||
+            warning.message.includes('notificationService.jsx') ||
+            warning.message.includes('is dynamically imported')))
+        ) {
+          return;
+        }
+        // Forward other warnings to default handler
+        warn(warning);
+      },
       output: {
         // Optimize chunk size to reduce waterfall loading
         experimentalMinChunkSize: 10000, // 10KB

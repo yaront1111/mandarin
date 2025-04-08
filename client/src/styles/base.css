@@ -602,7 +602,7 @@ html, body, #root {
   font-style: normal;
   font-weight: 400;
   font-display: swap; /* Ensures text remains visible during font loading */
-  src: url('/font/inter-v12-latin-regular.woff2') format('woff2');
+  src: url('/fonts/inter-v12-latin-regular.woff2') format('woff2');
 }
 
 /* Responsive Images */

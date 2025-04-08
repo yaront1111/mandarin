@@ -210,7 +210,7 @@
   min-height: 300px;
 }
 
-.loadingMessages, .noMessages {
+.loadingMessages {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -220,6 +220,30 @@
   padding: 20px 0;
   text-align: center;
   font-size: 13px;
+}
+
+.noMessages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #6c757d;
+  padding: 20px 0;
+  text-align: center;
+  font-size: 14px;
+  background-color: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+}
+
+.noMessages p {
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+
+.noMessagesSubtext {
+  font-size: 12px;
+  opacity: 0.8;
 }
 
 .spinner {

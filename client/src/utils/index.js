@@ -290,7 +290,8 @@ export const formatDate = (date, options = {}) => {
     showTime = true,
     showDate = true,
     showRelative = false,
-    locale = detectedLocale
+    locale = detectedLocale,
+    formatType = '' // New option for special formatting
   } = options;
   
   if (!date) return '';
@@ -299,6 +300,22 @@ export const formatDate = (date, options = {}) => {
   
   // For invalid dates
   if (isNaN(dateObj.getTime())) return '';
+  
+  // Special handling for profile date fields in Hebrew
+  if (locale.startsWith('he') && formatType === 'profile') {
+    // Hebrew months (with nikkud/vowels for better readability)
+    const hebrewMonths = [
+      'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 
+      'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
+    ];
+    
+    const day = dateObj.getDate();
+    const month = hebrewMonths[dateObj.getMonth()];
+    const year = dateObj.getFullYear();
+    
+    // Format specifically for Hebrew profile dates
+    return `${day} ב${month}, ${year}`;
+  }
   
   if (showRelative) {
     // For Hebrew locale, use Hebrew relative time strings
@@ -309,11 +326,33 @@ export const formatDate = (date, options = {}) => {
       const diffMinutes = Math.floor(diffSeconds / 60);
       const diffHours = Math.floor(diffMinutes / 60);
       const diffDays = Math.floor(diffHours / 24);
+      const diffMonths = Math.floor(diffDays / 30);
+      const diffYears = Math.floor(diffDays / 365);
       
       if (diffSeconds < 60) return 'זה עתה';
-      if (diffMinutes < 60) return `לפני ${diffMinutes} דקות`;
-      if (diffHours < 24) return `לפני ${diffHours} שעות`;
-      if (diffDays < 7) return `לפני ${diffDays} ימים`;
+      if (diffMinutes < 60) {
+        // Handle singular/plural for minutes in Hebrew
+        if (diffMinutes === 1) return 'לפני דקה';
+        return `לפני ${diffMinutes} דקות`;
+      }
+      if (diffHours < 24) {
+        // Handle singular/plural for hours in Hebrew
+        if (diffHours === 1) return 'לפני שעה';
+        return `לפני ${diffHours} שעות`;
+      }
+      if (diffDays < 30) {
+        // Handle singular/plural for days in Hebrew
+        if (diffDays === 1) return 'אתמול';
+        return `לפני ${diffDays} ימים`;
+      }
+      if (diffMonths < 12) {
+        // Handle singular/plural for months in Hebrew
+        if (diffMonths === 1) return 'לפני חודש';
+        return `לפני ${diffMonths} חודשים`;
+      }
+      // Handle singular/plural for years in Hebrew
+      if (diffYears === 1) return 'לפני שנה';
+      return `לפני ${diffYears} שנים`;
     } else {
       const now = new Date();
       const diffMs = now - dateObj;
@@ -321,11 +360,15 @@ export const formatDate = (date, options = {}) => {
       const diffMinutes = Math.floor(diffSeconds / 60);
       const diffHours = Math.floor(diffMinutes / 60);
       const diffDays = Math.floor(diffHours / 24);
+      const diffMonths = Math.floor(diffDays / 30);
+      const diffYears = Math.floor(diffDays / 365);
       
       if (diffSeconds < 60) return 'just now';
-      if (diffMinutes < 60) return `${diffMinutes}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      if (diffDays < 7) return `${diffDays}d ago`;
+      if (diffMinutes < 60) return diffMinutes === 1 ? '1m ago' : `${diffMinutes}m ago`;
+      if (diffHours < 24) return diffHours === 1 ? '1h ago' : `${diffHours}h ago`;
+      if (diffDays < 30) return diffDays === 1 ? 'yesterday' : `${diffDays}d ago`;
+      if (diffMonths < 12) return diffMonths === 1 ? '1mo ago' : `${diffMonths}mo ago`;
+      return diffYears === 1 ? '1yr ago' : `${diffYears}yr ago`;
     }
   }
   
@@ -333,11 +376,20 @@ export const formatDate = (date, options = {}) => {
   
   if (showDate) {
     try {
-      formattedDate = dateObj.toLocaleDateString(locale, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
+      // For Hebrew, use more natural date formatting
+      if (locale.startsWith('he')) {
+        formattedDate = dateObj.toLocaleDateString(locale, {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+      } else {
+        formattedDate = dateObj.toLocaleDateString(locale, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+      }
     } catch (e) {
       // Fallback if the locale is not supported
       console.warn(`Locale ${locale} not supported for date formatting, falling back to default`);
@@ -367,7 +419,8 @@ export const formatDate = (date, options = {}) => {
     
     // Handle RTL languages differently for combining date and time
     if (locale.startsWith('he') || document.dir === 'rtl') {
-      formattedDate = showDate ? `${timeStr} ,${formattedDate}` : timeStr;
+      // In Hebrew, time comes before date with a comma in between
+      formattedDate = showDate ? `${timeStr}, ${formattedDate}` : timeStr;
     } else {
       formattedDate = showDate ? `${formattedDate}, ${timeStr}` : timeStr;
     }

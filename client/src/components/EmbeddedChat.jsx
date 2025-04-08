@@ -156,6 +156,15 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
       loadingTimeoutRef.current = setTimeout(() => {
         if (isMounted.current) {
           safeSetState(setLoadingTimeout, true);
+          
+          // Check if messagesData might be empty or invalid and fix it
+          safeSetState(setMessagesData, currentMessages => {
+            if (!Array.isArray(currentMessages)) {
+              log.warn("Found invalid messagesData, resetting to empty array");
+              return [];
+            }
+            return currentMessages;
+          });
         }
       }, 5000);
     } else if (!loading) {
@@ -171,6 +180,12 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
         return [message, ...validPrev];
       });
     };
+    
+    // If loading stops but messagesData is invalid, fix it
+    if (!loading && !Array.isArray(messagesData)) {
+      log.warn("Loading stopped but messagesData is invalid. Fixing.");
+      safeSetState(setMessagesData, []);
+    }
     
     // All timeouts go into this array for cleanup
     const timeouts = [];
@@ -205,7 +220,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
             // Try to create an empty message list to recover
             // Use a function to get the latest state
             safeSetState(setMessagesData, currentMessages => {
-              if (Array.isArray(currentMessages) && currentMessages.length === 0) {
+              if (!Array.isArray(currentMessages) || currentMessages.length === 0) {
                 return [{
                   _id: generateUniqueId(),
                   sender: "system",
@@ -256,7 +271,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
       
       log.debug("Cleaned up all timeouts in loading effect");
     };
-  }, [loading, loadingTimeout]);
+  }, [loading, loadingTimeout, messagesData]);
 
   // Handle incoming video calls with improved state handling
   // Define handleEndCall function before using it in useEffect
@@ -441,6 +456,14 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
         log.debug("Prevented state update after unmount in messages effect");
       }
     };
+    
+    // Handle case when loading is finished but hookMessages is null or undefined
+    // This will ensure we show the empty state instead of infinite loading
+    if (!loading && !hookMessages) {
+      log.warn("Loading complete but hookMessages is null or undefined");
+      safeSetState(setMessagesData, []);
+      return;
+    }
     
     // Update local state based on hook state, filtering out duplicates
     if (Array.isArray(hookMessages)) {
@@ -1519,9 +1542,18 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
                 </button>
               </div>
             </div>
-          ) : !messagesData || messagesData.length === 0 ? (
+          ) : (!messagesData || !Array.isArray(messagesData) || messagesData.length === 0) ? (
             <div className={styles.noMessages}>
               <p>No messages yet. Say hello!</p>
+              <div className={styles.noMessagesSubtext}>
+                <button 
+                  onClick={() => refresh()}
+                  className={styles.refreshButton}
+                  aria-label="Refresh messages"
+                >
+                  Refresh
+                </button>
+              </div>
             </div>
           ) : (
             Object.entries(groupMessagesByDate()).map(([date, msgs]) => (

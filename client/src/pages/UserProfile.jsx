@@ -719,7 +719,11 @@ const UserProfile = () => {
                   <FaRegClock className="text-opacity-50" />
                   <span>{t('profile.lastActive', { 
                     date: profileUser.lastActive 
-                      ? formatDate(profileUser.lastActive, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' }) 
+                      ? formatDate(profileUser.lastActive, { 
+                          showTime: false, 
+                          locale: language === 'he' ? 'he-IL' : 'en-US',
+                          formatType: language === 'he' ? 'profile' : '' 
+                        }) 
                       : 'N/A' 
                   })}</span>
                 </div>
@@ -727,7 +731,11 @@ const UserProfile = () => {
                   <FaCalendarAlt className="text-opacity-50" />
                   <span>{t('profile.memberSince', { 
                     date: profileUser.createdAt 
-                      ? formatDate(profileUser.createdAt, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' }) 
+                      ? formatDate(profileUser.createdAt, { 
+                          showTime: false, 
+                          locale: language === 'he' ? 'he-IL' : 'en-US',
+                          formatType: language === 'he' ? 'profile' : '' 
+                        }) 
                       : 'N/A' 
                   })}</span>
                 </div>

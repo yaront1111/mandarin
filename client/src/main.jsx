@@ -21,6 +21,52 @@ import ErrorBoundary from "./components/ErrorBoundary.jsx";
 // Dynamic import of i18n to reduce initial bundle size
 const loadI18n = () => import("./i18n");
 
+// Global API error handler to gracefully handle 502 errors
+const setupGlobalAPIErrorHandler = () => {
+  // Save the original fetch
+  const originalFetch = window.fetch;
+  
+  // Override fetch to add global error handling
+  window.fetch = async function(...args) {
+    try {
+      const response = await originalFetch.apply(this, args);
+      
+      // Handle 502 Bad Gateway errors gracefully (server temporarily unavailable)
+      if (response.status === 502) {
+        console.warn('API 502 error detected - server may be restarting', args[0]);
+        
+        // For stories API, provide an empty response instead of failing
+        if (typeof args[0] === 'string' && args[0].includes('/api/stories')) {
+          console.warn('Returning empty stories array due to 502 error');
+          return new Response(JSON.stringify({ success: true, data: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+      
+      return response;
+    } catch (error) {
+      // Log network errors but don't crash the app
+      console.error('Network request failed:', error, args[0]);
+      
+      // For critical APIs, provide fallback empty responses
+      if (typeof args[0] === 'string') {
+        if (args[0].includes('/api/stories')) {
+          console.warn('Returning empty stories array due to network error');
+          return new Response(JSON.stringify({ success: true, data: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+      
+      // Re-throw for other cases to maintain normal error flow
+      throw error;
+    }
+  };
+};
+
 // Function to load non-critical CSS
 const loadNonCriticalCSS = () => {
   // Create a function to load CSS files in a non-blocking way
@@ -64,8 +110,9 @@ history.pushState = function(state, title, url) {
   webVitals.dispatchRouteChangeComplete();
 };
 
-// Run this immediately to get i18n loading
+// Run these immediately 
 loadI18n();
+setupGlobalAPIErrorHandler();
 
 // Add script for deferred loading of non-critical resources
 window.addEventListener('load', () => {

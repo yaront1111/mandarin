@@ -1,52 +1,20 @@
 // Ultra Simple Service Worker for Flirtss
 // Version that only handles the bare minimum and avoids caching errors
-const CACHE_NAME = 'flirtss-cache-v3';
+const CACHE_NAME = 'flirtss-cache-v4';
 
-// Minimal set of static assets that should definitely exist
-const MINIMAL_ASSETS = [
-  '/index.html',
-  '/manifest.json',
-  '/default-avatar.png'
-];
+// Empty minimal assets list - we'll handle caching individually
+const MINIMAL_ASSETS = [];
 
-// Install event - cache only essential assets
+// Install event - skip caching on install to avoid errors
 self.addEventListener('install', event => {
   self.skipWaiting();
   
   event.waitUntil(
     (async () => {
       try {
-        const cache = await caches.open(CACHE_NAME);
-        console.log('Caching minimal assets');
-        
-        // Cache each asset individually to prevent entire batch from failing
-        for (const url of MINIMAL_ASSETS) {
-          try {
-            const response = await fetch(url);
-            if (response && response.status === 200) {
-              await cache.put(url, response);
-              console.log(`Successfully cached: ${url}`);
-            } else {
-              console.warn(`Skipping cache for ${url}: Invalid response`);
-            }
-          } catch (assetError) {
-            console.warn(`Failed to cache asset ${url}:`, assetError.message);
-            // Continue with next asset
-          }
-        }
-        
-        // Try to cache homepage separately
-        try {
-          const homeResponse = await fetch('/');
-          if (homeResponse && homeResponse.status === 200) {
-            await cache.put('/', homeResponse);
-            console.log('Successfully cached homepage');
-          }
-        } catch (homeError) {
-          console.warn('Could not cache homepage:', homeError.message);
-        }
-        
-        console.log('Minimal caching completed');
+        // Just open the cache but don't try to preload anything
+        await caches.open(CACHE_NAME);
+        console.log('Service worker installed successfully');
       } catch (error) {
         console.error('Service worker installation failed:', error.message);
       }
@@ -84,7 +52,7 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Fetch event - network first with simple fallback
+// Fetch event - network-only policy to prevent caching issues
 self.addEventListener('fetch', event => {
   // Skip cross-origin requests
   if (!event.request.url.startsWith(self.location.origin)) {
@@ -104,7 +72,7 @@ self.addEventListener('fetch', event => {
     return;
   }
   
-  // For fonts, always go to network (avoid caching issues)
+  // Don't handle font requests at all - let the browser handle them
   if (requestUrl.pathname.includes('/fonts/') || 
       requestUrl.pathname.endsWith('.woff2') || 
       requestUrl.pathname.endsWith('.woff') || 
@@ -112,7 +80,7 @@ self.addEventListener('fetch', event => {
     return;
   }
   
-  // For HTML requests or app routes - Network first, cache fallback
+  // For HTML requests or app routes - Network with minimal fallback
   if (requestUrl.pathname === '/' || 
       requestUrl.pathname.endsWith('.html') || 
       !requestUrl.pathname.includes('.')) {
@@ -120,77 +88,61 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       (async () => {
         try {
-          // Try network first
-          const networkResponse = await fetch(event.request);
-          
-          // If network is successful, clone and update cache
-          if (networkResponse && networkResponse.status === 200) {
-            try {
-              const cache = await caches.open(CACHE_NAME);
-              cache.put(event.request, networkResponse.clone());
-            } catch (cacheError) {
-              console.warn('Failed to update cache:', cacheError.message);
-            }
-          }
-          
-          return networkResponse;
+          // Always try network first, don't attempt to cache
+          return await fetch(event.request);
         } catch (networkError) {
-          console.log('Network request failed, falling back to cache');
+          console.log('Network request failed, attempt minimal fallback');
           
           try {
-            // Try to get from cache
-            const cachedResponse = await caches.match(event.request);
-            if (cachedResponse) {
-              return cachedResponse;
+            // Only try to get index.html from cache as a last resort
+            const indexFallback = await caches.match('/index.html');
+            if (indexFallback) {
+              return indexFallback;
             }
-            
-            // If no direct match, try the index as fallback for SPA
-            return await caches.match('/index.html');
           } catch (cacheError) {
-            console.error('Cache fallback failed:', cacheError.message);
-            // Return a simple offline page
-            return new Response('You are offline and the app failed to load from cache.', {
-              status: 503,
-              headers: { 'Content-Type': 'text/plain' }
-            });
+            // Ignore cache errors
           }
+          
+          // Return a simple offline message
+          return new Response('You are offline. Please check your connection.', {
+            status: 503,
+            headers: { 'Content-Type': 'text/plain' }
+          });
         }
       })()
     );
     return;
   }
   
-  // For other assets - simple fetch with offline fallback
-  event.respondWith(
-    (async () => {
-      try {
-        const response = await fetch(event.request);
-        return response;
-      } catch (error) {
-        console.log('Network fetch failed, trying cache:', error.message);
-        
+  // For all other assets - network-only strategy to avoid caching issues
+  // Only fall back to cache for critical assets
+  const isCriticalAsset = (
+    requestUrl.pathname === '/manifest.json' || 
+    requestUrl.pathname === '/default-avatar.png' ||
+    requestUrl.pathname.includes('logo')
+  );
+  
+  if (isCriticalAsset) {
+    event.respondWith(
+      (async () => {
         try {
+          return await fetch(event.request);
+        } catch (error) {
           const cachedResponse = await caches.match(event.request);
           if (cachedResponse) {
             return cachedResponse;
           }
-        } catch (cacheError) {
-          console.error('Cache fetch also failed:', cacheError.message);
+          
+          // Let the browser handle the failure for non-critical assets
+          return new Response('Resource unavailable', { 
+            status: 503, 
+            headers: { 'Content-Type': 'text/plain' } 
+          });
         }
-        
-        // If both network and cache fail for images, return a placeholder
-        if (requestUrl.pathname.match(/\.(jpg|jpeg|png|gif|webp|svg)$/)) {
-          return caches.match('/default-avatar.png');
-        }
-        
-        // For other resources, return a generic response
-        return new Response('Resource unavailable offline', {
-          status: 503,
-          headers: { 'Content-Type': 'text/plain' }
-        });
-      }
-    })()
-  );
+      })()
+    );
+  }
+  // For non-critical assets, let the browser handle them normally
 });
 
 // Push notification with better error handling
