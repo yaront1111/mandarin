@@ -667,6 +667,16 @@ router.post(
           message: "Test email notification sent successfully",
           details: `Email sent to ${user.email}`,
         });
+      } else if (result.mock) {
+        // This means the email service is in mock mode (no API key)
+        logger.warn(`Test email to ${user.email} not sent - email service in mock mode`);
+        
+        res.status(200).json({
+          success: true,
+          mock: true,
+          message: "Email service is in mock mode due to missing API key",
+          details: "No email was actually sent, but the server is functioning properly. Configure RESEND_API_KEY to enable email sending."
+        });
       } else {
         throw new Error(result.error || "Unknown error sending test email");
       }

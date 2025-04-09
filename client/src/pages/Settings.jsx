@@ -666,7 +666,14 @@ const Settings = () => {
                         const data = await response.json();
                         
                         if (data.success) {
-                          toast.success("Test email sent successfully! Please check your inbox.");
+                          if (data.mock) {
+                            // Email service is in mock mode
+                            toast.warning(
+                              "Email service is in mock mode. No email was sent, but the server is functioning properly. Configure RESEND_API_KEY to enable email sending."
+                            );
+                          } else {
+                            toast.success("Test email sent successfully! Please check your inbox.");
+                          }
                         } else {
                           toast.error(`Failed to send test email: ${data.error}`);
                         }
