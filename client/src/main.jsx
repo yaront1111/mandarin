@@ -168,6 +168,37 @@ history.pushState = function(state, title, url) {
 setupGlobalAPIErrorHandler();
 setupPhotoUrlEnhancement();
 
+// Add persistent state management for forms in local storage
+const setupFormPersistence = () => {
+  window.saveFormState = (formKey, data) => {
+    try {
+      localStorage.setItem(`form_${formKey}`, JSON.stringify(data));
+    } catch (err) {
+      console.error('Error saving form state:', err);
+    }
+  };
+  
+  window.loadFormState = (formKey) => {
+    try {
+      const savedState = localStorage.getItem(`form_${formKey}`);
+      return savedState ? JSON.parse(savedState) : null;
+    } catch (err) {
+      console.error('Error loading form state:', err);
+      return null;
+    }
+  };
+  
+  window.clearFormState = (formKey) => {
+    try {
+      localStorage.removeItem(`form_${formKey}`);
+    } catch (err) {
+      console.error('Error clearing form state:', err);
+    }
+  };
+};
+
+setupFormPersistence();
+
 // Add script for deferred loading of non-critical resources
 window.addEventListener('load', () => {
   // Defer non-critical CSS loading

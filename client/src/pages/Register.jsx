@@ -63,19 +63,7 @@ const Register = () => {
   const { isRTL, changeLanguage } = useLanguage()
   const { register, error, isAuthenticated } = useAuth()
   
-  // Set Hebrew language directly at page load
-  useEffect(() => {
-    document.documentElement.setAttribute('lang', 'he');
-    document.documentElement.setAttribute('dir', 'rtl');
-    
-    try {
-      localStorage.setItem('i18nextLng', 'he');
-      i18n.changeLanguage('he');
-      if (changeLanguage) changeLanguage('he');
-    } catch (err) {
-      console.error("Failed to set Hebrew language:", err);
-    }
-  }, [])
+  // Remove the force Hebrew effect that might be causing the refresh issue
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -638,6 +626,31 @@ const Register = () => {
     return errors
   }, [formData])
 
+  // Save current form state to localStorage whenever it changes
+  useEffect(() => {
+    if (window.saveFormState) {
+      window.saveFormState('register', formData);
+    }
+  }, [formData]);
+  
+  // Load saved form state on initial component mount
+  useEffect(() => {
+    if (window.loadFormState) {
+      const savedData = window.loadFormState('register');
+      if (savedData) {
+        setFormData(prevState => ({
+          ...prevState,
+          ...savedData
+        }));
+        
+        // If we have current step info saved
+        if (savedData.currentStep) {
+          setCurrentStep(savedData.currentStep);
+        }
+      }
+    }
+  }, []);
+  
   // Handle form submission
   const handleSubmit = async (e) => {
     e?.preventDefault()
