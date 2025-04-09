@@ -12,13 +12,16 @@ import logger from '../logger.js';
 // --- Resend Configuration ---
 // Initialize Resend with your API key from environment variables
 // Ensure RESEND_API_KEY is set in your .env file
-const resend = new Resend(config.RESEND_API_KEY);
-
-// Log whether Resend API key is available
+let resend;
+// Use a dummy API key if real one is missing to prevent initialization errors
+// This will allow the server to start even without an email configuration
 if (!config.RESEND_API_KEY) {
-  logger.error('RESEND_API_KEY is not defined in config');
+  logger.warn('RESEND_API_KEY is not defined in config. Using dummy key to prevent server crash. Email functionality will be disabled.');
+  // Using a placeholder value to allow Resend to initialize without crashing
+  resend = new Resend('dummy_key_for_initialization');
 } else {
   logger.info('RESEND_API_KEY is configured');
+  resend = new Resend(config.RESEND_API_KEY);
 }
 
 // Default sender address - MUST be from your verified domain in Resend (flirtss.com)
@@ -37,10 +40,11 @@ const DEFAULT_FROM_ADDRESS = `"${config.APP_NAME || 'Flirtss'}" <${config.EMAIL_
  * @returns {Promise<object|null>} Resend API response data { id: '...' } or null on error.
  */
 export const sendEmailNotification = async ({ to, subject, text, html, from = DEFAULT_FROM_ADDRESS }) => {
-  // Check if Resend API key is configured
+  // Check if Resend API key is configured (a real one, not our dummy key)
   if (!config.RESEND_API_KEY) { 
-    logger.error('Resend API Key is not configured. Check RESEND_API_KEY in .env and config.js');
-    return null;
+    logger.warn('Resend API Key is not configured. Email to recipient will not be sent. Check RESEND_API_KEY in .env and config.js');
+    // Return a mock success object so application flows can continue
+    return { id: 'dummy-email-id', mock: true };
   }
 
   // Basic validation
@@ -98,7 +102,7 @@ export const sendEmailNotification = async ({ to, subject, text, html, from = DE
 
     // Log success and return the response data (contains message ID)
     logger.info(`Email sent successfully via Resend to ${to}. Message ID: ${data?.id}`);
-    return data; // e.g., { id: '...' }
+    return data; // e.g., { id: '...' } or { id: 'dummy-email-id', mock: true }
 
   } catch (err) {
     // Catch unexpected errors during the API call or processing
@@ -752,6 +756,15 @@ export const sendTestNotificationEmail = async ({ email, nickname, settings }) =
     });
 
     if (result) {
+      if (result.mock) {
+        logger.warn(`Test email to ${email} skipped - using mock email mode. RESEND_API_KEY not configured.`);
+        return {
+          success: false,
+          messageId: result.id,
+          mock: true,
+          error: "Email service is in mock mode. Configure RESEND_API_KEY to enable real email sending."
+        };
+      }
       logger.info(`Test email sent successfully to ${email}, message ID: ${result.id}`);
       return {
         success: true,
@@ -792,6 +805,15 @@ export const testResendConnection = async (testEmail) => {
         html: `<p>This is a test email sent using <strong>Resend</strong> from ${config.APP_URL}.</p><p>Time: ${new Date().toISOString()}</p>`,
     });
     if (result) {
+        if (result.mock) {
+            logger.warn(`Resend test skipped - using mock email mode. RESEND_API_KEY not configured.`);
+            return { 
+                success: false, 
+                messageId: result.id,
+                mock: true,
+                error: "Email service is in mock mode. Configure RESEND_API_KEY to enable real email sending." 
+            };
+        }
         logger.info(`Resend test successful. Message ID: ${result.id}`);
         return { success: true, messageId: result.id };
     } else {
