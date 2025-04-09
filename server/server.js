@@ -578,10 +578,12 @@ const initializeApp = async () => {
     // Connect to Database
     await connectDB();
 
-    // Start HTTP Server
+    // Start HTTP Server - explicitly listen on all interfaces (0.0.0.0)
     const PORT = process.env.PORT || config.PORT || 5000;
-    server.listen(PORT, async () => {
-      logger.info(`Server running in ${process.env.NODE_ENV || "development"} mode on port ${PORT}`);
+    const HOST = process.env.HOST || '0.0.0.0'; // Listen on all interfaces to ensure Nginx can connect
+    server.listen(PORT, HOST, async () => {
+      logger.info(`Server running in ${process.env.NODE_ENV || "development"} mode on ${HOST}:${PORT}`);
+      logger.info(`Server is accessible via: http://localhost:${PORT} and http://${HOST}:${PORT}`);
 
       // Initialize Socket.IO (after server is listening)
       try {

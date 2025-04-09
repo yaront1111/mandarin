@@ -67,7 +67,7 @@ const turnOns = [
   'Compassion', 'Playfulness', 'Generosity', 'Independence', 'Reliability'
 ];
 
-// Make sure these match exactly with the enum values in User.js model (line 159)
+// Make sure these match exactly with the enum values in User.js model
 const maritalStatusOptions = [
   "Single", "Married", "Divorced", "Separated", "Widowed",
   "In a relationship", "It's complicated", "Open relationship", "Polyamorous"
@@ -207,7 +207,7 @@ const seedDatabase = async () => {
         const isMale = Math.random() > 0.5;
         const isCouple = Math.random() > 0.9; // 10% chance to be a couple
         
-        // Decide user type first to guide other selections - must match enum in User.js (line 127)
+        // Decide user type first to guide other selections - must match enum in User.js
         const iAm = isCouple ? "couple" : (isMale ? "man" : "woman");
         
         // Generate appropriate name based on user type
@@ -229,23 +229,13 @@ const seedDatabase = async () => {
         // Username 
         const username = nickname.toLowerCase().replace(/\s+/g, '') + getRandomInt(1, 999);
         
-        // Generate appropriate looking for options - must match validation in User.js (line 136)
-        // Valid options are ONLY: "women", "men", "couples" 
-        let lookingFor;
+        // Generate valid lookingFor options - MUST match validation in User.js
+        let lookingFor = [];
         
-        if (iAm === 'couple') {
-          lookingFor = Math.random() > 0.5 ? 
-            ['women', 'men'] : 
-            Math.random() > 0.5 ? ['women'] : ['couples'];
-        } else if (iAm === 'woman') {
-          lookingFor = Math.random() > 0.3 ? 
-            ['men'] : 
-            Math.random() > 0.5 ? ['men', 'women'] : ['men', 'couples'];
-        } else { // man
-          lookingFor = Math.random() > 0.2 ? 
-            ['women'] : 
-            Math.random() > 0.5 ? ['women', 'couples'] : ['men', 'women'];
-        }
+        // Add 1 to 3 valid options from ["women", "men", "couples"]
+        const validOptions = ["women", "men", "couples"];
+        const numOptions = getRandomInt(1, 3);
+        lookingFor = getRandomUniqueElements(validOptions, numOptions);
         
         // Age based on user type
         let age;
@@ -291,18 +281,8 @@ const seedDatabase = async () => {
         const turnOnsCount = getRandomInt(2, 4);
         const userTurnOns = getRandomUniqueElements(turnOns, turnOnsCount);
         
-        // Select marital status - must match enum in User.js (line 159)
+        // Select marital status from valid options only
         let maritalStatus = getRandomElement(maritalStatusOptions);
-        
-        // If maritalStatus ends up being invalid, default to a known valid one
-        const validMaritalStatuses = [
-          "Single", "Married", "Divorced", "Separated", "Widowed",
-          "In a relationship", "It's complicated", "Open relationship", "Polyamorous"
-        ];
-        
-        if (!validMaritalStatuses.includes(maritalStatus)) {
-          maritalStatus = "Single"; // Default to a safe value
-        }
         
         // Build user details object
         const userDetails = {
