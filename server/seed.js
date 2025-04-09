@@ -1,6 +1,6 @@
-// seed.js - Basic version for local development
+// seed.js - Enhanced for development and testing
 import mongoose from 'mongoose';
-import bcrypt from 'bcryptjs'; // Changed from bcrypt to bcryptjs to match model
+import bcrypt from 'bcryptjs'; // Using bcryptjs for compatibility
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -8,9 +8,9 @@ import process from 'process';
 
 // --- Configuration ---
 const MONGO_URI = 'mongodb://localhost:27017/mandarin';
-const NUM_USERS = 20; // Fewer users for local development
+const NUM_USERS = 20; // Fewer users for development
 const SALT_ROUNDS = 12;
-const ADMIN_EMAIL = 'yaront111@gmail.com'; // Updated to match production
+const ADMIN_EMAIL = 'yaront111@gmail.com';
 
 // Check for --clean flag to completely clean the database
 const CLEAN_DATABASE = process.argv.includes('--clean');
@@ -30,6 +30,8 @@ const getRandomUniqueElements = (arr, count) => {
 };
 
 // --- Basic Data Arrays ---
+
+// Names
 const firstNames = [
   // Hebrew names
   'אורי', 'שירה', 'נועם', 'מיכל', 'עידן', 'דניאל', 'יעל', 'איתי', 'רונית', 'אמיר',
@@ -38,56 +40,76 @@ const firstNames = [
   'James', 'John', 'Robert', 'Michael', 'David', 'Mary', 'Sarah', 'Emma', 'Olivia', 'Emily'
 ];
 
+// Nicknames
 const nicknames = [
-  'Explorer', 'Dreamer', 'Traveler', 'Adventurer', 'Creator', 'Stargazer', 'Sunshine', 'Moonlight',
-  'Wanderer', 'Seeker', 'FunLover', 'NightOwl', 'DayDreamer', 'Voyager', 'Nomad', 'FreeSoul', 'OpenMind'
+  'Explorer', 'Dreamer', 'Traveler', 'Adventurer', 'Creator', 'Stargazer', 'Sunshine',
+  'Wanderer', 'Seeker', 'FunLover', 'NightOwl', 'DayDreamer', 'Voyager', 'Nomad', 'FreeSoul'
 ];
 
+// Israeli locations
 const locations = [
   'תל אביב', 'תל אביב צפון', 'רמת אביב', 'פלורנטין', 'רוטשילד', 'הרצליה פיתוח', 'רמת השרון',
   'רעננה', 'כפר סבא', 'נתניה', 'ראשון לציון', 'אשדוד', 'אשקלון', 'מודיעין', 'ירושלים',
   'חיפה', 'קריות', 'באר שבע', 'אילת', 'הוד השרון', 'פתח תקווה', 'רמת גן', 'בת ים'
 ];
 
+// Interests with both Hebrew and English options
 const interests = [
-  'Reading', 'Traveling', 'Cooking', 'Photography', 'Hiking', 'Movies', 'Music', 'Dancing',
-  'Painting', 'Writing', 'Yoga', 'Meditation', 'Swimming', 'Running', 'Cycling', 'Gaming',
-  'Gardening', 'Fishing', 'Camping', 'Singing', 'Playing Guitar', 'Chess', 'Tennis', 'Basketball'
+  // Hebrew interests
+  "טיולים", "קריאה", "בישול", "צילום", "מוזיקה", "סרטים", "ספורט", "ריקוד",
+  "אומנות", "כתיבה", "יוגה", "מדיטציה", "שחייה", "ריצה", "אופניים",
+  // English interests
+  "Travel", "Reading", "Cooking", "Photography", "Music", "Movies", "Sports", "Dancing",
+  "Art", "Writing", "Yoga", "Meditation", "Swimming", "Running", "Cycling"
 ];
 
+// "Into" tags
 const intoTags = [
+  // Hebrew tags
+  'שיחות עמוקות', 'הרפתקאות', 'ערבי סרטים', 'ימי חוף', 'כושר',
+  'חוויות קולינריות', 'גלריות אמנות', 'מוזיקה חיה',
+  // English tags
   'Deep Conversations', 'Spontaneous Adventures', 'Movie Nights', 'Beach Days', 'Fitness',
-  'Foodie Experiences', 'Art Galleries', 'Live Music', 'Theater', 'Outdoor Activities', 
-  'Weekend Getaways', 'Coffee Dates', 'Wine Tasting', 'Concerts', 'Festivals'
+  'Food Experiences', 'Art Galleries', 'Live Music', 'Theater', 'Outdoor Activities'
 ];
 
+// Turn-ons
 const turnOns = [
-  'Intelligence', 'Sense of Humor', 'Confidence', 'Kindness', 'Ambition', 'Passion',
-  'Honesty', 'Creativity', 'Adventure', 'Openness', 'Good Listener', 'Thoughtfulness',
-  'Compassion', 'Playfulness', 'Generosity', 'Independence', 'Reliability'
+  // Hebrew turn-ons
+  'אינטליגנציה', 'חוש הומור', 'ביטחון', 'אדיבות', 'שאפתנות', 'תשוקה',
+  'כנות', 'יצירתיות', 'הרפתקנות', 'פתיחות',
+  // English turn-ons
+  'Intelligence', 'Humor', 'Confidence', 'Kindness', 'Ambition', 'Passion',
+  'Honesty', 'Creativity', 'Adventure', 'Openness'
 ];
 
-// Make sure these match exactly with the enum values in User.js model
-const maritalStatusOptions = [
+// IMPORTANT: Must match the enum values in User.js model schema
+const VALID_IAM_VALUES = ["woman", "man", "couple"];
+const VALID_LOOKING_FOR = ["women", "men", "couples"];
+const VALID_MARITAL_STATUS = [
   "Single", "Married", "Divorced", "Separated", "Widowed",
   "In a relationship", "It's complicated", "Open relationship", "Polyamorous"
 ];
 
 // --- Bio Templates ---
 const bioTemplates = [
-  // English templates
-  (details) => `Hi, I'm ${details.age} years old and from ${details.location}. I enjoy ${details.interests[0] || 'traveling'} and ${details.interests[1] || 'reading'}. Looking to connect with like-minded people.`,
+  // English templates for men
+  (details) => `${details.age} year old guy living in ${details.location}. I enjoy ${details.interests[0] || 'traveling'} and ${details.interests[1] || 'music'}. Looking to connect with interesting people.`,
   
-  (details) => `${details.maritalStatus || 'Single'} and enjoying life in ${details.location}. Passionate about ${details.interests[0] || 'music'} and ${details.interests[1] || 'art'}. Let's get to know each other!`,
+  // English templates for women
+  (details) => `${details.age} year old woman from ${details.location}. Passionate about ${details.interests[0] || 'art'} and ${details.interests[1] || 'yoga'}. Looking to meet new people.`,
   
-  (details) => `${details.age} year old ${details.gender || 'person'} living in ${details.location}. I'm into ${details.interests[0] || 'fitness'} and ${details.interests[1] || 'cooking'}. Looking forward to making connections here.`,
+  // English templates for couples
+  (details) => `Couple in ${details.location}, both in our ${details.age}s. We enjoy ${details.interests[0] || 'traveling'} and ${details.interests[1] || 'music'} together. Looking to make new connections.`,
   
-  // Hebrew templates
-  (details) => `אני בן/בת ${details.age} מ${details.location}, אוהב/ת ${details.interests[0] || 'טיולים'} ו${details.interests[1] || 'מוזיקה'}. מחפש/ת אנשים מעניינים לשיחה.`,
+  // Hebrew templates for men
+  (details) => `בן ${details.age}, גר ב${details.location}. אוהב ${details.interests[0] || 'טיולים'} ו${details.interests[1] || 'מוזיקה'}. מחפש קשר עם מישהי מעניינת.`,
   
-  (details) => `${details.maritalStatus || 'Single'} מ${details.location}, נהנה/ית מ${details.interests[0] || 'ספורט'} ו${details.interests[1] || 'בישול'}. בואו נכיר!`,
+  // Hebrew templates for women
+  (details) => `בת ${details.age}, גרה ב${details.location}. אוהבת ${details.interests[0] || 'אמנות'} ו${details.interests[1] || 'ספורט'}. מחפשת להכיר אנשים חדשים.`,
   
-  (details) => `בן/בת ${details.age}, גר/ה ב${details.location}. אוהב/ת ${details.interests[0] || 'קולנוע'} ו${details.interests[1] || 'מוזיקה'}. מחפש/ת קשרים משמעותיים.`
+  // Hebrew templates for couples
+  (details) => `זוג בשנות ה${details.age}, מ${details.location}. אוהבים ${details.interests[0] || 'טיולים'} ו${details.interests[1] || 'בישול'}. מחפשים להכיר אנשים חדשים.`
 ];
 
 // --- Clean Database Function ---
@@ -128,6 +150,21 @@ const cleanDatabase = async () => {
   logger.info(`Re-created admin user ${ADMIN_EMAIL}`);
 
   return true;
+};
+
+// --- Generate unique couple name ---
+const generateCoupleName = () => {
+  const name1 = getRandomElement(firstNames);
+  let name2 = getRandomElement(firstNames);
+  
+  // Ensure different names
+  while (name1 === name2) {
+    name2 = getRandomElement(firstNames);
+  }
+
+  // Use Hebrew connector or English "&" randomly
+  const connector = Math.random() < 0.5 ? " ו" : " & ";
+  return `${name1}${connector}${name2}`;
 };
 
 // --- Main Seeding Function ---
@@ -197,137 +234,152 @@ const seedDatabase = async () => {
       }
     }
 
-    logger.info(`Will create ${usersToCreate} basic development users.`);
+    logger.info(`Will create ${usersToCreate} additional users.`);
 
-    // --- Seed Users with Basic Development Data ---
+    // Get existing users after possible deletion
+    const existingUsers = await User.find({});
+    const createdUserIds = existingUsers.map(user => user._id.toString());
+    let createdUsers = [...existingUsers];
+
+    // --- 1. Seed Users with Development Profiles ---
     if (usersToCreate > 0) {
-      logger.info(`Seeding ${usersToCreate} users with basic profiles...`);
+      logger.info(`Seeding ${usersToCreate} users with development profiles...`);
       for (let i = 0; i < usersToCreate; i++) {
-        // Generate user data
-        const isMale = Math.random() > 0.5;
-        const isCouple = Math.random() > 0.9; // 10% chance to be a couple
-        
-        // Decide user type first to guide other selections - must match enum in User.js
-        const iAm = isCouple ? "couple" : (isMale ? "man" : "woman");
-        
-        // Generate appropriate name based on user type
-        let nickname;
-        if (isCouple) {
-          const name1 = getRandomElement(firstNames);
-          let name2 = getRandomElement(firstNames);
-          while (name1 === name2) {
-            name2 = getRandomElement(firstNames);
-          }
-          nickname = `${name1} & ${name2}`;
-        } else {
-          nickname = getRandomElement(firstNames);
-          if (Math.random() > 0.5) {
-            nickname = `${nickname} ${Math.random() > 0.5 ? getRandomElement(nicknames) : ""}`;
-          }
-        }
-        
-        // Username 
-        const username = nickname.toLowerCase().replace(/\s+/g, '') + getRandomInt(1, 999);
-        
-        // Generate valid lookingFor options - MUST match validation in User.js
-        let lookingFor = [];
-        
-        // Add 1 to 3 valid options from ["women", "men", "couples"]
-        const validOptions = ["women", "men", "couples"];
-        const numOptions = getRandomInt(1, 3);
-        lookingFor = getRandomUniqueElements(validOptions, numOptions);
-        
-        // Age based on user type
-        let age;
-        if (iAm === 'couple') {
-          age = getRandomInt(25, 45);
-        } else if (iAm === 'woman') {
-          age = getRandomInt(22, 40);
-        } else { // man
-          age = getRandomInt(24, 48);
-        }
-        
-        // Select appropriate account tier
-        let accountTier;
-        if (iAm === 'woman') {
-          accountTier = 'FEMALE';
-        } else if (iAm === 'couple') {
-          accountTier = 'COUPLE';
-        } else { // man
-          accountTier = Math.random() < 0.3 ? 'PAID' : 'FREE';
-        }
-        
-        // Select gender based on iAm
-        let gender;
-        if (iAm === 'woman') {
-          gender = 'female';
-        } else if (iAm === 'man') {
-          gender = 'male';
-        } else { // couple
-          gender = Math.random() > 0.5 ? 'male' : 'female'; // Represent primary account holder
-        }
-        
-        // Select interest count
-        const interestCount = getRandomInt(2, 4);
-        
-        // Select non-duplicate interests
-        const userInterests = getRandomUniqueElements(interests, interestCount);
-        
-        // Select non-duplicate into tags
-        const intoTagsCount = getRandomInt(2, 4);
-        const userIntoTags = getRandomUniqueElements(intoTags, intoTagsCount);
-        
-        // Select non-duplicate turn-ons
-        const turnOnsCount = getRandomInt(2, 4);
-        const userTurnOns = getRandomUniqueElements(turnOns, turnOnsCount);
-        
-        // Select marital status from valid options only
-        let maritalStatus = getRandomElement(maritalStatusOptions);
-        
-        // Build user details object
-        const userDetails = {
-          age,
-          gender,
-          location: getRandomElement(locations),
-          interests: userInterests,
-          iAm,
-          lookingFor,
-          intoTags: userIntoTags,
-          turnOns: userTurnOns,
-          maritalStatus,
-          seedGenerated: true // Mark as generated by seed for future reference
-        };
-        
-        // Select bio template
-        const bioTemplate = getRandomElement(bioTemplates);
-        userDetails.bio = bioTemplate(userDetails);
-        
-        // Create the final user object
-        const plainPassword = 'password123';
-        const hashedPassword = await bcrypt.hash(plainPassword, SALT_ROUNDS);
-        
-        const userData = {
-          nickname,
-          username,
-          email: `${username}@example.com`,
-          password: hashedPassword,
-          accountTier,
-          details: userDetails,
-          isOnline: Math.random() < 0.3, // 30% chance to be online
-          lastActive: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 7)), // Within last week
-          isVerified: true,
-          active: true,
-        };
-        
         try {
-          const newUser = new User(userData);
-          await newUser.save();
+          // Decide user type first to guide other selections
+          // IMPORTANT: Must use valid enum values from User model
+          const iAm = getRandomElement(VALID_IAM_VALUES);
+
+          // Generate appropriate name based on user type
+          let nickname;
+          if (iAm === 'couple') {
+            nickname = generateCoupleName();
+          } else if (iAm === 'woman') {
+            nickname = getRandomElement(firstNames);
+            // Add a last name sometimes
+            if (Math.random() > 0.7) {
+              nickname = `${nickname} ${getRandomElement(['Cohen', 'Levy', 'Dahan', 'Peretz'])}`;
+            }
+          } else { // man
+            nickname = getRandomElement(firstNames);
+            // Add a last name sometimes
+            if (Math.random() > 0.7) {
+              nickname = `${nickname} ${getRandomElement(['Cohen', 'Levy', 'Dahan', 'Peretz'])}`;
+            }
+          }
+
+          // Ensure nickname is at least 3 characters (required by schema)
+          if (nickname.length < 3) {
+            nickname += " " + getRandomElement(nicknames);
+          }
+
+          // Generate username from nickname
+          const username = nickname.toLowerCase().replace(/\s+/g, '') + getRandomInt(1, 999);
+
+          // Generate appropriate looking for options - CRITICAL: use VALID_LOOKING_FOR array
+          const lookingForCount = getRandomInt(1, 3);
+          const lookingFor = getRandomUniqueElements(VALID_LOOKING_FOR, lookingForCount);
           
-          if ((i + 1) % 10 === 0) {
+          // Age based on user type
+          let age;
+          if (iAm === 'couple') {
+            age = getRandomInt(25, 45);
+          } else if (iAm === 'woman') {
+            age = getRandomInt(22, 40);
+          } else { // man
+            age = getRandomInt(24, 48);
+          }
+
+          // Select appropriate account tier
+          let accountTier;
+          if (iAm === 'woman') {
+            accountTier = 'FEMALE';
+          } else if (iAm === 'couple') {
+            accountTier = 'COUPLE';
+          } else { // man
+            accountTier = Math.random() < 0.3 ? 'PAID' : 'FREE';
+          }
+
+          // Select gender based on iAm for mongoDB model (not display)
+          let gender;
+          if (iAm === 'woman') {
+            gender = 'female';
+          } else if (iAm === 'man') {
+            gender = 'male';
+          } else { // couple
+            gender = Math.random() > 0.5 ? 'male' : 'female'; // Primary account holder
+          }
+
+          // Select interest count
+          const interestCount = getRandomInt(2, 4);
+          
+          // Select non-duplicate interests
+          const userInterests = getRandomUniqueElements(interests, interestCount);
+          
+          // Select non-duplicate into tags
+          const intoTagsCount = getRandomInt(2, 4);
+          const userIntoTags = getRandomUniqueElements(intoTags, intoTagsCount);
+          
+          // Select non-duplicate turn-ons
+          const turnOnsCount = getRandomInt(2, 4);
+          const userTurnOns = getRandomUniqueElements(turnOns, turnOnsCount);
+          
+          // IMPORTANT: Select marital status from VALID_MARITAL_STATUS only
+          const maritalStatus = getRandomElement(VALID_MARITAL_STATUS);
+          
+          // Build user details object
+          const userDetails = {
+            age,
+            gender,
+            location: getRandomElement(locations),
+            interests: userInterests,
+            iAm, // Using valid enum value
+            lookingFor, // Using valid enum values array
+            intoTags: userIntoTags,
+            turnOns: userTurnOns,
+            maritalStatus, // Using valid enum value
+            seedGenerated: true // Mark as generated by seed
+          };
+          
+          // Select bio template based on iAm
+          let bioTemplate;
+          if (iAm === 'man') {
+            bioTemplate = Math.random() < 0.5 ? bioTemplates[0] : bioTemplates[3];
+          } else if (iAm === 'woman') {
+            bioTemplate = Math.random() < 0.5 ? bioTemplates[1] : bioTemplates[4];
+          } else { // couple
+            bioTemplate = Math.random() < 0.5 ? bioTemplates[2] : bioTemplates[5];
+          }
+          
+          userDetails.bio = bioTemplate(userDetails);
+          
+          // Create the final user object
+          const plainPassword = 'password123';
+          const hashedPassword = await bcrypt.hash(plainPassword, SALT_ROUNDS);
+          
+          const userData = {
+            nickname,
+            username,
+            email: `${username}@example.com`,
+            password: hashedPassword,
+            accountTier,
+            details: userDetails,
+            isOnline: Math.random() < 0.3, // 30% chance to be online
+            lastActive: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 7)), // Within last week
+            isVerified: true,
+            active: true,
+          };
+          
+          const newUser = new User(userData);
+          const savedUser = await newUser.save();
+          createdUserIds.push(savedUser._id.toString());
+          createdUsers.push(savedUser);
+          
+          if ((i + 1) % 5 === 0) {
             logger.info(`Created ${i + 1} users so far...`);
           }
         } catch (error) {
-          logger.error(`Error creating user ${nickname}: ${error.message}. Skipping user.`);
+          logger.error(`Error creating user: ${error.message}. Skipping user.`);
           if (error.errors) {
             Object.keys(error.errors).forEach(key => {
               logger.error(`Validation Error (${key}): ${error.errors[key].message}`);
@@ -336,68 +388,60 @@ const seedDatabase = async () => {
         }
       }
       
-      logger.info(`Successfully created development users.`);
+      logger.info(`Successfully created ${createdUsers.length - existingUsers.length} additional users.`);
     }
 
-    // --- Add Likes Between Users ---
-    if (usersToCreate > 0) {
-      logger.info('Seeding likes between users...');
+    // --- 2. Seed Likes Between Users ---
+    logger.info('Seeding likes between users...');
+    
+    if (createdUserIds.length >= 2) {
+      // Set number of likes to create based on user count
+      const NUM_LIKES_TO_SEED = Math.min(40, createdUserIds.length * 2);
       
-      // Get all users
-      const allUsers = await User.find({});
-      const userIds = allUsers.map(user => user._id.toString());
-      
-      // Make sure we have enough users to create likes
-      if (userIds.length >= 2) {
-        const NUM_LIKES_TO_SEED = Math.min(30, userIds.length * 2);
+      for (let i = 0; i < NUM_LIKES_TO_SEED; i++) {
+        // Get random user IDs
+        let senderId = getRandomElement(createdUserIds);
+        let recipientId = getRandomElement(createdUserIds);
         
-        for (let i = 0; i < NUM_LIKES_TO_SEED; i++) {
-          // Get random user IDs
-          let fromUserId = getRandomElement(userIds);
-          let toUserId = getRandomElement(userIds);
-          
-          // Ensure we're not liking ourselves
-          while (fromUserId === toUserId) {
-            toUserId = getRandomElement(userIds);
-          }
-          
-          try {
-            // Create like with possibility of it being mutual
-            const isMutual = Math.random() < 0.5;
-            
-            const like = new Like({
-              fromUser: fromUserId,
-              toUser: toUserId,
-              createdAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 48)),
-              status: isMutual ? 'mutual' : 'pending'
-            });
-            
-            await like.save();
-            
-            // If mutual, create the reciprocal like
-            if (isMutual) {
-              const reciprocalLike = new Like({
-                fromUser: toUserId,
-                toUser: fromUserId,
-                createdAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24)),
-                status: 'mutual'
-              });
-              
-              await reciprocalLike.save();
-              i++; // Count this as another seeded like
-            }
-          } catch (error) {
-            // If it's a duplicate key error, just continue
-            if (error.code !== 11000) {
-              logger.error(`Error creating like: ${error.message}`);
-            }
-          }
+        // Ensure we're not liking ourselves
+        while (senderId === recipientId) {
+          recipientId = getRandomElement(createdUserIds);
         }
         
-        logger.info(`Created ${NUM_LIKES_TO_SEED} likes between users`);
-      } else {
-        logger.warn('Not enough users to seed likes');
+        try {
+          // Create like with possibility of it being mutual
+          const isMutual = Math.random() < 0.5;
+          
+          const like = new Like({
+            sender: senderId,
+            recipient: recipientId,
+            createdAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 48))
+          });
+          
+          await like.save();
+          
+          // If mutual, create the reciprocal like
+          if (isMutual) {
+            const reciprocalLike = new Like({
+              sender: recipientId,
+              recipient: senderId,
+              createdAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24))
+            });
+            
+            await reciprocalLike.save();
+            i++; // Count this as another seeded like
+          }
+        } catch (error) {
+          // If it's a duplicate key error, just continue
+          if (error.code !== 11000) {
+            logger.error(`Error creating like: ${error.message}`);
+          }
+        }
       }
+      
+      logger.info(`Created approximately ${NUM_LIKES_TO_SEED} likes between users`);
+    } else {
+      logger.warn('Not enough users to seed likes');
     }
 
     logger.info('Development database seeding completed successfully!');
