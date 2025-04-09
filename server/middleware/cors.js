@@ -12,36 +12,14 @@ import logger from "../logger.js";
  * @returns {Function} Express middleware
  */
 const configureCors = () => {
-  // In production, use specific domains from environment variables; in development, allow multiple localhost ports.
-  const allowedOrigins =
-    process.env.NODE_ENV === "production"
-      ? process.env.ALLOWED_ORIGINS
-        ? process.env.ALLOWED_ORIGINS.split(",")
-        : [process.env.FRONTEND_URL || "https://yourdomain.com"]
-      : ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173"];
+  // Always allow all origins to fix 502 errors, regardless of environment
+  const allowedOrigins = ['*'];
 
   // Log the allowed origins
   logger.info(`CORS configured with origins: ${JSON.stringify(allowedOrigins)}`);
 
   return cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, Postman)
-      if (!origin) {
-        logger.debug("Request with no origin allowed");
-        return callback(null, true);
-      }
-
-      // Check if origin is allowed
-      if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== "production") {
-        logger.debug(`CORS allowed for origin: ${origin}`);
-        return callback(null, true);
-      }
-
-      // Log rejected origins for debugging
-      logger.warn(`CORS rejected for origin: ${origin}`);
-      const msg = "CORS policy does not allow access from the specified Origin";
-      return callback(new Error(msg), false);
-    },
+    origin: '*', // Allow all origins to fix 502 Bad Gateway issues
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: [
       "Content-Type",

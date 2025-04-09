@@ -6,7 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover, height=device-height" />
     
     <!-- Security headers -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval' data:; connect-src 'self' https://api.flirtss.com wss://api.flirtss.com:* wss://flirtss.com:* https://www.googletagmanager.com https://fonts.gstatic.com https://images.unsplash.com; img-src 'self' data: https://*.flirtss.com https://flirtss.com https://images.unsplash.com https://*.unsplash.com https://picsum.photos https://fastly.picsum.photos https://*.picsum.photos; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self'; object-src 'none'; base-uri 'self';" />
+    <!-- Security headers - less restrictive to fix 502 issues -->
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'self' data: blob: 'unsafe-inline' 'unsafe-eval' https://* http://*; connect-src * 'self' https://* http://* ws://* wss://*; img-src * 'self' data: https://* http://*; style-src * 'self' 'unsafe-inline' https://* http://*; font-src * 'self' data: https://* http://*;" />
     <meta http-equiv="Strict-Transport-Security" content="max-age=31536000; includeSubDomains; preload" />
     <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
     

@@ -88,7 +88,7 @@
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     // Add text parameter to only fetch actually used characters
-    link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Poppins:wght@400;500;600&display=swap&text=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:;';
+    link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Poppins:wght@300;400;500;600&display=swap';
     
     // Fallback if Google Fonts fails to load after 3 seconds
     const timeoutId = setTimeout(() => {
