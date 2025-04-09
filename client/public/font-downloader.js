@@ -1,4 +1,4 @@
-// Simplified Font Downloader Script with Image URL Enhancement
+// Font Downloader Script with Enhanced Fallbacks and CDN Support
 (function() {
   // Log function that's less verbose
   function log(message, level = 'debug') {
@@ -8,8 +8,22 @@
     }
   }
 
+  // Check if a font file exists by doing a HEAD request
+  function checkFontExists(url) {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('HEAD', url, true);
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+          resolve(xhr.status === 200);
+        }
+      };
+      xhr.send();
+    });
+  }
+
   // Immediately use Google Fonts and system fallbacks to ensure fonts always work
-  function setupFonts() {
+  async function setupFonts() {
     // Add CSS variables for font stacks with robust fallbacks
     const variableStyle = document.createElement('style');
     variableStyle.textContent = `
@@ -50,49 +64,126 @@
     `;
     document.head.appendChild(variableStyle);
     
-    // Add system font fallbacks for all major fonts
-    const fallbackStyle = document.createElement('style');
-    fallbackStyle.textContent = `
-      /* System font fallbacks for key fonts */
+    // Check if local fonts exist - if not, add Google Fonts fallback
+    const poppinsUrl = '/fonts/poppins-v20-latin-300.woff2';
+    const interUrl = '/fonts/inter-v12-latin-regular.woff2';
+    
+    const [poppinsExists, interExists] = await Promise.all([
+      checkFontExists(poppinsUrl),
+      checkFontExists(interUrl)
+    ]);
+    
+    if (!poppinsExists) {
+      log('Missing font: poppins-v20-latin-300.woff2', 'warn');
+    }
+    
+    if (!interExists) {
+      log('Missing font: inter-v12-latin-regular.woff2', 'warn');
+    }
+    
+    // Add font-face declarations with proper fallback strategy
+    const fontFaceStyle = document.createElement('style');
+    fontFaceStyle.textContent = `
+      /* Poppins Font */
+      @font-face {
+        font-family: 'Poppins';
+        font-style: normal;
+        font-weight: 300;
+        font-display: swap;
+        src: ${poppinsExists ? 
+          `url('${poppinsUrl}') format('woff2'),` : ''}
+          url('https://fonts.gstatic.com/s/poppins/v20/pxiByp8kv8JHgFVrLDz8Z1xlFd2JQEk.woff2') format('woff2'),
+          local('Poppins'),
+          local('Segoe UI'),
+          local('Roboto'),
+          local('sans-serif');
+      }
+      
       @font-face {
         font-family: 'Poppins';
         font-style: normal;
         font-weight: 400;
         font-display: swap;
-        src: local('Poppins'), 
-             local('-apple-system'), 
-             local('BlinkMacSystemFont'),
-             local('Segoe UI'),
-             local('Roboto'),
-             local('Arial'),
-             local('sans-serif');
+        src: ${poppinsExists ? 
+          `url('${poppinsUrl.replace('300', '400')}') format('woff2'),` : ''}
+          url('https://fonts.gstatic.com/s/poppins/v20/pxiEyp8kv8JHgFVrJJfecnFHGPc.woff2') format('woff2'),
+          local('Poppins'),
+          local('Segoe UI'),
+          local('Roboto'),
+          local('sans-serif');
       }
       
+      @font-face {
+        font-family: 'Poppins';
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+        src: ${poppinsExists ? 
+          `url('${poppinsUrl.replace('300', '500')}') format('woff2'),` : ''}
+          url('https://fonts.gstatic.com/s/poppins/v20/pxiByp8kv8JHgFVrLGT9Z1xlFd2JQEk.woff2') format('woff2'),
+          local('Poppins'),
+          local('Segoe UI'),
+          local('Roboto'),
+          local('sans-serif');
+      }
+      
+      @font-face {
+        font-family: 'Poppins';
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: ${poppinsExists ? 
+          `url('${poppinsUrl.replace('300', '600')}') format('woff2'),` : ''}
+          url('https://fonts.gstatic.com/s/poppins/v20/pxiByp8kv8JHgFVrLEj6Z1xlFd2JQEk.woff2') format('woff2'),
+          local('Poppins'),
+          local('Segoe UI'),
+          local('Roboto'),
+          local('sans-serif');
+      }
+      
+      /* Inter Font */
       @font-face {
         font-family: 'Inter';
         font-style: normal;
         font-weight: 400;
         font-display: swap;
-        src: local('Inter'), 
-             local('-apple-system'), 
-             local('BlinkMacSystemFont'),
-             local('Segoe UI'),
-             local('Roboto'),
-             local('Arial'),
-             local('sans-serif');
+        src: ${interExists ? 
+          `url('${interUrl}') format('woff2'),` : ''}
+          url('https://fonts.gstatic.com/s/inter/v12/UcC73FwrK3iLTeHuS_fvQtMwCp50KnMa1ZL7W0Q5n-wU.woff2') format('woff2'),
+          local('Inter'),
+          local('Segoe UI'),
+          local('Roboto'),
+          local('sans-serif');
+      }
+      
+      @font-face {
+        font-family: 'Inter';
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+        src: ${interExists ? 
+          `url('${interUrl.replace('regular', '500')}') format('woff2'),` : ''}
+          url('https://fonts.gstatic.com/s/inter/v12/UcC73FwrK3iLTeHuS_fvQtMwCp50KnMa1ZL7W0Q5n-wU.woff2') format('woff2'),
+          local('Inter'),
+          local('Segoe UI'),
+          local('Roboto'),
+          local('sans-serif');
       }
     `;
-    document.head.appendChild(fallbackStyle);
+    document.head.appendChild(fontFaceStyle);
     
-    // Load Google Fonts asynchronously - minimized to only needed weights
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    // Add text parameter to only fetch actually used characters
-    link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Poppins:wght@300;400;500;600&display=swap';
+    // If any fonts are missing, add Google Fonts as fallback
+    if (!poppinsExists || !interExists) {
+      log('Adding Google Fonts fallback for missing fonts', 'warn');
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Poppins:wght@300;400;500;600&display=swap';
+      document.head.appendChild(link);
+    }
     
-    // Fallback if Google Fonts fails to load after 3 seconds
+    // Fallback if fonts still not loaded after 3 seconds
     const timeoutId = setTimeout(() => {
-      log('Fonts still not loaded after timeout, using system fallbacks', 'warn');
+      log('Fonts still not loaded after timeout, adding system fallbacks', 'warn');
       
       // Add additional system font fallbacks
       const emergencyStyle = document.createElement('style');
@@ -105,19 +196,6 @@
       `;
       document.head.appendChild(emergencyStyle);
     }, 3000);
-    
-    // Clear timeout if fonts load successfully
-    link.onload = () => {
-      clearTimeout(timeoutId);
-      log('Google Fonts loaded successfully');
-    };
-    
-    link.onerror = () => {
-      log('Google Fonts failed to load', 'error');
-      // Timeout will handle fallback
-    };
-    
-    document.head.appendChild(link);
   }
 
   // Add support for Unsplash and external image URLs
@@ -177,6 +255,18 @@
   }
 
   // Run immediately
-  setupFonts();
+  setupFonts().catch(err => {
+    console.error('Font setup error:', err);
+    // Add system font fallbacks as emergency recovery
+    const emergencyStyle = document.createElement('style');
+    emergencyStyle.textContent = `
+      /* Emergency system font fallbacks */
+      body, button, input, select, textarea, h1, h2, h3, h4, h5, h6 {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 
+          Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif !important;
+      }
+    `;
+    document.head.appendChild(emergencyStyle);
+  });
   enhanceImageHandling();
 })();
