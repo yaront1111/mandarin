@@ -320,8 +320,11 @@
 .alertDanger {
   background: rgba(239, 68, 68, 0.1);
   color: var(--danger, #ef4444);
+  font-weight: 500;
+  border-left: 3px solid var(--danger, #ef4444);
 }
 
 :global(.dark) .alertDanger {
   background: rgba(239, 68, 68, 0.15);
+  border-left: 3px solid var(--danger, #ef4444);
 }

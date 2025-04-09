@@ -591,10 +591,35 @@ export const AuthProvider = ({ children }) => {
           throw new Error(response.error || "Login failed")
         }
       } catch (err) {
-        const errorMessage = err.error || err.message || "Login failed"
-        setError(errorMessage)
-        toast.error(errorMessage)
-        throw err
+        let errorMessage = err.error || err.message || "Login failed"
+        
+        // Check for specific error cases
+        if (err.response && err.response.data) {
+          // Get server error message
+          if (err.response.data.error) {
+            errorMessage = err.response.data.error;
+          }
+          
+          // Check for specific error codes
+          if (err.response.data.code === "INVALID_PASSWORD") {
+            errorMessage = "Incorrect password";
+          } else if (err.response.data.code === "INVALID_CREDENTIALS") {
+            errorMessage = "Incorrect username or password";
+          } else if (err.response.status === 401) {
+            errorMessage = "Incorrect username or password";
+          }
+        }
+        
+        // Make generic error messages more specific and user-friendly
+        if (errorMessage === "Authentication failed" || 
+            errorMessage === "Login failed" || 
+            errorMessage === "Invalid credentials") {
+          errorMessage = "Incorrect username or password";
+        }
+        
+        setError(errorMessage);
+        toast.error(errorMessage);
+        throw err;
       } finally {
         setLoading(false)
       }

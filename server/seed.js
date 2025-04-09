@@ -1,6 +1,6 @@
 // seed.js - Basic version for local development
 import mongoose from 'mongoose';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -10,13 +10,15 @@ import process from 'process';
 const MONGO_URI = 'mongodb://localhost:27017/mandarin';
 const NUM_USERS = 20; // Fewer users for local development
 const SALT_ROUNDS = 12;
-const ADMIN_EMAIL = 'admin@example.com';
+const ADMIN_EMAIL = 'yaront111@gmail.com'; // Updated to match production
 
 // Check for --clean flag to completely clean the database
 const CLEAN_DATABASE = process.argv.includes('--clean');
 
 // --- Import Mongoose Models ---
 import User from './models/User.js';
+import Like from './models/Like.js';
+import PhotoPermission from './models/PhotoPermission.js';
 import logger from './logger.js';
 
 // --- Helper Functions ---
@@ -29,8 +31,11 @@ const getRandomUniqueElements = (arr, count) => {
 
 // --- Basic Data Arrays ---
 const firstNames = [
-  'James', 'John', 'Robert', 'Michael', 'David', 'Mary', 'Sarah', 'Emma', 'Olivia', 'Emily',
-  'Daniel', 'Matthew', 'Anthony', 'Mark', 'Lisa', 'Jennifer', 'Jessica', 'Linda', 'Laura', 'Karen'
+  // Hebrew names
+  'אורי', 'שירה', 'נועם', 'מיכל', 'עידן', 'דניאל', 'יעל', 'איתי', 'רונית', 'אמיר',
+  'מאיה', 'גיא', 'שני', 'עמית', 'תמר', 'יובל', 'הילה', 'עומר', 'נטע', 'אלון',
+  // English names
+  'James', 'John', 'Robert', 'Michael', 'David', 'Mary', 'Sarah', 'Emma', 'Olivia', 'Emily'
 ];
 
 const nicknames = [
@@ -39,8 +44,9 @@ const nicknames = [
 ];
 
 const locations = [
-  'New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio',
-  'San Diego', 'Dallas', 'San Jose', 'Austin', 'Jacksonville', 'Fort Worth', 'Columbus', 'San Francisco'
+  'תל אביב', 'תל אביב צפון', 'רמת אביב', 'פלורנטין', 'רוטשילד', 'הרצליה פיתוח', 'רמת השרון',
+  'רעננה', 'כפר סבא', 'נתניה', 'ראשון לציון', 'אשדוד', 'אשקלון', 'מודיעין', 'ירושלים',
+  'חיפה', 'קריות', 'באר שבע', 'אילת', 'הוד השרון', 'פתח תקווה', 'רמת גן', 'בת ים'
 ];
 
 const interests = [
@@ -68,15 +74,19 @@ const maritalStatusOptions = [
 
 // --- Bio Templates ---
 const bioTemplates = [
+  // English templates
   (details) => `Hi, I'm ${details.age} years old and from ${details.location}. I enjoy ${details.interests[0] || 'traveling'} and ${details.interests[1] || 'reading'}. Looking to connect with like-minded people.`,
   
   (details) => `${details.maritalStatus || 'Single'} and enjoying life in ${details.location}. Passionate about ${details.interests[0] || 'music'} and ${details.interests[1] || 'art'}. Let's get to know each other!`,
   
   (details) => `${details.age} year old ${details.gender || 'person'} living in ${details.location}. I'm into ${details.interests[0] || 'fitness'} and ${details.interests[1] || 'cooking'}. Looking forward to making connections here.`,
   
-  (details) => `Based in ${details.location}, ${details.maritalStatus || ''} and looking to meet new people. I love ${details.interests[0] || 'hiking'} and ${details.interests[1] || 'photography'}. Say hi if we match!`,
+  // Hebrew templates
+  (details) => `אני בן/בת ${details.age} מ${details.location}, אוהב/ת ${details.interests[0] || 'טיולים'} ו${details.interests[1] || 'מוזיקה'}. מחפש/ת אנשים מעניינים לשיחה.`,
   
-  (details) => `${details.age} years old, call ${details.location} home. Passionate about ${details.interests[0] || 'travel'} and ${details.interests[1] || 'good food'}. Looking for meaningful connections.`
+  (details) => `${details.maritalStatus || 'רווק/ה'} מ${details.location}, נהנה/ית מ${details.interests[0] || 'ספורט'} ו${details.interests[1] || 'בישול'}. בואו נכיר!`,
+  
+  (details) => `בן/בת ${details.age}, גר/ה ב${details.location}. אוהב/ת ${details.interests[0] || 'קולנוע'} ו${details.interests[1] || 'מוזיקה'}. מחפש/ת קשרים משמעותיים.`
 ];
 
 // --- Clean Database Function ---
@@ -177,6 +187,8 @@ const seedDatabase = async () => {
         // Clear existing seed-generated data but preserve real users
         logger.warn('Removing seed-generated data only...');
         await User.deleteMany({ 'details.seedGenerated': true });
+        await Like.deleteMany({});
+        await PhotoPermission.deleteMany({});
         logger.info('Seed-generated data cleared.');
       } else {
         logger.warn(`Database already has ${existingUserCount} users, which exceeds the target of ${NUM_USERS}.`);
@@ -333,6 +345,67 @@ const seedDatabase = async () => {
       }
       
       logger.info(`Successfully created development users.`);
+    }
+
+    // --- Add Likes Between Users ---
+    if (usersToCreate > 0) {
+      logger.info('Seeding likes between users...');
+      
+      // Get all users
+      const allUsers = await User.find({});
+      const userIds = allUsers.map(user => user._id.toString());
+      
+      // Make sure we have enough users to create likes
+      if (userIds.length >= 2) {
+        const NUM_LIKES_TO_SEED = Math.min(30, userIds.length * 2);
+        
+        for (let i = 0; i < NUM_LIKES_TO_SEED; i++) {
+          // Get random user IDs
+          let fromUserId = getRandomElement(userIds);
+          let toUserId = getRandomElement(userIds);
+          
+          // Ensure we're not liking ourselves
+          while (fromUserId === toUserId) {
+            toUserId = getRandomElement(userIds);
+          }
+          
+          try {
+            // Create like with possibility of it being mutual
+            const isMutual = Math.random() < 0.5;
+            
+            const like = new Like({
+              fromUser: fromUserId,
+              toUser: toUserId,
+              createdAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 48)),
+              status: isMutual ? 'mutual' : 'pending'
+            });
+            
+            await like.save();
+            
+            // If mutual, create the reciprocal like
+            if (isMutual) {
+              const reciprocalLike = new Like({
+                fromUser: toUserId,
+                toUser: fromUserId,
+                createdAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24)),
+                status: 'mutual'
+              });
+              
+              await reciprocalLike.save();
+              i++; // Count this as another seeded like
+            }
+          } catch (error) {
+            // If it's a duplicate key error, just continue
+            if (error.code !== 11000) {
+              logger.error(`Error creating like: ${error.message}`);
+            }
+          }
+        }
+        
+        logger.info(`Created ${NUM_LIKES_TO_SEED} likes between users`);
+      } else {
+        logger.warn('Not enough users to seed likes');
+      }
     }
 
     logger.info('Development database seeding completed successfully!');

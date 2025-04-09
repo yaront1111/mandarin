@@ -182,9 +182,11 @@ router.post(
 
       if (!user) {
         logger.warn(`Login attempt with non-existent email: ${email}`)
-        return res.status(400).json({
+        // Use 401 status code to maintain consistent handling with password failures
+        return res.status(401).json({
           success: false,
           error: "Invalid credentials",
+          code: "INVALID_CREDENTIALS"
         })
       }
 
@@ -203,7 +205,13 @@ router.post(
       if (!isMatch) {
         await user.incrementLoginAttempts()
         logger.warn(`Failed login attempt for user: ${email}`)
-        return res.status(400).json({ success: false, error: "Invalid credentials" })
+        // Use 401 status code specifically for authentication failures
+        // This helps the client distinguish between validation errors (400) and auth errors (401)
+        return res.status(401).json({ 
+          success: false, 
+          error: "Invalid credentials",
+          code: "INVALID_PASSWORD" 
+        })
       }
 
       // Reset login attempts upon successful login
