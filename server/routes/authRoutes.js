@@ -563,10 +563,43 @@ router.post(
 // @desc    Test API connectivity
 // @access  Public
 router.get("/test-connection", (req, res) => {
+  // Add permissive CORS headers directly to this endpoint
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-auth-token');
+  
   res.json({
     success: true,
     message: "API connection successful",
     timestamp: new Date().toISOString(),
+    headers: req.headers,
+    method: req.method,
+    path: req.path,
+    originalUrl: req.originalUrl,
+    origin: req.headers.origin || "none"
+  })
+})
+
+// @route   POST /api/auth/cors-test
+// @desc    Test CORS for POST requests
+// @access  Public
+router.post("/cors-test", (req, res) => {
+  // Add permissive CORS headers directly to this endpoint
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-auth-token');
+  
+  const requestBody = req.body || {};
+  
+  res.json({
+    success: true,
+    message: "POST request successful - CORS is configured correctly!",
+    timestamp: new Date().toISOString(),
+    receivedData: {
+      body: requestBody,
+      headers: req.headers,
+      method: req.method
+    }
   })
 })
 

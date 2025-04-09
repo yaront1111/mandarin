@@ -1,4 +1,4 @@
-// middleware/cors.js - Enhanced with ES modules and improved CORS configuration
+// middleware/cors.js - Fixed CORS for 502 Bad Gateway issues
 import cors from "cors";
 import logger from "../logger.js";
 
@@ -45,6 +45,22 @@ const configureCors = () => {
 };
 
 /**
+ * Custom OPTIONS request handler to handle preflight requests properly
+ * This can help fix 502 Bad Gateway issues with preflight requests
+ */
+const optionsHandler = (req, res) => {
+  // Set necessary CORS headers
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-auth-token, x-no-cache, Cache-Control');
+  res.header('Access-Control-Max-Age', '86400'); // 24 hours
+  
+  // Respond with 204 No Content for OPTIONS requests
+  res.status(204).end();
+};
+
+/**
  * Custom CORS error handler
  * Provides better error messages for CORS failures
  */
@@ -68,90 +84,53 @@ const corsErrorHandler = (err, req, res, next) => {
 
 /**
  * Default export: function to apply CORS configuration directly to an Express app.
- * This alternative approach uses a more permissive configuration to resolve 502 errors.
+ * This approach uses a very permissive configuration to resolve 502 errors.
  */
 const applyCors = (app) => {
-  // In production environment, use a wildcard for CORS
-  const isProduction = process.env.NODE_ENV === 'production';
-  
-  // Log CORS configuration for debugging
+  // Log CORS configuration
   console.log('CORS Debug - Environment:', process.env.NODE_ENV || 'development');
   console.log('CORS Debug - ALLOWED_ORIGINS config:', process.env.ALLOWED_ORIGINS || '*');
   console.log('CORS Debug - FRONTEND_URL config:', process.env.FRONTEND_URL || 'https://flirtss.com');
   
-  // Use wildcard for production to fix 502 errors
-  if (isProduction) {
-    console.log('CORS Debug - Allowing all origins (*)');
-    app.use(cors({
-      origin: '*',
-      credentials: true,
-      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-      allowedHeaders: [
-        "Origin",
-        "X-Requested-With",
-        "Content-Type",
-        "Accept",
-        "Authorization",
-        "x-auth-token",
-        "x-no-cache"
-      ],
-      exposedHeaders: [
-        "Content-Length",
-        "X-Rate-Limit-Limit",
-        "X-Rate-Limit-Remaining",
-        "X-Rate-Limit-Reset"
-      ],
-      maxAge: 86400,
-      preflightContinue: false,
-      optionsSuccessStatus: 204
-    }));
-    return;
-  }
+  // First, handle OPTIONS requests directly (fixes many CORS preflight issues)
+  app.options('*', optionsHandler);
   
-  // For development, use more restricted CORS settings
-  const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(",")
-    : ["http://localhost:3000", "http://localhost:5173"];
-
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps, curl, etc)
-        if (!origin) return callback(null, true);
-
-        // In development, be more permissive
-        if (process.env.NODE_ENV !== 'production' || allowedOrigins.includes('*')) {
-          return callback(null, true);
-        }
-
-        if (!allowedOrigins.includes(origin)) {
-          const msg = "The CORS policy for this site does not allow access from the specified Origin.";
-          return callback(new Error(msg), false);
-        }
-        return callback(null, true);
-      },
-      credentials: true,
-      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-      allowedHeaders: [
-        "Origin",
-        "X-Requested-With",
-        "Content-Type",
-        "Accept",
-        "Authorization",
-        "x-auth-token",
-        "x-no-cache"
-      ],
-      exposedHeaders: [
-        "Content-Length",
-        "X-Rate-Limit-Limit",
-        "X-Rate-Limit-Remaining",
-        "X-Rate-Limit-Reset"
-      ],
-      preflightContinue: false,
-      optionsSuccessStatus: 204
-    })
-  );
+  // Apply CORS middleware with permissive settings
+  console.log('CORS Debug - Using universal permissive CORS settings');
+  app.use(cors({
+    origin: '*', // Allow any origin
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: [
+      "Origin",
+      "X-Requested-With", 
+      "Content-Type",
+      "Accept",
+      "Authorization",
+      "x-auth-token",
+      "x-no-cache",
+      "Cache-Control"
+    ],
+    exposedHeaders: [
+      "Content-Length",
+      "X-Rate-Limit-Limit",
+      "X-Rate-Limit-Remaining",
+      "X-Rate-Limit-Reset"
+    ],
+    maxAge: 86400,
+    preflightContinue: false,
+    optionsSuccessStatus: 204
+  }));
+  
+  // Add manual CORS headers on every response as a backup
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-auth-token, x-no-cache, Cache-Control');
+    next();
+  });
 };
 
 export default applyCors;
-export { configureCors, corsErrorHandler };
+export { configureCors, corsErrorHandler, optionsHandler };

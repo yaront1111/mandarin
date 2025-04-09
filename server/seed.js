@@ -1,6 +1,6 @@
 // seed.js - Basic version for local development
 import mongoose from 'mongoose';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs'; // Changed from bcrypt to bcryptjs to match model
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -67,6 +67,7 @@ const turnOns = [
   'Compassion', 'Playfulness', 'Generosity', 'Independence', 'Reliability'
 ];
 
+// Make sure these match exactly with the enum values in User.js model (line 159)
 const maritalStatusOptions = [
   "Single", "Married", "Divorced", "Separated", "Widowed",
   "In a relationship", "It's complicated", "Open relationship", "Polyamorous"
@@ -84,7 +85,7 @@ const bioTemplates = [
   // Hebrew templates
   (details) => `אני בן/בת ${details.age} מ${details.location}, אוהב/ת ${details.interests[0] || 'טיולים'} ו${details.interests[1] || 'מוזיקה'}. מחפש/ת אנשים מעניינים לשיחה.`,
   
-  (details) => `${details.maritalStatus || 'רווק/ה'} מ${details.location}, נהנה/ית מ${details.interests[0] || 'ספורט'} ו${details.interests[1] || 'בישול'}. בואו נכיר!`,
+  (details) => `${details.maritalStatus || 'Single'} מ${details.location}, נהנה/ית מ${details.interests[0] || 'ספורט'} ו${details.interests[1] || 'בישול'}. בואו נכיר!`,
   
   (details) => `בן/בת ${details.age}, גר/ה ב${details.location}. אוהב/ת ${details.interests[0] || 'קולנוע'} ו${details.interests[1] || 'מוזיקה'}. מחפש/ת קשרים משמעותיים.`
 ];
@@ -206,7 +207,7 @@ const seedDatabase = async () => {
         const isMale = Math.random() > 0.5;
         const isCouple = Math.random() > 0.9; // 10% chance to be a couple
         
-        // Decide user type first to guide other selections
+        // Decide user type first to guide other selections - must match enum in User.js (line 127)
         const iAm = isCouple ? "couple" : (isMale ? "man" : "woman");
         
         // Generate appropriate name based on user type
@@ -228,7 +229,8 @@ const seedDatabase = async () => {
         // Username 
         const username = nickname.toLowerCase().replace(/\s+/g, '') + getRandomInt(1, 999);
         
-        // Generate appropriate looking for options
+        // Generate appropriate looking for options - must match validation in User.js (line 136)
+        // Valid options are ONLY: "women", "men", "couples" 
         let lookingFor;
         
         if (iAm === 'couple') {
@@ -289,8 +291,18 @@ const seedDatabase = async () => {
         const turnOnsCount = getRandomInt(2, 4);
         const userTurnOns = getRandomUniqueElements(turnOns, turnOnsCount);
         
-        // Select marital status
+        // Select marital status - must match enum in User.js (line 159)
         let maritalStatus = getRandomElement(maritalStatusOptions);
+        
+        // If maritalStatus ends up being invalid, default to a known valid one
+        const validMaritalStatuses = [
+          "Single", "Married", "Divorced", "Separated", "Widowed",
+          "In a relationship", "It's complicated", "Open relationship", "Polyamorous"
+        ];
+        
+        if (!validMaritalStatuses.includes(maritalStatus)) {
+          maritalStatus = "Single"; // Default to a safe value
+        }
         
         // Build user details object
         const userDetails = {

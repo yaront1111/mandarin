@@ -15,7 +15,7 @@ import { connectDB, closeConnection } from "./db.js";
 import routes from "./routes/index.js"; // Assuming this imports the router from routes/index.js
 import { initSubscriptionTasks } from "./cron/subscriptionTasks.js";
 import { initEmailDigestTasks } from "./cron/emailDigestTasks.js";
-import { configureCors, corsErrorHandler } from "./middleware/cors.js";
+import applyCors, { configureCors, corsErrorHandler, optionsHandler } from "./middleware/cors.js";
 import { protect } from "./middleware/auth.js"; // Import protect for debug route
 import { ensureAdminAccounts } from "./utils/adminSetup.js"; // Import admin setup utility
 
@@ -105,9 +105,25 @@ app.use(express.urlencoded({ extended: true, limit: config.BODY_LIMIT || "10mb" 
 // Cookie parser middleware
 app.use(cookieParser());
 
-// Enable CORS using the configured middleware
-app.use(configureCors());
-app.use(corsErrorHandler); // Handle CORS errors specifically
+// Apply the new CORS configuration to fix 502 Bad Gateway errors
+applyCors(app); // This now takes care of all CORS configuration including OPTIONS requests
+app.use(corsErrorHandler); // Handle any remaining CORS errors specifically
+
+// Add a global OPTIONS handler to ensure all routes properly respond to preflight requests
+app.options("*", (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-auth-token, x-no-cache, Cache-Control');
+  res.header('Access-Control-Max-Age', '86400'); // 24 hours
+  res.status(204).end();
+});
+
+// Debugging middleware to log all incoming requests
+app.use((req, res, next) => {
+  logger.debug(`${req.method} ${req.originalUrl} - Origin: ${req.headers.origin || 'none'}`);
+  next();
+});
 
 // Request logging middleware (after CORS and parsing, before routes)
 app.use(requestLogger);
@@ -134,6 +150,25 @@ requiredDirs.forEach((dir) => {
 logger.info(`Uploads base directory configured at: ${uploadsBasePath}`);
 
 
+// Add a CORS test endpoint that always returns 200 OK
+app.get("/api/cors-test", (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  
+  return res.status(200).json({
+    success: true,
+    message: "CORS is properly configured!",
+    cors: {
+      origin: req.headers.origin || "none",
+      method: req.method,
+      host: req.headers.host,
+      userAgent: req.headers["user-agent"],
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Serve static files from the uploads directory
 app.use(
   "/uploads",
@@ -159,8 +194,8 @@ app.use(
 
     // Handle OPTIONS preflight requests for static files
     if (req.method === 'OPTIONS') {
-      res.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-      res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
+      res.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS, POST, PUT, DELETE, PATCH');
+      res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range, Authorization, x-auth-token, x-no-cache, Cache-Control');
       return res.status(204).end();
     }
 

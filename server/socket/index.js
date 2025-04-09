@@ -16,12 +16,21 @@ const initSocketServer = async (server) => {
   logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
   logger.info(`Allowed origins: ${process.env.ALLOWED_ORIGINS || "*"}`);
   
-  // Create Socket.IO server with minimal configuration
+  // Create Socket.IO server with permissive CORS configuration to fix 502 Bad Gateway issues
   const io = new Server(server, {
     cors: {
       origin: "*", // Allow all origins
-      methods: ["GET", "POST"]
-    }
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+      credentials: true, // Enable CORS credentials
+      allowedHeaders: ["Content-Type", "Authorization", "x-auth-token", "x-no-cache", "Cache-Control"]
+    },
+    // Additional configuration
+    transports: ['websocket', 'polling'], // Support both WebSocket and long-polling
+    allowEIO3: true, // Allow Engine.IO v3 clients (broader browser support)
+    path: '/socket.io', // Default path, ensures consistent URL
+    pingTimeout: 60000, // 60 seconds
+    pingInterval: 25000, // 25 seconds
+    cookie: false // Disable socket.io cookie for better compatibility
   });
   
   // Basic rate limiters
