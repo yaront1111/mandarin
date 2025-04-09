@@ -164,9 +164,18 @@ history.pushState = function(state, title, url) {
   webVitals.dispatchRouteChangeComplete();
 };
 
+// Import our enhanced debug middleware
+import { applyAPIDebugMiddleware, APIDebugTools } from './debug-middleware';
+
 // Run these immediately
 setupGlobalAPIErrorHandler();
 setupPhotoUrlEnhancement();
+
+// Initialize API debug middleware for diagnosing 502 errors
+applyAPIDebugMiddleware();
+
+// Export debug tools to window for console access
+window.APIDebugTools = APIDebugTools;
 
 // Add persistent state management for forms in local storage
 const setupFormPersistence = () => {

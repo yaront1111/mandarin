@@ -1684,6 +1684,29 @@ router.get(
 );
 
 /**
+ * @route   GET /api/users/connection-test
+ * @desc    Test connection to user routes
+ * @access  Public
+ */
+router.get("/connection-test", (req, res) => {
+  // Add permissive CORS headers directly to this endpoint
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-auth-token');
+  
+  res.json({
+    success: true,
+    message: "User routes connection successful",
+    timestamp: new Date().toISOString(),
+    headers: req.headers,
+    method: req.method,
+    path: req.path,
+    originalUrl: req.originalUrl,
+    origin: req.headers.origin || "none"
+  });
+});
+
+/**
  * @route   POST /api/users/:id/report
  * @desc    Report a user
  * @access  Private
