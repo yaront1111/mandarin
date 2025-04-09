@@ -18,8 +18,8 @@ import "./styles/utilities.css";
 // Core error boundary for app-wide error handling
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 
-// Dynamic import of i18n to reduce initial bundle size
-const loadI18n = () => import("./i18n");
+// Load i18n first to ensure translations are available immediately
+import "./i18n";
 
 // Global API error handler to gracefully handle 502 errors
 const setupGlobalAPIErrorHandler = () => {
@@ -164,8 +164,7 @@ history.pushState = function(state, title, url) {
   webVitals.dispatchRouteChangeComplete();
 };
 
-// Run these immediately 
-loadI18n();
+// Run these immediately
 setupGlobalAPIErrorHandler();
 setupPhotoUrlEnhancement();
 

@@ -1545,15 +1545,17 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {}, embedded =
           ) : (!messagesData || !Array.isArray(messagesData) || messagesData.length === 0) ? (
             <div className={styles.noMessages}>
               <p>No messages yet. Say hello!</p>
-              <div className={styles.noMessagesSubtext}>
-                <button 
-                  onClick={() => refresh()}
-                  className={styles.refreshButton}
-                  aria-label="Refresh messages"
-                >
-                  Refresh
-                </button>
-              </div>
+              {!loading && (
+                <div className={styles.noMessagesSubtext}>
+                  <button 
+                    onClick={() => refresh()}
+                    className={styles.refreshButton}
+                    aria-label="Refresh messages"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             Object.entries(groupMessagesByDate()).map(([date, msgs]) => (

@@ -654,8 +654,18 @@ router.post(
 
       const isPrivate = req.body.isPrivate === "true" || req.body.isPrivate === true //
 
+      // Get the full user document from database since req.user is a plain object
+      const user = await User.findById(req.user._id);
+      if (!user) {
+        logger.error(`User ${req.user._id} not found in database during photo upload`);
+        return res.status(404).json({ 
+          success: false, 
+          error: "User not found" 
+        });
+      }
+
       // Check photo count limit
-      if (req.user.photos && req.user.photos.length >= 10) {
+      if (user.photos && user.photos.length >= 10) {
         //
         fs.unlinkSync(req.file.path) //
         return res.status(400).json({
@@ -723,19 +733,19 @@ router.post(
           metadata: photoMetadata, //
         }
 
-        const isFirstPhoto = !req.user.photos || req.user.photos.length === 0 //
+        const isFirstPhoto = !user.photos || user.photos.length === 0 //
         
         // Initialize the photos array if it doesn't exist
-        if (!req.user.photos) {
-          req.user.photos = [];
+        if (!user.photos) {
+          user.photos = [];
         }
         
-        req.user.photos.push(photo) //
-        await req.user.save() //
+        user.photos.push(photo) //
+        await user.save() //
 
-        const newPhoto = req.user.photos[req.user.photos.length - 1] //
+        const newPhoto = user.photos[user.photos.length - 1] //
 
-        logger.info(`Photo uploaded successfully for user ${req.user._id} (isPrivate: ${isPrivate})`) //
+        logger.info(`Photo uploaded successfully for user ${user._id} (isPrivate: ${isPrivate})`) //
         logger.debug(
           //
           `Photo details: ${JSON.stringify({
