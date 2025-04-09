@@ -59,9 +59,23 @@ const Register = () => {
   const [locationSuggestions, setLocationSuggestions] = useState([])
 
   // Internationalization and Auth context
-  const { t } = useTranslation()
-  const { isRTL } = useLanguage()
+  const { t, i18n } = useTranslation()
+  const { isRTL, changeLanguage } = useLanguage()
   const { register, error, isAuthenticated } = useAuth()
+  
+  // Set Hebrew language directly at page load
+  useEffect(() => {
+    document.documentElement.setAttribute('lang', 'he');
+    document.documentElement.setAttribute('dir', 'rtl');
+    
+    try {
+      localStorage.setItem('i18nextLng', 'he');
+      i18n.changeLanguage('he');
+      if (changeLanguage) changeLanguage('he');
+    } catch (err) {
+      console.error("Failed to set Hebrew language:", err);
+    }
+  }, [])
   const navigate = useNavigate()
   const location = useLocation()
 

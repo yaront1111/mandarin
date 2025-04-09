@@ -93,9 +93,21 @@ export const LanguageProvider = ({ children }) => {
 
   // Handle language change
   const changeLanguage = (lng) => {
-    i18n.changeLanguage(lng);
-    setLanguage(lng);
-    localStorage.setItem('i18nextLng', lng);
+    try {
+      // Store language preference first
+      localStorage.setItem('i18nextLng', lng);
+      
+      // Then update i18n and context state
+      i18n.changeLanguage(lng);
+      setLanguage(lng);
+      
+      // Force a reload to apply changes consistently
+      setTimeout(() => {
+        window.location.reload();
+      }, 100);
+    } catch (error) {
+      console.error("Error changing language:", error);
+    }
   };
 
   // Get language display name

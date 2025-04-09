@@ -162,7 +162,15 @@ const Home = () => {
           <div className="header-actions d-flex align-items-center gap-2">
             <div className="language-switcher me-2">
               <button 
-                onClick={() => changeLanguage(language === 'en' ? 'he' : 'en')}
+                onClick={(e) => {
+                  e.preventDefault();
+                  try {
+                    localStorage.setItem('i18nextLng', language === 'en' ? 'he' : 'en');
+                    window.location.reload();
+                  } catch (err) {
+                    console.error("Error changing language:", err);
+                  }
+                }}
                 className="btn btn-sm btn-light rounded-circle"
                 aria-label={t("common.switchLanguage", "Switch language")}
                 title={language === 'en' ? 'עברית' : 'English'}
