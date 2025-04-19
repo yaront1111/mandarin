@@ -11,6 +11,7 @@ import { useAuth, useTheme, useUser, useLanguage } from "../context"
 import { settingsService } from "../services"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
 import { Navbar } from "../components/LayoutComponents"
+import LanguageSelector from "../components/common/LanguageSelector"
 import styles from "../styles/settings.module.css"
 
 const Settings = () => {
@@ -735,37 +736,9 @@ const Settings = () => {
                 </p>
               </div>
               
-              {/* Import at the top: import LanguageSection from "../components/common/LanguageSection" */}
+              {/* Import at the top: import LanguageSelector from "../components/common/LanguageSelector" */}
               <div className={styles.languageWrapper}>
-                <div className={styles.languageOptions}>
-                  <div 
-                    className={`${styles.languageOption} ${language === 'en' ? styles.active : ''}`}
-                    onClick={() => changeLanguage('en')}
-                  >
-                    <div className={styles.languageFlag}>🇺🇸</div>
-                    <div className={styles.languageInfo}>
-                      <div className={styles.languageName}>{t('settings.languages.english')}</div>
-                      <div className={styles.languageNative}>English</div>
-                    </div>
-                    {language === 'en' && <div className={styles.languageActiveIndicator}>✓</div>}
-                  </div>
-                  
-                  <div 
-                    className={`${styles.languageOption} ${language === 'he' ? styles.active : ''}`}
-                    onClick={() => changeLanguage('he')}
-                  >
-                    <div className={styles.languageFlag}>🇮🇱</div>
-                    <div className={styles.languageInfo}>
-                      <div className={styles.languageName}>{t('settings.languages.hebrew')}</div>
-                      <div className={styles.languageNative}>עברית</div>
-                    </div>
-                    {language === 'he' && <div className={styles.languageActiveIndicator}>✓</div>}
-                  </div>
-                </div>
-                
-                <div className={styles.languageNotice}>
-                  {language === 'en' ? 'Currently using English' : 'השפה הנוכחית היא עברית'}
-                </div>
+                <LanguageSelector display="section" />
               </div>
             </div>
           </div>

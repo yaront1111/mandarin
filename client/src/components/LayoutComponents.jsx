@@ -15,6 +15,7 @@ import {
 } from "react-icons/fa"
 import NotificationsComponent from "./NotificationsComponent"
 import { ThemeToggle } from "./theme-toggle.tsx"
+import LanguageSelector from "./common/LanguageSelector"
 
 // Modern Navbar Component
 export const Navbar = () => {
@@ -145,19 +146,8 @@ export const Navbar = () => {
         <div className="header-actions">
           <ThemeToggle />
           
-          {/* Add Language Selector */}
-          {/* Import needed at the top: import { LanguageSelector } from "./common" */}
-          <div className="language-toggle">
-            <button 
-              onClick={() => {
-                const { language, changeLanguage } = useLanguage();
-                changeLanguage(language === 'en' ? 'he' : 'en');
-              }}
-              className="language-button"
-            >
-              {isRTL ? 'English' : 'עברית'}
-            </button>
-          </div>
+          {/* Language Selector component */}
+          <LanguageSelector className="navbar-language-selector" />
 
           {isAuthenticated ? (
             <>
