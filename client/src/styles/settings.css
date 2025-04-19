@@ -1,4 +1,104 @@
 /* Settings page styles */
+
+/* Language settings styles */
+.language-settings {
+  padding: 15px 0;
+}
+
+.language-options {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.language-option {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.language-option:hover {
+  background-color: #f8f8f8;
+  transform: translateY(-2px);
+}
+
+.language-option.active {
+  border-color: #ff3366;
+  background-color: rgba(255, 51, 102, 0.05);
+}
+
+.language-flag {
+  font-size: 24px;
+  margin-right: 15px;
+}
+
+.language-info {
+  flex: 1;
+}
+
+.language-name {
+  font-weight: 600;
+  font-size: 16px;
+  color: #333;
+}
+
+.language-native {
+  font-size: 13px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.language-active-indicator {
+  color: #ff3366;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.language-notice {
+  font-size: 14px;
+  color: #666;
+  padding: 15px;
+  background-color: #f8f8f8;
+  border-radius: 8px;
+  text-align: center;
+}
+
+/* RTL overrides for settings */
+[dir="rtl"] .language-flag {
+  margin-right: 0;
+  margin-left: 15px;
+}
+
+/* Dark theme adjustments for language settings */
+.dark-theme .language-option {
+  border-color: #444;
+}
+
+.dark-theme .language-option:hover {
+  background-color: #333;
+}
+
+.dark-theme .language-option.active {
+  background-color: rgba(255, 51, 102, 0.1);
+}
+
+.dark-theme .language-name {
+  color: #e0e0e0;
+}
+
+.dark-theme .language-native {
+  color: #b0b0b0;
+}
+
+.dark-theme .language-notice {
+  background-color: #333;
+  color: #b0b0b0;
+}
 .settings-container {
   max-width: 960px;
   margin: 0 auto;

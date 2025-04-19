@@ -20,7 +20,6 @@ import "./styles/stories.css"; // Using regular CSS for stories
 import "./styles/chat.css"; // General chat styling
 import "./styles/modal.css"; // Modal component styling
 import "./styles/home.css"; // Home page specific styling
-import "./styles/rtl.css"; // RTL support for Hebrew
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

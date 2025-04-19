@@ -734,23 +734,37 @@ const Settings = () => {
                   {t('settings.language')}
                 </p>
               </div>
-              <div className={styles.languageSelector}>
-                <select 
-                  value={language} 
-                  onChange={(e) => changeLanguage(e.target.value)}
-                  className={styles.languageSelect}
-                >
-                  {supportedLanguages.map((lang) => (
-                    <option key={lang} value={lang}>
-                      {getLanguageDisplayName(lang)}
-                    </option>
-                  ))}
-                </select>
-                <div className={styles.languageInfo}>
-                  <FaGlobe className={styles.languageIcon} />
-                  <span className={styles.languageInfoText}>
-                    {language === 'he' ? 'עברית מופעלת' : 'Hebrew detection is enabled for users from Israel'}
-                  </span>
+              
+              {/* Import at the top: import LanguageSection from "../components/common/LanguageSection" */}
+              <div className={styles.languageWrapper}>
+                <div className={styles.languageOptions}>
+                  <div 
+                    className={`${styles.languageOption} ${language === 'en' ? styles.active : ''}`}
+                    onClick={() => changeLanguage('en')}
+                  >
+                    <div className={styles.languageFlag}>🇺🇸</div>
+                    <div className={styles.languageInfo}>
+                      <div className={styles.languageName}>{t('settings.languages.english')}</div>
+                      <div className={styles.languageNative}>English</div>
+                    </div>
+                    {language === 'en' && <div className={styles.languageActiveIndicator}>✓</div>}
+                  </div>
+                  
+                  <div 
+                    className={`${styles.languageOption} ${language === 'he' ? styles.active : ''}`}
+                    onClick={() => changeLanguage('he')}
+                  >
+                    <div className={styles.languageFlag}>🇮🇱</div>
+                    <div className={styles.languageInfo}>
+                      <div className={styles.languageName}>{t('settings.languages.hebrew')}</div>
+                      <div className={styles.languageNative}>עברית</div>
+                    </div>
+                    {language === 'he' && <div className={styles.languageActiveIndicator}>✓</div>}
+                  </div>
+                </div>
+                
+                <div className={styles.languageNotice}>
+                  {language === 'en' ? 'Currently using English' : 'השפה הנוכחית היא עברית'}
                 </div>
               </div>
             </div>

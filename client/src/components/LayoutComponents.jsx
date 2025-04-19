@@ -144,6 +144,20 @@ export const Navbar = () => {
 
         <div className="header-actions">
           <ThemeToggle />
+          
+          {/* Add Language Selector */}
+          {/* Import needed at the top: import { LanguageSelector } from "./common" */}
+          <div className="language-toggle">
+            <button 
+              onClick={() => {
+                const { language, changeLanguage } = useLanguage();
+                changeLanguage(language === 'en' ? 'he' : 'en');
+              }}
+              className="language-button"
+            >
+              {isRTL ? 'English' : 'עברית'}
+            </button>
+          </div>
 
           {isAuthenticated ? (
             <>

@@ -1,5 +1,67 @@
 /* Modern UI Components CSS - 2025 Design System */
 
+/* Language selector styles */
+.language-toggle {
+  margin: 0 10px;
+}
+
+.language-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.language-button:hover {
+  background: var(--bg-hover);
+}
+
+/* RTL support for the entire app */
+[dir="rtl"] .app-wrapper {
+  direction: rtl;
+  text-align: right;
+}
+
+[dir="rtl"] .header-logo {
+  margin-right: 0;
+  margin-left: auto;
+}
+
+[dir="rtl"] .header-actions {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+[dir="rtl"] .nav-tabs {
+  padding-right: 0;
+}
+
+[dir="rtl"] .user-dropdown {
+  right: auto;
+  left: 0;
+}
+
+[dir="rtl"] .notification-dropdown {
+  right: auto;
+  left: 0;
+}
+
+[dir="rtl"] .form-field label {
+  text-align: right;
+}
+
+[dir="rtl"] .btn-icon {
+  margin-right: 0;
+  margin-left: 8px;
+}
+
 /* ========== BUTTON STYLES ========== */
 .btn {
   position: relative;
