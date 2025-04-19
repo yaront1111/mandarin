@@ -8,6 +8,7 @@ import { useAuth } from '../context';
 import chatService from '../services/ChatService';
 import { logger } from '../utils';
 
+
 // Create a logger for this hook
 const log = logger.create('useChat');
 
