@@ -10,13 +10,10 @@ if (typeof global === 'undefined') {
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import "./styles/base.css";
 import "./styles/layout.css"; // Modern layout system
-import "./styles/components.css"; // Updated with 2025 Design System
 import "./styles/pages.css";
-import "./styles/utilities.css";
 // Assuming these are needed globally as well
-import "./styles/settings.css"; // Using regular CSS for settings
 import "./styles/notifications.css";
-import "./styles/stories.css"; // Using regular CSS for stories
+import "./styles/stories.module.css"
 import "./styles/chat.css"; // General chat styling
 import "./styles/modal.css"; // Modal component styling
 import "./styles/home.css"; // Home page specific styling

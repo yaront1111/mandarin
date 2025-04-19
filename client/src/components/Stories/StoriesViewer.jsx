@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useStories, useUser, useAuth } from "../../context"
 import { FaHeart, FaRegHeart, FaComment, FaShare, FaPlay, FaPause, FaVolumeUp, FaVolumeMute } from "react-icons/fa"
 import { toast } from "react-toastify"
-import "../../styles/stories.css"
+import "../../styles/stories.module.css"
 
 const StoriesViewer = ({ storyId, userId, onClose }) => {
   // Context hooks

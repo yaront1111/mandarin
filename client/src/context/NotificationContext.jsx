@@ -5,19 +5,20 @@ import { useAuth } from "./AuthContext"
 import notificationService from "../services/notificationService"
 import socketService from "../services/socketService" // Import socket service directly
 import { toast } from "react-toastify"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router-dom" // Keep navigate for opening messages page
 import { FaHeart } from "react-icons/fa"
 
 // Create context
 const NotificationContext = createContext()
 
-export const NotificationProvider = ({ children }) => {
+// Accept openProfileModal prop
+export const NotificationProvider = ({ children, openProfileModal }) => {
   const { isAuthenticated, user } = useAuth()
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [socketConnected, setSocketConnected] = useState(false)
-  const navigate = useNavigate()
+  const navigate = useNavigate() // Use navigate for message clicks
 
   // Define callback to fetch notifications to avoid recreation on every render
   const fetchNotifications = useCallback(async () => {
@@ -38,7 +39,7 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [])
 
-  // Initialize the navigation function for notifications
+  // Initialize the navigation function for notifications (still useful for the service)
   useEffect(() => {
     if (navigate) {
       // Pass the navigate function to the notification service
@@ -78,7 +79,7 @@ export const NotificationProvider = ({ children }) => {
       }
 
       // Show toast notification if it's new
-      const isNew = false
+      const isNew = false // Adjust this logic if needed
 
       if (isNew) {
         // Determine notification message
@@ -86,7 +87,9 @@ export const NotificationProvider = ({ children }) => {
 
         // Show toast
         toast.info(message, {
-          onClick: () => notificationService.handleNotificationClick(data),
+          // NOTE: Decide how toast clicks should behave
+          // Example: Open modal/navigate based on type
+          onClick: () => handleNotificationClick(data),
         })
       }
     }
@@ -111,7 +114,7 @@ export const NotificationProvider = ({ children }) => {
 
       // Listen for specific notification events
       socketService.socket.on("notification", handleNewNotification)
-      socketService.socket.on("newMessage", handleNewNotification)
+      socketService.socket.on("newMessage", handleNewNotification) // Important for message notifications
       socketService.socket.on("newLike", handleNewNotification)
       socketService.socket.on("photoPermissionRequestReceived", handleNewNotification)
       socketService.socket.on("photoPermissionResponseReceived", handleNewNotification)
@@ -140,7 +143,8 @@ export const NotificationProvider = ({ children }) => {
         socketService.socket.off("disconnect", handleSocketDisconnect)
       }
     }
-  }, [isAuthenticated, user, fetchNotifications])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, user, fetchNotifications]) // Dependencies updated
 
   // Initialize notification service when user is authenticated
   useEffect(() => {
@@ -215,7 +219,7 @@ export const NotificationProvider = ({ children }) => {
         if (socketService.socket && !socketService.isConnected()) {
           console.log("Socket still disconnected - polling for new notifications")
           await fetchNotifications()
-          
+
           // Try to trigger socket reconnection
           try {
             if (socketService.reconnectAttempts < socketService.maxReconnectAttempts) {
@@ -249,24 +253,42 @@ export const NotificationProvider = ({ children }) => {
 
   // Mark a notification as read
   const markAsRead = (notificationId) => {
+    // Check if already marked as read to avoid redundant calls/state updates
+    const notification = notifications.find(n => (n._id === notificationId) || (n.id === notificationId));
+    if (notification && notification.read) {
+        // console.log(`Notification ${notificationId} already marked as read.`);
+        return; // Already read, do nothing
+    }
+
+    // Call the service first
     notificationService.markAsRead(notificationId)
 
-    // Update local state immediately
+    // Update local state immediately if it exists and is unread
     setNotifications((prev) =>
-      prev.map((n) => {
-        if ((n._id && n._id === notificationId) || (n.id && n.id === notificationId)) {
-          return { ...n, read: true }
-        }
-        return n
-      }),
+        prev.map((n) => {
+            if (((n._id && n._id === notificationId) || (n.id && n.id === notificationId)) && !n.read) {
+                return { ...n, read: true }
+            }
+            return n
+        }),
     )
 
-    // Update unread count
-    setUnreadCount((prev) => Math.max(0, prev - 1))
+    // Update unread count only if we actually marked one as read
+    if (notification && !notification.read) {
+        setUnreadCount((prev) => Math.max(0, prev - 1))
+    }
   }
 
   // Mark all notifications as read
   const markAllAsRead = () => {
+    // Check if there are any unread notifications first
+    const hasUnread = notifications.some(n => !n.read);
+    if (!hasUnread) {
+        // console.log("No unread notifications to mark.");
+        return; // Nothing to do
+    }
+
+    // Call the service first
     notificationService.markAllAsRead()
 
     // Update local state immediately
@@ -274,19 +296,66 @@ export const NotificationProvider = ({ children }) => {
     setUnreadCount(0)
   }
 
-  // Handle notification click
+  // --- Modify handleNotificationClick ---
   const handleNotificationClick = (notification) => {
-    // Mark as read in our local state first for instant feedback
-    if (notification && !notification.read) {
-      const notificationId = notification._id || notification.id
-      if (notificationId) {
-        markAsRead(notificationId)
-      }
+    if (!notification) return;
+    console.log("Handling notification click in context:", notification);
+
+    const notificationId = notification._id || notification.id;
+
+    // Mark as read locally first for instant feedback (only if not already read)
+    if (!notification.read && notificationId) {
+      markAsRead(notificationId); // Calls service and updates state/count
     }
 
-    // Then handle the click in the service
-    notificationService.handleNotificationClick(notification)
+    // --- Logic to Determine Action based on Type ---
+    const notificationType = notification.type;
+    let relevantUserId = null;
+
+    // Extract potential user IDs (add more as needed)
+    if (notification.sender?._id) {
+        relevantUserId = notification.sender._id;
+    } else if (notification.data?.sender?._id) {
+        relevantUserId = notification.data.sender._id;
+    } else if (notification.data?.requester?._id) {
+        relevantUserId = notification.data.requester._id;
+    } else if (notification.data?.user?._id) {
+        relevantUserId = notification.data.user._id;
+    } else if (notification.data?.owner?._id) {
+         relevantUserId = notification.data.owner._id;
+    } else if (notification.type === 'match' && notification.data?.matchedUser?._id) {
+        relevantUserId = notification.data.matchedUser._id;
+    } else if (notification.type === 'comment' && notification.data?.commenter?._id) {
+        relevantUserId = notification.data.commenter._id;
+    }
+
+    console.log(`Notification Type: ${notificationType}, Relevant User ID: ${relevantUserId}`);
+
+    // --- Conditional Action ---
+    if (notificationType === 'message' || notificationType === 'newMessage') {
+        // Navigate to messages page, selecting the chat with the sender
+        if (relevantUserId) {
+            console.log(`Navigating to messages for user: ${relevantUserId}`);
+            navigate(`/messages/${relevantUserId}`);
+        } else {
+            console.warn("Could not determine sender ID for message notification:", notification);
+            navigate('/messages'); // Navigate to general messages page as fallback
+        }
+    } else if (relevantUserId && typeof openProfileModal === 'function') {
+        // Open profile modal for other notification types (like, match, comment, etc.)
+        console.log(`Opening profile modal for user: ${relevantUserId}`);
+        openProfileModal(relevantUserId);
+    } else {
+        // Fallback or error handling if no user ID found or function not available
+        console.warn("Could not determine action or relevant user ID for notification:", notification);
+        // Optionally, you could call the original service handler as a fallback:
+        // notificationService.handleNotificationClick(notification);
+        // toast.error("Could not process notification click.");
+    }
+    // --- End Conditional Action ---
   }
+  // --- End Modify handleNotificationClick ---
+
 
   // Refresh notifications manually
   const refreshNotifications = async () => {
@@ -294,13 +363,17 @@ export const NotificationProvider = ({ children }) => {
   }
 
   const addNotification = (notification) => {
-    setNotifications((prev) => [notification, ...prev])
-    setUnreadCount((prev) => prev + 1)
+     // Check for duplicates before adding
+    const exists = notifications.some(n => (n._id && notification._id && n._id === notification._id) || (n.id && notification.id && n.id === notification.id));
+    if (!exists) {
+        setNotifications((prev) => [notification, ...prev]);
+        if (!notification.read) {
+            setUnreadCount((prev) => prev + 1);
+        }
+    }
   }
 
-  // Add this to your socket event listeners in NotificationContext.jsx
-  // This ensures the "newLike" event is properly handled
-
+  // Handle "newLike" socket event
   const handleNewLike = useCallback(
     (data) => {
       if (!data) return
@@ -317,7 +390,8 @@ export const NotificationProvider = ({ children }) => {
         message: data.isMatch
           ? "You both liked each other. Start a conversation now!"
           : "Someone has shown interest in your profile",
-        sender: data.sender,
+        sender: data.sender, // Ensure sender info is included
+        data: data, // Include original data if needed for click handling
         createdAt: data.timestamp || new Date().toISOString(),
         read: false,
       }
@@ -339,9 +413,10 @@ export const NotificationProvider = ({ children }) => {
         { autoClose: 5000 },
       )
     },
-    [addNotification],
+    [addNotification], // Ensure addNotification is stable or memoized if necessary
   )
 
+  // Add listener for newLike event
   useEffect(() => {
     if (!socketService.socket || !isAuthenticated) return
 
@@ -352,7 +427,9 @@ export const NotificationProvider = ({ children }) => {
         socketService.socket.off("newLike", handleNewLike)
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socketService.socket, isAuthenticated, handleNewLike])
+
 
   return (
     <NotificationContext.Provider
@@ -364,8 +441,10 @@ export const NotificationProvider = ({ children }) => {
         addTestNotification,
         markAsRead,
         markAllAsRead,
-        handleNotificationClick,
+        handleNotificationClick, // Use the modified handler
         refreshNotifications,
+        // Expose modal controls if needed elsewhere (optional)
+        // openProfileModal,
       }}
     >
       {children}
