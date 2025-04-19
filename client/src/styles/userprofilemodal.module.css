@@ -823,6 +823,7 @@
 
 :global([dir="rtl"]) .interestsTags {
   flex-direction: row-reverse;
+  direction: ltr;
 }
 
 .moreCount {
