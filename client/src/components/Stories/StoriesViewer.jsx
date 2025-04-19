@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useStories, useUser, useAuth } from "../../context"
-import { FaHeart, FaRegHeart, FaComment, FaShare, FaPlay, FaPause, FaVolumeUp, FaVolumeMute } from "react-icons/fa"
+import { FaHeart, FaRegHeart, FaComment, FaShare, FaPlay, FaPause, FaVolumeUp, FaVolumeMute, FaTimes } from "react-icons/fa"
 import { toast } from "react-toastify"
-import "../../styles/stories.module.css"
+import styles from "../../styles/stories.module.css"
 
 const StoriesViewer = ({ storyId, userId, onClose }) => {
   // Context hooks
@@ -26,6 +26,9 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   const [reacted, setReacted] = useState(false)
   const [navigating, setNavigating] = useState(false)
   const [actionClicked, setActionClicked] = useState(false)
+  const [longPressActive, setLongPressActive] = useState(false)
+  const [doubleTapCoords, setDoubleTapCoords] = useState({ x: 0, y: 0 })
+  const [showHeartAnimation, setShowHeartAnimation] = useState(false)
 
   // Progress logic
   const progressInterval = useRef(null)
@@ -33,6 +36,9 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   const progressStep = 100 / (storyDuration / 100)
   const videoRef = useRef(null)
   const actionsRef = useRef(null)
+  const longPressTimerRef = useRef(null)
+  const touchStartRef = useRef({ x: 0, y: 0, time: 0 })
+  const lastTapRef = useRef(0)
 
   // Define currentStories BEFORE any useEffects that depend on it
   const currentStories = userId ? userStories : stories
@@ -87,14 +93,12 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   useEffect(() => {
     if (currentStories.length > 0 && currentStoryIndex >= 0 && currentStoryIndex < currentStories.length) {
       const current = currentStories[currentStoryIndex]
-      console.log("Checking reactions for story:", current?._id, "User:", user?._id)
 
       // Check if user has already reacted to this story
       if (current && current.reactions && Array.isArray(current.reactions) && user) {
         const hasReacted = current.reactions.some(
           (reaction) => reaction.user === user._id || (reaction.user && reaction.user._id === user._id),
         )
-        console.log("Has user reacted:", hasReacted, "Reactions:", current.reactions)
         setReacted(hasReacted)
       } else {
         setReacted(false)
@@ -224,8 +228,10 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   // Handlers
   const handlePrevStory = useCallback(
     (e) => {
-      e?.stopPropagation()
-      e?.preventDefault()
+      if (e) {
+        e.stopPropagation()
+        e.preventDefault()
+      }
 
       // Don't navigate if clicking on action buttons
       if (actionClicked) {
@@ -250,8 +256,10 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
 
   const handleNextStory = useCallback(
     (e) => {
-      e?.stopPropagation()
-      e?.preventDefault()
+      if (e) {
+        e.stopPropagation()
+        e.preventDefault()
+      }
 
       // Don't navigate if clicking on action buttons
       if (actionClicked) {
@@ -278,8 +286,10 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   )
 
   const toggleMute = useCallback((e) => {
-    e.stopPropagation()
-    e.preventDefault()
+    if (e) {
+      e.stopPropagation()
+      e.preventDefault()
+    }
 
     // Prevent navigation because an action was clicked
     setActionClicked(true)
@@ -301,23 +311,22 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
 
   const handleReact = useCallback(
     (e) => {
-      console.log("React button clicked")
-      e.stopPropagation()
-      e.preventDefault()
+      if (e) {
+        e.stopPropagation()
+        e.preventDefault()
+      }
 
       // Prevent navigation because an action was clicked
       setActionClicked(true)
 
       // Prevent already reacted case
       if (reacted) {
-        console.log("Already reacted to this story")
         setTimeout(() => setActionClicked(false), 300)
         return
       }
 
       // Check if user is authenticated using isAuthenticated from AuthContext
       if (!isAuthenticated || !user) {
-        console.log("User authentication status:", isAuthenticated, "User:", user)
         toast.error("You must be logged in to react to stories")
         setTimeout(() => setActionClicked(false), 300)
         return
@@ -345,7 +354,6 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
             if (!response || !response.success) {
               throw new Error(response?.message || "Failed to react to story")
             }
-            console.log("Successfully reacted to story")
 
             // Update the local story data with the new reaction
             if (response.data && Array.isArray(response.data)) {
@@ -378,14 +386,130 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
 
   const togglePause = useCallback((e) => {
     // Only toggle pause if not clicked in the action buttons area
-    if (actionsRef.current && actionsRef.current.contains(e.target)) {
+    if (e && actionsRef.current && actionsRef.current.contains(e.target)) {
       return
     }
 
-    e.stopPropagation()
-    e.preventDefault()
+    if (e) {
+      e.stopPropagation()
+      e.preventDefault()
+    }
+
     setPaused((prevPaused) => !prevPaused)
   }, [])
+
+  // Touch event handlers
+  const handleTouchStart = useCallback((e) => {
+    // Store touch start position and time
+    touchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      time: Date.now()
+    }
+
+    // Start timer for long press
+    longPressTimerRef.current = setTimeout(() => {
+      setLongPressActive(true)
+      setPaused(true)
+    }, 500) // 500ms for long press
+  }, [])
+
+  const handleTouchMove = useCallback((e) => {
+    // If significant movement, cancel long press
+    const currentX = e.touches[0].clientX
+    const currentY = e.touches[0].clientY
+    const startX = touchStartRef.current.x
+    const startY = touchStartRef.current.y
+
+    const deltaX = Math.abs(currentX - startX)
+    const deltaY = Math.abs(currentY - startY)
+
+    // If moved more than 10px, cancel long press
+    if (deltaX > 10 || deltaY > 10) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current)
+        longPressTimerRef.current = null
+      }
+    }
+  }, [])
+
+  const handleTouchEnd = useCallback((e) => {
+    // Clear long press timer
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+
+    // Handle long press end
+    if (longPressActive) {
+      setLongPressActive(false)
+      setPaused(false)
+      return
+    }
+
+    // Get touch end position
+    const touchEndX = e.changedTouches[0].clientX
+    const touchEndY = e.changedTouches[0].clientY
+    const touchStartX = touchStartRef.current.x
+    const touchStartY = touchStartRef.current.y
+
+    // Calculate deltas
+    const deltaX = touchStartX - touchEndX
+    const deltaY = touchStartY - touchEndY
+    const touchDuration = Date.now() - touchStartRef.current.time
+
+    // Check for double tap (heart reaction)
+    const currentTime = Date.now()
+    const tapLength = currentTime - lastTapRef.current
+
+    if (tapLength < 300 && tapLength > 0 && Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+      // Double tap detected - like the story if not already liked
+      if (!reacted) {
+        setDoubleTapCoords({
+          x: touchEndX,
+          y: touchEndY
+        })
+        setShowHeartAnimation(true)
+
+        // Hide heart animation after 1 second
+        setTimeout(() => {
+          setShowHeartAnimation(false)
+        }, 1000)
+
+        // Like the story
+        handleReact(e)
+      }
+      lastTapRef.current = 0 // Reset for next sequence
+    } else {
+      // Handle swipe navigation
+      if (touchDuration < 300) { // Only consider quick swipes
+        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 30) {
+          // Horizontal swipe
+          if (deltaX > 0) {
+            // Swipe left = next story
+            handleNextStory(e)
+          } else {
+            // Swipe right = previous story
+            handlePrevStory(e)
+          }
+        } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
+          // Vertical swipe
+          if (deltaY > 0) {
+            // Swipe up - could add functionality here
+          } else {
+            // Swipe down = close
+            onClose?.()
+          }
+        } else {
+          // Simple tap - toggle pause
+          togglePause(e)
+        }
+      }
+
+      // Update last tap time for double-tap detection
+      lastTapRef.current = currentTime
+    }
+  }, [handleNextStory, handlePrevStory, handleReact, onClose, togglePause, longPressActive, reacted])
 
   // Keyboard navigation
   useEffect(() => {
@@ -404,57 +528,20 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     return () => document.removeEventListener("keydown", keyHandler)
   }, [handlePrevStory, handleNextStory, onClose, navigating])
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current)
+      }
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current)
+      }
+    }
+  }, [])
+
   const handleClose = useCallback(() => onClose?.(), [onClose])
 
-  // Action buttons styles - memoize all style objects to maintain consistent hook count
-  const actionButtonsStyle = useMemo(() => ({
-    position: "absolute",
-    bottom: "80px",
-    right: "20px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
-    zIndex: 9999,
-    pointerEvents: "auto",
-  }), []);
-
-  const storyActionButtonStyle = useMemo(() => ({
-    width: "46px",
-    height: "46px",
-    borderRadius: "50%",
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    color: "white",
-    border: "none",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-    backdropFilter: "blur(4px)",
-    WebkitBackdropFilter: "blur(4px)",
-    pointerEvents: "auto",
-    boxShadow: "0 2px 10px rgba(0, 0, 0, 0.3)",
-  }), []);
-
-  const activeButtonStyle = useMemo(() => ({
-    ...storyActionButtonStyle,
-    color: "var(--primary, #ff3366)",
-    backgroundColor: "rgba(255, 51, 102, 0.2)",
-    transform: "scale(1.1)",
-  }), [storyActionButtonStyle]);
-
-  const navigationStyle = useMemo(() => ({
-    pointerEvents: "auto",
-    zIndex: 900,
-  }), []);
-
-  const navArrowStyle = useMemo(() => ({
-    zIndex: 950,
-  }), []);
-
-  // We'll define all renders here, but use a conditional to choose which one to display
-  // This maintains consistent hook calls
-  
   // Extract current story if available
   const currentStory = useMemo(() => {
     if (currentStories && currentStories.length > 0 && currentStoryIndex < currentStories.length) {
@@ -462,53 +549,28 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     }
     return null;
   }, [currentStories, currentStoryIndex]);
-  
-  // Define common button style
-  const closeButtonStyle = useMemo(() => ({
-    marginTop: "20px",
-    padding: "10px 20px",
-    background: "#ff3366",
-    color: "white",
-    border: "none",
-    borderRadius: "5px",
-    cursor: "pointer",
-  }), []);
-  
-  // Define common container style
-  const centerContainerStyle = useMemo(() => ({
-    justifyContent: "center", 
-    alignItems: "center"
-  }), []);
-  
-  // Determine which view state to render
-  const viewState = useMemo(() => {
-    if (loading) return "loading";
-    if (error) return "error";
-    if (!currentStories.length || currentStoryIndex >= currentStories.length) return "empty";
-    if (!currentStory) return "notAvailable";
-    return "normal";
-  }, [loading, error, currentStories, currentStoryIndex, currentStory]);
 
+  // Get user display name
   const getUserDisplayName = useCallback(() => {
     if (!currentStories || !currentStories.length || currentStoryIndex >= currentStories.length) {
       return "Unknown User";
     }
     const story = currentStories[currentStoryIndex];
     if (!story) return "Unknown User";
-    
+
     const storyUser = story.user || story.userData || {};
     if (!storyUser || typeof storyUser === "string") return "Unknown User";
     return storyUser.nickname || storyUser.username || storyUser.name || "User";
   }, [currentStories, currentStoryIndex]);
 
-  // Memoize the profile picture calculation
+  // Get profile picture
   const profilePicture = useCallback(() => {
     if (!currentStories || !currentStories.length || currentStoryIndex >= currentStories.length) {
       return `/api/avatars/default`;
     }
     const story = currentStories[currentStoryIndex];
     if (!story) return `/api/avatars/default`;
-    
+
     const storyUser = story.user || story.userData || {};
     if (!storyUser || typeof storyUser === "string") {
       return `/api/avatars/default`;
@@ -516,14 +578,15 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     return storyUser.profilePicture || storyUser.avatar || `/api/avatars/${storyUser._id || "default"}`;
   }, [currentStories, currentStoryIndex]);
 
+  // Format timestamp
   const formatTimestamp = useCallback(() => {
     if (!currentStories || !currentStories.length || currentStoryIndex >= currentStories.length) {
       return "Recently";
     }
-    
+
     const story = currentStories[currentStoryIndex];
     if (!story || !story.createdAt) return "Recently";
-    
+
     try {
       return new Date(story.createdAt).toLocaleTimeString([], {
         hour: "2-digit",
@@ -534,12 +597,12 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     }
   }, [currentStories, currentStoryIndex]);
 
-  // Memoize story content to prevent conditional hooks
+  // Story content renderer
   const storyContent = useCallback(() => {
     // Guard against missing story data
     if (!currentStories || !currentStories.length || currentStoryIndex >= currentStories.length) {
       return (
-        <div className="stories-text-content">
+        <div className={styles.storiesTextContent}>
           <p>No story available</p>
         </div>
       );
@@ -548,7 +611,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     const story = currentStories[currentStoryIndex];
     if (!story) {
       return (
-        <div className="stories-text-content">
+        <div className={styles.storiesTextContent}>
           <p>Story not found</p>
         </div>
       );
@@ -567,13 +630,13 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       }
 
       return (
-        <div className="stories-text-content" style={styleProps}>
-          <div className="story-user-overlay">
-            <span className="story-nickname">{getUserDisplayName()}</span>
+        <div className={styles.storiesTextContent} style={styleProps}>
+          <div className={styles.storyUserOverlay}>
+            <span className={styles.storyNickname}>{getUserDisplayName()}</span>
           </div>
           {story.text || story.content || ""}
           {paused && (
-            <div className="pause-indicator">
+            <div className={styles.pauseIndicator}>
               <FaPlay size={24} />
             </div>
           )}
@@ -588,14 +651,14 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     ) {
       const mediaUrl = story.mediaUrl || story.media;
       return (
-        <div className="stories-image-container">
-          <div className="story-user-overlay">
-            <span className="story-nickname">{getUserDisplayName()}</span>
+        <div className={styles.storiesImageContainer}>
+          <div className={styles.storyUserOverlay}>
+            <span className={styles.storyNickname}>{getUserDisplayName()}</span>
           </div>
           <img
             src={mediaUrl || "/placeholder.svg"}
             alt="Story"
-            className="stories-media"
+            className={styles.storiesMedia}
             crossOrigin="anonymous"
             loading="lazy"
             decoding="async"
@@ -605,12 +668,12 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
             }}
           />
           {paused && (
-            <div className="pause-indicator">
+            <div className={styles.pauseIndicator}>
               <FaPlay size={24} />
             </div>
           )}
           {story.content && story.content.trim() && (
-            <div className="story-caption">{story.content}</div>
+            <div className={styles.storyCaption}>{story.content}</div>
           )}
         </div>
       );
@@ -623,14 +686,14 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     ) {
       const mediaUrl = story.mediaUrl || story.media;
       return (
-        <div className="stories-video-container">
-          <div className="story-user-overlay">
-            <span className="story-nickname">{getUserDisplayName()}</span>
+        <div className={styles.storiesVideoContainer}>
+          <div className={styles.storyUserOverlay}>
+            <span className={styles.storyNickname}>{getUserDisplayName()}</span>
           </div>
           <video
             ref={videoRef}
             src={mediaUrl}
-            className="stories-media"
+            className={styles.storiesMedia}
             autoPlay
             muted={muted}
             loop={false}
@@ -642,19 +705,19 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
             }}
           />
           {paused && (
-            <div className="pause-indicator">
+            <div className={styles.pauseIndicator}>
               <FaPlay size={24} />
             </div>
           )}
           <button
-            className="video-control mute-button"
+            className={styles.videoControl}
             onClick={toggleMute}
             aria-label={muted ? "Unmute video" : "Mute video"}
           >
             {muted ? <FaVolumeMute size={16} /> : <FaVolumeUp size={16} />}
           </button>
           {story.content && story.content.trim() && (
-            <div className="story-caption">{story.content}</div>
+            <div className={styles.storyCaption}>{story.content}</div>
           )}
         </div>
       );
@@ -662,220 +725,290 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
 
     // Fallback for unknown story types
     return (
-      <div className="stories-text-content">
-        <div className="story-user-overlay">
-          <span className="story-nickname">{getUserDisplayName()}</span>
+      <div className={styles.storiesTextContent}>
+        <div className={styles.storyUserOverlay}>
+          <span className={styles.storyNickname}>{getUserDisplayName()}</span>
         </div>
         <p>{story.text || story.content || "No content available"}</p>
         {paused && (
-          <div className="pause-indicator">
+          <div className={styles.pauseIndicator}>
             <FaPlay size={24} />
           </div>
         )}
       </div>
     );
   }, [currentStories, currentStoryIndex, paused, muted, getUserDisplayName, handleTimeUpdate, toggleMute]);
-  
-  // Define getStoryContent as a wrapper function that calls storyContent
-  // This ensures backward compatibility without conditional hooks
-  const getStoryContent = useCallback(() => {
-    return storyContent();
-  }, [storyContent]);
 
-  // Render Loading State
-  const loadingContent = useMemo(() => (
-    <div className="stories-viewer-container" style={centerContainerStyle}>
-      <div className="spinner"></div>
-      <p style={{ color: "white" }}>Loading stories...</p>
-    </div>
-  ), [centerContainerStyle]);
+  // Determine which view state to render
+  const viewState = useMemo(() => {
+    if (loading) return "loading";
+    if (error) return "error";
+    if (!currentStories.length || currentStoryIndex >= currentStories.length) return "empty";
+    if (!currentStory) return "notAvailable";
+    return "normal";
+  }, [loading, error, currentStories, currentStoryIndex, currentStory]);
 
-  // Render Error State
-  const errorContent = useMemo(() => (
-    <div className="stories-viewer-container" style={centerContainerStyle}>
-      <p style={{ color: "white" }}>{error}</p>
-      <button onClick={handleClose} style={closeButtonStyle}>Close</button>
-    </div>
-  ), [error, handleClose, centerContainerStyle, closeButtonStyle]);
+  // Double tap heart animation
+  const heartAnimation = useMemo(() => {
+    if (!showHeartAnimation) return null;
 
-  // Render Empty State
-  const emptyContent = useMemo(() => (
-    <div className="stories-viewer-container" style={centerContainerStyle}>
-      <p style={{ color: "white" }}>No stories available</p>
-      <button onClick={handleClose} style={closeButtonStyle}>Close</button>
-    </div>
-  ), [handleClose, centerContainerStyle, closeButtonStyle]);
+    return (
+      <div
+        className={styles.doubleTapHeart}
+        style={{
+          position: 'absolute',
+          left: `${doubleTapCoords.x - 40}px`,
+          top: `${doubleTapCoords.y - 40}px`,
+          width: '80px',
+          height: '80px',
+          color: '#FD1D1D',
+          fontSize: '80px',
+          zIndex: 9999,
+          pointerEvents: 'none',
+        }}
+      >
+        <FaHeart />
+      </div>
+    );
+  }, [showHeartAnimation, doubleTapCoords]);
 
-  // Render Not Available State
-  const notAvailableContent = useMemo(() => (
-    <div className="stories-viewer-container" style={centerContainerStyle}>
-      <p style={{ color: "white" }}>Story not available</p>
-      <button onClick={handleClose} style={closeButtonStyle}>Close</button>
-    </div>
-  ), [handleClose, centerContainerStyle, closeButtonStyle]);
-
-  // Render Normal State (with full content)
-  const normalContent = useMemo(() => (
-    <div className="stories-viewer-container">
-      <div className="stories-viewer-header">
-        {/* Progress bars */}
-        <div className="stories-progress-container">
-          {currentStories.map((_, index) => (
-            <div key={index} className={`stories-progress-bar ${index < currentStoryIndex ? "completed" : ""}`}>
-              {index === currentStoryIndex && (
-                <div className="stories-progress-fill" style={{ width: `${progress}%` }} />
-              )}
-            </div>
-          ))}
+  // Main render with a single return statement based on view state
+  if (viewState === "loading") {
+    return (
+      <div className={styles.storiesViewerOverlay}>
+        <div className={styles.storiesViewerContainer} style={{ justifyContent: 'center', alignItems: 'center' }}>
+          <div className={styles.spinner}></div>
+          <p style={{ color: "white", marginTop: "15px" }}>Loading stories...</p>
         </div>
+      </div>
+    );
+  }
 
-        {/* User info */}
-        <div className="stories-user-info">
-          <img
-            src={profilePicture() || "/placeholder.svg"}
-            alt={getUserDisplayName()}
-            className="stories-user-avatar"
-            loading="lazy"
-            crossOrigin="anonymous"
-            onError={(e) => {
-              e.target.onerror = null;
-              e.target.src = "/placeholder.svg";
+  if (viewState === "error") {
+    return (
+      <div className={styles.storiesViewerOverlay}>
+        <div className={styles.storiesViewerContainer} style={{ justifyContent: 'center', alignItems: 'center' }}>
+          <p style={{ color: "white" }}>{error}</p>
+          <button
+            onClick={handleClose}
+            style={{
+              marginTop: "20px",
+              padding: "10px 20px",
+              background: "#ff3366",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer",
             }}
-          />
-          <div className="stories-user-details">
-            <span className="stories-username">{getUserDisplayName()}</span>
-            <span className="stories-timestamp">{formatTimestamp()}</span>
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (viewState === "empty") {
+    return (
+      <div className={styles.storiesViewerOverlay}>
+        <div className={styles.storiesViewerContainer} style={{ justifyContent: 'center', alignItems: 'center' }}>
+          <p style={{ color: "white" }}>No stories available</p>
+          <button
+            onClick={handleClose}
+            style={{
+              marginTop: "20px",
+              padding: "10px 20px",
+              background: "#ff3366",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer",
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (viewState === "notAvailable") {
+    return (
+      <div className={styles.storiesViewerOverlay}>
+        <div className={styles.storiesViewerContainer} style={{ justifyContent: 'center', alignItems: 'center' }}>
+          <p style={{ color: "white" }}>Story not available</p>
+          <button
+            onClick={handleClose}
+            style={{
+              marginTop: "20px",
+              padding: "10px 20px",
+              background: "#ff3366",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer",
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Normal view with story content
+  return (
+    <div className={styles.storiesViewerOverlay}>
+      <div className={styles.storiesViewerContainer}>
+        <div className={styles.storiesViewerHeader}>
+          {/* Progress bars */}
+          <div className={styles.storiesProgressContainer}>
+            {currentStories.map((_, index) => (
+              <div
+                key={index}
+                className={`${styles.storiesProgressBar} ${index < currentStoryIndex ? "completed" : ""}`}
+                aria-label={`Story ${index + 1} of ${currentStories.length}`}
+                role="progressbar"
+                aria-valuenow={index === currentStoryIndex ? progress : (index < currentStoryIndex ? 100 : 0)}
+                aria-valuemin="0"
+                aria-valuemax="100"
+              >
+                {index === currentStoryIndex && (
+                  <div
+                    className={styles.storiesProgressFill}
+                    style={{ width: `${progress}%` }}
+                  />
+                )}
+                {index < currentStoryIndex && (
+                  <div
+                    className={styles.storiesProgressFill}
+                    style={{ width: '100%' }}
+                  />
+                )}
+              </div>
+            ))}
           </div>
+
+          {/* User info */}
+          <div className={styles.storiesUserInfo}>
+            <img
+              src={profilePicture() || "/placeholder.svg"}
+              alt={getUserDisplayName()}
+              className={styles.storiesUserAvatar}
+              loading="lazy"
+              crossOrigin="anonymous"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = "/placeholder.svg";
+              }}
+            />
+            <div className={styles.storiesUserDetails}>
+              <span className={styles.storiesUsername}>{getUserDisplayName()}</span>
+              <span className={styles.storiesTimestamp}>{formatTimestamp()}</span>
+            </div>
+          </div>
+
+          {/* Close button */}
+          <button
+            className={styles.storiesCloseBtn}
+            onClick={handleClose}
+            aria-label="Close stories"
+          >
+            <FaTimes />
+          </button>
         </div>
 
-        {/* Close button */}
-        <button className="stories-close-btn" onClick={handleClose} aria-label="Close stories">
-          ×
-        </button>
-      </div>
-
-      <div
-        className="stories-viewer-content"
-        onClick={(e) => {
-          // Only toggle pause if click is directly on content (not on a button or other element)
-          if (e.target === e.currentTarget) {
-            togglePause(e);
-          }
-        }}
-      >
-        {storyContent()}
-      </div>
-
-      <div className="stories-viewer-navigation" style={navigationStyle}>
         <div
-          className="stories-nav-left"
-          onClick={handlePrevStory}
-          aria-label="Previous story"
-          style={navArrowStyle}
-        ></div>
+          className={styles.storiesViewerContent}
+          onClick={togglePause}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          {storyContent()}
+          {heartAnimation}
+        </div>
+
         <div
-          className="stories-nav-right"
-          onClick={handleNextStory}
-          aria-label="Next story"
-          style={navArrowStyle}
-        ></div>
-      </div>
+          className={styles.storiesViewerNavigation}
+          aria-label="Story navigation"
+        >
+          <div
+            className={styles.storiesNavLeft}
+            onClick={handlePrevStory}
+            aria-label="Previous story"
+            role="button"
+            tabIndex="0"
+          ></div>
+          <div
+            className={styles.storiesNavRight}
+            onClick={handleNextStory}
+            aria-label="Next story"
+            role="button"
+            tabIndex="0"
+          ></div>
+        </div>
 
-      {/* Story actions */}
-      <div
-        ref={actionsRef}
-        className="stories-actions"
-        style={actionButtonsStyle}
-        onClick={(e) => {
-          // Prevent event bubbling
-          e.stopPropagation();
-          e.preventDefault();
-          setActionClicked(true);
-        }}
-      >
-        <button
-          className={`story-action-button ${reacted ? "active" : ""}`}
-          style={reacted ? activeButtonStyle : storyActionButtonStyle}
-          onClick={handleReact}
-          aria-label="Like story"
-        >
-          {reacted ? <FaHeart size={20} /> : <FaRegHeart size={20} />}
-        </button>
-        <button
-          className="story-action-button"
-          style={storyActionButtonStyle}
+        {/* Story actions */}
+        <div
+          ref={actionsRef}
+          className={styles.storiesActions}
           onClick={(e) => {
+            // Prevent event bubbling
             e.stopPropagation();
             e.preventDefault();
             setActionClicked(true);
-            toast.info("Comments feature coming soon!");
-            setTimeout(() => setActionClicked(false), 300);
           }}
-          aria-label="Comment on story"
         >
-          <FaComment size={20} />
-        </button>
-        <button
-          className="story-action-button"
-          style={storyActionButtonStyle}
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            setActionClicked(true);
-            toast.info("Share feature coming soon!");
-            setTimeout(() => setActionClicked(false), 300);
-          }}
-          aria-label="Share story"
-        >
-          <FaShare size={20} />
-        </button>
-        <button
-          className="story-action-button"
-          style={storyActionButtonStyle}
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            setActionClicked(true);
-            togglePause(e);
-            setTimeout(() => setActionClicked(false), 300);
-          }}
-          aria-label={paused ? "Play story" : "Pause story"}
-        >
-          {paused ? <FaPlay size={20} /> : <FaPause size={20} />}
-        </button>
+          <button
+            className={`${styles.storyActionButton} ${reacted ? styles.active : ""}`}
+            onClick={handleReact}
+            aria-label="Like story"
+            aria-pressed={reacted}
+          >
+            {reacted ? <FaHeart size={20} /> : <FaRegHeart size={20} />}
+          </button>
+          <button
+            className={styles.storyActionButton}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setActionClicked(true);
+              toast.info("Comments feature coming soon!");
+              setTimeout(() => setActionClicked(false), 300);
+            }}
+            aria-label="Comment on story"
+          >
+            <FaComment size={20} />
+          </button>
+          <button
+            className={styles.storyActionButton}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setActionClicked(true);
+              toast.info("Share feature coming soon!");
+              setTimeout(() => setActionClicked(false), 300);
+            }}
+            aria-label="Share story"
+          >
+            <FaShare size={20} />
+          </button>
+          <button
+            className={styles.storyActionButton}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setActionClicked(true);
+              togglePause(e);
+              setTimeout(() => setActionClicked(false), 300);
+            }}
+            aria-label={paused ? "Play story" : "Pause story"}
+          >
+            {paused ? <FaPlay size={20} /> : <FaPause size={20} />}
+          </button>
+        </div>
       </div>
-    </div>
-  ), [
-    currentStories, 
-    currentStoryIndex, 
-    progress, 
-    profilePicture, 
-    getUserDisplayName, 
-    formatTimestamp, 
-    handleClose, 
-    togglePause, 
-    storyContent, 
-    navigationStyle, 
-    handlePrevStory, 
-    handleNextStory, 
-    navArrowStyle, 
-    actionButtonsStyle, 
-    setActionClicked, 
-    reacted, 
-    activeButtonStyle, 
-    storyActionButtonStyle, 
-    handleReact, 
-    paused
-  ]);
-
-  // Main render with a single return statement
-  return (
-    <div className="stories-viewer-overlay">
-      {viewState === "loading" && loadingContent}
-      {viewState === "error" && errorContent}
-      {viewState === "empty" && emptyContent}
-      {viewState === "notAvailable" && notAvailableContent}
-      {viewState === "normal" && normalContent}
     </div>
   );
 }

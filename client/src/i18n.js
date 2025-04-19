@@ -564,6 +564,8 @@ const enTranslations = {
     storyExpired: "Story Expired",
     storyExpiredMessage: "This story has expired and is no longer available",
     createYourFirstStory: "Create Your First Story",
+    whatsOnYourMind: "What's on your mind?",
+    background:"Background",
   },
   dashboard: {
     browseUsers: "Browse Users",
@@ -582,6 +584,7 @@ const enTranslations = {
     moreOptions: "More Options",
     emptyState: "No users found",
     welcomeBack: "Welcome Back, {{name}}!",
+    loadingMoreUsers: "loadingMoreUsers"
   },
   home: {
     welcome: "Welcome to Mandarin",
@@ -1271,6 +1274,10 @@ const heTranslations = {
     storyExpired: "הסטורי פג תוקף",
     storyExpiredMessage: "סטורי זה פג תוקף ואינו זמין יותר",
     createYourFirstStory: "צור את הסטורי הראשון שלך",
+    whatsOnYourMind: "על מה אתה חושב?",
+    background: "רקע",
+    typeSomething: "טקסט",
+    text: "טקסט",
   },
   home: {
     welcome: "ברוכים הבאים למנדרין",

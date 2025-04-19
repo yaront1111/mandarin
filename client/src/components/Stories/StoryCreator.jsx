@@ -8,7 +8,7 @@ import { toast } from "react-toastify"
 import { useTranslation } from "react-i18next"
 import { useAuth, useLanguage } from "../../context"
 import { useStories } from "../../context/StoriesContext"
-import styles from "../../styles/StoryCreator.module.css"
+import styles from "../../styles/stories.module.css"
 
 const BACKGROUND_OPTIONS = [
   { id: "gradient-1", name: "Sunset", style: "linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%)" },
@@ -84,7 +84,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
       // Handle different response formats for compatibility
       if (response && (response.success === true || response._id || (response.data && response.data._id))) {
         toast.success(t('stories.createStorySuccess'))
-        
+
         // Determine what to pass to onSubmit based on response format
         if (onSubmit) {
           if (response.data) {
@@ -142,16 +142,16 @@ const StoryCreator = ({ onClose, onSubmit }) => {
   }, [onClose, isUploading, isSubmitting])
 
   return (
-    <div className={`${styles.container} ${isRTL ? 'rtl-layout' : ''}`}>
+    <div className={`${styles.storyCreatorContainer} ${isRTL ? 'rtl-layout' : ''}`}>
       <div
-        className={styles.overlay}
+        className={styles.storyCreatorOverlay}
         onClick={isUploading || isSubmitting ? undefined : onClose}
       />
-      <div className={styles.modal}>
-        <div className={styles.header}>
-          <h2 className={styles.title}>{t('stories.createStory')}</h2>
+      <div className={styles.storyCreatorModal}>
+        <div className={styles.storyCreatorHeader}>
+          <h2 className={styles.storyCreatorTitle}>{t('stories.createStory')}</h2>
           <button
-            className={styles.closeButton}
+            className={styles.storyCreatorCloseButton}
             onClick={isUploading || isSubmitting ? undefined : onClose}
             disabled={isUploading || isSubmitting}
             aria-label="Close"
@@ -160,86 +160,82 @@ const StoryCreator = ({ onClose, onSubmit }) => {
           </button>
         </div>
 
-        <div className={styles.content}>
-          <div className={styles.previewContainer}>
+        <div className={styles.storyCreatorContent}>
+          <div className={styles.storyCreatorPreview}>
             <div
-              className={styles.preview}
+              className={styles.storyPreviewFrame}
               style={{ ...getBackgroundStyle(selectedBackground), ...getFontStyle(selectedFont) }}
             >
               {text ? (
-                <div className={styles.textContent}>{text}</div>
+                <div className={styles.storyTextContent}>{text}</div>
               ) : (
-                <div className={styles.placeholder}>{t('stories.typeSomething')}</div>
+                <div className={styles.storyPlaceholder}>{t('stories.typeSomething')}</div>
               )}
             </div>
           </div>
 
-          <div className={styles.editorContainer}>
-            <div className={styles.tabs}>
-              <button
-                className={`${styles.tabButton} ${activeTab === "text" ? styles.activeTab : ""}`}
-                onClick={() => setActiveTab("text")}
-                disabled={isSubmitting || isUploading}
-              >
-                <span style={{ fontSize: '20px' }}>A</span> {t('stories.text')}
-              </button>
-              <button
-                className={`${styles.tabButton} ${activeTab === "background" ? styles.activeTab : ""}`}
-                onClick={() => setActiveTab("background")}
-                disabled={isSubmitting || isUploading}
-              >
-                <FaPalette /> {t('stories.background')}
-              </button>
-            </div>
-
-            {activeTab === "text" && (
-              <div className={styles.tabContent}>
-                <div className={styles.textTab}>
-                  <textarea
-                    className={styles.textarea}
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder={t('stories.whatsOnYourMind')}
-                    maxLength={150}
-                    disabled={isSubmitting || isUploading}
-                  />
-                  <small className={styles.characterCount}>
-                    {text.length}/150
-                  </small>
-                </div>
-              </div>
-            )}
-
-            {activeTab === "background" && (
-              <div className={styles.tabContent}>
-                <div className={styles.backgroundOptions}>
-                  {BACKGROUND_OPTIONS.map((bg) => (
-                    <div
-                      key={bg.id}
-                      className={`${styles.backgroundOption} ${selectedBackground.id === bg.id ? styles.selected : ""}`}
-                      style={getBackgroundStyle(bg)}
-                      onClick={() => {
-                        if (!isSubmitting && !isUploading) {
-                          setSelectedBackground(bg);
-                        }
-                      }}
-                      title={bg.name}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {error && <div className={styles.errorMessage}>{error}</div>}
+          <div className={styles.storyCreatorTabs}>
+            <button
+              className={`${styles.storyCreatorTab} ${activeTab === "text" ? styles.active : ""}`}
+              onClick={() => setActiveTab("text")}
+              disabled={isSubmitting || isUploading}
+            >
+              <FaFont /> {t('stories.text')}
+            </button>
+            <button
+              className={`${styles.storyCreatorTab} ${activeTab === "background" ? styles.active : ""}`}
+              onClick={() => setActiveTab("background")}
+              disabled={isSubmitting || isUploading}
+            >
+              <FaPalette /> {t('stories.background')}
+            </button>
           </div>
+
+          {activeTab === "text" && (
+            <div className={styles.storyCreatorTabContent}>
+              <textarea
+                className={styles.storyCreatorInput}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={t('stories.whatsOnYourMind')}
+                maxLength={150}
+                disabled={isSubmitting || isUploading}
+              />
+              <small className={styles.storyCreatorCharCount}>
+                {text.length}/150
+              </small>
+            </div>
+          )}
+
+          {activeTab === "background" && (
+            <div className={styles.storyCreatorTabContent}>
+              <div className={styles.storyCreatorBackgroundOptions}>
+                {BACKGROUND_OPTIONS.map((bg) => (
+                  <div
+                    key={bg.id}
+                    className={`${styles.storyCreatorBackgroundOption} ${selectedBackground.id === bg.id ? styles.selected : ""}`}
+                    style={getBackgroundStyle(bg)}
+                    onClick={() => {
+                      if (!isSubmitting && !isUploading) {
+                        setSelectedBackground(bg);
+                      }
+                    }}
+                    title={bg.name}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {error && <div className={styles.errorMessage}>{error}</div>}
         </div>
 
-        <div className={styles.footer}>
+        <div className={styles.storyCreatorFooter}>
           {isUploading ? (
-            <div className={styles.uploadProgress}>
-              <div className={styles.progressBarContainer}>
+            <div className={styles.uploadProgressContainer}>
+              <div className={styles.storyCreatorProgressContainer}>
                 <div
-                  className={styles.progressBar}
+                  className={styles.storyCreatorProgressFill}
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
@@ -248,14 +244,14 @@ const StoryCreator = ({ onClose, onSubmit }) => {
           ) : (
             <>
               <button
-                className={`${styles.button} ${styles.outlineButton}`}
+                className={`${styles.storyCreatorButton} ${styles.storyCreatorOutlineButton}`}
                 onClick={onClose}
                 disabled={isUploading || isSubmitting}
               >
                 {t('common.cancel')}
               </button>
               <button
-                className={`${styles.button} ${styles.primaryButton}`}
+                className={`${styles.storyCreatorButton} ${styles.storyCreatorPrimaryButton}`}
                 onClick={handleCreateStory}
                 disabled={
                   isUploading ||

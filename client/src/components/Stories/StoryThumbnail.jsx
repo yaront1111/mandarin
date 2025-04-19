@@ -1,4 +1,3 @@
-// client/src/components/Stories/StoryThumbnail.jsx
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -8,10 +7,11 @@ import styles from "../../styles/stories.module.css";
 
 const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser, mediaType }) => {
   const { user: contextUser } = useUser();
-  const [imageError, setImageError] = useState(false); // State for image loading error
-  
+  const [imageError, setImageError] = useState(false);
+
   // Use a ref to track images we've already tried to load and failed
   const failedImagesRef = useRef(new Set());
+  const touchStartTimeRef = useRef(0);
 
   // Derive user object from story or props
   const storyUser = useMemo(() => {
@@ -30,14 +30,14 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser, me
   // Determine the final avatar URL - use the proper URL pattern
   const avatarUrl = useMemo(() => {
     const baseUrl = window.location.origin;
-    const url = explicitAvatarSrc || 
+    const url = explicitAvatarSrc ||
                 (userId ? `${baseUrl}/api/avatars/${userId}` : `${baseUrl}/placeholder.svg`);
-    
+
     // If we've already tried this URL and it failed, go straight to placeholder
     if (failedImagesRef.current.has(url)) {
       return `${baseUrl}/placeholder.svg`;
     }
-    
+
     return url;
   }, [explicitAvatarSrc, userId]);
 
@@ -93,16 +93,37 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser, me
       // Don't trigger onClick for coming soon stories
       return;
     }
-    
+
     e.preventDefault();
     e.stopPropagation();
     if (typeof onClick === "function") onClick();
   };
 
+  // Handle touch events for better mobile experience
+  const handleTouchStart = (e) => {
+    touchStartTimeRef.current = Date.now();
+  };
+
+  const handleTouchEnd = (e) => {
+    const touchDuration = Date.now() - touchStartTimeRef.current;
+
+    // Only handle as a click if it was a quick tap (not a long press or drag)
+    if (touchDuration < 300) {
+      handleClick(e);
+    }
+  };
+
   if (!story && !propUser) return null;
 
   return (
-    <div className={styles.storyThumbnail} onClick={handleClick}>
+    <div
+      className={styles.storyThumbnail}
+      onClick={handleClick}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      aria-label={`${userName}'s story ${isViewed ? 'viewed' : 'not viewed'}`}
+      role="button"
+    >
       <div className={`${styles.avatarBorder} ${isViewed ? styles.avatarBorderViewed : ""}`}>
         <div className={styles.imageContainer}>
           {!imageError ? (

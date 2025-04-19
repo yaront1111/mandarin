@@ -1,20 +1,28 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useStories } from "../../context"
 import StoryThumbnail from "./StoryThumbnail"
 import styles from "../../styles/stories.module.css"
 
-// Simple throttle function to limit function calls
+// Improved throttle function with proper cleanup
 const throttle = (func, limit) => {
-  let inThrottle
-  return function () {
+  let lastFunc
+  let lastRan
+  return function() {
+    const context = this
     const args = arguments
-
-    if (!inThrottle) {
-      func.apply(this, args)
-      inThrottle = true
-      setTimeout(() => (inThrottle = false), limit)
+    if (!lastRan) {
+      func.apply(context, args)
+      lastRan = Date.now()
+    } else {
+      clearTimeout(lastFunc)
+      lastFunc = setTimeout(function() {
+        if ((Date.now() - lastRan) >= limit) {
+          func.apply(context, args)
+          lastRan = Date.now()
+        }
+      }, limit - (Date.now() - lastRan))
     }
   }
 }
@@ -28,24 +36,26 @@ const StoriesCarousel = ({ onStoryClick }) => {
   const [loadAttempted, setLoadAttempted] = useState(false)
   const loadingRef = useRef(false)
   const carouselRef = useRef(null)
+  const touchStartXRef = useRef(0)
+  const isTouchActiveRef = useRef(false)
 
   // Add some mock "coming soon" stories
   const comingSoonStories = [
-    { 
-      _id: "coming-soon-video", 
+    {
+      _id: "coming-soon-video",
       mediaType: "video",
-      user: { 
-        _id: "video-user", 
-        nickname: "Video Stories" 
-      } 
+      user: {
+        _id: "video-user",
+        nickname: "Video Stories"
+      }
     },
-    { 
-      _id: "coming-soon-image", 
+    {
+      _id: "coming-soon-image",
       mediaType: "image",
-      user: { 
-        _id: "image-user", 
-        nickname: "Image Stories" 
-      } 
+      user: {
+        _id: "image-user",
+        nickname: "Image Stories"
+      }
     }
   ];
 
@@ -155,12 +165,77 @@ const StoriesCarousel = ({ onStoryClick }) => {
     })
   }, [])
 
+  // Touch event handlers for mobile swipe
+  const handleTouchStart = useCallback((e) => {
+    touchStartXRef.current = e.touches[0].clientX
+    isTouchActiveRef.current = true
+  }, [])
+
+  const handleTouchMove = useCallback((e) => {
+    if (!isTouchActiveRef.current) return
+    // Prevent default to disable browser scroll when swiping stories
+    e.preventDefault()
+  }, [])
+
+  const handleTouchEnd = useCallback((e) => {
+    if (!isTouchActiveRef.current) return
+
+    const touchEndX = e.changedTouches[0].clientX
+    const diffX = touchStartXRef.current - touchEndX
+
+    // Threshold for considering it a swipe (20px)
+    if (Math.abs(diffX) > 20) {
+      if (diffX > 0) {
+        // Swipe left, scroll right
+        scrollCarousel("right")
+      } else {
+        // Swipe right, scroll left
+        scrollCarousel("left")
+      }
+    }
+
+    isTouchActiveRef.current = false
+  }, [scrollCarousel])
+
+  // Setup touch events for the carousel
+  useEffect(() => {
+    const carousel = carouselRef.current
+    if (!carousel) return
+
+    carousel.addEventListener('touchstart', handleTouchStart, { passive: false })
+    carousel.addEventListener('touchmove', handleTouchMove, { passive: false })
+    carousel.addEventListener('touchend', handleTouchEnd)
+
+    return () => {
+      carousel.removeEventListener('touchstart', handleTouchStart)
+      carousel.removeEventListener('touchmove', handleTouchMove)
+      carousel.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [handleTouchStart, handleTouchMove, handleTouchEnd])
+
+  // Generate memoized thumbnail components
+  const storyThumbnails = useMemo(() => {
+    return processedStories.map((story) => (
+      <StoryThumbnail
+        key={story._id || `story-${Math.random()}`}
+        story={story}
+        onClick={() => handleStoryClick(story._id)}
+        hasUnviewedStories={
+          typeof hasUnviewedStories === "function" && story.user
+            ? hasUnviewedStories(typeof story.user === "string" ? story.user : story.user._id)
+            : false
+        }
+        mediaType={story.mediaType}
+      />
+    ))
+  }, [processedStories, handleStoryClick, hasUnviewedStories])
+
   // Show loading state
   if ((loading || contextLoading) && !loadAttempted) {
     return (
       <div className={styles.storiesCarouselContainer}>
-        <div className="stories-carousel-loading">
-          <div className="spinner"></div>
+        <div className={styles.loadingContainer}>
+          <div className={styles.spinner}></div>
           <p>Loading stories...</p>
         </div>
       </div>
@@ -171,49 +246,39 @@ const StoriesCarousel = ({ onStoryClick }) => {
   if (error) {
     return (
       <div className={styles.storiesCarouselContainer}>
-        <div className="stories-carousel-error">
+        <div className={styles.errorContainer}>
           <p>{error}</p>
         </div>
       </div>
     )
   }
 
-  // Skip empty state handling since we always have at least the coming soon stories
-
   // Render stories carousel
   return (
-    <div className={styles.storiesCarouselContainer}>
+    <div className={styles.storiesCarouselContainer} role="region" aria-label="Stories">
       {processedStories.length > 4 && (
-        <button 
-          className={`${styles.carouselNavButton} ${styles.carouselNavButtonLeft}`} 
-          onClick={() => scrollCarousel("left")} 
-          aria-label="Scroll left"
+        <button
+          className={`${styles.carouselNavButton} ${styles.carouselNavButtonLeft}`}
+          onClick={() => scrollCarousel("left")}
+          aria-label="Scroll stories left"
         >
           ‹
         </button>
       )}
 
-      <div className={styles.storiesCarousel} ref={carouselRef}>
-        {processedStories.map((story) => (
-          <StoryThumbnail
-            key={story._id || `story-${Math.random()}`}
-            story={story}
-            onClick={() => handleStoryClick(story._id)}
-            hasUnviewedStories={
-              typeof hasUnviewedStories === "function" && story.user
-                ? hasUnviewedStories(typeof story.user === "string" ? story.user : story.user._id)
-                : false
-            }
-            mediaType={story.mediaType} // Pass media type for coming soon stories
-          />
-        ))}
+      <div
+        className={styles.storiesCarousel}
+        ref={carouselRef}
+        style={{ overscrollBehavior: 'contain' }}
+      >
+        {storyThumbnails}
       </div>
 
       {processedStories.length > 4 && (
-        <button 
-          className={`${styles.carouselNavButton} ${styles.carouselNavButtonRight}`} 
-          onClick={() => scrollCarousel("right")} 
-          aria-label="Scroll right"
+        <button
+          className={`${styles.carouselNavButton} ${styles.carouselNavButtonRight}`}
+          onClick={() => scrollCarousel("right")}
+          aria-label="Scroll stories right"
         >
           ›
         </button>
