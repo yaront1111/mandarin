@@ -25,12 +25,92 @@ const TAG_TYPES = {
  */
 const safeTranslate = (t, key, defaultValue = "") => {
   try {
-    const translated = t(key);
-    // Check if translation returned an object instead of a string
-    if (typeof translated === 'object' && translated !== null) {
-      // Try to get a string representation or return the default
-      return translated.toString ? translated.toString() : defaultValue;
+    // For the problematic nested path keys, try flat format first
+    const flatKey = key.replace(/\./g, '_');
+    
+    // Handle two-level and three-level nested keys
+    const parts = key.split('.');
+    
+    // Try to use paths in different ways to ensure we get strings
+    if (parts.length > 1) {
+      // Try getting direct access from parent object
+      try {
+        // Get the parent object (e.g., 'profile' from 'profile.maritalStatus')
+        const parentKey = parts[0];
+        // Get the rest of the path as array
+        const childPath = parts.slice(1);
+        
+        // Get the parent object from i18n
+        const parent = t(parentKey, { returnObjects: true });
+        
+        // If parent is an object, try to access the child path directly
+        if (typeof parent === 'object' && parent !== null) {
+          // Navigate to the final value through the object structure
+          let value = parent;
+          for (const pathPart of childPath) {
+            if (value && typeof value === 'object' && pathPart in value) {
+              value = value[pathPart];
+            } else {
+              // Path doesn't exist, break out
+              value = null;
+              break;
+            }
+          }
+          
+          // If we found a string value, return it
+          if (typeof value === 'string') {
+            return value;
+          }
+        }
+      } catch (e) {
+        // Ignore errors in alternative lookup
+      }
+      
+      // Try flat key format (e.g., 'profile_maritalStatus')
+      try {
+        const flatTranslation = t(flatKey);
+        if (typeof flatTranslation === 'string' && flatTranslation !== flatKey) {
+          return flatTranslation;
+        }
+      } catch (e) {
+        // Ignore errors in alternative lookup
+      }
+      
+      // For three-level nesting, also try two-level format
+      if (parts.length > 2) {
+        try {
+          const twoLevelKey = `${parts[0]}_${parts[1]}_${parts[2]}`;
+          const twoLevelTranslation = t(twoLevelKey);
+          if (typeof twoLevelTranslation === 'string' && twoLevelTranslation !== twoLevelKey) {
+            return twoLevelTranslation;
+          }
+        } catch (e) {
+          // Ignore errors in alternative lookup
+        }
+      }
     }
+    
+    // Try direct translation
+    const translated = t(key);
+    
+    // If it's a string and not just returning the key, use it
+    if (typeof translated === 'string' && translated !== key) {
+      return translated;
+    }
+    
+    // If it's an object, likely a nested translation object - try to get a string representation or use default
+    if (typeof translated === 'object' && translated !== null) {
+      // Try to find a string representation
+      if (translated.toString && typeof translated.toString === 'function' && 
+          translated.toString() !== '[object Object]') {
+        return translated.toString();
+      }
+      
+      // If it's a valid translation object with string representation, use that
+      return defaultValue;
+    }
+    
+    // Return translated or default
     return translated || defaultValue;
   } catch (error) {
     logger.error(`Translation error for key '${key}':`, error);
@@ -218,14 +298,70 @@ const UserCard = ({
     return formatDate(user.lastActive, { showRelative: true, showTime: false, showDate: false });
   }, [user?.lastActive, user?.isOnline, t]);
 
-  // Helper to safely translate profile identity/lookingFor/etc tags
+  // Helper to translate profile data (identity, lookingFor, etc.)
   const getTranslatedTag = useCallback((namespace, tag) => {
     if (!tag) return "";
-
-    // Format the tag key according to the i18n pattern
-    const key = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
-    // Use the original tag as the default if translation fails
-    return safeTranslate(t, key, tag);
+    
+    // Format the tag key according to the patterns we've been supporting
+    // Method 1: Direct nested access
+    const nestedKey = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
+    
+    // Method 2: Special prefixed key format for common patterns
+    let prefixKey = null;
+    
+    if (namespace === 'profile.intoTags') {
+      prefixKey = `profile.intoTag_${tag.toLowerCase().replace(/\s+/g, '_')}`;
+    } else if (namespace === 'profile.turnOns') {
+      prefixKey = `profile.turnOn_${tag.toLowerCase().replace(/\s+/g, '_')}`;
+    } else if (namespace === 'profile.interests') {
+      prefixKey = `profile.interests${tag.charAt(0).toUpperCase() + tag.slice(1).replace(/\s+/g, '_')}`;
+    }
+    
+    // Method 3: Flattened key
+    const flatKey = nestedKey.replace(/\./g, '_');
+    
+    // Try each of the key formats in order
+    // First try the special prefixed format
+    if (prefixKey) {
+      try {
+        const prefixTranslation = t(prefixKey);
+        if (typeof prefixTranslation === 'string' && prefixTranslation !== prefixKey) {
+          return prefixTranslation;
+        }
+      } catch (e) {
+        // Ignore errors in lookup
+      }
+    }
+    
+    // Then try the direct path access through safeTranslate
+    const safeResult = safeTranslate(t, nestedKey, null);
+    if (safeResult && safeResult !== nestedKey) {
+      return safeResult;
+    }
+    
+    // Then try the flat key
+    try {
+      const flatTranslation = t(flatKey);
+      if (typeof flatTranslation === 'string' && flatTranslation !== flatKey) {
+        return flatTranslation;
+      }
+    } catch (e) {
+      // Ignore errors in lookup
+    }
+    
+    // Fallback 1: Try to get the tag directly from translations
+    try {
+      const directTagTranslation = t(tag.toLowerCase().replace(/\s+/g, '_'));
+      if (typeof directTagTranslation === 'string' && 
+          directTagTranslation !== tag.toLowerCase().replace(/\s+/g, '_')) {
+        return directTagTranslation;
+      }
+    } catch (e) {
+      // Ignore errors in lookup
+    }
+    
+    // Fallback 2: Just clean up and return the tag
+    return tag.charAt(0).toUpperCase() + tag.slice(1).replace(/_/g, ' ');
   }, [t]);
 
   // Validation

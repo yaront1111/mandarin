@@ -43,12 +43,92 @@ import { formatDate, logger, markUrlAsFailed, normalizePhotoUrl } from "../utils
  */
 const safeTranslate = (t, key, defaultValue = "") => {
   try {
-    const translated = t(key);
-    // Check if translation returned an object instead of a string
-    if (typeof translated === 'object' && translated !== null) {
-      // Try to get a string representation or return the default
-      return translated.toString ? translated.toString() : defaultValue;
+    // For the problematic nested path keys, try flat format first
+    const flatKey = key.replace('.', '_');
+    
+    // Handle two-level and three-level nested keys
+    const parts = key.split('.');
+    
+    // Try to use paths in different ways to ensure we get strings
+    if (parts.length > 1) {
+      // Try getting direct access from parent object
+      try {
+        // Get the parent object (e.g., 'profile' from 'profile.maritalStatus')
+        const parentKey = parts[0];
+        // Get the rest of the path as array
+        const childPath = parts.slice(1);
+        
+        // Get the parent object from i18n
+        const parent = t(parentKey, { returnObjects: true });
+        
+        // If parent is an object, try to access the child path directly
+        if (typeof parent === 'object' && parent !== null) {
+          // Navigate to the final value through the object structure
+          let value = parent;
+          for (const pathPart of childPath) {
+            if (value && typeof value === 'object' && pathPart in value) {
+              value = value[pathPart];
+            } else {
+              // Path doesn't exist, break out
+              value = null;
+              break;
+            }
+          }
+          
+          // If we found a string value, return it
+          if (typeof value === 'string') {
+            return value;
+          }
+        }
+      } catch (e) {
+        // Ignore errors in alternative lookup
+      }
+      
+      // Try flat key format (e.g., 'profile_maritalStatus')
+      try {
+        const flatTranslation = t(flatKey);
+        if (typeof flatTranslation === 'string' && flatTranslation !== flatKey) {
+          return flatTranslation;
+        }
+      } catch (e) {
+        // Ignore errors in alternative lookup
+      }
+      
+      // For three-level nesting, also try two-level format
+      if (parts.length > 2) {
+        try {
+          const twoLevelKey = `${parts[0]}_${parts[1]}_${parts[2]}`;
+          const twoLevelTranslation = t(twoLevelKey);
+          if (typeof twoLevelTranslation === 'string' && twoLevelTranslation !== twoLevelKey) {
+            return twoLevelTranslation;
+          }
+        } catch (e) {
+          // Ignore errors in alternative lookup
+        }
+      }
     }
+    
+    // Try direct translation
+    const translated = t(key);
+    
+    // If it's a string and not just returning the key, use it
+    if (typeof translated === 'string' && translated !== key) {
+      return translated;
+    }
+    
+    // If it's an object, likely a nested translation object - try to get a string representation or use default
+    if (typeof translated === 'object' && translated !== null) {
+      // Try to find a string representation
+      if (translated.toString && typeof translated.toString === 'function' && 
+          translated.toString() !== '[object Object]') {
+        return translated.toString();
+      }
+      
+      // If it's a valid translation object with string representation, use that
+      return defaultValue;
+    }
+    
+    // Return translated or default
     return translated || defaultValue;
   } catch (error) {
     logger.error(`Translation error for key '${key}':`, error);
@@ -782,14 +862,99 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     return Math.min(100, score);
   }
 
-  // Helper to safely translate profile data (identity, lookingFor, etc.)
+  // Helper to translate profile data (identity, lookingFor, etc.)
   const getTranslatedTag = useCallback((namespace, tag) => {
     if (!tag) return "";
-
-    // Format the tag key according to the i18n pattern
-    const key = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
-    // Use the original tag as the default if translation fails
-    return safeTranslate(t, key, tag);
+    
+    // Format the tag key according to the patterns we've been supporting
+    // Method 1: Direct nested access
+    const nestedKey = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
+    
+    // Method 2: Special prefixed key format for common patterns
+    let prefixKey = null;
+    
+    if (namespace === 'profile.intoTags') {
+      prefixKey = `profile.intoTag_${tag.toLowerCase().replace(/\s+/g, '_')}`;
+    } else if (namespace === 'profile.turnOns') {
+      prefixKey = `profile.turnOn_${tag.toLowerCase().replace(/\s+/g, '_')}`;
+    } else if (namespace === 'profile.interests') {
+      prefixKey = `profile.interests${capitalize(tag.replace(/\s+/g, '_'))}`;
+    }
+    
+    // Method 3: Direct flat access for key section values
+    const directKey = `profile_${namespace.split('.').pop()}_${tag.toLowerCase().replace(/\s+/g, '_')}`;
+    
+    // Method 4: Flattened key
+    const flatKey = nestedKey.replace(/\./g, '_');
+    
+    // Method 5: Simple key format
+    const simpleKey = `profile_${tag.toLowerCase().replace(/\s+/g, '_')}`;
+    
+    // Debug key resolution (uncomment for debugging)
+    // console.log('Translation tag lookup:', { namespace, tag, nestedKey, prefixKey, directKey, flatKey, simpleKey });
+    
+    // Try each of the key formats in order
+    // First try the direct flat format for section values (most specific)
+    try {
+      const directTranslation = t(directKey);
+      if (typeof directTranslation === 'string' && directTranslation !== directKey) {
+        return directTranslation;
+      }
+    } catch (e) {
+      // Ignore errors in lookup
+    }
+    
+    // Then try the special prefixed format
+    if (prefixKey) {
+      try {
+        const prefixTranslation = t(prefixKey);
+        if (typeof prefixTranslation === 'string' && prefixTranslation !== prefixKey) {
+          return prefixTranslation;
+        }
+      } catch (e) {
+        // Ignore errors in lookup
+      }
+    }
+    
+    // Next try the simple key format 
+    try {
+      const simpleTranslation = t(simpleKey);
+      if (typeof simpleTranslation === 'string' && simpleTranslation !== simpleKey) {
+        return simpleTranslation;
+      }
+    } catch (e) {
+      // Ignore errors in lookup
+    }
+    
+    // Then try the direct path access through safeTranslate
+    const safeResult = safeTranslate(t, nestedKey, null);
+    if (safeResult && safeResult !== nestedKey) {
+      return safeResult;
+    }
+    
+    // Then try the flat key
+    try {
+      const flatTranslation = t(flatKey);
+      if (typeof flatTranslation === 'string' && flatTranslation !== flatKey) {
+        return flatTranslation;
+      }
+    } catch (e) {
+      // Ignore errors in lookup
+    }
+    
+    // Fallback 1: Try to get the tag directly from translations
+    try {
+      const directTagTranslation = t(tag.toLowerCase().replace(/\s+/g, '_'));
+      if (typeof directTagTranslation === 'string' && 
+          directTagTranslation !== tag.toLowerCase().replace(/\s+/g, '_')) {
+        return directTagTranslation;
+      }
+    } catch (e) {
+      // Ignore errors in lookup
+    }
+    
+    // Fallback 2: Just clean up and return the tag
+    return capitalize(tag.replace(/_/g, ' '));
   }, [t]);
 
   // Text formatter
@@ -1128,7 +1293,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             {/* Compatibility section */}
             {!isOwnProfile && (
               <div className={styles.compatibilitySection}>
-                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.compatibility', 'Compatibility')}</h2>
+                <h2 className={styles.sectionTitle}>{t('profile.compatibility', 'Compatibility')}</h2>
                 <div className={styles.compatibilityScore}>
                   <div className={styles.scoreCircle}>
                     <svg viewBox="0 0 100 100">
@@ -1198,14 +1363,14 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             {/* User details sections */}
             {profileUser.details?.bio && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.aboutMe', 'About Me')}</h2>
+                <h2 className={styles.sectionTitle}>{t('profile.aboutMe', 'About Me')}</h2>
                 <p className={styles.aboutText}>{profileUser.details.bio}</p>
               </div>
             )}
 
             {profileUser.details?.iAm && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.iAm', 'I Am')}</h2>
+                <h2 className={styles.sectionTitle}>{t('profile.iAm', 'I am')}</h2>
                 <div className={styles.tagsContainer}>
                   <span className={`${styles.tag} ${styles.identityTag}`}>
                     {getTranslatedTag('profile.identity', profileUser.details.iAm)}
@@ -1216,7 +1381,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {profileUser.details?.maritalStatus && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.maritalStatus', 'Marital Status')}</h2>
+                <h2 className={styles.sectionTitle}>{t('profile.maritalStatusLabel', 'Marital Status')}</h2>
                 <div className={styles.tagsContainer}>
                   <span className={`${styles.tag} ${styles.statusTag}`}>
                     {getTranslatedTag('profile.maritalStatus', profileUser.details.maritalStatus)}
@@ -1227,7 +1392,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {profileUser.details?.lookingFor && profileUser.details.lookingFor.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.lookingFor', 'Looking For')}</h2>
+                <h2 className={styles.sectionTitle}>{t('profile.lookingForLabel', 'Looking For')}</h2>
                 <div className={styles.tagsContainer}>
                   {profileUser.details.lookingFor.map((item, index) => (
                     <span key={index} className={`${styles.tag} ${styles.lookingForTag}`}>
@@ -1240,7 +1405,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {profileUser.details?.intoTags && profileUser.details.intoTags.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.imInto', "I'm Into")}</h2>
+                <h2 className={styles.sectionTitle}>{t('profile.imIntoLabel', "I'm Into")}</h2>
                 <div className={styles.tagsContainer}>
                   {profileUser.details.intoTags.map((item, index) => (
                     <span key={index} className={`${styles.tag} ${styles.intoTag}`}>
@@ -1253,11 +1418,13 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {profileUser.details?.turnOns && profileUser.details.turnOns.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.turnOns', 'Turn Ons')}</h2>
+                <h2 className={styles.sectionTitle}>{t('profile.turnOnsLabel', 'Turn Ons')}</h2>
                 <div className={styles.tagsContainer}>
                   {profileUser.details.turnOns.map((item, index) => (
                     <span key={index} className={`${styles.tag} ${styles.turnOnTag}`}>
-                      {getTranslatedTag('profile.turnOns', item)}
+                      {item === 'leather_latex_clothing' ? 
+                        t('leather_latex_clothing', 'Leather/latex clothing') : 
+                        getTranslatedTag('profile.turnOns', item)}
                     </span>
                   ))}
                 </div>
@@ -1267,7 +1434,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             {/* Interests section */}
             {profileUser.details?.interests?.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{safeTranslate(t, 'profile.interests', 'Interests')}</h2>
+                <h2 className={styles.sectionTitle}>{t('profile.interests', 'Interests')}</h2>
                 <div className={styles.interestsTags}>
                   {(showAllInterests
                     ? profileUser.details.interests

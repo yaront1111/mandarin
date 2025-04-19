@@ -181,6 +181,7 @@
 /* RTL Support for detail item */
 :global([dir="rtl"]) .detailItem {
   flex-direction: row-reverse;
+  direction: ltr;
 }
 
 .detailLabel {

@@ -1,7 +1,11 @@
 import React from 'react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 import './language.css';
+
+// For debugging translation issues
+const DEBUG_TRANSLATIONS = false; // Set to true to enable debug logs
 
 /**
  * Combined Language component that includes both the language selector toggle button
@@ -17,6 +21,15 @@ const LanguageSelector = ({ className = '', display = 'toggle' }) => {
 
   const toggleLanguage = () => {
     const newLang = language === 'en' ? 'he' : 'en';
+    
+    if (DEBUG_TRANSLATIONS) {
+      console.log('LanguageSelector: Current language =', language);
+      console.log('LanguageSelector: Switching to language =', newLang);
+      console.log('LanguageSelector: i18n.languages =', i18n.languages);
+      console.log('LanguageSelector: i18n.language =', i18n.language);
+      console.log('LanguageSelector: Test translation =', t('common.login', 'Fallback login text'));
+    }
+    
     changeLanguage(newLang);
   };
 

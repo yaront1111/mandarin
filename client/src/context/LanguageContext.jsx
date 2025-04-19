@@ -12,21 +12,38 @@ export function LanguageProvider({ children }) {
 
   // Change the language
   const changeLanguage = (lang) => {
-    i18n.changeLanguage(lang);
-    setLanguage(lang);
-    setIsRTL(lang === 'he');
-    localStorage.setItem('language', lang);
-    
-    // Set document direction
-    document.documentElement.dir = lang === 'he' ? 'rtl' : 'ltr';
-    document.documentElement.lang = lang;
-    
-    // Dispatch event for other components to respond to direction change
-    window.dispatchEvent(
-      new CustomEvent('languageDirectionChanged', { 
-        detail: { isRTL: lang === 'he', language: lang } 
-      })
-    );
+    try {
+      console.log('Changing language to:', lang);
+      
+      // Update i18next instance
+      i18n.changeLanguage(lang);
+      
+      // Update state
+      setLanguage(lang);
+      setIsRTL(lang === 'he');
+      
+      // Persist language preference
+      localStorage.setItem('language', lang);
+      
+      // Set document direction and lang attributes
+      document.documentElement.dir = lang === 'he' ? 'rtl' : 'ltr';
+      document.documentElement.lang = lang;
+      
+      // Force application to recognize RTL/LTR change
+      document.body.classList.remove('rtl', 'ltr');
+      document.body.classList.add(lang === 'he' ? 'rtl' : 'ltr');
+      
+      // Dispatch event for other components to respond to direction change
+      window.dispatchEvent(
+        new CustomEvent('languageDirectionChanged', { 
+          detail: { isRTL: lang === 'he', language: lang } 
+        })
+      );
+      
+      console.log('Language changed successfully to:', lang, 'RTL:', lang === 'he');
+    } catch (error) {
+      console.error('Error changing language:', error);
+    }
   };
 
   // Initialize language on component mount
@@ -39,12 +56,26 @@ export function LanguageProvider({ children }) {
     changeLanguage(initialLanguage);
   }, []);
 
-  // Context value
+  // Helper function to get supported languages
+  const getSupportedLanguages = () => {
+    return i18n.options?.supportedLngs?.filter(lang => lang !== 'cimode') || ['en', 'he'];
+  };
+
+  // Get language display name
+  const getLanguageDisplayName = (code) => {
+    if (code === 'en') return 'English';
+    if (code === 'he') return 'עברית';
+    return code;
+  };
+
+  // Context value with expanded API
   const value = {
     language,
     isRTL,
     changeLanguage,
     t: i18n.t,
+    supportedLanguages: getSupportedLanguages(),
+    getLanguageDisplayName
   };
 
   return (

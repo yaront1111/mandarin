@@ -11,7 +11,7 @@ import { useAuth, useTheme, useUser, useLanguage } from "../context"
 import { settingsService } from "../services"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
 import { Navbar } from "../components/LayoutComponents"
-import LanguageSelector from "../components/common/LanguageSelector"
+import { LanguageSelector } from "../components/common"
 import styles from "../styles/settings.module.css"
 
 const Settings = () => {

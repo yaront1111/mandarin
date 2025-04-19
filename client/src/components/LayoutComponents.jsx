@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth, useNotifications, useLanguage } from "../context"
+import { LanguageSelector } from "./common"
 import { toast } from "react-toastify"
 import {
   FaUserCircle,
@@ -15,7 +16,6 @@ import {
 } from "react-icons/fa"
 import NotificationsComponent from "./NotificationsComponent"
 import { ThemeToggle } from "./theme-toggle.tsx"
-import LanguageSelector from "./common/LanguageSelector"
 
 // Modern Navbar Component
 export const Navbar = () => {

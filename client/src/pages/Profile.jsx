@@ -3,9 +3,10 @@
 // client/src/pages/Profile.js
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { useAuth, useUser } from "../context"
+import { useAuth, useUser, useLanguage } from "../context"
 import { toast } from "react-toastify"
 import axios from "axios"
+import { useTranslation } from "react-i18next"
 import {
   FaUserCircle,
   FaCamera,
@@ -29,6 +30,8 @@ import { normalizePhotoUrl } from "../utils/index.js"
 const Profile = () => {
   const { user } = useAuth()
   const { updateProfile, uploadPhoto, refreshUserData } = useUser()
+  const { t } = useTranslation()
+  const { isRTL } = useLanguage()
 
   const [isEditing, setIsEditing] = useState(false)
   const [profileData, setProfileData] = useState({
@@ -352,28 +355,28 @@ const Profile = () => {
   const validateForm = () => {
     const validationErrors = {}
     if (!profileData.nickname.trim()) {
-      validationErrors.nickname = "Nickname is required"
+      validationErrors.nickname = "nicknameRequired"
     } else if (profileData.nickname.length < 3) {
-      validationErrors.nickname = "Nickname must be at least 3 characters"
+      validationErrors.nickname = "nicknameTooShort"
     } else if (profileData.nickname.length > 50) {
-      validationErrors.nickname = "Nickname cannot exceed 50 characters"
+      validationErrors.nickname = "nicknameTooLong"
     }
     if (!profileData.details.age && profileData.details.age !== 0) {
-      validationErrors.age = "Age is required"
+      validationErrors.age = "ageRequired"
     } else if (isNaN(profileData.details.age)) {
-      validationErrors.age = "Age must be a number"
+      validationErrors.age = "ageInvalid"
     } else if (profileData.details.age < 18) {
-      validationErrors.age = "You must be at least 18 years old"
+      validationErrors.age = "ageMinimum"
     } else if (profileData.details.age > 120) {
-      validationErrors.age = "Please enter a valid age"
+      validationErrors.age = "ageMaximum"
     }
     if (!profileData.details.location.trim()) {
-      validationErrors.location = "Location is required"
+      validationErrors.location = "locationRequired"
     } else if (profileData.details.location.length < 2) {
-      validationErrors.location = "Location must be at least 2 characters"
+      validationErrors.location = "locationTooShort"
     }
     if (profileData.details.bio && profileData.details.bio.length > 500) {
-      validationErrors.bio = "Bio cannot exceed 500 characters"
+      validationErrors.bio = "bioTooLong"
     }
     return validationErrors
   }
@@ -425,13 +428,14 @@ const Profile = () => {
           console.warn("User data refresh may not have been complete, but continuing");
         }
 
+        toast.success(t('profile.profileUpdated'))
         setIsEditing(false)
       } else {
-        throw new Error("Failed to update profile")
+        throw new Error(t('profile.updateFailed'))
       }
     } catch (error) {
       console.error("Failed to update profile:", error)
-      toast.error(error.message || "Failed to update profile. Please try again.")
+      toast.error(error.message || t('errors.profileUpdateFailed'))
     } finally {
       setIsSubmitting(false)
     }
@@ -443,12 +447,12 @@ const Profile = () => {
     if (!file) return
     const fileType = file.type.split("/")[0]
     if (fileType !== "image") {
-      toast.error("Please upload an image file")
+      toast.error(t('errors.uploadTypeMismatch'))
       return
     }
     const maxSize = 5 * 1024 * 1024 // 5MB
     if (file.size > maxSize) {
-      toast.error("Image size should be less than 5MB")
+      toast.error(t('errors.uploadSizeLimitExceeded'))
       return
     }
     setIsUploading(true)
@@ -475,7 +479,7 @@ const Profile = () => {
       })
 
       if (newPhoto) {
-        toast.success("Photo uploaded successfully")
+        toast.success(t('profile.photoUploadSuccess'))
 
         // Clean up temporary photo before refreshing data
         setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
@@ -489,11 +493,11 @@ const Profile = () => {
           fileInputRef.current.value = ""
         }
       } else {
-        throw new Error("Failed to upload photo")
+        throw new Error(t('errors.photoUploadFailed'))
       }
     } catch (error) {
       console.error("Failed to upload photo:", error)
-      toast.error(error.message || "Failed to upload photo. Please try again.")
+      toast.error(error.message || t('errors.photoUploadFailed'))
 
       // Remove the temporary photo on error
       setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
@@ -511,7 +515,7 @@ const Profile = () => {
 
     // Check if this is a temporary photo
     if (photoId.toString().startsWith("temp-")) {
-      toast.warning("Please wait for the upload to complete before changing privacy settings")
+      toast.warning(t('profile.uploading'))
       return
     }
 
@@ -533,13 +537,13 @@ const Profile = () => {
       })
       const data = await response.json()
       if (!data.success) {
-        throw new Error(data.error || "Failed to update photo privacy")
+        throw new Error(data.error || t('errors.photoPrivacyUpdateFailed'))
       }
-      toast.success(`Photo is now ${newPrivacyValue ? "private" : "public"}`)
+      toast.success(t('profile.photoPrivacySuccess', { status: newPrivacyValue ? t('common.private') : t('common.public') }))
       await refreshUserData()
     } catch (error) {
       console.error("Failed to update photo privacy:", error)
-      toast.error(error.message || "Failed to update privacy setting")
+      toast.error(error.message || t('errors.photoPrivacyUpdateFailed'))
       setLocalPhotos((prev) =>
         prev.map((photo) => (photo._id === photoId ? { ...photo, isPrivate: !newPrivacyValue } : photo)),
       )
@@ -553,7 +557,7 @@ const Profile = () => {
 
     // Check if this is a temporary photo
     if (photoId.toString().startsWith("temp-")) {
-      toast.warning("Please wait for the upload to complete before setting as profile photo")
+      toast.warning(t('profile.uploading'))
       return
     }
 
@@ -579,13 +583,13 @@ const Profile = () => {
       })
       const data = await response.json()
       if (!data.success) {
-        throw new Error(data.error || "Failed to set profile photo")
+        throw new Error(data.error || t('errors.profilePhotoUpdateFailed'))
       }
-      toast.success("Profile photo updated")
+      toast.success(t('profile.profilePhotoUpdated'))
       await refreshUserData()
     } catch (error) {
       console.error("Failed to set profile photo:", error)
-      toast.error(error.message || "Failed to set profile photo")
+      toast.error(error.message || t('errors.profilePhotoUpdateFailed'))
       const oldProfileIndex = localPhotos.findIndex((p) => p.isProfile)
       if (oldProfileIndex !== -1) {
         setProfilePhotoIndex(oldProfileIndex)
@@ -612,15 +616,15 @@ const Profile = () => {
       return
     }
 
-    if (!window.confirm("Are you sure you want to delete this photo?")) return
+    if (!window.confirm(t('profile.confirmDeletePhoto'))) return
     const photoIndex = localPhotos.findIndex((p) => p._id === photoId)
     if (photoIndex === -1) return
     if (localPhotos.length === 1) {
-      toast.error("You cannot delete your only photo")
+      toast.error(t('profile.cannotDeleteOnlyPhoto'))
       return
     }
     if (localPhotos[photoIndex].isProfile) {
-      toast.error("You cannot delete your profile photo. Please set another photo as profile first.")
+      toast.error(t('profile.cannotDeleteProfilePhoto'))
       return
     }
     const updatedPhotos = localPhotos.filter((photo) => photo._id !== photoId)
@@ -638,13 +642,13 @@ const Profile = () => {
       })
       const data = await response.json()
       if (!data.success) {
-        throw new Error(data.error || "Failed to delete photo")
+        throw new Error(data.error || t('errors.photoDeleteFailed'))
       }
-      toast.success("Photo deleted")
+      toast.success(t('profile.photoDeleteSuccess'))
       await refreshUserData()
     } catch (error) {
       console.error("Failed to delete photo:", error)
-      toast.error(error.message || "Failed to delete photo")
+      toast.error(error.message || t('errors.photoDeleteFailed'))
       await refreshUserData()
     } finally {
       setIsProcessingPhoto(false)
@@ -758,7 +762,7 @@ const Profile = () => {
 
   // Replace the profile rendering with this
   return (
-    <div className={`${styles.profilePage} min-vh-100 w-100 overflow-hidden bg-light-subtle transition-all`}>
+    <div className={`${styles.profilePage} min-vh-100 w-100 overflow-hidden bg-light-subtle transition-all ${isRTL ? 'rtl-layout' : ''}`}>
       {/* Use Navbar from LayoutComponents */}
       <Navbar />
 
@@ -768,7 +772,7 @@ const Profile = () => {
           {isLoading ? (
             <div className="d-flex flex-column align-items-center justify-content-center py-5 text-center">
               <div className={`${styles.spinner} ${styles.spinnerLarge} text-primary mb-4`}></div>
-              <p className="text-opacity-70 font-weight-medium">Loading your profile...</p>
+              <p className="text-opacity-70 font-weight-medium">{t('profile.loadingProfile')}</p>
             </div>
           ) : (
             <>
@@ -778,7 +782,7 @@ const Profile = () => {
                   <div className={`${styles.profilePhotoWrapper} position-relative d-inline-block`}>
                     <img
                       src={localPhotos[profilePhotoIndex].url || "/placeholder.svg?height=200&width=200"}
-                      alt="Profile"
+                      alt={t('profile.profilePhoto')}
                       className={`${styles.profilePhoto} w-300px h-300px object-cover rounded-circle shadow-lg border-4 border-white transform-gpu transition-transform hover-scale`}
                       onLoad={() => {
                         // Clear loading state when image loads
@@ -802,7 +806,7 @@ const Profile = () => {
                       </div>
                     )}
                     <div className="position-absolute bottom-0 left-0 w-100 py-1 bg-overlay-dark text-white text-xs rounded-bottom-circle">
-                      Profile Photo
+                      {t('profile.profilePhoto')}
                     </div>
                   </div>
                 ) : (
@@ -825,16 +829,16 @@ const Profile = () => {
                           aria-valuemax="100"
                         ></div>
                       </div>
-                      <div className="text-center text-opacity-70">Uploading... {uploadProgress}%</div>
+                      <div className="text-center text-opacity-70">{t('profile.uploading')} {uploadProgress}%</div>
                     </div>
                   ) : (
                     <button
                       className="btn btn-outline-primary rounded-pill d-inline-flex align-items-center gap-2 hover-scale shadow-sm transition-all px-4 py-2"
                       onClick={triggerFileInput}
                       disabled={isProcessingPhoto}
-                      aria-label="Add photo"
+                      aria-label={t('profile.addPhoto')}
                     >
-                      <FaCamera /> <span>Add Photo</span>
+                      <FaCamera /> <span>{t('profile.addPhoto')}</span>
                       <input
                         type="file"
                         ref={fileInputRef}
@@ -862,7 +866,7 @@ const Profile = () => {
                     >
                       <img
                         src={photo.url || "/placeholder.svg?height=100&width=100"}
-                        alt={`Gallery`}
+                        alt={t('profile.profilePhoto')}
                         className={styles.galleryImage}
                       />
                       {photo.isLoading && (
@@ -872,16 +876,16 @@ const Profile = () => {
                       )}
                       {photo._id.toString().startsWith("temp-") && (
                         <div className={styles.galleryItemUploading}>
-                          Uploading...
+                          {t('profile.uploading')}
                         </div>
                       )}
                       <div className={styles.photoControls}>
                         <button
                           onClick={(e) => handleTogglePhotoPrivacy(photo._id, e)}
                           className={styles.photoControlBtn}
-                          title={photo.isPrivate ? "Make public" : "Make private"}
+                          title={photo.isPrivate ? t('profile.makePublic') : t('profile.makePrivate')}
                           disabled={isProcessingPhoto || photo.isLoading || photo._id.toString().startsWith("temp-")}
-                          aria-label={photo.isPrivate ? "Make photo public" : "Make photo private"}
+                          aria-label={photo.isPrivate ? t('profile.makePublic') : t('profile.makePrivate')}
                         >
                           {photo.isPrivate ? (
                             <FaLock style={{ fontSize: "14px" }} />
@@ -896,9 +900,9 @@ const Profile = () => {
                               handleSetProfilePhoto(photo._id)
                             }}
                             className={styles.photoControlBtn}
-                            title="Set as profile photo"
+                            title={t('profile.setAsProfilePhoto')}
                             disabled={isProcessingPhoto || photo.isLoading || photo._id.toString().startsWith("temp-")}
-                            aria-label="Set as profile photo"
+                            aria-label={t('profile.setAsProfilePhoto')}
                           >
                             <FaStar style={{ fontSize: "14px" }} />
                           </button>
@@ -907,9 +911,9 @@ const Profile = () => {
                           <button
                             onClick={(e) => handleDeletePhoto(photo._id, e)}
                             className={styles.photoControlBtn}
-                            title="Delete photo"
+                            title={t('profile.deletePhoto')}
                             disabled={isProcessingPhoto || photo.isLoading}
-                            aria-label="Delete photo"
+                            aria-label={t('profile.deletePhoto')}
                           >
                             <FaTrash style={{ fontSize: "14px" }} />
                           </button>
@@ -917,7 +921,7 @@ const Profile = () => {
                       </div>
                       {photo.isProfile && (
                         <div className={styles.profileBadge}>
-                          Profile
+                          {t('profile.profilePhoto')}
                         </div>
                       )}
                     </div>
@@ -927,7 +931,7 @@ const Profile = () => {
                     className={styles.addPhotoItem}
                     onClick={triggerFileInput}
                     disabled={isUploading || isProcessingPhoto}
-                    aria-label="Add new photo"
+                    aria-label={t('profile.addPhoto')}
                   >
                     <FaCamera style={{ fontSize: "24px", color: "#555" }} />
                   </button>
@@ -937,14 +941,14 @@ const Profile = () => {
               {/* Profile Information Section - Enhanced with utility classes */}
               <div className={styles.profileInfo}>
                 <div className={styles.profileHeader}>
-                  <h2 className={styles.profileTitle}>My Profile</h2>
+                  <h2 className={styles.profileTitle}>{t('profile.myProfile')}</h2>
                   {!isEditing ? (
                     <button 
                       className={`${styles.btn} ${styles.btnPrimary}`}
                       onClick={() => setIsEditing(true)} 
-                      aria-label="Edit profile"
+                      aria-label={t('profile.edit')}
                     >
-                      <FaEdit /> <span>Edit</span>
+                      <FaEdit /> <span>{t('profile.edit')}</span>
                     </button>
                   ) : (
                     <div className={`${styles.flexDisplay} ${styles.gap2}`}>
@@ -952,24 +956,24 @@ const Profile = () => {
                         className={`${styles.btn} ${styles.btnOutline}`}
                         onClick={handleCancelEdit}
                         disabled={isSubmitting}
-                        aria-label="Cancel editing"
+                        aria-label={t('profile.cancel')}
                       >
-                        <FaTimes /> <span>Cancel</span>
+                        <FaTimes /> <span>{t('profile.cancel')}</span>
                       </button>
                       <button
                         className={`${styles.btn} ${styles.btnPrimary}`}
                         onClick={handleSubmit}
                         disabled={isSubmitting}
-                        aria-label="Save profile changes"
+                        aria-label={t('profile.save')}
                       >
                         {isSubmitting ? (
                           <>
                             <span className={`${styles.spinner} ${styles.spinnerDark}`}></span>
-                            <span>Saving...</span>
+                            <span>{t('profile.saving')}</span>
                           </>
                         ) : (
                           <>
-                            <FaCheck /> <span>Save</span>
+                            <FaCheck /> <span>{t('profile.save')}</span>
                           </>
                         )}
                       </button>
@@ -979,11 +983,11 @@ const Profile = () => {
 
                 <form className="mt-4" onSubmit={handleSubmit}>
                   <div className={`${styles.infoSection} animate-fade-in`}>
-                    <h3 className={styles.sectionTitle}>Basic Information</h3>
+                    <h3 className={styles.sectionTitle}>{t('profile.basicInformation')}</h3>
                     <div className={styles.infoGrid}>
                       <div className={styles.formGroup}>
                         <label className={styles.formLabel} htmlFor="nickname">
-                          Nickname
+                          {t('profile.nickname')}
                         </label>
                         <input
                           type="text"
@@ -1000,13 +1004,13 @@ const Profile = () => {
                         {errors.nickname && (
                           <p id="nickname-error" className={styles.errorMessage}>
                             <FaExclamationTriangle className="mr-1" />
-                            {errors.nickname}
+                            {t(`errors.${errors.nickname}`)}
                           </p>
                         )}
                       </div>
                       <div className={styles.formGroup}>
                         <label className={styles.formLabel} htmlFor="details.age">
-                          Age
+                          {t('profile.age')}
                         </label>
                         <input
                           type="number"
@@ -1024,13 +1028,13 @@ const Profile = () => {
                         {errors.age && (
                           <p id="age-error" className={styles.errorMessage}>
                             <FaExclamationTriangle className="mr-1" />
-                            {errors.age}
+                            {t(`errors.${errors.age}`)}
                           </p>
                         )}
                       </div>
                       <div className={styles.formGroup}>
                         <label className={styles.formLabel} htmlFor="details.location">
-                          Location
+                          {t('profile.location')}
                         </label>
                         <input
                           type="text"
@@ -1047,14 +1051,14 @@ const Profile = () => {
                         {errors.location && (
                           <p id="location-error" className={styles.errorMessage}>
                             <FaExclamationTriangle className="mr-1" />
-                            {errors.location}
+                            {t(`errors.${errors.location}`)}
                           </p>
                         )}
                       </div>
                     </div>
                     
                     <div className={styles.mt4}>
-                      <label className={styles.formLabel}>I am a</label>
+                      <label className={styles.formLabel}>{t('profile.iAmA')}</label>
                       <div className={`${styles.flexDisplay} ${styles.flexWrap} ${styles.gap2}`}>
                         {iAmOptions.map((option) => {
                           const identityClass = 
@@ -1071,19 +1075,19 @@ const Profile = () => {
                               disabled={!isEditing}
                               aria-pressed={profileData.details.iAm === option}
                             >
-                              {option.charAt(0).toUpperCase() + option.slice(1)}
+                              {t(`profile_${option}`)}
                               {profileData.details.iAm === option && <FaCheck style={{ marginLeft: "4px" }} />}
                             </button>
                           );
                         })}
                       </div>
                       {!profileData.details.iAm && !isEditing && (
-                        <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>Not specified</p>
+                        <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>{t('profile.notSpecified')}</p>
                       )}
                     </div>
                     
                     <div className={styles.mt4}>
-                      <label className={styles.formLabel}>Marital Status</label>
+                      <label className={styles.formLabel}>{t('profile.maritalStatus')}</label>
                       <div className={`${styles.flexDisplay} ${styles.flexWrap} ${styles.gap2}`}>
                         {maritalStatusOptions.map((status) => (
                           <button
@@ -1094,19 +1098,19 @@ const Profile = () => {
                             disabled={!isEditing}
                             aria-pressed={profileData.details.maritalStatus === status}
                           >
-                            {status}
+                            {status.toLowerCase() === "married" ? t('profile.maritalStatusMarried') : status}
                             {profileData.details.maritalStatus === status && <FaCheck style={{ marginLeft: "4px" }} />}
                           </button>
                         ))}
                       </div>
                       {!profileData.details.maritalStatus && !isEditing && (
-                        <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>Not specified</p>
+                        <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>{t('profile.notSpecified')}</p>
                       )}
                     </div>
                   </div>
 
                   <div className={styles.infoSection}>
-                    <h3 className={styles.sectionTitle}>About Me</h3>
+                    <h3 className={styles.sectionTitle}>{t('profile.aboutMe')}</h3>
                     <textarea
                       name="details.bio"
                       rows="5"
@@ -1115,14 +1119,14 @@ const Profile = () => {
                       onChange={handleChange}
                       disabled={!isEditing}
                       maxLength={500}
-                      placeholder={isEditing ? "Tell others about yourself..." : "No bio provided"}
+                      placeholder={isEditing ? t('profile.tellAboutYourself') : t('profile.noBioProvided')}
                       aria-invalid={errors.bio ? "true" : "false"}
                       aria-describedby={errors.bio ? "bio-error" : undefined}
                     />
                     {errors.bio && (
                       <p id="bio-error" className={styles.errorMessage}>
                         <FaExclamationTriangle style={{ marginRight: "4px" }} />
-                        {errors.bio}
+                        {t(`errors.${errors.bio}`)}
                       </p>
                     )}
                     {isEditing && (
@@ -1133,10 +1137,10 @@ const Profile = () => {
                   </div>
 
                   <div className={styles.infoSection}>
-                    <h3 className={styles.sectionTitle}>Interests</h3>
+                    <h3 className={styles.sectionTitle}>{t('profile.interests')}</h3>
                     {isEditing && (
                       <div className={`${styles.textMuted} ${styles.mb2}`}>
-                        Select up to 10 interests
+                        {t('profile.interestsLimit')}
                       </div>
                     )}
                     <div className={styles.interestsTags}>
@@ -1150,7 +1154,7 @@ const Profile = () => {
                             onClick={() => isEditing && toggleInterest(interest)}
                             disabled={!isEditing || (!isSelected && profileData.details.interests.length >= 10)}
                             aria-pressed={isSelected}
-                            aria-label={`Interest: ${interest}`}
+                            aria-label={`${t('profile.interests')}: ${interest}`}
                           >
                             {interest}
                             {isSelected && <FaCheck style={{ marginLeft: "4px" }} />}
@@ -1159,15 +1163,15 @@ const Profile = () => {
                       })}
                     </div>
                     {profileData.details.interests.length === 0 && !isEditing && (
-                      <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>No interests selected</p>
+                      <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>{t('profile.noInterestsSelected')}</p>
                     )}
                   </div>
 
                   <div className={styles.infoSection}>
-                    <h3 className={styles.sectionTitle}>Looking For</h3>
+                    <h3 className={styles.sectionTitle}>{t('profile.lookingFor')}</h3>
                     {isEditing && (
                       <div className={`${styles.textMuted} ${styles.mb2}`}>
-                        Select up to 3 options
+                        {t('profile.lookingForLimit')}
                       </div>
                     )}
                     <div className={styles.interestsTags}>
@@ -1191,22 +1195,22 @@ const Profile = () => {
                             }
                             aria-pressed={isSelected}
                           >
-                            {option.charAt(0).toUpperCase() + option.slice(1)}
+                            {t(`profile_${option}`)}
                             {isSelected && <FaCheck style={{ marginLeft: "4px" }} />}
                           </button>
                         );
                       })}
                     </div>
                     {profileData.details.lookingFor.length === 0 && !isEditing && (
-                      <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>Not specified</p>
+                      <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>{t('profile.notSpecified')}</p>
                     )}
                   </div>
 
                   <div className={styles.infoSection}>
-                    <h3 className={styles.sectionTitle}>I'm Into</h3>
+                    <h3 className={styles.sectionTitle}>{t('profile.imInto')}</h3>
                     {isEditing && (
                       <div className={`${styles.textMuted} ${styles.mb2}`}>
-                        Select up to 20 tags
+                        {t('profile.intoTagsLimit')}
                       </div>
                     )}
                     <div className={styles.interestsTags}>
@@ -1231,15 +1235,15 @@ const Profile = () => {
                       })}
                     </div>
                     {profileData.details.intoTags.length === 0 && !isEditing && (
-                      <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>No tags selected</p>
+                      <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>{t('profile.noTagsSelected')}</p>
                     )}
                   </div>
 
                   <div className={styles.infoSection}>
-                    <h3 className={styles.sectionTitle}>It Turns Me On</h3>
+                    <h3 className={styles.sectionTitle}>{t('profile.turnOns')}</h3>
                     {isEditing && (
                       <div className={`${styles.textMuted} ${styles.mb2}`}>
-                        Select up to 20 tags
+                        {t('profile.turnOnsLimit')}
                       </div>
                     )}
                     <div className={styles.interestsTags}>
@@ -1264,7 +1268,7 @@ const Profile = () => {
                       })}
                     </div>
                     {profileData.details.turnOns.length === 0 && !isEditing && (
-                      <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>No tags selected</p>
+                      <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>{t('profile.noTagsSelected')}</p>
                     )}
                   </div>
                 </form>
