@@ -4,6 +4,8 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { FaCheck, FaTimes, FaCrown, FaHeart, FaImage, FaComment, FaUserCircle } from "react-icons/fa"
 import { useAuth } from "../context"
+import { useTranslation } from "react-i18next"
+import { useLanguage } from "../context"
 import { toast } from "react-toastify"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
 import subscriptionService from "../services/subscriptionService.jsx"
@@ -15,6 +17,8 @@ const Subscription = () => {
   const [selectedPlan, setSelectedPlan] = useState("monthly")
   const [loading, setLoading] = useState(false)
   const [subscriptionData, setSubscriptionData] = useState(null)
+  const { t } = useTranslation()
+  const { isRTL } = useLanguage()
 
   // Redirect if user is not logged in
   useEffect(() => {
@@ -35,7 +39,7 @@ const Subscription = () => {
       }
     } catch (error) {
       console.error("Error fetching subscription status:", error)
-      toast.error("Could not load subscription information")
+      toast.error(t('subscriptions.fetchFailed'))
     }
   }
 
@@ -62,19 +66,19 @@ const Subscription = () => {
         await getCurrentUser()
 
         // Redirect to dashboard after successful subscription
-        toast.success(`Successfully subscribed to ${plan} plan!`)
+        toast.success(t('subscriptions.upgradeSuccess'))
         navigate("/dashboard")
       }
     } catch (error) {
       console.error("Subscription error:", error)
-      toast.error(error.message || "Failed to process subscription. Please try again.")
+      toast.error(error.message || t('subscriptions.paymentFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="modern-dashboard">
+    <div className={`modern-dashboard ${isRTL ? 'rtl-layout' : ''}`}>
       {/* Header */}
       <header className="modern-header">
         <div className="container d-flex justify-content-between align-items-center">
@@ -83,10 +87,10 @@ const Subscription = () => {
           </div>
           <div className="d-none d-md-flex main-tabs">
             <button className="tab-button" onClick={() => navigate("/dashboard")}>
-              Dashboard
+              {t('common.dashboard')}
             </button>
             <button className="tab-button" onClick={() => navigate("/messages")}>
-              Messages
+              {t('common.messages')}
             </button>
           </div>
           <div className="header-actions d-flex align-items-center">
@@ -109,24 +113,24 @@ const Subscription = () => {
       <main className="dashboard-content">
         <div className={styles.subscriptionContainer}>
           <div className={styles.gradientBar}></div>
-          
+
           <h1 className={styles.pageTitle}>
-            <FaCrown /> Premium Membership
+            <FaCrown /> {t('subscriptions.premiumMembership')}
           </h1>
 
           {hasPremium ? (
             <div className={styles.alreadyPremium}>
-              <h3 className={styles.premiumTitle}>You already have premium access!</h3>
-              <p className={styles.premiumMessage}>Enjoy all the premium features of Mandarin.</p>
+              <h3 className={styles.premiumTitle}>{t('subscriptions.alreadyPremium')}</h3>
+              <p className={styles.premiumMessage}>{t('subscriptions.enjoyFeatures')}</p>
               <button className={styles.buttonPrimary} onClick={() => navigate("/dashboard")}>
-                Return to Dashboard
+                {t('common.goBack')} {t('common.dashboard')}
               </button>
             </div>
           ) : (
             <>
               <div className="text-center mb-5">
-                <h2 className={styles.subtitle}>Unlock All Features</h2>
-                <p className={styles.lead}>Upgrade your experience and connect with more people</p>
+                <h2 className={styles.subtitle}>{t('subscriptions.unlockFeatures')}</h2>
+                <p className={styles.lead}>{t('subscriptions.upgradeExperience')}</p>
               </div>
 
               <div className="d-flex justify-content-center">
@@ -135,14 +139,14 @@ const Subscription = () => {
                     className={`${styles.toggleBtn} ${selectedPlan === "monthly" ? styles.toggleBtnActive : ""}`}
                     onClick={() => setSelectedPlan("monthly")}
                   >
-                    Monthly
+                    {t('subscriptions.monthly')}
                   </button>
                   <button
                     className={`${styles.toggleBtn} ${selectedPlan === "yearly" ? styles.toggleBtnActive : ""}`}
                     onClick={() => setSelectedPlan("yearly")}
                   >
-                    Yearly
-                    <span className={styles.saveBadge}>Save 20%</span>
+                    {t('subscriptions.yearly')}
+                    <span className={styles.saveBadge}>{t('subscriptions.save')} 20%</span>
                   </button>
                 </div>
               </div>
@@ -150,72 +154,76 @@ const Subscription = () => {
               <div className={styles.pricingCards}>
                 <div className={styles.pricingCard}>
                   <div className={styles.cardHeader}>
-                    <h3 className={styles.planName}>Free</h3>
+                    <h3 className={styles.planName}>{t('subscriptions.freeTier')}</h3>
                     <p className={styles.price}>$0</p>
-                    <p className={styles.period}>forever</p>
+                    <p className={styles.period}>{t('subscriptions.forever')}</p>
                   </div>
                   <div className={styles.cardBody}>
                     <ul className={styles.featureList}>
                       <li className={styles.featureItem}>
-                        <FaCheck className={styles.iconYes} /> View profiles
+                        <FaCheck className={styles.iconYes} /> {t('subscriptions.viewProfiles')}
                       </li>
                       <li className={styles.featureItem}>
-                        <FaCheck className={styles.iconYes} /> Send winks
+                        <FaCheck className={styles.iconYes} /> {t('subscriptions.sendWinks')}
                       </li>
                       <li className={styles.featureItem}>
-                        <FaCheck className={styles.iconYes} /> 3 likes per day
+                        <FaCheck className={styles.iconYes} /> {t('subscriptions.limitedLikes')}
                       </li>
                       <li className={styles.featureItem}>
-                        <FaCheck className={styles.iconYes} /> 1 story every 72 hours
+                        <FaCheck className={styles.iconYes} /> {t('subscriptions.limitedStories')}
                       </li>
                       <li className={styles.featureItem}>
-                        <FaTimes className={styles.iconNo} /> Send messages
+                        <FaTimes className={styles.iconNo} /> {t('subscriptions.sendMessages')}
                       </li>
                       <li className={styles.featureItem}>
-                        <FaTimes className={styles.iconNo} /> Unlimited likes
+                        <FaTimes className={styles.iconNo} /> {t('subscriptions.unlimitedLikes')}
                       </li>
                       <li className={styles.featureItem}>
-                        <FaTimes className={styles.iconNo} /> Unlimited stories
+                        <FaTimes className={styles.iconNo} /> {t('subscriptions.unlimitedStories')}
                       </li>
                     </ul>
                     <button className={styles.buttonOutline} disabled>
-                      Current Plan
+                      {t('subscriptions.currentPlan')}
                     </button>
                   </div>
                 </div>
 
                 <div className={`${styles.pricingCard} ${styles.premiumCard}`}>
-                  <div className={styles.popularBadge}>Most Popular</div>
+                  <div className={styles.popularBadge}>{t('subscriptions.mostPopular')}</div>
                   <div className={styles.cardHeader}>
-                    <h3 className={styles.planName}>Premium</h3>
+                    <h3 className={styles.planName}>{t('subscriptions.paidTier')}</h3>
                     <p className={styles.price}>${selectedPlan === "monthly" ? "14.99" : "11.99"}</p>
-                    <p className={styles.period}>per {selectedPlan === "monthly" ? "month" : "month, billed yearly"}</p>
+                    <p className={styles.period}>
+                      {selectedPlan === "monthly"
+                        ? t('subscriptions.perMonth')
+                        : t('subscriptions.perMonthYearly')}
+                    </p>
                   </div>
                   <div className={styles.cardBody}>
                     <ul className={styles.featureList}>
                       <li className={styles.featureItem}>
-                        <FaCheck className={styles.iconYes} /> View profiles
+                        <FaCheck className={styles.iconYes} /> {t('subscriptions.viewProfiles')}
                       </li>
                       <li className={styles.featureItem}>
-                        <FaCheck className={styles.iconYes} /> Send winks
+                        <FaCheck className={styles.iconYes} /> {t('subscriptions.sendWinks')}
                       </li>
                       <li className={styles.featureItem}>
-                        <FaCheck className={styles.iconYes} /> <strong>Unlimited likes</strong>{" "}
+                        <FaCheck className={styles.iconYes} /> <strong>{t('subscriptions.unlimitedLikes')}</strong>{" "}
                         <FaHeart className={styles.featureIcon} />
                       </li>
                       <li className={styles.featureItem}>
-                        <FaCheck className={styles.iconYes} /> <strong>Unlimited stories</strong>{" "}
+                        <FaCheck className={styles.iconYes} /> <strong>{t('subscriptions.unlimitedStories')}</strong>{" "}
                         <FaImage className={styles.featureIcon} />
                       </li>
                       <li className={styles.featureItem}>
-                        <FaCheck className={styles.iconYes} /> <strong>Send messages</strong>{" "}
+                        <FaCheck className={styles.iconYes} /> <strong>{t('subscriptions.sendMessages')}</strong>{" "}
                         <FaComment className={styles.featureIcon} />
                       </li>
                       <li className={styles.featureItem}>
-                        <FaCheck className={styles.iconYes} /> Video calls
+                        <FaCheck className={styles.iconYes} /> {t('subscriptions.videoCalls')}
                       </li>
                       <li className={styles.featureItem}>
-                        <FaCheck className={styles.iconYes} /> Priority in search results
+                        <FaCheck className={styles.iconYes} /> {t('subscriptions.prioritySearch')}
                       </li>
                     </ul>
                     <button
@@ -226,10 +234,10 @@ const Subscription = () => {
                       {loading ? (
                         <>
                           <span className={styles.spinner}></span>
-                          <span style={{ marginLeft: "8px" }}>Processing...</span>
+                          <span style={{ marginLeft: "8px" }}>{t('common.processing')}</span>
                         </>
                       ) : (
-                        `Subscribe ${selectedPlan === "monthly" ? "$14.99/month" : "$143.88/year"}`
+                        `${t('subscriptions.subscribe')} ${selectedPlan === "monthly" ? "$14.99/month" : "$143.88/year"}`
                       )}
                     </button>
                   </div>
