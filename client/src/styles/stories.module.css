@@ -768,15 +768,7 @@
   padding-top: 0.5rem;
 }
 
-.comingSoonBadge {
-  display: inline-block;
-  background-color: #E1306C;
-  color: white;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.25rem 0.75rem;
-  border-radius: 1rem;
-}
+
 
 /* Section Title */
 .upcomingFeaturesSection {
@@ -880,10 +872,6 @@
     font-size: 0.875rem;
   }
 
-  .featureCard,
-  .comingSoonCard {
-    padding: 1.25rem;
-  }
 
   .storyTipsContainer {
     padding: 1rem;
