@@ -380,10 +380,10 @@ const enhancedProtect = async (req, res, next) => {
       }
 
       // Ensure id is always available and is a string
-      if (!req.user.id && req.user._id) {
-        req.user.id = req.user._id.toString();
-      } else if (req.user.id) {
-        req.user.id = req.user.id.toString();
+      if (!req.user._id && req.user._id) {
+        req.user._id = req.user._id.toString();
+      } else if (req.user._id) {
+        req.user._id = req.user._id.toString();
       }
        // Log enhancement if needed
        // logger.debug('[Enhanced Protect] Ensured consistent ID format on req.user');

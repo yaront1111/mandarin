@@ -1,0 +1,384 @@
+.videoCall {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background-color: #1a1a1a;
+  overflow: hidden;
+  border-radius: 8px;
+  color: #fff;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.videoContainer {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Remote Video Styles */
+.remoteVideoWrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  background-color: #222;
+}
+
+.remoteVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background-color: #222;
+}
+
+/* Video Placeholders */
+.videoPlaceholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+.remoteVideoPlaceholder {
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+}
+
+/* Connection Quality Indicator */
+.connectionQualityIndicator {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.6);
+  padding: 5px 10px;
+  border-radius: 12px;
+  z-index: 25;
+  backdrop-filter: blur(3px);
+}
+
+.qualityCanvas {
+  margin-right: 8px;
+}
+
+.qualityText {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+/* Audio Level Indicators */
+.remoteAudioIndicator {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 15;
+  background-color: rgba(0, 0, 0, 0.6);
+  padding: 5px;
+  border-radius: 8px;
+  backdrop-filter: blur(3px);
+}
+
+.localAudioIndicator {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  z-index: 15;
+  background-color: rgba(0, 0, 0, 0.6);
+  padding: 3px;
+  border-radius: 5px;
+  backdrop-filter: blur(3px);
+}
+
+.audioLevelCanvas {
+  display: block;
+}
+
+/* Indicator Styles for Video/Audio State */
+.connectingIndicator,
+.waitingIndicator,
+.errorIndicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.75);
+  z-index: 20;
+  backdrop-filter: blur(4px);
+}
+
+.connectingIndicator,
+.waitingIndicator {
+  gap: 15px;
+  color: #fff;
+  font-size: 1.1em;
+}
+
+.waitingSubtext {
+  font-size: 0.9em;
+  opacity: 0.7;
+  margin-top: -5px;
+}
+
+.spin {
+  animation: spin 1.2s infinite linear;
+  font-size: 3em;
+  color: #4a90e2;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.retryCount {
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+
+.errorIndicator {
+  pointer-events: auto;
+}
+
+.errorMessage {
+  background-color: rgba(220, 53, 69, 0.9);
+  padding: 20px 25px;
+  border-radius: 8px;
+  max-width: 85%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  font-size: 0.95em;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.errorIcon {
+  font-size: 2em;
+  color: #ffcc00;
+  margin-bottom: 10px;
+}
+
+.retryButton,
+.errorEndCallButton {
+  background-color: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 5px;
+  color: #fff;
+  padding: 10px 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 auto;
+  transition: background-color 0.2s, transform 0.2s;
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+.retryButton:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.errorEndCallButton {
+  background-color: rgba(150, 40, 50, 0.9);
+}
+
+.errorEndCallButton:hover {
+  background-color: rgba(180, 45, 55, 1);
+  transform: translateY(-2px);
+}
+
+.audioOffIndicator {
+  position: absolute;
+  top: 20px;
+  right: 90px;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: #dc3545;
+  padding: 8px;
+  border-radius: 50%;
+  z-index: 10;
+  font-size: 1.2em;
+  backdrop-filter: blur(3px);
+}
+
+/* Local Video */
+.localVideoWrapper {
+  position: absolute;
+  width: clamp(120px, 20%, 180px);
+  aspect-ratio: 4/3;
+  bottom: 20px;
+  left: 20px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  transition: transform 0.3s ease;
+}
+
+.localVideoWrapper:hover {
+  transform: scale(1.05);
+}
+
+.localVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background-color: #333;
+  transform: scaleX(-1); /* Mirror local view */
+}
+
+.localVideoPlaceholder {
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+}
+
+/* Call Info */
+.callInfo {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background-color: rgba(0, 0, 0, 0.6);
+  padding: 8px 14px;
+  border-radius: 15px;
+  font-size: 0.9em;
+  font-weight: 500;
+  z-index: 20;
+  backdrop-filter: blur(3px);
+}
+
+.videoStats {
+  font-size: 0.75em;
+  opacity: 0.8;
+}
+
+/* Controls */
+.callControls {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 12px 20px;
+  border-radius: 32px;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  z-index: 20;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.callControls.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.callControls.hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(80px);
+  pointer-events: none;
+}
+
+.controlButton {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background-color: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 1.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.controlButton:hover {
+  background-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-3px);
+}
+
+.controlButton.active {
+  background-color: #4a90e2;
+}
+
+.controlButton.endCall {
+  background-color: #dc3545;
+}
+
+.controlButton.endCall:hover {
+  background-color: #c82333;
+}
+
+.qualityDot {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #aaa;
+}
+
+.qualityDot.excellent {
+  background-color: #4caf50;
+}
+
+.qualityDot.good {
+  background-color: #8bc34a;
+}
+
+.qualityDot.fair {
+  background-color: #ffc107;
+}
+
+.qualityDot.poor {
+  background-color: #f44336;
+}
+
+/* Connection Quality Text Colors */
+.qualityText.excellent,
+.qualityCanvas.excellent {
+  color: #4caf50;
+}
+
+.qualityText.good,
+.qualityCanvas.good {
+  color: #8bc34a;
+}
+
+.qualityText.fair,
+.qualityCanvas.fair {
+  color: #ffc107;
+}
+
+.qualityText.poor,
+.qualityCanvas.poor {
+  color: #f44336;
+}
+
+/* Call Duration */
+.callDuration {
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}

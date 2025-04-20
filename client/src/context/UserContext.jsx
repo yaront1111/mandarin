@@ -641,7 +641,7 @@ export const UserProvider = ({ children }) => {
               const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
               const payload = JSON.parse(atob(base64));
               
-              const tokenId = payload.id || (payload.user && (payload.user._id || payload.user.id));
+              const tokenId = payload.id || (payload.user && (payload.user._id || payload.user._id));
               if (tokenId) {
                 console.log(`Using ID from token: ${tokenId}`);
                 const userData = await getUser(tokenId);

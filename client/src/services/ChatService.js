@@ -81,11 +81,11 @@ class ChatService {
           }
         }
 
-        // If no valid ID from user._id, try user.id
-        if (!validUserId && user.id) {
-          if (isValidId(user.id)) {
-            validUserId = user.id;
-            log.debug(`Using user.id instead of user._id: ${validUserId}`);
+        // If no valid ID from user._id, try user._id
+        if (!validUserId && user._id) {
+          if (isValidId(user._id)) {
+            validUserId = user._id;
+            log.debug(`Using user._id instead of user._id: ${validUserId}`);
           }
         }
 
@@ -99,7 +99,7 @@ class ChatService {
               const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
               const payload = JSON.parse(atob(base64));
               const tokenId = payload.id || payload.sub ||
-                             (payload.user && (payload.user._id || payload.user.id));
+                             (payload.user && (payload.user._id || payload.user._id));
               if (tokenId && isValidId(tokenId)) {
                 validUserId = tokenId;
                 log.info(`Using ID from token payload: ${validUserId}`);

@@ -82,7 +82,7 @@ const flexibleIdMiddleware = (req, res, next) => {
       //
       ...req.user, //
       _id: safeId(req.user._id), //
-      id: safeId(req.user.id || req.user._id), //
+      id: safeId(req.user._id || req.user._id), //
     }
   }
   next() //
@@ -119,9 +119,9 @@ router.get(
             //
             userId = userId.toString() //
           }
-        } else if (req.user.id) {
+        } else if (req.user._id) {
           //
-          userId = req.user.id //
+          userId = req.user._id //
         }
       }
       if (!userId) {
@@ -1306,7 +1306,7 @@ router.delete(
 router.get("/settings", protect, async (req, res) => {
   //
   try {
-    const user = await User.findById(req.user.id).select("settings") //
+    const user = await User.findById(req.user._id).select("settings") //
     if (!user) {
       //
       return res.status(404).json({ success: false, error: "User not found" }) //
@@ -1326,7 +1326,7 @@ router.get("/settings", protect, async (req, res) => {
 router.put("/settings", protect, async (req, res) => {
   //
   try {
-    const user = await User.findById(req.user.id) //
+    const user = await User.findById(req.user._id) //
     if (!user) {
       //
       return res.status(404).json({ success: false, error: "User not found" }) //
@@ -1348,7 +1348,7 @@ router.put("/settings", protect, async (req, res) => {
 router.put("/settings/notifications", protect, async (req, res) => {
   //
   try {
-    const user = await User.findById(req.user.id) //
+    const user = await User.findById(req.user._id) //
     if (!user) {
       //
       return res.status(404).json({ success: false, error: "User not found" }) //
@@ -1374,7 +1374,7 @@ router.put("/settings/notifications", protect, async (req, res) => {
 router.put("/settings/privacy", protect, async (req, res) => {
   //
   try {
-    const user = await User.findById(req.user.id) //
+    const user = await User.findById(req.user._id) //
     if (!user) {
       //
       return res.status(404).json({ success: false, error: "User not found" }) //
@@ -1754,7 +1754,7 @@ router.delete(
 router.post("/photos/approve-all", protect, async (req, res) => {
   //
   try {
-    const userId = req.user.id //
+    const userId = req.user._id //
 
     // Find all pending photo permission requests for photos owned by this user
     const pendingRequests = await PhotoPermission.find({

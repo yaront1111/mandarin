@@ -21,10 +21,13 @@ import {
   FaTrash,
   FaEdit,
 } from "react-icons/fa"
-import { useAuth } from "../context"
-import { useTranslation } from "react-i18next" 
-import { useLanguage } from "../context"
+// Assuming hooks are exported from here
+import { useApi } from '../hooks'; // Keep useApi from hooks
+import { useAuth, useLanguage } from '../context'; // Import useLanguage from context
+import { useTranslation } from "react-i18next"
 import { toast } from "react-toastify"
+// Import apiService directly for upload
+import apiService from '../services/apiService.jsx';
 import styles from "../styles/register.module.css"
 
 const Register = () => {
@@ -46,7 +49,7 @@ const Register = () => {
     intoTags: [],
     turnOns: [],
     maritalStatus: "",
-    profilePhoto: null,
+    profilePhoto: null, // This will hold the File object
   })
   const [previewImage, setPreviewImage] = useState(null)
   const fileInputRef = useRef(null)
@@ -55,135 +58,37 @@ const Register = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   // Track if a submission has been attempted to improve validation UX
   const [attemptedSubmit, setAttemptedSubmit] = useState(false)
-  const [errors, setErrors] = useState({})
+  // Remove redundant 'errors' state, use formErrors
+  // const [errors, setErrors] = useState({})
   const [locationSuggestions, setLocationSuggestions] = useState([])
 
   // Internationalization and Auth context
-  const { t } = useTranslation()
-  const { isRTL } = useLanguage()
-  const { register, error, isAuthenticated } = useAuth()
+  const { t } = useTranslation() // Use i18n hook
+  const { isRTL } = useLanguage() // Use language context hook
+  const { register, error: authError, isAuthenticated } = useAuth() // Rename error to avoid conflict
   const navigate = useNavigate()
   const location = useLocation()
 
-  const availableInterests = [
-    "Dating",
-    "Casual",
-    "Friendship",
-    "Long-term",
-    "Travel",
-    "Outdoors",
-    "Movies",
-    "Music",
-    "Fitness",
-    "Food",
-    "Art",
-    "Reading",
-    "Gaming",
-    "Photography",
-    "Dancing",
-    "Cooking",
-    "Sports",
+  // --- Options (Consider translating these if they appear in UI directly) ---
+  const availableInterests = [ /* Keys for interests */
+    "Dating", "Casual", "Friendship", "Long-term", "Travel", "Outdoors", "Movies", "Music", "Fitness", "Food", "Art", "Reading", "Gaming", "Photography", "Dancing", "Cooking", "Sports",
   ]
-
-  const relationshipGoals = [
-    "Casual Dating",
-    "Serious Relationship",
-    "Friendship",
-    "Something Discreet",
-    "Adventure",
-    "Just Chatting",
+  const iAmOptions = ["woman", "man", "couple"] // Keys for iAm
+  const lookingForOptions = ["women", "men", "couples"] // Keys for lookingFor
+  const intoTagsOptions = [ /* Keys for intoTags */
+    "Meetups", "Power play", "Threesomes", "Online fun", "Hot chat", "Photo sharing", "Camera chat", "Cuckold", "Golden showers", "Strap-on", "Forced bi", "Erotic domination", "Humiliation", "Crossdressing", "Worship", "Foot fetish", "Oral", "From behind", "Role-play", "Toys", "Massages", "Foreplay", "Casual meetups", "Fantasy fulfillment", "Bizarre", "Education", "Experiences", "Tantra",
   ]
-
-  // Add these new constants for the additional preference options
-  const iAmOptions = ["woman", "man", "couple"]
-  const lookingForOptions = ["women", "men", "couples"]
-
-  const intoTagsOptions = [
-    "Meetups",
-    "Power play",
-    "Threesomes",
-    "Online fun",
-    "Hot chat",
-    "Photo sharing",
-    "Camera chat",
-    "Cuckold",
-    "Golden showers",
-    "Strap-on",
-    "Forced bi",
-    "Erotic domination",
-    "Humiliation",
-    "Crossdressing",
-    "Worship",
-    "Foot fetish",
-    "Oral",
-    "From behind",
-    "Role-play",
-    "Toys",
-    "Massages",
-    "Foreplay",
-    "Casual meetups",
-    "Fantasy fulfillment",
-    "Bizarre",
-    "Education",
-    "Experiences",
-    "Tantra",
+  const turnOnsOptions = [ /* Keys for turnOns */
+    "Sexy ass", "Dirty talk", "Aggressive", "Slow and gentle", "In a public place", "Pampering", "Sexy clothing", "Leather/latex clothing", "Watching porn", "Fit body", "Bathing together", "Erotic writing", "Eye contact", "Being pampered", "Sexy legs", "Teasing", "Pushing boundaries",
   ]
-
-  const turnOnsOptions = [
-    "Sexy ass",
-    "Dirty talk",
-    "Aggressive",
-    "Slow and gentle",
-    "In a public place",
-    "Pampering",
-    "Sexy clothing",
-    "Leather/latex clothing",
-    "Watching porn",
-    "Fit body",
-    "Bathing together",
-    "Erotic writing",
-    "Eye contact",
-    "Being pampered",
-    "Sexy legs",
-    "Teasing",
-    "Pushing boundaries",
+  const maritalStatusOptions = [ /* Keys for maritalStatus */
+    "Single", "Married", "Divorced", "Separated", "Widowed", "In a relationship", "It's complicated", "Open relationship", "Polyamorous",
   ]
+  // ------------------------------------------------------------------------
 
-  // Add marital status options
-  const maritalStatusOptions = [
-    "Single",
-    "Married",
-    "Divorced",
-    "Separated",
-    "Widowed",
-    "In a relationship",
-    "It's complicated",
-    "Open relationship",
-    "Polyamorous",
-  ]
-
-  // Common locations in Israel for the datalist
+  // Common locations in Israel for the datalist (These are values, not keys - generally okay not to translate)
   const commonLocations = [
-    "Tel Aviv, Israel",
-    "Jerusalem, Israel",
-    "Haifa, Israel",
-    "Eilat, Israel",
-    "Beer Sheva, Israel",
-    "Netanya, Israel",
-    "Herzliya, Israel",
-    "Ashdod, Israel",
-    "Ashkelon, Israel",
-    "Tiberias, Israel",
-    "Ramat Gan, Israel",
-    "Rishon LeZion, Israel",
-    "Petah Tikva, Israel",
-    "Holon, Israel",
-    "Bat Yam, Israel",
-    "Rehovot, Israel",
-    "Kfar Saba, Israel",
-    "Raanana, Israel",
-    "Nahariya, Israel",
-    "Acre, Israel",
+    "Tel Aviv, Israel", "Jerusalem, Israel", "Haifa, Israel", "Eilat, Israel", "Beer Sheva, Israel", "Netanya, Israel", "Herzliya, Israel", "Ashdod, Israel", "Ashkelon, Israel", "Tiberias, Israel", "Ramat Gan, Israel", "Rishon LeZion, Israel", "Petah Tikva, Israel", "Holon, Israel", "Bat Yam, Israel", "Rehovot, Israel", "Kfar Saba, Israel", "Raanana, Israel", "Nahariya, Israel", "Acre, Israel",
   ]
 
   // Calculate age from date of birth
@@ -193,224 +98,118 @@ const Register = () => {
     const today = new Date()
     let age = today.getFullYear() - birthDate.getFullYear()
     const monthDiff = today.getMonth() - birthDate.getMonth()
-
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--
     }
-
     return age
   }
 
   // Handle initial state
   useEffect(() => {
-    // If user is already authenticated, redirect to dashboard
     if (isAuthenticated) {
       navigate("/dashboard")
     }
-
-    // If there's an email in location state, use it
     if (location.state?.email) {
       setFormData((prev) => ({ ...prev, email: location.state.email }))
     }
-
-    // Clean up form on unmount
-    return () => {
-      setFormData({
-        nickname: "",
-        email: "",
-        password: "",
-        confirmPassword: "",
-        dateOfBirth: "",
-        location: "",
-        interests: [],
-        lookingFor: [],
-        agreeTerms: false,
-        agreePrivacy: false,
-        newsletter: false,
-        iAm: "",
-        intoTags: [],
-        turnOns: [],
-        maritalStatus: "",
-      })
-    }
+    // No need for cleanup function resetting state here if component unmounts
   }, [isAuthenticated, navigate, location.state?.email])
 
   // Handle auth errors from context
   useEffect(() => {
-    if (error) {
-      setFormErrors((prev) => ({ ...prev, general: error }))
+    if (authError) {
+       // Ensure authError is treated as a string
+      const errorMessage = typeof authError === 'string' ? authError : t('errors.generalError', 'An unexpected error occurred.');
+      setFormErrors((prev) => ({ ...prev, general: errorMessage }))
       setIsSubmitting(false)
-
-      // Scroll to error message
       const errorElement = document.querySelector(`.${styles.alertDanger}`)
       if (errorElement) {
         errorElement.scrollIntoView({ behavior: "smooth", block: "start" })
       }
     }
-  }, [error])
+  }, [authError, t]) // Added t dependency
 
-  // More robust validation function
+  // Validation function (Error messages should be translated if possible)
   const validateStep = useCallback(
     (step) => {
       const errors = {}
+      const emailRegex = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
 
       if (step === 1) {
-        // Email validation with more comprehensive regex
-        const emailRegex =
-          /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
+        if (!formData.nickname.trim()) errors.nickname = t('errors.nicknameRequired', "Nickname is required");
+        else if (formData.nickname.length < 3) errors.nickname = t('errors.nicknameTooShort', "Nickname must be at least 3 characters");
+        else if (formData.nickname.length > 50) errors.nickname = t('errors.nicknameTooLong', "Nickname cannot exceed 50 characters");
+        else if (!/^[a-zA-Z0-9_]+$/.test(formData.nickname)) errors.nickname = t('errors.nicknameInvalid', "Nickname can only contain letters, numbers, and underscores");
 
-        // Nickname validation
-        if (!formData.nickname.trim()) {
-          errors.nickname = "Nickname is required"
-        } else if (formData.nickname.length < 3) {
-          errors.nickname = "Nickname must be at least 3 characters"
-        } else if (formData.nickname.length > 50) {
-          errors.nickname = "Nickname cannot exceed 50 characters"
-        } else if (!/^[a-zA-Z0-9_]+$/.test(formData.nickname)) {
-          errors.nickname = "Nickname can only contain letters, numbers, and underscores"
-        }
+        if (!formData.email) errors.email = t('validation.emailRequired', 'Email is required'); // Example specific validation key
+        else if (!emailRegex.test(formData.email.toLowerCase())) errors.email = t('validation.email', "Please enter a valid email address");
 
-        // Email validation
-        if (!formData.email) {
-          errors.email = "Email is required"
-        } else if (!emailRegex.test(formData.email.toLowerCase())) {
-          errors.email = "Please enter a valid email address"
-        }
+        if (!formData.password) errors.password = t('validation.passwordRequired', 'Password is required'); // Example specific validation key
+        else if (formData.password.length < 8) errors.password = t('validation.passwordLength', 'Password must be at least 8 characters'); // Example specific validation key
+        // Add translations for other password criteria if needed
+        else if (!/(?=.*[a-z])/.test(formData.password)) errors.password = t('validation.passwordLowercase', 'Password must include at least one lowercase letter');
+        else if (!/(?=.*[A-Z])/.test(formData.password)) errors.password = t('validation.passwordUppercase', 'Password must include at least one uppercase letter');
+        else if (!/(?=.*\d)/.test(formData.password)) errors.password = t('validation.passwordNumber', 'Password must include at least one number');
+        else if (!/(?=.*[@$!%*?&])/.test(formData.password)) errors.password = t('validation.passwordSpecial', 'Password must include at least one special character (@$!%*?&)');
 
-        // Password validation with more robust requirements to match backend
-        if (!formData.password) {
-          errors.password = "Password is required"
-        } else if (formData.password.length < 8) {
-          errors.password = "Password must be at least 8 characters"
-        } else if (!/(?=.*[a-z])/.test(formData.password)) {
-          errors.password = "Password must include at least one lowercase letter"
-        } else if (!/(?=.*[A-Z])/.test(formData.password)) {
-          errors.password = "Password must include at least one uppercase letter"
-        } else if (!/(?=.*\d)/.test(formData.password)) {
-          errors.password = "Password must include at least one number"
-        } else if (!/(?=.*[@$!%*?&])/.test(formData.password)) {
-          errors.password = "Password must include at least one special character (@$!%*?&)"
-        }
 
-        // Password confirmation
-        if (formData.password !== formData.confirmPassword) {
-          errors.confirmPassword = "Passwords do not match"
-        }
+        if (formData.password !== formData.confirmPassword) errors.confirmPassword = t('validation.passwordMatch', "Passwords do not match");
       }
 
       if (step === 2) {
-        // Date of Birth validation
-        if (!formData.dateOfBirth) {
-          errors.dateOfBirth = "Date of birth is required"
-        } else {
-          const age = calculateAge(formData.dateOfBirth)
-          if (age < 18) {
-            errors.dateOfBirth = "You must be at least 18 years old"
-          } else if (age > 120) {
-            errors.dateOfBirth = "Please enter a valid date of birth"
-          }
+        if (!formData.dateOfBirth) errors.dateOfBirth = t('errors.dateOfBirthRequired', "Date of birth is required"); // Example specific validation key
+        else {
+          const age = calculateAge(formData.dateOfBirth);
+          if (age < 18) errors.dateOfBirth = t('errors.ageRestriction', "You must be at least 18 years old");
+          else if (age > 120) errors.dateOfBirth = t('errors.invalidDateOfBirth', "Please enter a valid date of birth");
         }
-
-        // I am validation (moved from step 3)
-        if (!formData.iAm) {
-          errors.iAm = "Please select who you are"
-        }
-
-        // Location validation
-        if (!formData.location.trim()) {
-          errors.location = "Location is required"
-        } else if (formData.location.length < 2) {
-          errors.location = "Location must be at least 2 characters"
-        } else if (formData.location.length > 100) {
-          errors.location = "Location cannot exceed 100 characters"
-        }
+        if (!formData.iAm) errors.iAm = t('errors.selectIdentity', "Please select who you are");
+        if (!formData.location.trim()) errors.location = t('errors.locationRequired', "Location is required");
+        else if (formData.location.length < 2) errors.location = t('errors.locationTooShort', "Location must be at least 2 characters");
+        else if (formData.location.length > 100) errors.location = t('errors.locationTooLong', "Location cannot exceed 100 characters");
       }
 
       if (step === 3) {
-        // Add validation for profile photo
-        if (!formData.profilePhoto) {
-          errors.profilePhoto = "Please upload a profile photo"
-        }
+        if (!formData.profilePhoto) errors.profilePhoto = t('errors.profilePhotoRequired', "Please upload a profile photo");
       }
 
       if (step === 4) {
-        // Add validation for marital status
-        if (!formData.maritalStatus) {
-          errors.maritalStatus = "Please select your marital status"
-        }
-
-        // Add validation for lookingFor
-        if (formData.lookingFor.length === 0) {
-          errors.lookingFor = "Please select what you're looking for"
-        } else if (formData.lookingFor.length > 3) {
-          errors.lookingFor = "Please select no more than 3 options"
-        }
-
-        // Validate the count of intoTags and turnOns
-        if (formData.intoTags.length > 20) {
-          errors.intoTags = "Please select no more than 20 'I'm into' tags"
-        }
-
-        if (formData.turnOns.length > 20) {
-          errors.turnOns = "Please select no more than 20 'Turn ons' tags"
-        }
-
-        // Interests validation
-        if (formData.interests.length === 0) {
-          errors.interests = "Please select at least one interest"
-        } else if (formData.interests.length > 10) {
-          errors.interests = "Please select no more than 10 interests"
-        }
-
-        // Agreement validations
-        if (!formData.agreeTerms) {
-          errors.agreeTerms = "You must agree to the Terms of Service"
-        }
-
-        if (!formData.agreePrivacy) {
-          errors.agreePrivacy = "You must agree to the Privacy Policy"
-        }
+        if (!formData.maritalStatus) errors.maritalStatus = t('errors.maritalStatusRequired', "Please select your marital status");
+        if (formData.lookingFor.length === 0) errors.lookingFor = t('errors.selectLookingFor', "Please select what you're looking for");
+        else if (formData.lookingFor.length > 3) errors.lookingFor = t('errors.tooManyLookingFor', "Please select no more than 3 options");
+        if (formData.intoTags.length > 20) errors.intoTags = t('errors.tooManyIntoTags', "Please select no more than 20 'I'm into' tags");
+        if (formData.turnOns.length > 20) errors.turnOns = t('errors.tooManyTurnOns', "Please select no more than 20 'Turn ons' tags");
+        if (formData.interests.length === 0) errors.interests = t('errors.interestsRequired', "Please select at least one interest");
+        else if (formData.interests.length > 10) errors.interests = t('errors.tooManyInterests', "Please select no more than 10 interests");
+        if (!formData.agreeTerms) errors.agreeTerms = t('errors.termsRequired', "You must agree to the Terms of Service");
+        if (!formData.agreePrivacy) errors.agreePrivacy = t('errors.privacyRequired', "You must agree to the Privacy Policy");
       }
 
-      return errors
+      return errors;
     },
-    [formData],
-  )
+    [formData, t], // Added t dependency
+  );
 
-  // Handle input changes
+
+  // Handle input changes (no translation needed here)
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
-
-    // For checkbox inputs, use the checked property
-    if (type === "checkbox") {
-      setFormData({ ...formData, [name]: checked })
-    }
-    // For number inputs, ensure valid numbers
-    else if (type === "number") {
-      if (value === "" || !isNaN(Number.parseInt(value))) {
-        setFormData({ ...formData, [name]: value })
-      }
-    }
-    // For all other inputs
-    else {
-      setFormData({ ...formData, [name]: value })
-    }
-
-    // Clear the error for this field if it exists
+    setFormData((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }))
     if (formErrors[name]) {
-      setFormErrors({ ...formErrors, [name]: "" })
+      setFormErrors((prev) => ({ ...prev, [name]: "" }))
     }
   }
 
-  // Handle location input change with suggestions
+  // Handle location input change with suggestions (no translation needed here)
   const handleLocationChange = (e) => {
     const value = e.target.value
     setFormData({ ...formData, location: value })
-
     if (formErrors.location) {
       setFormErrors({ ...formErrors, location: "" })
     }
-
     if (value.length > 1) {
       const filtered = commonLocations.filter((loc) => loc.toLowerCase().includes(value.toLowerCase()))
       setLocationSuggestions(filtered)
@@ -419,888 +218,545 @@ const Register = () => {
     }
   }
 
-  // Validate current step and move to next if valid
+  // Handle step navigation (no translation needed here)
   const handleNextStep = () => {
     setAttemptedSubmit(true)
     const errors = validateStep(currentStep)
-
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors)
-
       const firstErrorElement = document.querySelector(`.${styles.errorMessage}`)
       if (firstErrorElement) {
         firstErrorElement.scrollIntoView({ behavior: "smooth", block: "start" })
       }
-
       return
     }
-
     setFormErrors({})
     setCurrentStep(currentStep + 1)
     setAttemptedSubmit(false)
-
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  // Move to previous step
   const handlePrevStep = () => {
     setCurrentStep(currentStep - 1)
     setFormErrors({})
     setAttemptedSubmit(false)
-
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  // Toggle interest selection
+  // --- Toggle functions for tag selections ---
   const toggleInterest = (interest) => {
-    let updatedInterests
+    setFormData((prev) => {
+      const currentInterests = prev.interests || [];
+      const updatedInterests = currentInterests.includes(interest)
+        ? currentInterests.filter((i) => i !== interest)
+        : [...currentInterests, interest];
+      if (updatedInterests.length > 10) {
+        toast.warning(t('errors.tooManyInterests', 'Please select no more than 10 interests'));
+        return prev; // Do not update if limit exceeded
+      }
+      if (formErrors.interests && updatedInterests.length > 0) {
+          setFormErrors({ ...formErrors, interests: "" })
+      }
+      return { ...prev, interests: updatedInterests };
+    });
+  };
 
-    if (formData.interests.includes(interest)) {
-      updatedInterests = formData.interests.filter((i) => i !== interest)
-    } else {
-      updatedInterests = [...formData.interests, interest]
-    }
 
-    setFormData({
-      ...formData,
-      interests: updatedInterests,
-    })
-
-    if (formErrors.interests && updatedInterests.length > 0) {
-      setFormErrors({ ...formErrors, interests: "" })
-    }
-  }
-
-  // Toggle relationship goal selection
   const toggleGoal = (goal) => {
-    let updatedGoals
+    setFormData((prev) => {
+      const currentGoals = prev.lookingFor || [];
+      const updatedGoals = currentGoals.includes(goal)
+        ? currentGoals.filter((g) => g !== goal)
+        : [...currentGoals, goal];
+      if (updatedGoals.length > 3) {
+        toast.warning(t('errors.tooManyLookingFor', 'Please select no more than 3 options'));
+        return prev;
+      }
+       if (formErrors.lookingFor && updatedGoals.length > 0) {
+         setFormErrors({ ...formErrors, lookingFor: "" })
+       }
+      return { ...prev, lookingFor: updatedGoals };
+    });
+  };
 
-    if (formData.lookingFor.includes(goal)) {
-      updatedGoals = formData.lookingFor.filter((g) => g !== goal)
-    } else {
-      updatedGoals = [...formData.lookingFor, goal]
-    }
-
-    setFormData({
-      ...formData,
-      lookingFor: updatedGoals,
-    })
-
-    if (formErrors.lookingFor && updatedGoals.length > 0) {
-      setFormErrors({ ...formErrors, lookingFor: "" })
-    }
-  }
-
-  // Toggle "I am" selection
   const handleIAmSelection = (option) => {
-    setFormData({
-      ...formData,
-      iAm: formData.iAm === option ? "" : option,
-    })
+     setFormData((prev) => ({ ...prev, iAm: prev.iAm === option ? "" : option }));
+      if (formErrors.iAm && option) {
+        setFormErrors({ ...formErrors, iAm: "" })
+     }
+  };
 
-    if (formErrors.iAm && option) {
-      setFormErrors({ ...formErrors, iAm: "" })
-    }
-  }
-
-  // Toggle "I'm into" tag selection
   const toggleIntoTag = (tag) => {
-    let updatedTags
+     setFormData((prev) => {
+        const currentTags = prev.intoTags || [];
+        const updatedTags = currentTags.includes(tag)
+         ? currentTags.filter((t) => t !== tag)
+         : [...currentTags, tag];
+        if (updatedTags.length > 20) {
+          toast.warning(t('errors.tooManyIntoTags', "Please select no more than 20 'I'm into' tags"));
+          return prev;
+        }
+        if (formErrors.intoTags) { // Clear error once a tag is selected/deselected
+           setFormErrors({ ...formErrors, intoTags: "" })
+        }
+        return { ...prev, intoTags: updatedTags };
+     });
+  };
 
-    if (formData.intoTags.includes(tag)) {
-      updatedTags = formData.intoTags.filter((t) => t !== tag)
-    } else {
-      if (formData.intoTags.length >= 20) {
-        toast.warning("You can select up to 20 'I'm into' tags")
-        return
-      }
-      updatedTags = [...formData.intoTags, tag]
-    }
-
-    setFormData({
-      ...formData,
-      intoTags: updatedTags,
-    })
-
-    if (formErrors.intoTags && updatedTags.length > 0) {
-      setFormErrors({ ...formErrors, intoTags: "" })
-    }
-  }
-
-  // Toggle "Turn on" tag selection
   const toggleTurnOn = (tag) => {
-    let updatedTags
+     setFormData((prev) => {
+        const currentTags = prev.turnOns || [];
+        const updatedTags = currentTags.includes(tag)
+         ? currentTags.filter((t) => t !== tag)
+         : [...currentTags, tag];
+        if (updatedTags.length > 20) {
+          toast.warning(t('errors.tooManyTurnOns', "Please select no more than 20 'Turn ons' tags"));
+          return prev;
+        }
+        if (formErrors.turnOns) { // Clear error once a tag is selected/deselected
+          setFormErrors({ ...formErrors, turnOns: "" })
+        }
+        return { ...prev, turnOns: updatedTags };
+     });
+  };
+  // ---------------------------------------
 
-    if (formData.turnOns.includes(tag)) {
-      updatedTags = formData.turnOns.filter((t) => t !== tag)
-    } else {
-      if (formData.turnOns.length >= 20) {
-        toast.warning("You can select up to 20 'Turn ons' tags")
-        return
-      }
-      updatedTags = [...formData.turnOns, tag]
-    }
-
-    setFormData({
-      ...formData,
-      turnOns: updatedTags,
-    })
-
-    if (formErrors.turnOns && updatedTags.length > 0) {
-      setFormErrors({ ...formErrors, turnOns: "" })
-    }
-  }
-
-  // Handle marital status selection
+   // Handle marital status selection (no translation needed here)
   const handleMaritalStatusChange = (e) => {
-    setFormData({
-      ...formData,
-      maritalStatus: e.target.value,
-    })
-
+    setFormData({ ...formData, maritalStatus: e.target.value })
     if (formErrors.maritalStatus) {
       setFormErrors({ ...formErrors, maritalStatus: "" })
     }
   }
-  
-  // Handle photo upload
+
+   // Handle photo upload (translate toast messages)
   const handlePhotoChange = (e) => {
     const file = e.target.files[0]
     if (!file) return
-    
-    // Validate file type
     const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg']
     if (!allowedTypes.includes(file.type)) {
-      toast.error('Please upload a valid image file (JPEG, JPG or PNG)')
+      toast.error(t('errors.uploadTypeMismatch', 'Please upload a valid image file (JPEG, JPG or PNG)'))
       return
     }
-    
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image size should be less than 5MB')
+      toast.error(t('errors.uploadSizeLimitExceeded', 'Image size should be less than 5MB'))
       return
     }
-    
-    // Update form data and preview
-    setFormData({
-      ...formData,
-      profilePhoto: file
-    })
-    
-    // Create and set preview URL
+    setFormData({ ...formData, profilePhoto: file }) // Store the File object
     const reader = new FileReader()
-    reader.onloadend = () => {
-      setPreviewImage(reader.result)
-    }
+    reader.onloadend = () => { setPreviewImage(reader.result) }
     reader.readAsDataURL(file)
-    
     if (formErrors.profilePhoto) {
       setFormErrors({ ...formErrors, profilePhoto: '' })
     }
   }
-  
-  // Remove uploaded photo
+
+  // Handle photo removal (no translation needed here)
   const handleRemovePhoto = () => {
-    setFormData({
-      ...formData,
-      profilePhoto: null
-    })
+    setFormData({ ...formData, profilePhoto: null })
     setPreviewImage(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
   }
-  
-  // Trigger file input click
+
+  // Trigger file input click (no translation needed here)
   const triggerFileInput = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click()
     }
   }
 
-  const validateForm = useCallback(() => {
-    const errors = {}
-    // Add your validation logic here if needed
-    return errors
-  }, [formData])
+  // Removed redundant validateForm - using validateStep
 
-  // Handle form submission
+  // Handle form submission (translate toast messages and errors)
   const handleSubmit = async (e) => {
     e?.preventDefault()
-    const validationErrors = validateForm()
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors)
-      const firstErrorElement = document.querySelector(`.${styles.errorMessage}`)
-      if (firstErrorElement) {
-        firstErrorElement.scrollIntoView({ behavior: "smooth", block: "center" })
-      }
-      return
-    }
-    setErrors({})
-    setIsSubmitting(true)
-    try {
-      // Map iAm to proper gender format
-      let gender = ""
-      if (formData.iAm.toLowerCase() === "woman") {
-        gender = "female"
-      } else if (formData.iAm.toLowerCase() === "man") {
-        gender = "male"
-      } else if (formData.iAm.toLowerCase() === "couple") {
-        gender = "other" // Using "other" for couples
-      }
+    // Validate the final step before submitting
+    const finalStepErrors = validateStep(4);
+     if (Object.keys(finalStepErrors).length > 0) {
+        setFormErrors(finalStepErrors);
+        const firstErrorElement = document.querySelector(`.${styles.errorMessage}`);
+        if (firstErrorElement) {
+          firstErrorElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        return; // Stop submission if final step has errors
+     }
 
-      // Determine account tier based on gender and couple status
-      let accountTier = "FREE"
-      const isCouple = formData.iAm.toLowerCase() === "couple"
-      if (formData.iAm.toLowerCase() === "woman") {
-        accountTier = "FEMALE"
-      } else if (isCouple) {
-        accountTier = "COUPLE"
-      }
+    setFormErrors({}) // Clear errors before submitting
+    setIsSubmitting(true)
+
+    try {
+      // --- Step 1: Register User ---
+      let gender = "";
+      if (formData.iAm.toLowerCase() === "woman") gender = "female";
+      else if (formData.iAm.toLowerCase() === "man") gender = "male";
+      else if (formData.iAm.toLowerCase() === "couple") gender = "other";
+
+      let accountTier = "FREE";
+      if (formData.iAm.toLowerCase() === "woman") accountTier = "FEMALE";
+      else if (formData.iAm.toLowerCase() === "couple") accountTier = "COUPLE";
 
       const submissionData = {
         nickname: formData.nickname.trim(),
         email: formData.email.trim().toLowerCase(),
         password: formData.password,
         accountTier,
-        isCouple,
+        isCouple: formData.iAm.toLowerCase() === "couple",
         details: {
           age: calculateAge(formData.dateOfBirth),
           gender,
           location: formData.location.trim(),
-          bio: "",
+          bio: "", // Assuming bio is added later
           interests: formData.interests,
           iAm: formData.iAm,
           lookingFor: formData.lookingFor,
           intoTags: formData.intoTags,
           turnOns: formData.turnOns,
           maritalStatus: formData.maritalStatus,
-          dateOfBirth: formData.dateOfBirth,
+          dateOfBirth: formData.dateOfBirth, // Send DOB
         },
-      }
+      };
 
-      try {
-        const result = await register(submissionData)
-        if (result && result.token) {
-          // Store the token returned from registration
-          const token = result.token;
-          
-          // If there's a profile photo, upload it after successful registration
-          if (formData.profilePhoto) {
-            try {
-              // Create FormData object for file upload
-              const photoFormData = new FormData()
-              photoFormData.append('photo', formData.profilePhoto)
-              photoFormData.append('isPrivate', 'false') // Default to public profile photo
-              
-              // Get base URL from apiService
-              const baseURL = import.meta.env.VITE_API_URL || 
-                (window.location.hostname.includes("localhost") ? "http://localhost:5000/api" : "/api")
-              
-              // Send photo to the server with the token we just got
-              const response = await fetch(`${baseURL}/users/photos`, {
-                method: 'POST',
-                body: photoFormData,
-                headers: {
-                  'Authorization': `Bearer ${token}`, // Use the token we just received
-                  'x-auth-token': token // Include both headers for compatibility
-                }
-              })
-              
-              const photoResult = await response.json()
-              
-              if (photoResult.success) {
-                toast.success("Profile photo uploaded successfully")
-              } else {
-                console.error("Photo upload failed:", photoResult)
-                toast.error("Failed to upload profile photo: " + (photoResult.error || "Unknown error"))
-              }
-            } catch (photoErr) {
-              console.error("Error uploading photo:", photoErr)
-              toast.error("Failed to upload profile photo")
+      const result = await register(submissionData); // Call register from useAuth
+
+      // --- Step 2: Upload Photo if Registration Successful ---
+      if (result && result.token) {
+        // If there's a profile photo File object, upload it using apiService
+        if (formData.profilePhoto instanceof File) {
+          try {
+            const photoFormData = new FormData();
+            // Use 'photo' as the field name expected by the backend
+            photoFormData.append('photo', formData.profilePhoto);
+            // Add any other necessary fields for the upload endpoint
+            photoFormData.append('isPrivate', 'false'); // Example: Default to public
+
+            // Use apiService.upload (or appropriate method like post with FormData)
+            // The token will be handled automatically by apiService interceptors
+            const photoResult = await apiService.upload('/users/photos', photoFormData);
+
+            if (photoResult.success) { // Adjust based on apiService response structure
+              toast.success(t('profile.photoUploadSuccess', "Profile photo uploaded successfully"));
+            } else {
+              console.error("Photo upload failed via apiService:", photoResult);
+              // Use error message from apiService response if available
+              toast.error(t('errors.photoUploadFailed', "Failed to upload profile photo:") + " " + (photoResult.error || photoResult.message || t('errors.unknownError', "Unknown error")));
             }
+          } catch (photoErr) {
+            console.error("Error uploading photo via apiService:", photoErr);
+             // Use error message from apiService error if available
+            toast.error(t('errors.photoUploadFailed', "Failed to upload profile photo:") + " " + (photoErr.message || photoErr.error || ""));
           }
-          
-          toast.success("Welcome to Mandarin! Your account has been created successfully.")
-          navigate("/dashboard")
         }
-      } catch (err) {
-        if (err.error === "User already exists" || err.code === "EMAIL_EXISTS" || 
-            (err.message && err.message.includes("already exists"))) {
-          setFormErrors({
-            email: "This email is already registered. Please log in or use a different email.",
-            general: "An account with this email already exists. Would you like to log in instead?",
-          })
 
-          // Scroll to the error message
-          const errorElement = document.querySelector(`.${styles.errorMessage}`)
-          if (errorElement) {
-            errorElement.scrollIntoView({ behavior: "smooth", block: "start" })
-          }
-        } else {
-          setFormErrors((prev) => ({
-            ...prev,
-            general: err.message || "An unexpected error occurred. Please try again.",
-          }))
-        }
+        // --- Step 3: Final Success Message and Navigation ---
+        toast.success(t('auth.registerSuccess', "Welcome to Mandarin! Your account has been created successfully."));
+        navigate("/dashboard");
+
       }
+      // If register didn't return a token or threw an error, it's handled by the catch block below
+      // or the useEffect watching authError.
+
     } catch (err) {
-      console.error("Registration error", err)
-      setIsSubmitting(false)
-
-      if (!formErrors.general) {
-        setFormErrors((prev) => ({
-          ...prev,
-          general: "An unexpected error occurred. Please try again.",
-        }))
-      }
+      console.error("Registration error caught in component:", err);
+      // Error handling is mostly done within useAuth's register function now.
+      // We rely on the useEffect watching authError to display errors.
+      // Set a general fallback error if needed and not already set by auth context.
+       if (!formErrors.general && !authError) {
+         setFormErrors((prev) => ({
+           ...prev,
+           general: err.message || t('errors.generalError', "An unexpected error occurred. Please try again."),
+         }));
+       }
+       // Scroll to error
+       const errorElement = document.querySelector(`.${styles.errorMessage}, .${styles.alertDanger}`);
+       if (errorElement) {
+           errorElement.scrollIntoView({ behavior: "smooth", block: "start" });
+       }
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
   }
 
-  // Toggle password visibility
+
+  // Toggle password visibility (no translation needed here)
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword)
   }
 
-  // Render progress indicator with four steps
-  const renderProgress = () => (
+   // Render progress indicator (uses t() correctly)
+   const renderProgress = () => (
     <div className={styles.progressContainer}>
       <div className={styles.progressSteps}>
         <div className={`${styles.progressStep} ${currentStep >= 1 ? styles.active : ""}`}>
           <div className={styles.stepCircle}>{currentStep > 1 ? <FaCheck /> : 1}</div>
-          <span className={styles.stepLabel}>{t('register.accountStep')}</span>
+          <span className={styles.stepLabel}>{t('register.accountStep', 'Account')}</span>
         </div>
         <div className={styles.progressLine}></div>
         <div className={`${styles.progressStep} ${currentStep >= 2 ? styles.active : ""}`}>
           <div className={styles.stepCircle}>{currentStep > 2 ? <FaCheck /> : 2}</div>
-          <span className={styles.stepLabel}>{t('register.profileStep')}</span>
+          <span className={styles.stepLabel}>{t('register.profileStep', 'Profile')}</span>
         </div>
         <div className={styles.progressLine}></div>
         <div className={`${styles.progressStep} ${currentStep >= 3 ? styles.active : ""}`}>
           <div className={styles.stepCircle}>{currentStep > 3 ? <FaCheck /> : 3}</div>
-          <span className={styles.stepLabel}>{t('register.photoStep')}</span>
+          <span className={styles.stepLabel}>{t('register.photoStep', 'Photo')}</span>
         </div>
         <div className={styles.progressLine}></div>
         <div className={`${styles.progressStep} ${currentStep >= 4 ? styles.active : ""}`}>
           <div className={styles.stepCircle}>{currentStep > 4 ? <FaCheck /> : 4}</div>
-          <span className={styles.stepLabel}>{t('register.preferencesStep')}</span>
+          <span className={styles.stepLabel}>{t('register.preferencesStep', 'Preferences')}</span>
         </div>
       </div>
     </div>
   )
 
-  // Render step 1 content (Account Information)
+   // Render step 1 content (Account Information) - Use translations
   const renderStep1 = () => (
     <>
       <div className={styles.stepHeader}>
-        <h3>Create Your Account</h3>
-        <p>Enter your basic information</p>
+        <h3>{t('register.createAccount', 'Create Your Account')}</h3>
+        <p>{t('register.enterBasicInfo', 'Enter your basic information')}</p>
       </div>
       <div className={styles.formGroup}>
         <label className={styles.formLabel} htmlFor="nickname">
-          Nickname
+          {t('register.nickname', 'Nickname')}
         </label>
         <div className={styles.inputWrapper}>
           <FaUser className={styles.inputIcon} />
-          <input
-            type="text"
-            id="nickname"
-            name="nickname"
-            placeholder="Choose a nickname"
-            className={styles.input}
-            value={formData.nickname}
-            onChange={handleChange}
-            maxLength={50}
-          />
+          <input type="text" id="nickname" name="nickname" placeholder={t('register.chooseNickname', 'Choose a nickname')} className={styles.input} value={formData.nickname} onChange={handleChange} maxLength={50} />
         </div>
-        {formErrors.nickname ? (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.nickname}
-          </p>
-        ) : (
-          <p className={styles.helpText}>
-            Your public display name (can contain letters, numbers, and underscores)
-          </p>
-        )}
+        {formErrors.nickname ? (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.nickname}</p>) : (<p className={styles.helpText}>{t('register.nicknameHelp', 'Your public display name (can contain letters, numbers, and underscores)')}</p>)}
       </div>
       <div className={styles.formGroup}>
         <label className={styles.formLabel} htmlFor="email">
-          Email Address
+          {t('auth.emailAddress', 'Email Address')}
         </label>
         <div className={styles.inputWrapper}>
           <FaEnvelope className={styles.inputIcon} />
-          <input
-            type="email"
-            id="email"
-            name="email"
-            placeholder="Enter your email"
-            className={styles.input}
-            value={formData.email}
-            onChange={handleChange}
-          />
+          <input type="email" id="email" name="email" placeholder={t('register.enterEmail', 'Enter your email')} className={styles.input} value={formData.email} onChange={handleChange} />
         </div>
-        {formErrors.email ? (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.email}
-          </p>
-        ) : (
-          <p className={styles.helpText}>
-            We'll never share your email with anyone else
-          </p>
-        )}
+        {formErrors.email ? (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.email}</p>) : (<p className={styles.helpText}>{t('register.emailHelp', "We'll never share your email with anyone else")}</p>)}
       </div>
       <div className={styles.formGroup}>
         <label className={styles.formLabel} htmlFor="password">
-          Password
+           {t('auth.password', 'Password')}
         </label>
         <div className={styles.inputWrapper}>
           <FaLock className={styles.inputIcon} />
-          <input
-            type={showPassword ? "text" : "password"}
-            id="password"
-            name="password"
-            placeholder="Create a password"
-            className={styles.input}
-            value={formData.password}
-            onChange={handleChange}
-          />
-          <button
-            type="button"
-            className={styles.togglePassword}
-            onClick={togglePasswordVisibility}
-            tabIndex={-1}
-            aria-label={showPassword ? "Hide password" : "Show password"}
-          >
+          <input type={showPassword ? "text" : "password"} id="password" name="password" placeholder={t('register.createPassword', 'Create a password')} className={styles.input} value={formData.password} onChange={handleChange} />
+          <button type="button" className={styles.togglePassword} onClick={togglePasswordVisibility} tabIndex={-1} aria-label={showPassword ? t('common.hidePassword', "Hide password") : t('common.showPassword', "Show password")}>
             {showPassword ? <FaEyeSlash /> : <FaEye />}
           </button>
         </div>
-        {formErrors.password ? (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.password}
-          </p>
-        ) : (
-          <p className={styles.helpText}>
-            Must be at least 8 characters with uppercase, lowercase, number, and special character
-          </p>
-        )}
+        {formErrors.password ? (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.password}</p>) : (<p className={styles.helpText}>{t('register.passwordHelp', 'Must be at least 8 characters with uppercase, lowercase, number, and special character')}</p>)}
       </div>
       <div className={styles.formGroup}>
         <label className={styles.formLabel} htmlFor="confirmPassword">
-          Confirm Password
+          {t('common.confirmPassword', 'Confirm Password')}
         </label>
         <div className={styles.inputWrapper}>
           <FaLock className={styles.inputIcon} />
-          <input
-            type={showPassword ? "text" : "password"}
-            id="confirmPassword"
-            name="confirmPassword"
-            placeholder="Confirm password"
-            className={styles.input}
-            value={formData.confirmPassword}
-            onChange={handleChange}
-          />
+          <input type={showPassword ? "text" : "password"} id="confirmPassword" name="confirmPassword" placeholder={t('register.confirmPassword', 'Confirm password')} className={styles.input} value={formData.confirmPassword} onChange={handleChange} />
         </div>
-        {formErrors.confirmPassword && (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.confirmPassword}
-          </p>
-        )}
+        {formErrors.confirmPassword && (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.confirmPassword}</p>)}
       </div>
       <div className={styles.formActions}>
-        <div></div> {/* Empty div for flex spacing */}
+        <div></div>
         <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleNextStep} disabled={isSubmitting}>
-          Continue <FaArrowRight />
+          {t('register.continue', 'Continue')} <FaArrowRight />
         </button>
       </div>
     </>
   )
 
-  // Render step 2 content (Profile Information)
+  // Render step 2 content (Profile Information) - Use translations
   const renderStep2 = () => (
     <>
       <div className={styles.stepHeader}>
-        <h3>Tell Us About Yourself</h3>
-        <p>Add some basic profile details</p>
+        <h3>{t('register.tellAboutYourself', 'Tell Us About Yourself')}</h3>
+        <p>{t('register.addBasicProfileDetails', 'Add some basic profile details')}</p>
       </div>
       <div className={styles.formGroup}>
         <label className={styles.formLabel} htmlFor="dateOfBirth">
-          Date of Birth
+          {t('register.dateOfBirth', 'Date of Birth')}
         </label>
         <div className={styles.inputWrapper}>
           <FaCalendarAlt className={styles.inputIcon} />
-          <input
-            type="date"
-            id="dateOfBirth"
-            name="dateOfBirth"
-            className={styles.input}
-            value={formData.dateOfBirth}
-            onChange={handleChange}
-            max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split("T")[0]}
-          />
+          <input type="date" id="dateOfBirth" name="dateOfBirth" className={styles.input} value={formData.dateOfBirth} onChange={handleChange} max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split("T")[0]} />
         </div>
-        {formErrors.dateOfBirth ? (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.dateOfBirth}
-          </p>
-        ) : (
-          <p className={styles.helpText}>
-            You must be at least 18 years old to use this service
-          </p>
-        )}
+        {formErrors.dateOfBirth ? (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.dateOfBirth}</p>) : (<p className={styles.helpText}>{t('register.dateOfBirthHelp', 'You must be at least 18 years old to use this service')}</p>)}
       </div>
-
       <div className={styles.formGroup}>
-        <label className={styles.formLabel}>I am a</label>
+        <label className={styles.formLabel}>{t('register.iAmA', 'I am a')}</label>
         <div className={styles.tagContainer}>
           {iAmOptions.map((option) => (
-            <button
-              key={option}
-              type="button"
-              className={`${styles.tag} ${formData.iAm === option ? styles.selected : ""}`}
-              onClick={() => handleIAmSelection(option)}
-            >
-              {option.charAt(0).toUpperCase() + option.slice(1)}
+            <button key={option} type="button" className={`${styles.tag} ${formData.iAm === option ? styles.selected : ""}`} onClick={() => handleIAmSelection(option)}>
+              {t(`profile_${option}`, option.charAt(0).toUpperCase() + option.slice(1))}
               {formData.iAm === option && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
         </div>
-        {formErrors.iAm && (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.iAm}
-          </p>
-        )}
+        {formErrors.iAm && (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.iAm}</p>)}
       </div>
-
       <div className={styles.formGroup}>
         <label className={styles.formLabel} htmlFor="location">
-          Location
+          {t('register.location', 'Location')}
         </label>
         <div className={styles.inputWrapper}>
           <FaMapMarkerAlt className={styles.inputIcon} />
-          <input
-            type="text"
-            id="location"
-            name="location"
-            placeholder="City, Country"
-            className={styles.input}
-            value={formData.location}
-            onChange={handleLocationChange}
-            maxLength={100}
-            list="location-suggestions"
-          />
-          <datalist id="location-suggestions">
-            {commonLocations.map((loc, index) => (
-              <option key={index} value={loc} />
-            ))}
-          </datalist>
+          <input type="text" id="location" name="location" placeholder={t('register.locationPlaceholder', 'City, Country')} className={styles.input} value={formData.location} onChange={handleLocationChange} maxLength={100} list="location-suggestions" />
+          <datalist id="location-suggestions">{commonLocations.map((loc, index) => (<option key={index} value={loc} />))}</datalist>
         </div>
-        {formErrors.location ? (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.location}
-          </p>
-        ) : (
-          <p className={styles.helpText}>
-            Your general location (e.g., Tel Aviv, Israel)
-          </p>
-        )}
+        {formErrors.location ? (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.location}</p>) : (<p className={styles.helpText}>{t('register.locationHelp', 'Your general location (e.g., Tel Aviv, Israel)')}</p>)}
       </div>
       <div className={styles.formActions}>
         <button type="button" className={`${styles.button} ${styles.buttonOutline}`} onClick={handlePrevStep}>
-          <FaArrowLeft /> Back
+          <FaArrowLeft /> {t('register.back', 'Back')}
         </button>
         <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleNextStep} disabled={isSubmitting}>
-          Continue <FaArrowRight />
+          {t('register.continue', 'Continue')} <FaArrowRight />
         </button>
       </div>
     </>
   )
 
-  // Render step 3 content (Photo Upload)
+  // Render step 3 content (Photo Upload) - Use translations
   const renderStep3 = () => (
     <>
       <div className={styles.stepHeader}>
-        <h3>Upload Your Photo</h3>
-        <p>Add a profile photo to improve your visibility</p>
+        <h3>{t('register.uploadYourPhoto', 'Upload Your Photo')}</h3>
+        <p>{t('register.improveVisibility', 'Add a profile photo to improve your visibility')}</p>
       </div>
-      
       <div className={styles.photoUploadContainer}>
-        <div 
-          className={`${styles.photoUploadArea} ${previewImage ? styles.hasImage : ''}`}
-          onClick={triggerFileInput}
-        >
-          <input 
-            type="file"
-            ref={fileInputRef}
-            accept="image/jpeg,image/png,image/jpg" 
-            onChange={handlePhotoChange}
-            className="d-none"
-          />
-          
-          {previewImage ? (
-            <img src={previewImage} alt="Profile Preview" className={styles.profileImagePreview} />
-          ) : (
-            <>
-              <FaCamera className={styles.photoUploadIcon} />
-              <p className={styles.photoUploadText}>
-                Click to upload a profile photo
-              </p>
-            </>
-          )}
+        <div className={`${styles.photoUploadArea} ${previewImage ? styles.hasImage : ''}`} onClick={triggerFileInput}>
+          <input type="file" ref={fileInputRef} accept="image/jpeg,image/png,image/jpg" onChange={handlePhotoChange} className="d-none" />
+          {previewImage ? (<img src={previewImage} alt={t('profile.profilePhoto', 'Profile Preview')} className={styles.profileImagePreview} />) : (<> <FaCamera className={styles.photoUploadIcon} /> <p className={styles.photoUploadText}>{t('register.clickToUpload', 'Click to upload a profile photo')}</p> </>)}
         </div>
-        
         <p className={styles.uploadGuidelines}>
-          Photos should be clear, recent and show your face. 
-          <br />Maximum size: 5MB. Formats: JPG, JPEG, PNG.
+          {t('register.profileImageHelp', 'Photos should be clear, recent and show your face.')}
+          <br />{t('register.profileImageSize', 'Maximum size: 5MB. Formats: JPG, JPEG, PNG.')}
         </p>
-        
-        {formErrors.profilePhoto && (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.profilePhoto}
-          </p>
-        )}
-        
+        {formErrors.profilePhoto && (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.profilePhoto}</p>)}
         {previewImage && (
           <div className={styles.photoActions}>
             <button type="button" className={`${styles.photoActionButton} ${styles.changePhotoButton}`} onClick={triggerFileInput}>
-              <FaEdit /> Change Photo
+              <FaEdit /> {t('register.changePhoto', 'Change Photo')}
             </button>
             <button type="button" className={`${styles.photoActionButton} ${styles.removePhotoButton}`} onClick={handleRemovePhoto}>
-              <FaTrash /> Remove
+              <FaTrash /> {t('register.removePhoto', 'Remove')}
             </button>
           </div>
         )}
       </div>
-      
       <div className={styles.formActions}>
         <button type="button" className={`${styles.button} ${styles.buttonOutline}`} onClick={handlePrevStep} disabled={isSubmitting}>
-          <FaArrowLeft /> Back
+          <FaArrowLeft /> {t('register.back', 'Back')}
         </button>
         <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleNextStep} disabled={isSubmitting}>
-          Continue <FaArrowRight />
+           {t('register.continue', 'Continue')} <FaArrowRight />
         </button>
       </div>
     </>
   )
-  
-  // Render step 4 content (Preferences)
+
+  // Render step 4 content (Preferences) - Use translations
   const renderStep4 = () => (
     <>
       <div className={styles.stepHeader}>
-        <h3>Your Preferences</h3>
-        <p>Tell us about yourself and what you're looking for</p>
+        <h3>{t('register.yourPreferences', 'Your Preferences')}</h3>
+        <p>{t('register.tellWhatLooking', "Tell us about yourself and what you're looking for")}</p>
       </div>
-
       <div className={styles.formGroup}>
-        <label className={styles.formLabel}>Marital Status</label>
-        <select
-          className={styles.input}
-          name="maritalStatus"
-          value={formData.maritalStatus}
-          onChange={handleMaritalStatusChange}
-          style={{ paddingLeft: "1rem" }}
-        >
-          <option value="">Select your status</option>
-          {maritalStatusOptions.map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
-          ))}
+        <label className={styles.formLabel}>{t('register.maritalStatus', 'Marital Status')}</label>
+        <select className={styles.input} name="maritalStatus" value={formData.maritalStatus} onChange={handleMaritalStatusChange} style={{ paddingLeft: "1rem" }}>
+          <option value="">{t('register.selectStatus', 'Select your status')}</option>
+          {maritalStatusOptions.map((status) => (<option key={status} value={status}>{t(`profile_maritalStatus_${status.toLowerCase().replace(/[\s']/g, '_')}`, status)}</option>))}
         </select>
-        {formErrors.maritalStatus && (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.maritalStatus}
-          </p>
-        )}
+        {formErrors.maritalStatus && (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.maritalStatus}</p>)}
       </div>
-
       <div className={styles.formGroup}>
-        <label className={styles.formLabel}>Looking For</label>
-        <p className={styles.helpText}>Select up to 3 options</p>
+        <label className={styles.formLabel}>{t('register.lookingFor', 'Looking For')}</label>
+        <p className={styles.helpText}>{t('register.lookingForHelp', 'Select up to 3 options')}</p>
         <div className={styles.tagContainer}>
           {lookingForOptions.map((option) => (
-            <button
-              key={option}
-              type="button"
-              className={`${styles.tag} ${formData.lookingFor.includes(option) ? styles.selected : ""}`}
-              onClick={() => toggleGoal(option)}
-              disabled={!formData.lookingFor.includes(option) && formData.lookingFor.length >= 3}
-            >
-              {option.charAt(0).toUpperCase() + option.slice(1)}
+            <button key={option} type="button" className={`${styles.tag} ${formData.lookingFor.includes(option) ? styles.selected : ""}`} onClick={() => toggleGoal(option)} disabled={!formData.lookingFor.includes(option) && formData.lookingFor.length >= 3}>
+               {t(`profile_${option.toLowerCase().replace(/\s+/g, '_')}`, option.charAt(0).toUpperCase() + option.slice(1))}
               {formData.lookingFor.includes(option) && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
         </div>
-        {formErrors.lookingFor && (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.lookingFor}
-          </p>
-        )}
+        {formErrors.lookingFor && (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.lookingFor}</p>)}
       </div>
-
       <div className={styles.formGroup}>
-        <label className={styles.formLabel}>Interests</label>
-        <p className={styles.helpText}>Select up to 10 interests</p>
+        <label className={styles.formLabel}>{t('register.interests', 'Interests')}</label>
+        <p className={styles.helpText}>{t('register.interestsHelp', 'Select up to 10 interests')}</p>
         <div className={styles.tagContainer}>
           {availableInterests.map((interest) => (
-            <button
-              key={interest}
-              type="button"
-              className={`${styles.tag} ${formData.interests.includes(interest) ? styles.selected : ""}`}
-              onClick={() => toggleInterest(interest)}
-              disabled={!formData.interests.includes(interest) && formData.interests.length >= 10}
-            >
-              {interest}
+            <button key={interest} type="button" className={`${styles.tag} ${formData.interests.includes(interest) ? styles.selected : ""}`} onClick={() => toggleInterest(interest)} disabled={!formData.interests.includes(interest) && formData.interests.length >= 10}>
+               {t(`profile_interests_${interest.toLowerCase().replace(/\s+/g, '_')}`, interest)}
               {formData.interests.includes(interest) && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
         </div>
-        {formErrors.interests && (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.interests}
-          </p>
-        )}
+        {formErrors.interests && (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.interests}</p>)}
       </div>
-
       <div className={styles.formGroup}>
-        <label className={styles.formLabel}>I'm into</label>
-        <p className={styles.helpText}>Select up to 20 tags</p>
+        <label className={styles.formLabel}>{t('register.imInto', "I'm into")}</label>
+        <p className={styles.helpText}>{t('register.imIntoHelp', 'Select up to 20 tags')}</p>
         <div className={styles.tagContainer}>
           {intoTagsOptions.map((tag) => (
-            <button
-              key={tag}
-              type="button"
-              className={`${styles.tag} ${formData.intoTags.includes(tag) ? styles.selected : ""}`}
-              onClick={() => toggleIntoTag(tag)}
-              disabled={!formData.intoTags.includes(tag) && formData.intoTags.length >= 20}
-            >
-              {tag}
+            <button key={tag} type="button" className={`${styles.tag} ${formData.intoTags.includes(tag) ? styles.selected : ""}`} onClick={() => toggleIntoTag(tag)} disabled={!formData.intoTags.includes(tag) && formData.intoTags.length >= 20}>
+               {/* Adjust key generation for tags with special chars if needed */}
+               {t(`profile_intoTags_${tag.toLowerCase().replace(/[\s/']/g, '_')}`, tag)}
               {formData.intoTags.includes(tag) && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
         </div>
-        {formErrors.intoTags && (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.intoTags}
-          </p>
-        )}
+        {formErrors.intoTags && (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.intoTags}</p>)}
       </div>
-
       <div className={styles.formGroup}>
-        <label className={styles.formLabel}>It turns me on</label>
-        <p className={styles.helpText}>Select up to 20 tags</p>
+        <label className={styles.formLabel}>{t('register.turnsMeOn', 'It turns me on')}</label>
+        <p className={styles.helpText}>{t('register.turnsMeOnHelp', 'Select up to 20 tags')}</p>
         <div className={styles.tagContainer}>
           {turnOnsOptions.map((tag) => (
-            <button
-              key={tag}
-              type="button"
-              className={`${styles.tag} ${formData.turnOns.includes(tag) ? styles.selected : ""}`}
-              onClick={() => toggleTurnOn(tag)}
-              disabled={!formData.turnOns.includes(tag) && formData.turnOns.length >= 20}
-            >
-              {tag}
+            <button key={tag} type="button" className={`${styles.tag} ${formData.turnOns.includes(tag) ? styles.selected : ""}`} onClick={() => toggleTurnOn(tag)} disabled={!formData.turnOns.includes(tag) && formData.turnOns.length >= 20}>
+               {/* Adjust key generation for tags with special chars if needed */}
+               {t(`profile_turnOns_${tag.toLowerCase().replace(/[\s/']/g, '_')}`, tag)}
               {formData.turnOns.includes(tag) && <FaCheck className={styles.tagCheck} />}
             </button>
           ))}
         </div>
-        {formErrors.turnOns && (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.turnOns}
-          </p>
-        )}
+        {formErrors.turnOns && (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.turnOns}</p>)}
       </div>
-
       <div className={styles.checkboxGroup}>
         <label className={`${styles.checkboxLabel} ${formErrors.agreeTerms ? styles.checkboxLabelError : ""}`}>
-          <input 
-            type="checkbox" 
-            className={styles.checkbox} 
-            name="agreeTerms" 
-            checked={formData.agreeTerms} 
-            onChange={handleChange} 
-          />
-          I agree to the{" "}
-          <Link to="/terms" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>
-            Terms of Service
-          </Link>
+          <input type="checkbox" className={styles.checkbox} name="agreeTerms" checked={formData.agreeTerms} onChange={handleChange} />
+          {t('register.termsAgreement', 'I agree to the')}{" "}
+          <Link to="/terms" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>{t('common.termsOfService', 'Terms of Service')}</Link>
         </label>
-        {formErrors.agreeTerms && (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.agreeTerms}
-          </p>
-        )}
+        {formErrors.agreeTerms && (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.agreeTerms}</p>)}
       </div>
-
       <div className={styles.checkboxGroup}>
         <label className={`${styles.checkboxLabel} ${formErrors.agreePrivacy ? styles.checkboxLabelError : ""}`}>
-          <input 
-            type="checkbox" 
-            className={styles.checkbox} 
-            name="agreePrivacy" 
-            checked={formData.agreePrivacy} 
-            onChange={handleChange} 
-          />
-          I agree to the{" "}
-          <Link to="/privacy" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>
-            Privacy Policy
-          </Link>
+          <input type="checkbox" className={styles.checkbox} name="agreePrivacy" checked={formData.agreePrivacy} onChange={handleChange} />
+          {t('register.privacyAgreement', 'I agree to the')}{" "}
+          <Link to="/privacy" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>{t('common.privacyPolicy', 'Privacy Policy')}</Link>
         </label>
-        {formErrors.agreePrivacy && (
-          <p className={styles.errorMessage}>
-            <FaExclamationTriangle />
-            {formErrors.agreePrivacy}
-          </p>
-        )}
+        {formErrors.agreePrivacy && (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.agreePrivacy}</p>)}
       </div>
-
       <div className={styles.checkboxGroup}>
         <label className={styles.checkboxLabel}>
-          <input 
-            type="checkbox" 
-            className={styles.checkbox} 
-            name="newsletter" 
-            checked={formData.newsletter} 
-            onChange={handleChange} 
-          />
-          I want to receive news and special offers (optional)
+          <input type="checkbox" className={styles.checkbox} name="newsletter" checked={formData.newsletter} onChange={handleChange} />
+           {t('register.newsletterAgreement', 'I want to receive news and special offers (optional)')}
         </label>
       </div>
-
       <div className={styles.formActions}>
         <button type="button" className={`${styles.button} ${styles.buttonOutline}`} onClick={handlePrevStep} disabled={isSubmitting}>
-          <FaArrowLeft /> Back
+          <FaArrowLeft /> {t('register.back', 'Back')}
         </button>
-        <button 
-          type="submit" 
-          className={`${styles.button} ${styles.buttonPrimary}`} 
-          disabled={isSubmitting}
-          onClick={handleSubmit}
-        >
-          {isSubmitting ? (
-            <>
-              <span className={styles.spinner}></span>
-              <span>Creating account...</span>
-            </>
-          ) : (
-            <>
-              <span>Create Account</span> <FaCheck />
-            </>
-          )}
+        <button type="submit" className={`${styles.button} ${styles.buttonPrimary}`} disabled={isSubmitting} onClick={handleSubmit}>
+          {isSubmitting ? (<> <span className={styles.spinner}></span> <span>{t('register.creatingAccount', 'Creating account...')}</span> </>) : (<> <span>{t('register.createBtn', 'Create Account')}</span> <FaCheck /> </>)}
         </button>
       </div>
     </>
@@ -1309,16 +765,11 @@ const Register = () => {
   // Render appropriate step content
   const renderStepContent = () => {
     switch (currentStep) {
-      case 1:
-        return renderStep1()
-      case 2:
-        return renderStep2()
-      case 3:
-        return renderStep3()
-      case 4:
-        return renderStep4()
-      default:
-        return null
+      case 1: return renderStep1();
+      case 2: return renderStep2();
+      case 3: return renderStep3();
+      case 4: return renderStep4();
+      default: return null;
     }
   }
 
@@ -1326,48 +777,48 @@ const Register = () => {
     <div className={`auth-page register-page d-flex min-vh-100 bg-light-subtle ${isRTL ? 'rtl-layout' : ''}`}>
       <div className={styles.registerContainer}>
         <div className={styles.gradientBar}></div>
-        
         <div className="text-center mb-4">
-          <Link to="/" className={styles.pageTitle}>
-            Mandarin
-          </Link>
-          <p className={styles.subtitle}>{t('register.createAccount')}</p>
+          <Link to="/" className={styles.pageTitle}>Mandarin</Link>
+          <p className={styles.subtitle}>{t('register.createAccount', 'Create Your Account')}</p>
         </div>
 
+        {/* Display general errors (ensure formErrors.general is a string) */}
         {formErrors.general && (
           <div className={`${styles.alert} ${styles.alertDanger}`}>
             <FaExclamationTriangle />
-            <p className="mb-0">{formErrors.general}</p>
+            {/* Render error message, ensuring it's a string */}
+            <p className="mb-0">{typeof formErrors.general === 'string' ? formErrors.general : t('errors.generalError', 'An error occurred')}</p>
           </div>
         )}
 
         {renderProgress()}
 
+        {/* Ensure form submission only calls handleSubmit on final step */}
         <form onSubmit={(e) => { e.preventDefault(); if (currentStep === 4) handleSubmit(); }}>
           {renderStepContent()}
         </form>
 
+        {/* Translate social login section */}
         {currentStep === 1 && (
           <>
-            <div className={styles.divider}>OR SIGN UP WITH</div>
+            <div className={styles.divider}>{t('register.signUpWith', 'OR SIGN UP WITH')}</div>
             <div className={styles.socialButtons}>
-              <button className={styles.socialButton}>
+              <button type="button" className={styles.socialButton}> {/* Add type="button" */}
                 <FaGoogle className={styles.googleIcon} />
-                <span>Sign up with Google</span>
+                <span>{t('register.signUpGoogle', 'Sign up with Google')}</span>
               </button>
-              <button className={styles.socialButton}>
+              <button type="button" className={styles.socialButton}> {/* Add type="button" */}
                 <FaFacebook className={styles.facebookIcon} />
-                <span>Sign up with Facebook</span>
+                <span>{t('register.signUpFacebook', 'Sign up with Facebook')}</span>
               </button>
             </div>
           </>
         )}
 
+        {/* Translate footer link */}
         <div className={styles.footer}>
-          Already have an account?{" "}
-          <Link to="/login" className={styles.footerLink}>
-            Sign In
-          </Link>
+          {t('auth.haveAccount', 'Already have an account?')} {" "}
+          <Link to="/login" className={styles.footerLink}>{t('auth.signIn', 'Sign In')}</Link>
         </div>
       </div>
     </div>

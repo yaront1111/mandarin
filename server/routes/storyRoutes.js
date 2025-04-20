@@ -129,7 +129,7 @@ router.post(
       }
 
       // Check for recent submissions to prevent duplicates
-      if (await hasRecentStoryCreation(req.user._id || req.user.id)) {
+      if (await hasRecentStoryCreation(req.user._id || req.user._id)) {
         return res.status(429).json({
           success: false,
           error: "Please wait a few seconds before creating another story",
@@ -138,7 +138,7 @@ router.post(
 
       // Create story object
       const storyData = {
-        user: req.user._id || req.user.id,
+        user: req.user._id || req.user._id,
         type,
         mediaType: type,
         content: type === "text" ? content : undefined,
@@ -160,7 +160,7 @@ router.post(
 
       // Update user's lastStoryCreated timestamp
       if (req.updateLastStoryCreated) {
-        await User.findByIdAndUpdate(req.user._id || req.user.id, {
+        await User.findByIdAndUpdate(req.user._id || req.user._id, {
           lastStoryCreated: new Date(),
         })
       }
@@ -213,7 +213,7 @@ router.post(
       const storyContent = content || text
 
       // Ensure we have a valid user ID
-      const userId = req.user._id || req.user.id
+      const userId = req.user._id || req.user._id
       if (!userId) {
         logger.error("No user ID found in request")
         return res.status(400).json({
@@ -395,7 +395,7 @@ router.delete("/:id", protect, async (req, res) => {
     }
 
     // Check user authorization
-    if (story.user.toString() !== (req.user._id || req.user.id).toString()) {
+    if (story.user.toString() !== (req.user._id || req.user._id).toString()) {
       return res.status(401).json({
         success: false,
         error: "User not authorized",
@@ -439,7 +439,7 @@ router.post("/:id/view", protect, async (req, res) => {
     }
 
     // Check if user has already viewed this story
-    const userId = req.user._id || req.user.id
+    const userId = req.user._id || req.user._id
     const alreadyViewed = story.viewers.some((v) => v.user && v.user.toString() === userId.toString())
 
     if (alreadyViewed) {
@@ -507,7 +507,7 @@ router.post(
       }
 
       // Use the model method to add reaction
-      await story.addReaction(req.user._id || req.user.id, reactionType)
+      await story.addReaction(req.user._id || req.user._id, reactionType)
 
       res.json({
         success: true,
@@ -547,7 +547,7 @@ router.delete("/:id/react", protect, async (req, res) => {
     }
 
     // Use the model method to remove reaction
-    await story.removeReaction(req.user._id || req.user.id)
+    await story.removeReaction(req.user._id || req.user._id)
 
     res.json({
       success: true,
@@ -586,7 +586,7 @@ router.get("/:id/viewers", protect, async (req, res) => {
     }
 
     // Check if user is the story owner
-    if (story.user.toString() !== (req.user._id || req.user.id).toString()) {
+    if (story.user.toString() !== (req.user._id || req.user._id).toString()) {
       return res.status(401).json({
         success: false,
         error: "User not authorized to view this information",

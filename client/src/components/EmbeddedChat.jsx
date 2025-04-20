@@ -20,7 +20,6 @@ import socketService from "../services/socketService";
 import VideoCall from "./VideoCall";
 
 import styles from "../styles/embedded-chat.module.css";
-import "../styles/video-call.css";
 
 // --- Constants ---
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB

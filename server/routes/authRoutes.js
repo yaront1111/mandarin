@@ -121,7 +121,7 @@ router.post(
 
       // Create token payload for authentication
       const payload = {
-        id: user.id,
+        id: user._id,
         role: user.role,
         version: user.version,
       }
@@ -132,7 +132,7 @@ router.post(
         success: true,
         token,
         user: {
-          id: user.id,
+          id: user._id,
           email: user.email,
           nickname: user.nickname,
           role: user.role,
@@ -215,7 +215,7 @@ router.post(
       await User.findByIdAndUpdate(user._id, { lastActive: Date.now() })
 
       const payload = {
-        id: user.id,
+        id: user._id,
         role: user.role,
         version: user.version,
       }
@@ -228,7 +228,7 @@ router.post(
         success: true,
         token,
         user: {
-          id: user.id,
+          id: user._id,
           email: user.email,
           nickname: user.nickname,
           role: user.role,
@@ -309,7 +309,7 @@ router.post(
 
       // Create new token payload
       const payload = {
-        id: user.id,
+        id: user._id,
         role: user.role,
         version: user.version,
       }
@@ -318,7 +318,7 @@ router.post(
       const newToken = generateToken(payload)
 
       // Log successful refresh
-      logger.info(`Token refreshed for user: ${user.id}`)
+      logger.info(`Token refreshed for user: ${user._id}`)
 
       // Return new token
       res.json({ success: true, token: newToken })
@@ -538,7 +538,7 @@ router.post(
       user.version = (user.version || 0) + 1
       await user.save()
       const payload = {
-        id: user.id,
+        id: user._id,
         role: user.role,
         version: user.version,
       }

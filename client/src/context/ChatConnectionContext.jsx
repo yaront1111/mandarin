@@ -140,7 +140,7 @@ export const ChatConnectionProvider = ({ children }) => {
             
             // Try various common JWT payload formats
             const tokenId = payload.id || payload.sub || 
-                           (payload.user && (payload.user._id || payload.user.id));
+                           (payload.user && (payload.user._id || payload.user._id));
                            
             if (tokenId && isValidId(tokenId)) {
               validUserId = tokenId;

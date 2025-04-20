@@ -67,7 +67,7 @@ export const AuthProvider = ({ children }) => {
             const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/")
             const payload = JSON.parse(atob(base64))
 
-            const tokenId = payload.id || (payload.user && (payload.user._id || payload.user.id))
+            const tokenId = payload.id || (payload.user && (payload.user._id || payload.user._id))
             if (tokenId && isValidId(tokenId)) {
               log.info(`Using ID from token: ${tokenId}`)
               cleanUserData._id = tokenId
@@ -171,11 +171,11 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-      // 2. Try user.id if user._id didn't work
-      if (!validObjectId && user.id) {
-        if (isValidId(user.id)) {
-          validObjectId = user.id
-          log.debug(`Using user.id instead of user._id: ${validObjectId}`)
+      // 2. Try user._id if user._id didn't work
+      if (!validObjectId && user._id) {
+        if (isValidId(user._id)) {
+          validObjectId = user._id
+          log.debug(`Using user._id instead of user._id: ${validObjectId}`)
         }
       }
 
@@ -189,7 +189,7 @@ export const AuthProvider = ({ children }) => {
             const payload = JSON.parse(atob(base64))
 
             // Try various common JWT payload formats
-            const tokenId = payload.id || payload.sub || (payload.user && (payload.user._id || payload.user.id))
+            const tokenId = payload.id || payload.sub || (payload.user && (payload.user._id || payload.user._id))
 
             if (tokenId && isValidId(tokenId)) {
               validObjectId = tokenId
@@ -208,7 +208,7 @@ export const AuthProvider = ({ children }) => {
           log.debug("User ID is already in valid format:", validObjectId)
 
           // Ensure both _id and id fields are consistent
-          if (!user.id || user.id !== validObjectId) {
+          if (!user._id || user._id !== validObjectId) {
             const fixedUser = {
               ...user,
               id: validObjectId,
