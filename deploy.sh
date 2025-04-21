@@ -156,7 +156,7 @@ start_server() {
         # Check if PM2 is installed
         if ! sudo -u www-data command -v pm2 &> /dev/null; then
             log "Installing PM2 globally for www-data..."
-            sudo -u www-data npm install -g pm2
+            sudo npm install pm2 -g
         fi
         
         # Check if the app is already running in PM2 for www-data user
