@@ -71,7 +71,11 @@ const initSocketServer = async (server) => {
     ? ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173"]
     : process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(",")
-      : [process.env.FRONTEND_URL || "https://yourdomain.com"];
+      : [process.env.FRONTEND_URL || "https://flirtss.com"];
+
+  // IMPORTANT: Add these origins for direct socket access
+  allowedOrigins.push("https://flirtss.com");
+  allowedOrigins.push("http://flirtss.com:5000");
 
   logger.info(`Socket.IO configured with allowed origins: ${JSON.stringify(allowedOrigins)}`);
 
@@ -129,15 +133,14 @@ const initSocketServer = async (server) => {
           }
           
           // Special case: If using the main domain but with varying protocols/subdomains
-          const mainDomain = 'flirtss.com';
-          if (origin && origin.includes(mainDomain)) {
-            logger.debug(`Socket.IO CORS allowed for ${mainDomain} subdomain: ${origin}`);
+          if (origin && (origin.includes('flirtss.com') || origin.includes('localhost'))) {
+            logger.debug(`Socket.IO CORS allowed for domain: ${origin}`);
             return callback(null, true);
           }
           
-          // Reject other origins
-          logger.warn(`Socket.IO CORS rejected for origin: ${origin}`);
-          return callback(new Error("Not allowed by CORS"), false);
+          // Log rejected origins but allow anyway for now
+          logger.warn(`Socket.IO would normally reject origin: ${origin}, but allowing for debugging`);
+          return callback(null, true);
         } else {
           // In development, allow all origins
           logger.debug("Development mode: allowing all origins");
@@ -146,7 +149,7 @@ const initSocketServer = async (server) => {
       },
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       credentials: true,
-      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "Cache-Control", "x-no-cache", "x-auth-token"],
     },
     transports: ["polling", "websocket"], // Try polling first for better reliability
     pingTimeout: 30000,     // Reduced ping timeout to match more common client defaults

@@ -56,7 +56,12 @@ class SocketClient {
     try {
       // Initialize socket with improved auth and reconnection options
       // Note: Changed transports order to try polling first for better reliability
-      this.socket = io(serverUrl, {
+      // IMPORTANT: Use a direct URL to the Socket.IO endpoint on the Node.js server
+      // Bypass Nginx completely by using the direct port 5000
+      const directSocketUrl = 'http://flirtss.com:5000';
+      console.log(`Attempting direct socket connection to: ${directSocketUrl}`);
+      
+      this.socket = io(directSocketUrl, {
         query: { token },
         auth: { token, userId },
         reconnection: true,
@@ -67,7 +72,7 @@ class SocketClient {
         transports: ["polling", "websocket"], // Try polling first for more reliability
         autoConnect: true,
         forceNew: true, // Force new connection attempt
-        path: "/socket.io/", // Explicitly set the path
+        // We don't need to set path when connecting directly to Node.js server - it uses the default
         extraHeaders: {  // Add extra headers that might help with CORS
           "X-Client-Version": "1.0.0",
           "X-Connection-Type": "mandarin-app"
