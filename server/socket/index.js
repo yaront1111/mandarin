@@ -73,10 +73,9 @@ const initSocketServer = async (server) => {
       ? process.env.ALLOWED_ORIGINS.split(",")
       : [process.env.FRONTEND_URL || "https://flirtss.com"];
 
-  // IMPORTANT: Add these origins for direct socket access
+  // Allow the primary domain and www subdomain
   allowedOrigins.push("https://flirtss.com");
-  allowedOrigins.push("http://flirtss.com:5000");
-  allowedOrigins.push("https://flirtss.com:5000");
+  allowedOrigins.push("https://www.flirtss.com");
 
   logger.info(`Socket.IO configured with allowed origins: ${JSON.stringify(allowedOrigins)}`);
 
@@ -119,34 +118,9 @@ const initSocketServer = async (server) => {
         // Log the origin for debugging
         logger.debug(`Socket connection request from origin: ${origin || 'no origin'}`);
         
-        // In production, check against allowed origins
-        if (process.env.NODE_ENV === 'production') {
-          // If no origin (like for same-site requests), allow it
-          if (!origin) {
-            logger.debug("Socket connection with no origin allowed");
-            return callback(null, true);
-          }
-          
-          // If origin is in allowed list, allow it
-          if (allowedOrigins.includes(origin)) {
-            logger.debug(`Socket.IO CORS allowed for origin: ${origin}`);
-            return callback(null, true);
-          }
-          
-          // Special case: If using the main domain but with varying protocols/subdomains
-          if (origin && (origin.includes('flirtss.com') || origin.includes('localhost'))) {
-            logger.debug(`Socket.IO CORS allowed for domain: ${origin}`);
-            return callback(null, true);
-          }
-          
-          // Log rejected origins but allow anyway for now
-          logger.warn(`Socket.IO would normally reject origin: ${origin}, but allowing for debugging`);
-          return callback(null, true);
-        } else {
-          // In development, allow all origins
-          logger.debug("Development mode: allowing all origins");
-          return callback(null, true);
-        }
+        // Allow all origins during troubleshooting
+        logger.debug("Allowing all origins for troubleshooting");
+        return callback(null, true);
       },
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       credentials: true,

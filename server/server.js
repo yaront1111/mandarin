@@ -432,6 +432,8 @@ const initializeApp = async () => {
     const PORT = process.env.PORT || config.PORT || 5000;
     server.listen(PORT, async () => {
       logger.info(`Server running in ${process.env.NODE_ENV || "development"} mode on port ${PORT}`);
+      logger.info(`Socket.IO should be accessible at https://flirtss.com/socket.io/ (via Nginx proxy)`);
+      logger.info(`Make sure Nginx is properly configured to proxy WebSocket connections`);
 
       // Initialize Socket.IO (after server is listening)
       try {
