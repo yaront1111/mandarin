@@ -890,9 +890,6 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     // Method 5: Simple key format
     const simpleKey = `profile_${tag.toLowerCase().replace(/\s+/g, '_')}`;
     
-    // Debug key resolution (uncomment for debugging)
-    // console.log('Translation tag lookup:', { namespace, tag, nestedKey, prefixKey, directKey, flatKey, simpleKey });
-    
     // Try each of the key formats in order
     // First try the direct flat format for section values (most specific)
     try {
@@ -903,7 +900,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     } catch (e) {
       // Ignore errors in lookup
     }
-    
+
     // Then try the special prefixed format
     if (prefixKey) {
       try {
@@ -915,8 +912,8 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         // Ignore errors in lookup
       }
     }
-    
-    // Next try the simple key format 
+
+    // Next try the simple key format
     try {
       const simpleTranslation = t(simpleKey);
       if (typeof simpleTranslation === 'string' && simpleTranslation !== simpleKey) {
@@ -925,13 +922,13 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     } catch (e) {
       // Ignore errors in lookup
     }
-    
+
     // Then try the direct path access through safeTranslate
     const safeResult = safeTranslate(t, nestedKey, null);
     if (safeResult && safeResult !== nestedKey) {
       return safeResult;
     }
-    
+
     // Then try the flat key
     try {
       const flatTranslation = t(flatKey);
@@ -941,18 +938,18 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     } catch (e) {
       // Ignore errors in lookup
     }
-    
+
     // Fallback 1: Try to get the tag directly from translations
     try {
       const directTagTranslation = t(tag.toLowerCase().replace(/\s+/g, '_'));
-      if (typeof directTagTranslation === 'string' && 
+      if (typeof directTagTranslation === 'string' &&
           directTagTranslation !== tag.toLowerCase().replace(/\s+/g, '_')) {
         return directTagTranslation;
       }
     } catch (e) {
       // Ignore errors in lookup
     }
-    
+
     // Fallback 2: Just clean up and return the tag
     return capitalize(tag.replace(/_/g, ' '));
   }, [t]);
@@ -1273,19 +1270,19 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 <span>
                   {profileUser.isOnline
                     ? safeTranslate(t, 'common.activeNow', 'Active now')
-                    : safeTranslate(t, 'profile.lastActive', 'פעילות אחרונה: {{date}}', { 
-                        date: profileUser.lastActive 
-                          ? formatDate(profileUser.lastActive, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' }) 
-                          : 'N/A' 
+                    : safeTranslate(t, 'profile.lastActive', 'פעילות אחרונה: {{date}}', {
+                        date: profileUser.lastActive
+                          ? formatDate(profileUser.lastActive, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' })
+                          : 'N/A'
                       })}
                 </span>
               </div>
               <div className={styles.activityItem}>
                 <FaCalendarAlt className={styles.icon} />
-                <span>{safeTranslate(t, 'profile.memberSince', 'חבר מאז: {{date}}', { 
-                  date: profileUser.createdAt 
-                    ? formatDate(profileUser.createdAt, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' }) 
-                    : 'N/A' 
+                <span>{safeTranslate(t, 'profile.memberSince', 'חבר מאז: {{date}}', {
+                  date: profileUser.createdAt
+                    ? formatDate(profileUser.createdAt, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' })
+                    : 'N/A'
                 })}</span>
               </div>
             </div>
@@ -1422,8 +1419,8 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 <div className={styles.tagsContainer}>
                   {profileUser.details.turnOns.map((item, index) => (
                     <span key={index} className={`${styles.tag} ${styles.turnOnTag}`}>
-                      {item === 'leather_latex_clothing' ? 
-                        t('leather_latex_clothing', 'Leather/latex clothing') : 
+                      {item === 'leather_latex_clothing' ?
+                        t('leather_latex_clothing', 'Leather/latex clothing') :
                         getTranslatedTag('profile.turnOns', item)}
                     </span>
                   ))}

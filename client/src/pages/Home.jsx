@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import apiService from "../services/apiService";       // your axios/fetch wrapper
 import { useLanguage } from "../context";              // your LanguageContext
 import { ThemeToggle } from "../components/theme-toggle";
+import { SEO } from "../components";
 import "../styles/home.css";
 
 // Fallback data if API fails or returns no users
@@ -25,28 +26,56 @@ const getMockUsers = () => [
     _id: "mock1",
     nickname: "Emma",
     details: { age: 28, location: "New York" },
-    photos: [{ url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb…"}],
+    photos: [{ url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
     isOnline: true,
   },
   {
     _id: "mock2",
     nickname: "Michael",
     details: { age: 32, location: "Los Angeles" },
-    photos: [{ url: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6…"}],
+    photos: [{ url: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
     isOnline: true,
   },
   {
     _id: "mock3",
     nickname: "Sophia",
     details: { age: 26, location: "Chicago" },
-    photos: [{ url: "https://images.unsplash.com/photo-1517841905240-472988babdf9…"}],
+    photos: [{ url: "https://images.unsplash.com/photo-1517841905240-472988babdf9?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
     isOnline: true,
   },
   {
     _id: "mock4",
     nickname: "James",
     details: { age: 30, location: "Miami" },
-    photos: [{ url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d…"}],
+    photos: [{ url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
+    isOnline: true,
+  },
+  {
+    _id: "mock5",
+    nickname: "Olivia",
+    details: { age: 27, location: "Tel Aviv" },
+    photos: [{ url: "https://images.unsplash.com/photo-1524502397800-2eeaad7c3fe5?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
+    isOnline: true,
+  },
+  {
+    _id: "mock6",
+    nickname: "Daniel",
+    details: { age: 33, location: "London" },
+    photos: [{ url: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
+    isOnline: true,
+  },
+  {
+    _id: "mock7",
+    nickname: "Ava",
+    details: { age: 24, location: "Paris" },
+    photos: [{ url: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
+    isOnline: true,
+  },
+  {
+    _id: "mock8",
+    nickname: "Noah",
+    details: { age: 29, location: "Berlin" },
+    photos: [{ url: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
     isOnline: true,
   },
 ];
@@ -64,23 +93,36 @@ const Home = () => {
   // Fetch the list of online users
   useEffect(() => {
     let isMounted = true;
+    setLoading(true);
+    
+    // Attempt to fetch online users from the API
     apiService
       .get("/users", { params: { online: true, limit: 12 } })
       .then((res) => {
         if (!isMounted) return;
         const users = Array.isArray(res.data) ? res.data : [];
+        // If no users or error, use mock data
         setOnlineUsers(users.length ? users : getMockUsers());
         setDisplayError(null);
       })
       .catch((err) => {
-        console.error(err);
+        console.error("Error fetching online users:", err);
         if (!isMounted) return;
-        setDisplayError(err.message || t("errors.generalError", "Something went wrong"));
+        // On error, show mock data instead of an error message for better UX
         setOnlineUsers(getMockUsers());
+        setDisplayError(null); // Hide error for better UX on home page
       })
       .finally(() => {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+          // Trigger animation for user cards
+          setTimeout(() => {
+            const cards = document.querySelectorAll('.staggered-item');
+            cards.forEach(card => card.classList.add('animated'));
+          }, 300);
+        }
       });
+      
     return () => {
       isMounted = false;
     };
@@ -107,61 +149,80 @@ const Home = () => {
   const features = [
     {
       icon: FaLock,
-      title: t("privacyTitle", "Privacy First"),
+      title: t("home.privacyTitle", "Privacy First"),
       desc: t(
-        "privacyDesc",
+        "home.privacyDescription",
         "Your privacy is our top priority. Control who sees your profile and what information you share."
       ),
     },
     {
       icon: FaShieldAlt,
-      title: t("secureTitle", "Secure Communication"),
+      title: t("home.secureTitle", "Secure Communication"),
       desc: t(
-        "secureDesc",
+        "home.secureCommDescription",
         "End‑to‑end encrypted messaging ensures your conversations remain private and secure."
       ),
     },
     {
       icon: FaUsers,
-      title: t("matchTitle", "Smart Matching"),
+      title: t("home.matchTitle", "Smart Matching"),
       desc: t(
-        "matchDesc",
+        "home.smartMatchingDescription",
         "Our advanced algorithm connects you with people who match your preferences and interests."
       ),
     },
   ];
 
+  // Define schema for structured data
+  const websiteSchema = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "Flirtss",
+    "url": "https://flirtss.com/",
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": "https://flirtss.com/search?q={search_term_string}",
+      "query-input": "required name=search_term_string"
+    }
+  };
+
   return (
     <div className="modern-home-page w-100 overflow-hidden" dir={dir}>
+      <SEO 
+        title="Find Your Perfect Connection" 
+        description="Discover genuine connections in a safe, discreet environment designed for adults seeking meaningful relationships."
+        schema={websiteSchema}
+      />
+      
       {/* Header */}
-      <header className="modern-header glass-effect sticky-top shadow-sm">
-        <div className="container d-flex justify-content-between align-items-center py-2">
-          <div className="logo gradient-text font-weight-bold">Mandarin</div>
-          <nav className="d-none d-md-flex main-tabs gap-4">
+      <header className="modern-header">
+        <div className="container header-container">
+          <div className="logo gradient-text font-weight-bold">Flirtss</div>
+          <nav className="d-none d-md-flex main-tabs">
             <Link to="/about" className="tab-button">
-              {t("common.aboutUs", "About")}
+              {t("home.aboutUs", "About")}
             </Link>
             <Link to="/safety" className="tab-button">
-              {t("common.privacyPolicy", "Safety")}
+              {t("home.privacyPolicy", "Safety")}
             </Link>
             <Link to="/support" className="tab-button">
-              {t("common.contactSupport", "Support")}
+              {t("home.contactSupport", "Support")}
             </Link>
           </nav>
-          <div className="header-actions d-flex align-items-center gap-2">
+          <div className="header-actions">
             <button
               onClick={handleToggleLanguage}
-              className="btn btn-outline btn-sm d-flex align-items-center gap-1"
-              aria-label={t("common.language", "Toggle language")}
+              className="header-btn lang-btn"
+              aria-label={t("home.language", "Toggle language")}
             >
-              <FaLanguage />
-              <span className="d-none d-sm-inline">{langLabel}</span>
+              <FaLanguage style={{ marginRight: '4px' }} />
+              <span>{langLabel}</span>
             </button>
             <ThemeToggle />
-            <Link to="/login" className="btn btn-outline btn-sm">
+            <Link to="/login" className="header-btn-login">
               {t("auth.signIn", "Login")}
             </Link>
-            <Link to="/register" className="btn btn-primary btn-sm">
+            <Link to="/register" className="header-btn-register">
               {t("register.createAccount", "Register")}
             </Link>
           </div>
@@ -177,11 +238,11 @@ const Home = () => {
         </div>
         <div className="hero-content mx-auto text-center p-4 max-w-lg position-relative z-2">
           <h1 className="animate-slide-up mb-4 text-shadow font-weight-bold gradient-hero-text">
-            {t("heroTitle", "Find Your Perfect Connection")}
+            {t("home.findYourConnection", "Find Your Perfect Connection")}
           </h1>
           <p className="animate-slide-up delay-200 mb-4 text-md opacity-90 line-height-relaxed">
             {t(
-              "heroSubtitle",
+              "home.heroSubtitle",
               "Discover genuine connections in a safe, discreet environment designed for adults seeking meaningful encounters."
             )}
           </p>
@@ -191,7 +252,7 @@ const Home = () => {
           >
             <input
               type="email"
-              placeholder={t("emailPlaceholder", "Enter your email")}
+              placeholder={t("home.emailPlaceholder", "Enter your email")}
               className="form-control border-0 py-3 flex-grow-1"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -201,7 +262,7 @@ const Home = () => {
               type="submit"
               className="btn btn-primary btn-lg d-flex align-items-center gap-2 transition-transform hover-scale"
             >
-              <span>{t("getStarted", "Get Started")}</span> <ArrowIcon />
+              <span>{t("home.getStarted", "Get Started")}</span> <ArrowIcon />
             </button>
           </form>
         </div>
@@ -212,11 +273,11 @@ const Home = () => {
         <div className="container">
           <div className="section-header text-center mb-5">
             <h2 className="gradient-text animate-slide-up mb-3 d-flex align-items-center justify-content-center gap-2">
-              <FaUsers /> {t("onlineNow", "People Online Now")}
+              <FaUsers /> {t("home.peopleOnlineNow", "People Online Now")}
             </h2>
             <p className="section-subtitle animate-slide-up delay-100 text-opacity-80 max-w-md mx-auto">
               {t(
-                "onlineSubtitle",
+                "home.onlineNowSubtitle",
                 "Connect with these amazing people who are currently active on Mandarin"
               )}
             </p>
@@ -224,25 +285,30 @@ const Home = () => {
 
           {loading ? (
             <div className="text-center py-5">
-              <div className="spinner-border text-primary" role="status" />
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
             </div>
           ) : displayError ? (
             <div className="alert alert-danger">{displayError}</div>
           ) : (
-            <div className="online-users-grid grid-cols-2 grid-cols-md-3 grid-cols-lg-4 gap-3">
+            <div className="online-users-grid">
               {onlineUsers.map((user, index) => (
                 <div
                   key={user._id}
-                  className="online-user-card staggered-item shadow-sm rounded-lg overflow-hidden cursor-pointer transform-gpu hover-scale"
+                  className="online-user-card staggered-item shadow-sm rounded-lg overflow-hidden cursor-pointer transform-gpu hover-scale animated"
                   onClick={handleStartNow}
                   style={{ animationDelay: `${index * 0.1}s` }}
                 >
                   <div className="user-card-photo position-relative">
                     <img
-                      src={user.photos?.[0]?.url || "/api/avatar/default"}
+                      src={user.photos?.[0]?.url || "/default-avatar.png"}
                       alt={user.nickname}
-                      className="w-100 h-auto object-cover aspect-ratio-1"
+                      className="w-100 h-100 object-cover"
                       loading="lazy"
+                      onError={(e) => {
+                        e.target.src = "/default-avatar.png";
+                      }}
                     />
                     {user.isOnline && (
                       <div className="user-status online position-absolute rounded-circle pulse-animation" />
@@ -253,7 +319,7 @@ const Home = () => {
                       {user.nickname}, {user.details?.age || "?"}
                     </h3>
                     <p className="user-location text-sm mb-2 d-flex align-items-center gap-1 text-opacity-70">
-                      <FaMapMarkerAlt /> {user.details?.location}
+                      <FaMapMarkerAlt /> {user.details?.location || t("common.notSpecified", "Not specified")}
                     </p>
                     <div className="user-actions d-flex gap-2 justify-content-end">
                       <button
@@ -264,7 +330,7 @@ const Home = () => {
                         }}
                         aria-label={t("common.like", "Like")}
                       >
-                        <FaRegHeart />
+                        <FaRegHeart className="action-icon" />
                       </button>
                       <button
                         className="mini-action-btn message-btn d-flex align-items-center justify-content-center rounded-circle shadow-sm hover-scale"
@@ -274,7 +340,7 @@ const Home = () => {
                         }}
                         aria-label={t("common.message", "Message")}
                       >
-                        <FaComment />
+                        <FaComment className="action-icon" />
                       </button>
                     </div>
                   </div>
@@ -288,7 +354,7 @@ const Home = () => {
               className="btn btn-secondary btn-lg d-inline-flex align-items-center gap-2"
               onClick={handleStartNow}
             >
-              {t("joinToSeeMore", "Join to See More")} <ArrowIcon />
+              {t("home.joinToSeeMore", "Join to See More")} <ArrowIcon />
             </button>
           </div>
         </div>
@@ -298,13 +364,17 @@ const Home = () => {
       <section className="features-section animate-fade-in glass-effect py-5 my-4 mx-3">
         <div className="container">
           <h2 className="gradient-text animate-slide-up mb-5 text-center">
-            {t("featuresTitle", "Why Choose Mandarin")}
+            {t("home.featuresTitle", "Why Choose Mandarin")}
           </h2>
-          <div className="features-grid grid-cols-1 grid-cols-md-3 gap-4">
+          <div className="features-grid">
             {features.map(({ icon: Icon, title, desc }, idx) => (
-              <div key={idx} className="feature-card animate-slide-up transition-all text-center">
+              <div 
+                key={idx} 
+                className="feature-card animate-slide-up transition-all text-center"
+                style={{ animationDelay: `${idx * 0.15}s` }}
+              >
                 <div className="feature-icon-wrapper mb-4">
-                  <div className="feature-icon privacy d-flex justify-content-center align-items-center mx-auto rounded-circle bg-primary-50">
+                  <div className="feature-icon d-flex justify-content-center align-items-center mx-auto rounded-circle bg-primary-50">
                     <Icon />
                   </div>
                 </div>
@@ -319,11 +389,11 @@ const Home = () => {
       {/* Footer */}
       <footer className="modern-footer mt-5 border-top pt-5">
         <div className="container footer-content d-flex flex-column flex-md-row justify-content-between align-items-center gap-4 mb-4">
-          <div className="footer-logo gradient-text font-weight-bold text-xl">Mandarin</div>
+          <div className="footer-logo gradient-text font-weight-bold text-xl">Flirtss</div>
           <div className="footer-links d-flex flex-wrap justify-content-center gap-3 gap-md-4">
-            <Link to="/about">{t("common.aboutUs", "About Us")}</Link>
-            <Link to="/safety">{t("common.privacyPolicy", "Safety")}</Link>
-            <Link to="/support">{t("common.contactSupport", "Support")}</Link>
+            <Link to="/about">{t("home.aboutUs", "About Us")}</Link>
+            <Link to="/safety">{t("home.privacyPolicy", "Safety")}</Link>
+            <Link to="/support">{t("home.contactSupport", "Support")}</Link>
             <Link to="/terms">{t("common.termsOfService", "Terms")}</Link>
             <Link to="/privacy">{t("common.privacyPolicy", "Privacy")}</Link>
           </div>
@@ -336,7 +406,7 @@ const Home = () => {
           </div>
         </div>
         <div className="footer-bottom border-top py-3 text-center">
-          © {new Date().getFullYear()} Mandarin.{" "}
+          © {new Date().getFullYear()} Flirtss.{" "}
           {t("common.allRightsReserved", "All rights reserved.")}
         </div>
       </footer>

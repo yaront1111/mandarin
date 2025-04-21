@@ -190,6 +190,10 @@
   color: #f0f0f0;
 }
 
+.dark-theme .no-messages {
+  color: #bbb;
+}
+
 .message-content {
   margin: 0;
 }
@@ -228,6 +232,10 @@
   color: #888;
 }
 
+.dark-theme .loading-messages {
+  color: #bbb;
+}
+
 .spinner {
   width: 30px;
   height: 30px;
@@ -236,6 +244,11 @@
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 10px;
+}
+
+.dark-theme .spinner {
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: #ff3366;
 }
 
 @keyframes spin {
@@ -250,6 +263,10 @@
   font-size: 12px;
   color: #888;
   position: relative;
+}
+
+.dark-theme .message-date {
+  color: #aaa;
 }
 
 .message-date::before,

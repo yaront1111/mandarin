@@ -226,7 +226,6 @@ export function AuthProvider({ children }) {
       removeToken()
       setUser(null)
       setIsAuthenticated(false)
-      toast.info("Logged out")
     } catch (e) {
       log.error("logout", e)
       removeToken()

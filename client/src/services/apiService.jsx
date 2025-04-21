@@ -263,7 +263,6 @@ class ApiService {
   logout() {
     removeToken();
     delete this.api.defaults.headers.common.Authorization;
-    toast.info("Logged out");
     window.dispatchEvent(new CustomEvent("authLogout"));
   }
 

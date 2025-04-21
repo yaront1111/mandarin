@@ -300,14 +300,14 @@
   -webkit-box-orient: vertical;
 }
 .notification-item.unread .notification-message {
-    color: var(--text-color, #333); /* Darker message text for unread */
+    color: var(--text-dark, #1e293b); /* Darker message text for unread */
 }
 
 .dark .notification-message {
   color: var(--text-light-dark, #94a3b8);
 }
 .dark .notification-item.unread .notification-message {
-    color: var(--text-light-dark, #cbd5e1); /* Slightly lighter for dark unread */
+    color: var(--text-dark, #f1f5f9); /* Much lighter for dark unread */
 }
 
 

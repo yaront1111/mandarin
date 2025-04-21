@@ -788,6 +788,18 @@
   text-overflow: ellipsis;
 }
 
+.notification-dropdown-content .notification-item.unread .notification-message {
+  color: var(--text-dark); /* Darker for unread */
+}
+
+.dark .notification-dropdown-content .notification-message {
+  color: var(--text-light-dark, #94a3b8);
+}
+
+.dark .notification-dropdown-content .notification-item.unread .notification-message {
+  color: var(--text-light, #f1f5f9); /* Lighter for dark unread */
+}
+
 .notification-dropdown-content .notification-time {
   font-size: var(--font-size-sm);
   color: var(--text-light);

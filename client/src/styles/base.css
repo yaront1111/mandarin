@@ -298,7 +298,8 @@
   /* Text Colors */
   --text-dark: var(--neutral-50);
   --text-medium: var(--neutral-300);
-  --text-light: var(--neutral-400);
+  --text-light: var(--neutral-300);
+  --text-light-dark: var(--neutral-300);
   --text-subtle: var(--neutral-500);
 
   /* Border Colors */

@@ -107,6 +107,10 @@ html[lang="he"] body {
   color: #f8fafc;
 }
 
+.dark .modal-body {
+  color: #e2e8f0;
+}
+
 .dark .modal-close {
   color: #94a3b8;
 }

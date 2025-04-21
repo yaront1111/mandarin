@@ -10,7 +10,6 @@ import UserCard from "./UserCard.jsx"
 // Chat Components - Legacy
 import EmbeddedChat from "./EmbeddedChat"
 
-
 // Stories Components
 import StoriesCarousel from "./Stories/StoriesCarousel"
 import StoriesViewer from "./Stories/StoriesViewer"
@@ -28,6 +27,9 @@ import { ThemeToggle } from "./theme-toggle.tsx"
 
 // User Profile Modal
 import UserProfileModal from "./UserProfileModal"
+
+// SEO Component
+import SEO from "./SEO"
 
 export {
   // Layout Components
@@ -51,5 +53,6 @@ export {
   ThemeToggle,
   // User Profile Modal
   UserProfileModal,
-
+  // SEO
+  SEO,
 }
