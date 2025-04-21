@@ -1,0 +1,34 @@
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://flirtss.com/#website",
+      "url": "https://flirtss.com/",
+      "name": "Flirtss",
+      "description": "Find meaningful relationships and make genuine connections",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://flirtss.com/search?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://flirtss.com/#organization",
+      "name": "Flirtss",
+      "url": "https://flirtss.com/",
+      "sameAs": [
+        "https://facebook.com/flirtss",
+        "https://twitter.com/flirtss",
+        "https://instagram.com/flirtss"
+      ],
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://flirtss.com/logo.png",
+        "width": 250,
+        "height": 60
+      }
+    }
+  ]
+}

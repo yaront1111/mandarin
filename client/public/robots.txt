@@ -1,0 +1,16 @@
+# Allow all web crawlers
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://flirtss.com/sitemap.xml
+
+# Disallow sensitive routes
+Disallow: /login
+Disallow: /register
+Disallow: /verify-email
+Disallow: /messages
+Disallow: /settings
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /subscription
