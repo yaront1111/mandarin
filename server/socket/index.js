@@ -114,22 +114,35 @@ const initSocketServer = async (server) => {
         // Log the origin for debugging
         logger.debug(`Socket connection request from origin: ${origin || 'no origin'}`);
         
-        // More permissive CORS during debugging
-        // Accept connections from any origin to help diagnose issues
-        return callback(null, true);
-        
-        /* Original strict CORS logic - commented out for debugging
-        if (!origin) {
-          logger.debug("Socket connection with no origin allowed");
+        // In production, check against allowed origins
+        if (process.env.NODE_ENV === 'production') {
+          // If no origin (like for same-site requests), allow it
+          if (!origin) {
+            logger.debug("Socket connection with no origin allowed");
+            return callback(null, true);
+          }
+          
+          // If origin is in allowed list, allow it
+          if (allowedOrigins.includes(origin)) {
+            logger.debug(`Socket.IO CORS allowed for origin: ${origin}`);
+            return callback(null, true);
+          }
+          
+          // Special case: If using the main domain but with varying protocols/subdomains
+          const mainDomain = 'flirtss.com';
+          if (origin && origin.includes(mainDomain)) {
+            logger.debug(`Socket.IO CORS allowed for ${mainDomain} subdomain: ${origin}`);
+            return callback(null, true);
+          }
+          
+          // Reject other origins
+          logger.warn(`Socket.IO CORS rejected for origin: ${origin}`);
+          return callback(new Error("Not allowed by CORS"), false);
+        } else {
+          // In development, allow all origins
+          logger.debug("Development mode: allowing all origins");
           return callback(null, true);
         }
-        if (allowedOrigins.includes(origin) || isDev) {
-          logger.debug(`Socket.IO CORS allowed for origin: ${origin}`);
-          return callback(null, true);
-        }
-        logger.warn(`Socket.IO CORS rejected for origin: ${origin}`);
-        return callback(new Error("Not allowed by CORS"), false);
-        */
       },
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       credentials: true,

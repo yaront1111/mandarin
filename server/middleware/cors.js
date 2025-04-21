@@ -39,6 +39,19 @@ export const configureCors = () => {
         logger.debug(`CORS: allowing origin ${origin}`);
         return callback(null, true);
       }
+      
+      // Special case: If using the main domain but with varying protocols/subdomains
+      const mainDomain = 'flirtss.com';
+      if (origin && origin.includes(mainDomain)) {
+        logger.debug(`CORS: allowing ${mainDomain} subdomain: ${origin}`);
+        return callback(null, true);
+      }
+
+      // In development, allow all origins for easier debugging
+      if (process.env.NODE_ENV !== "production") {
+        logger.debug(`CORS: allowing all origins in development mode: ${origin}`);
+        return callback(null, true);
+      }
 
       logger.warn(`CORS: rejecting origin ${origin}`);
       return callback(

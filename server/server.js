@@ -107,6 +107,28 @@ app.use(cookieParser());
 app.use(configureCors());
 app.use(corsErrorHandler); // Handle CORS errors specifically
 
+// Add additional emergency CORS headers for all routes in case the regular middleware fails
+app.use((req, res, next) => {
+  // For non-OPTIONS requests, add CORS headers
+  if (req.method !== 'OPTIONS') {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, x-no-cache, x-auth-token');
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+  next();
+});
+
+// Special handler for OPTIONS preflight requests
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, x-no-cache, x-auth-token');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400'); // 24 hours
+  res.sendStatus(204); // No content needed for OPTIONS response
+});
+
 // Request logging middleware (after CORS and parsing, before routes)
 app.use(requestLogger);
 

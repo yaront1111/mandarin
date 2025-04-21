@@ -136,6 +136,10 @@ const protect = async (req, res, next) => {
 
   if (!token) {
     logger.debug(`No token provided for ${req.method} ${req.originalUrl}`);
+    
+    // Add debug information to help diagnose the issue
+    logger.debug(`Request headers: ${JSON.stringify(req.headers || {})}`);
+    
     return res.status(401).json({ success: false, error: "Authentication required" });
   }
 
