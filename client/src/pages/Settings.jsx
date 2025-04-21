@@ -9,6 +9,8 @@ import { toast } from "react-toastify"
 import { useTranslation } from 'react-i18next'
 import { useAuth, useTheme, useUser, useLanguage } from "../context"
 import { settingsService } from "../services"
+import notificationService from "../services/notificationService.jsx"
+import socketService from "../services/socketService.jsx"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
 import { Navbar } from "../components/LayoutComponents"
 import { LanguageSelector } from "../components/common"
@@ -235,26 +237,15 @@ const Settings = () => {
         }
       }
 
-      // Update notification service with new notification settings using dynamic import
-      Promise.all([
-        import('../services/notificationService.jsx'),
-        import('../services/socketService.jsx')
-      ]).then(([notificationModule, socketModule]) => {
-        const notificationService = notificationModule.default;
-        const socketService = socketModule.default;
+      console.log('Updating notification service with normalized settings:', normalizedSettings.notifications);
+      // Update notification settings
+      notificationService.updateSettings(normalizedSettings.notifications);
 
-        console.log('Updating notification service with normalized settings:', normalizedSettings.notifications);
-        // Update notification settings
-        notificationService.updateSettings(normalizedSettings.notifications);
+      console.log('Updating socket service with settings:', normalizedSettings.privacy);
+      // Update privacy settings
+      socketService.updatePrivacySettings(normalizedSettings.privacy);
 
-        console.log('Updating socket service with settings:', normalizedSettings.privacy);
-        // Update privacy settings
-        socketService.updatePrivacySettings(normalizedSettings.privacy);
-
-        console.log('Services updated with new settings');
-      }).catch(err => {
-        console.error('Error updating services with settings:', err);
-      });
+      console.log('Services updated with new settings');
 
       toast.success("Settings saved successfully");
       setHasUnsavedChanges(false);

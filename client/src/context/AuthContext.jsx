@@ -11,6 +11,8 @@ import {
 import { toast } from "react-toastify"
 import isMongoId from "validator/lib/isMongoId"
 import apiService from "../services/apiService"
+import notificationService from "../services/notificationService.jsx"
+import socketService from "../services/socketService.jsx"
 import {
   getToken,
   setToken,
@@ -83,12 +85,8 @@ export function AuthProvider({ children }) {
   }, [])
 
   const initServices = useCallback(u => {
-    import("../services/notificationService")
-      .then(m => m.default.initialize(u.settings?.notifications))
-      .catch(() => {})
-    import("../services/socketService")
-      .then(m => m.default.updatePrivacySettings(u.settings?.privacy))
-      .catch(() => {})
+    notificationService.initialize(u.settings?.notifications);
+    socketService.updatePrivacySettings(u.settings?.privacy);
   }, [])
 
   const scheduleRefresh = useCallback(token => {

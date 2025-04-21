@@ -23,17 +23,16 @@ echo "External IP detected as: $EXTERNAL_IP"
 echo "TURN username: $TURN_USERNAME"
 echo "TURN password: $TURN_PASSWORD"
 echo ""
-echo "Installation will begin in 5 seconds... Press Ctrl+C to cancel"
-sleep 5
+echo "Installation beginning immediately... (non-interactive mode)"
 
 # Update system
 echo "Updating system packages..."
-apt-get update
-apt-get upgrade -y
+DEBIAN_FRONTEND=noninteractive apt-get update -qq
+DEBIAN_FRONTEND=noninteractive apt-get upgrade -qq -y
 
 # Install coturn
 echo "Installing coturn..."
-apt-get install -y coturn
+DEBIAN_FRONTEND=noninteractive apt-get install -qq -y coturn
 
 # Backup original config
 cp /etc/turnserver.conf /etc/turnserver.conf.backup
@@ -100,7 +99,7 @@ fi
 echo "Starting coturn service..."
 systemctl restart coturn
 systemctl enable coturn
-systemctl status coturn
+systemctl status coturn --no-pager
 
 echo ""
 echo "========================================================"

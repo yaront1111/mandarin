@@ -226,14 +226,14 @@ const MessageItem = React.memo(({ message, currentUserId, isSent }) => {
                                 {getFileIcon(metadata)}
                                 <span className={styles.fileName}>{metadata.fileName || "File"}</span>
                                 {metadata.fileSize && <span className={styles.fileSize}>{`(${Math.round(metadata.fileSize / 1024)} KB)`}</span>}
-
+                                    <a
                                     href={metadata.fileUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className={styles.downloadLink}
                                     onClick={(e) => e.stopPropagation()}
                                 >
-                                    Download
+                                    Download</a>
                             </div>
                         )}
                          <span className={styles.messageTime}>{formatMessageTime(message.createdAt)}</span>

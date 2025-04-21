@@ -134,9 +134,10 @@ setup_turn_server() {
     if [ -f "$SERVER_DIR/TURN.sh" ]; then
         chmod +x "$SERVER_DIR/TURN.sh"
         
-        # Execute TURN server setup script
-        log "Running TURN server setup script..."
-        "$SERVER_DIR/TURN.sh" || log "WARNING: TURN server setup script encountered an error"
+        # Execute TURN server setup script in non-interactive mode
+        log "Running TURN server setup script in non-interactive mode..."
+        DEBIAN_FRONTEND=noninteractive "$SERVER_DIR/TURN.sh" > /var/log/turn_setup.log 2>&1 || log "WARNING: TURN server setup script encountered an error"
+        log "TURN server setup completed. See /var/log/turn_setup.log for details."
     else
         log "WARNING: TURN server setup script not found at $SERVER_DIR/TURN.sh"
     fi
