@@ -7,7 +7,10 @@ import { check, validationResult } from "express-validator"
 import asyncHandler from "express-async-handler"
 import { User } from "../models/index.js"
 import { protect, generateToken } from "../middleware/auth.js"
-import { sendVerificationEmail } from "../utils/emailService.js"
+import {
+  sendVerificationEmail,
+  sendEmailNotification,
+} from "../utils/emailService.js"
 import config from "../config.js"
 import logger from "../logger.js"
 
@@ -167,7 +170,6 @@ router.get(
   "/verify",
   protect,
   (req, res) => {
-    // If we reach here, protect() succeeded
     res.json({ success: true })
   }
 )
@@ -314,10 +316,37 @@ router.post(
 
     const user = await User.findOne({ email: req.body.email })
     if (user) {
-      user.createPasswordResetToken()
+      // Generate and save reset token + expiry
+      const resetToken = user.createPasswordResetToken()
       await user.save()
-      // TODO: send reset email
+
+      // Build reset URL
+      const resetUrl = `${config.APP_URL}/reset-password?token=${resetToken}`
+
+      // Send reset email
+      const mailText = `
+Hello ${user.nickname},
+
+You requested a password reset. Click the link below to set a new password:
+${resetUrl}
+
+If you did not request this, please ignore this email.
+This link expires in 1 hour.
+      `.trim()
+
+      try {
+        await sendEmailNotification({
+          to: user.email,
+          subject: "Your password reset link (expires in 1 hour)",
+          text: mailText,
+        })
+        log.info(`Password reset email sent to ${user.email}`)
+      } catch (err) {
+        log.error(`Error sending reset email to ${user.email}: ${err.message}`)
+      }
     }
+
+    // Generic response to prevent email enumeration
     res.json({
       success: true,
       message: "If registered, reset instructions have been sent.",

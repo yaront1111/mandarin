@@ -1,123 +1,106 @@
-// logger.js - Enhanced with ES modules, better log formatting, and daily log rotation
-import { createLogger, format, transports } from 'winston';
-import 'winston-daily-rotate-file';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+// server/logger.js
+import { createLogger, format, transports } from 'winston'
+import 'winston-daily-rotate-file'
+import path from 'path'
+import fs from 'fs'
+import { fileURLToPath } from 'url'
+import config from './config.js'  // assume you can add LOG_DIR, LOG_MAX_FILES, etc.
 
-// Get directory name in ES modules context
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const logsDir = path.join(__dirname, config.LOG_DIR || 'logs')
 
-// Create logs directory if it doesn't exist
-const logsDir = path.join(__dirname, 'logs');
+// ensure log directory exists
 if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
+  fs.mkdirSync(logsDir, { recursive: true })
 }
 
-// Define custom format for console logs with colors
+// common formats
+const baseFormat = format.combine(
+  format.errors({ stack: true }),           // include stack trace if present
+  format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  format.label({ label: config.SERVICE_NAME || 'mandarin-api' })
+)
+
 const consoleFormat = format.combine(
+  baseFormat,
   format.colorize(),
-  format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  format.printf(({ timestamp, level, message, ...metadata }) => {
-    let metaStr = '';
-    if (Object.keys(metadata).length > 0) {
-      metaStr = JSON.stringify(metadata, null, 2);
-    }
-    return `${timestamp} ${level}: ${message}${metaStr ? ` ${metaStr}` : ''}`;
+  format.printf(({ timestamp, level, message, label, stack, ...meta }) => {
+    const msg = stack || message
+    const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : ''
+    return `${timestamp} [${label}] ${level}: ${msg}${metaStr}`
   })
-);
+)
 
-// Define format for file logs (without colors but with more details)
 const fileFormat = format.combine(
-  format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  format.errors({ stack: true }),
+  baseFormat,
   format.json()
-);
+)
 
-// Create daily rotating file transport
-const fileRotateTransport = new transports.DailyRotateFile({
-  filename: path.join(logsDir, '%DATE%-server.log'),
+// daily rotating file transport (all levels)
+const rotateOpts = {
   datePattern: 'YYYY-MM-DD',
-  maxFiles: '14d', // keep logs for 14 days
-  maxSize: '20m',  // rotate when file reaches 20MB
+  dirname: logsDir,
+  filename: `%DATE%-server.log`,
+  zippedArchive: true,                 // compress rotated files
+  maxSize: config.LOG_MAX_SIZE || '20m',
+  maxFiles: config.LOG_MAX_FILES || '14d',
   format: fileFormat
-});
+}
 
-// Create error-specific transport
-const errorFileRotateTransport = new transports.DailyRotateFile({
-  filename: path.join(logsDir, '%DATE%-error.log'),
-  datePattern: 'YYYY-MM-DD',
-  maxFiles: '14d',
-  maxSize: '20m',
+const fileRotateTransport = new transports.DailyRotateFile(rotateOpts)
+const errorRotateTransport = new transports.DailyRotateFile({
+  ...rotateOpts,
   level: 'error',
-  format: fileFormat
-});
+  filename: `%DATE%-error.log`,
+})
 
-// Create a Winston logger with improved configuration
+// create Winston logger
 const logger = createLogger({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-  defaultMeta: { service: 'mandarin-api' },
   transports: [
     new transports.Console({ format: consoleFormat }),
     fileRotateTransport,
-    errorFileRotateTransport
+    errorRotateTransport
   ],
-  exitOnError: false // Don't exit on handled exceptions
-});
+  exceptionHandlers: [
+    new transports.Console({ format: consoleFormat }),
+    new transports.DailyRotateFile({ ...rotateOpts, filename: `%DATE%-exceptions.log` })
+  ],
+  rejectionHandlers: [
+    new transports.Console({ format: consoleFormat }),
+    new transports.DailyRotateFile({ ...rotateOpts, filename: `%DATE%-rejections.log` })
+  ],
+  exitOnError: false,
+})
 
-// Add shutdown handler
-const gracefulShutdown = () => {
-  logger.info('Logger shutting down...');
+// request‐logging middleware
+export const requestLogger = (req, res, next) => {
+  if (req.url.startsWith('/uploads/')) return next()
 
-  const transportsClosed = [];
-  // Close each transport that has a close method
-  logger.transports.forEach((transport) => {
-    if (transport.close) {
-      transportsClosed.push(
-        new Promise((resolve) => {
-          transport.close(resolve);
-        })
-      );
-    }
-  });
-
-  return Promise.all(transportsClosed);
-};
-
-// Create HTTP request logger middleware
-const requestLogger = (req, res, next) => {
-  // Skip logging for static files to reduce noise
-  if (req.url.startsWith('/uploads/')) {
-    return next();
-  }
-
-  const start = Date.now();
+  const start = Date.now()
+  const child = logger.child({ requestId: req.headers['x-request-id'] || null })
 
   res.on('finish', () => {
-    const duration = Date.now() - start;
-    const message = `${req.method} ${req.url} ${res.statusCode} ${duration}ms`;
+    const duration = Date.now() - start
+    const meta = { ip: req.ip, method: req.method, url: req.originalUrl, duration }
+    if (req.user?.id) meta.userId = req.user.id
 
-    // Log based on status code
-    if (res.statusCode >= 500) {
-      logger.error(message, {
-        ip: req.ip,
-        userId: req.user?.id || 'anonymous'
-      });
-    } else if (res.statusCode >= 400) {
-      logger.warn(message, {
-        ip: req.ip,
-        userId: req.user?.id || 'anonymous'
-      });
-    } else {
-      logger.info(message, {
-        ip: req.ip,
-        userId: req.user?.id || 'anonymous'
-      });
-    }
-  });
+    if (res.statusCode >= 500) child.error(`HTTP ${res.statusCode}`, meta)
+    else if (res.statusCode >= 400) child.warn(`HTTP ${res.statusCode}`, meta)
+    else child.info(`HTTP ${res.statusCode}`, meta)
+  })
 
-  next();
-};
+  next()
+}
 
-export { requestLogger, gracefulShutdown };
-export default logger;
+// graceful shutdown for transports
+export const gracefulShutdown = () => {
+  logger.info('Shutting down logger...')
+  return Promise.all(
+    logger.transports.map(t =>
+      typeof t.close === 'function' ? new Promise(r => t.close(r)) : Promise.resolve()
+    )
+  )
+}
+
+export default logger

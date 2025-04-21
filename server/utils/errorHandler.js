@@ -1,128 +1,92 @@
-/**
- * Utilities for standardized error handling across the application
- */
-import logger from '../logger.js';
+// server/utils/errorHandler.js
+
+import logger from '../logger.js'
+
+const log = logger.child({ component: 'ErrorHandler' })
 
 /**
- * Standard error response formatter
- * @param {Error} err - Error object
- * @param {string} context - Context where error occurred
- * @returns {Object} - Formatted error response
+ * Generic HTTP error with status, optional code and details.
  */
-export const formatErrorResponse = (err, context) => {
-  const errorMsg = err.message || "An error occurred";
-  logger.error(`Error in ${context}: ${errorMsg}`);
-  
-  // Handle specific error types
+export class HTTPError extends Error {
+  /**
+   * @param {string} message
+   * @param {number} status
+   * @param {string} [code]
+   * @param {any} [details]
+   */
+  constructor(message, status = 500, code = null, details = null) {
+    super(message)
+    this.name = this.constructor.name
+    this.status = status
+    if (code) this.code = code
+    if (details) this.details = details
+    Error.captureStackTrace(this, this.constructor)
+  }
+}
+
+/**
+ * Shorthand factories for common HTTP errors.
+ */
+export const BadRequestError = (message = 'Bad request') =>
+  new HTTPError(message, 400)
+export const UnauthorizedError = (message = 'Unauthorized') =>
+  new HTTPError(message, 401)
+export const ForbiddenError = (message = 'Forbidden') =>
+  new HTTPError(message, 403)
+export const NotFoundError = (resource = 'Resource') =>
+  new HTTPError(`${resource} not found`, 404)
+
+/**
+ * Wrap async route handlers to forward errors to Express.
+ * @param {Function} fn Async route handler
+ */
+export const catchAsync = fn => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next)
+
+/**
+ * Central Express error‐handling middleware.
+ */
+export function errorMiddleware(err, req, res, next) {
+  let status = err.status || 500
+  let message = err.message || 'Internal Server Error'
+
+  // Mongoose duplicate key
   if (err.code === 11000) {
-    // MongoDB duplicate key error
-    const field = Object.keys(err.keyValue || {})[0] || 'Field';
-    return { 
-      success: false, 
-      error: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`,
-      status: 400
-    };
+    const field = Object.keys(err.keyValue || {})[0] || 'Field'
+    status = 400
+    message = `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`
   }
-  
-  // Handle validation errors (from MongoDB/Mongoose)
-  if (err.name === 'ValidationError') {
-    const errors = Object.values(err.errors || {}).map(e => e.message).join(', ');
-    return {
+  // Mongoose validation
+  else if (err.name === 'ValidationError') {
+    status = 400
+    message =
+      Object.values(err.errors || {})
+        .map(e => e.message)
+        .join(', ') || 'Validation error'
+  }
+  // Mongoose cast errors (invalid ObjectId, etc.)
+  else if (err.name === 'CastError') {
+    status = 400
+    message = `Invalid ${err.path}`
+  }
+  // JWT errors
+  else if (err.name === 'JsonWebTokenError') {
+    status = 401
+    message = 'Invalid token'
+  } else if (err.name === 'TokenExpiredError') {
+    status = 401
+    message = 'Token expired'
+  }
+
+  // Log full error
+  log.error({ err, path: req.path, method: req.method }, message)
+
+  // Respond
+  res
+    .status(status)
+    .json({
       success: false,
-      error: errors || 'Validation error',
-      status: 400
-    };
-  }
-  
-  // Handle JWT errors
-  if (err.name === 'JsonWebTokenError') {
-    return {
-      success: false,
-      error: 'Invalid token',
-      status: 401
-    };
-  }
-  
-  if (err.name === 'TokenExpiredError') {
-    return {
-      success: false,
-      error: 'Token expired',
-      status: 401
-    };
-  }
-  
-  // Default error response
-  return {
-    success: false,
-    error: errorMsg,
-    status: err.status || 500
-  };
-};
-
-/**
- * Centralized route error handler for route handlers
- * @param {Function} routeHandler - Async route handler function
- * @param {string} context - Context name for logging
- * @returns {Function} - Express middleware
- */
-export const routeErrorHandler = (routeHandler, context) => {
-  return async (req, res, next) => {
-    try {
-      await routeHandler(req, res, next);
-    } catch (err) {
-      const errorResponse = formatErrorResponse(err, context);
-      res.status(errorResponse.status).json({
-        success: false,
-        error: errorResponse.error
-      });
-    }
-  };
-};
-
-/**
- * Create an error with HTTP status code
- * @param {string} message - Error message
- * @param {number} statusCode - HTTP status code
- * @returns {Error} - Error with status code
- */
-export const createError = (message, statusCode = 500) => {
-  const error = new Error(message);
-  error.status = statusCode;
-  return error;
-};
-
-/**
- * Not found error creator
- * @param {string} resource - Resource that wasn't found
- * @returns {Error} - Error with 404 status
- */
-export const createNotFoundError = (resource = 'Resource') => {
-  return createError(`${resource} not found`, 404);
-};
-
-/**
- * Unauthorized error creator
- * @param {string} message - Error message
- * @returns {Error} - Error with 401 status
- */
-export const createUnauthorizedError = (message = 'Unauthorized') => {
-  return createError(message, 401);
-};
-
-/**
- * Forbidden error creator
- * @param {string} message - Error message
- * @returns {Error} - Error with 403 status
- */
-export const createForbiddenError = (message = 'Forbidden') => {
-  return createError(message, 403);
-};
-
-/**
- * Bad request error creator
- * @param {string} message - Error message
- * @returns {Error} - Error with 400 status
- */
-export const createBadRequestError = (message = 'Bad request') => {
-  return createError(message, 400);
-};
+      error: message,
+      ...(err.code && { code: err.code }),
+    })
+}
