@@ -437,12 +437,42 @@ const initializeApp = async () => {
       try {
         // Dynamically import to potentially avoid issues if socket server is optional
         const { default: initSocketServer } = await import("./socket/index.js");
+        
+        // Log Socket.IO initialization parameters
+        logger.info("Initializing Socket.IO with parameters:", {
+          env: process.env.NODE_ENV || 'development',
+          port: PORT,
+          options: {
+            cors: config.CORS_OPTIONS || 'Using default CORS',
+            allowedOrigins: process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || 'Not specified'
+          }
+        });
+        
         const io = await initSocketServer(server); // Pass the HTTP server instance
         app.set("io", io); // Make io accessible in request handlers if needed (e.g., req.app.get('io'))
         logger.info("Socket.IO server initialized and attached successfully");
+        
+        // Log successful attachment
+        logger.info("Socket.IO listeners:", {
+          eventNames: io.eventNames(),
+          middlewareCount: io.engine?._events?.connection ? 'Available' : 'None'
+        });
       } catch (socketErr) {
-        logger.error(`Failed to initialize Socket.IO: ${socketErr.message}`, { stack: socketErr.stack });
-        // Decide if this is critical - maybe server can run without sockets?
+        logger.error(`Failed to initialize Socket.IO: ${socketErr.message}`, {
+          error: {
+            name: socketErr.name,
+            message: socketErr.message,
+            stack: socketErr.stack
+          },
+          config: {
+            env: process.env.NODE_ENV,
+            allowedOrigins: process.env.ALLOWED_ORIGINS,
+            frontendUrl: process.env.FRONTEND_URL
+          }
+        });
+        
+        // Log critical error but don't crash the server
+        logger.warn("Server will continue without Socket.IO functionality - real-time features will be unavailable");
       }
 
       // Initialize Cron Jobs (if any)

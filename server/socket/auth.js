@@ -154,8 +154,24 @@ async function socketAuthMiddleware(socket, next) {
     logger.info(`Socket ${socket.id} authenticated as user ${user._id}`);
     next();
   } catch (err) {
-    logger.error(`Socket auth error: ${err.message}`);
-    next(new Error('Authentication error'));
+    // Enhanced error logging with detailed context
+    logger.error(`Socket auth error: ${err.message}`, {
+      error: {
+        name: err.name,
+        message: err.message,
+        stack: err.stack
+      },
+      socket: {
+        id: socket.id,
+        address: socket.handshake.address,
+        headers: socket.handshake.headers,
+        query: socket.handshake.query,
+        time: new Date().toISOString()
+      }
+    });
+    
+    // More descriptive error for client debugging
+    next(new Error(`Authentication error: ${err.message}`));
   }
 }
 
