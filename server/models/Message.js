@@ -1,419 +1,334 @@
-// models/Message.js - Enhanced with ES modules and improved structure
+// models/Message.js
 import mongoose from 'mongoose';
 import sanitizeHtml from 'sanitize-html';
 import logger from '../logger.js';
 
-const { Schema, model, Types } = mongoose;
+const { Schema, model, Types, Error: MongooseError } = mongoose;
+const { ObjectId } = Types;
 
-// Define attachment schema for media messages
+// -----------------------------
+// Helper: Safe ObjectId casting
+// -----------------------------
+function safeObjectId(id, fieldName) {
+  if (!id) return null;
+  if (id instanceof ObjectId) return id;
+  if (ObjectId.isValid(id)) return new ObjectId(id);
+  throw new MongooseError.CastError('ObjectId', id, fieldName);
+}
+
+// -------------------------------------
+// Helper: simple pagination for queries
+// -------------------------------------
+async function paginate(query, { page = 1, limit = 50 } = {}) {
+  const skip = (page - 1) * limit;
+  const [docs, total] = await Promise.all([
+    query.skip(skip).limit(limit).lean().exec(),
+    query.model.countDocuments(query.getQuery()),
+  ]);
+  return {
+    messages: docs,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  };
+}
+
+// -------------------------
+// Attachment Sub-Schema
+// -------------------------
 const AttachmentSchema = new Schema({
   type: {
     type: String,
     enum: ['image', 'video', 'audio', 'file'],
-    required: true
-  },
-  url: {
-    type: String,
     required: true,
-    trim: true
   },
-  filename: {
-    type: String,
-    trim: true
-  },
-  size: {
-    type: Number,
-    min: 0,
-    max: 10 * 1024 * 1024 // 10MB max file size
-  },
-  mimeType: {
-    type: String,
-    trim: true
-  },
+  url: { type: String, required: true, trim: true },
+  filename: { type: String, trim: true },
+  size: { type: Number, min: 0, max: 10 * 1024 * 1024 },
+  mimeType: { type: String, trim: true },
   metadata: {
     width: Number,
     height: Number,
-    duration: Number, // for audio/video in seconds
-    thumbnail: String
+    duration: Number,
+    thumbnail: String,
   },
   status: {
     type: String,
     enum: ['uploading', 'processing', 'ready', 'failed'],
-    default: 'ready'
-  }
+    default: 'ready',
+  },
 });
 
-// Define reaction schema for message reactions
+// -------------------------
+// Reaction Sub-Schema
+// -------------------------
 const ReactionSchema = new Schema({
-  user: {
-    type: Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
+  user: { type: ObjectId, ref: 'User', required: true },
   emoji: {
     type: String,
     required: true,
     validate: {
-      validator: function(v) {
-        return /^(\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff])$/.test(v) ||
-               ['❤️', '👍', '👎', '😂', '😮', '😢', '😠'].includes(v);
+      validator(v) {
+        // allow standard and extended emojis
+        return /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)$/u.test(v);
       },
-      message: 'Invalid emoji format'
-    }
+      message: props => `Invalid emoji format: ${props.value}`,
+    },
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
+  createdAt: { type: Date, default: Date.now },
 });
 
+// -------------------------
 // Main Message Schema
+// -------------------------
 const MessageSchema = new Schema({
-  sender: {
-    type: Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
-  },
-  recipient: {
-    type: Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
-  },
+  sender:    { type: ObjectId, ref: 'User', required: true, index: true },
+  recipient: { type: ObjectId, ref: 'User', required: true, index: true },
+
   type: {
     type: String,
-    // Removed 'location' from the list as location messages are no longer supported
-    enum: ['text', 'wink', 'video', 'image', 'audio', 'file', 'contact', 'system'],
+    enum: ['text','wink','video','image','audio','file','contact','system'],
     default: 'text',
-    index: true
+    index: true,
   },
+
   content: {
     type: String,
-    required: function() {
-      return this.type === 'text';
-    },
+    required: function() { return this.type === 'text'; },
     maxlength: [2000, 'Message cannot exceed 2000 characters'],
     validate: {
-      validator: function(v) {
-        // Only validate for text messages
-        if (this.type !== 'text') return true;
-        return v && v.trim().length > 0;
+      validator(v) {
+        return this.type !== 'text' || (v && v.trim().length > 0);
       },
-      message: 'Text messages cannot be empty'
-    }
+      message: 'Text messages cannot be empty',
+    },
   },
-  attachment: AttachmentSchema,
-  read: {
-    type: Boolean,
-    default: false,
-    index: true // Index for querying unread messages
-  },
-  readAt: {
-    type: Date,
-    default: null
-  },
-  // Delivery status tracking
+
+  attachment:       AttachmentSchema,
+  read:             { type: Boolean, default: false, index: true },
+  readAt:           { type: Date, default: null },
   status: {
     type: String,
-    enum: ['sending', 'sent', 'delivered', 'failed'],
+    enum: ['sending','sent','delivered','failed'],
     default: 'sent',
-    index: true
+    index: true,
   },
-  statusUpdatedAt: {
-    type: Date,
-    default: Date.now
-  },
-  // Message flags
-  isEdited: {
-    type: Boolean,
-    default: false
-  },
+  statusUpdatedAt:  { type: Date, default: Date.now },
+  isEdited:         { type: Boolean, default: false },
   editHistory: [{
     content: String,
-    editedAt: {
-      type: Date,
-      default: Date.now
-    }
+    editedAt: { type: Date, default: Date.now },
   }],
-  // Soft delete functionality
-  deletedBySender: {
-    type: Boolean,
-    default: false
-  },
-  deletedByRecipient: {
-    type: Boolean,
-    default: false
-  },
-  // For messages that expire after being read
-  expiresAfterRead: {
-    type: Boolean,
-    default: false
-  },
-  expiryTime: {
-    type: Number, // in seconds after being read
-    default: null
-  },
-  // For system messages, which user initiated the event
-  initiatedBy: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  // For forwarded messages
-  isForwarded: {
-    type: Boolean,
-    default: false
-  },
-  originalMessage: {
-    type: Schema.Types.ObjectId,
-    ref: 'Message'
-  },
-  // Message reactions (likes, etc)
-  reactions: [ReactionSchema],
-  // Additional metadata
+
+  deletedBySender:    { type: Boolean, default: false },
+  deletedByRecipient: { type: Boolean, default: false },
+
+  expiresAfterRead: { type: Boolean, default: false },
+  expiryTime:       { type: Number, default: null },
+
+  initiatedBy:     { type: ObjectId, ref: 'User' },
+  isForwarded:     { type: Boolean, default: false },
+  originalMessage: { type: ObjectId, ref: 'Message' },
+
+  reactions:      [ReactionSchema],
+
   metadata: {
-    clientMessageId: {
-      type: String, // For client-side message handling
-      index: true
-    },
-    // Contact info for sharing contacts
+    clientMessageId: { type: String, index: true },
     contact: {
-      name: String,
+      name:  String,
       phone: String,
-      email: String
-    }
+      email: String,
+    },
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-    index: true // Important for conversation retrieval
-  }
+
+  createdAt: { type: Date, default: Date.now, index: true },
 }, {
   timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  toJSON:    { virtuals: true },
+  toObject:  { virtuals: true },
 });
 
-// Create compound indexes for efficient querying
+// -------------------------
+// Indexes
+// -------------------------
 MessageSchema.index({ sender: 1, recipient: 1, createdAt: -1 });
-MessageSchema.index({ sender: 1, recipient: 1, read: 1 });
 MessageSchema.index({ sender: 1, recipient: 1, read: 1, createdAt: -1 });
 MessageSchema.index({ deletedBySender: 1, deletedByRecipient: 1 });
 
-// Define a virtual for conversation ID (for grouping)
+// -------------------------------------
+// Virtual: Conversation ID for grouping
+// -------------------------------------
 MessageSchema.virtual('conversationId').get(function() {
-  const ids = [this.sender.toString(), this.recipient.toString()].sort();
-  return ids.join('_');
+  const [a, b] = [this.sender.toString(), this.recipient.toString()].sort();
+  return `${a}_${b}`;
 });
 
-// Middleware to sanitize text content before saving
+// -------------------------------------------------
+// Pre-save: sanitize, set readAt/statusUpdatedAt, cast IDs
+// -------------------------------------------------
 MessageSchema.pre('save', function(next) {
-  if (this.isModified('content') && this.type === 'text' && this.content) {
-    try {
+  try {
+    // sanitize text
+    if (this.isModified('content') && this.type === 'text' && this.content) {
       this.content = sanitizeHtml(this.content, {
         allowedTags: [],
         allowedAttributes: {},
-        disallowedTagsMode: 'discard'
-      });
-      this.content = this.content.trim().substring(0, 2000);
-    } catch (error) {
-      logger.error(`Error sanitizing message content: ${error.message}`);
+        disallowedTagsMode: 'discard',
+      }).trim().slice(0, 2000);
     }
+
+    // timestamps
+    if (this.isModified('read') && this.read && !this.readAt) {
+      this.readAt = new Date();
+    }
+    if (this.isModified('status')) {
+      this.statusUpdatedAt = new Date();
+    }
+
+    // safe cast ObjectIds
+    this.sender    = safeObjectId(this.sender,    'sender');
+    this.recipient = safeObjectId(this.recipient, 'recipient');
+    if (this.initiatedBy)     this.initiatedBy     = safeObjectId(this.initiatedBy,     'initiatedBy');
+    if (this.originalMessage) this.originalMessage = safeObjectId(this.originalMessage, 'originalMessage');
+
+    next();
+  } catch (err) {
+    next(err);
   }
-  if (this.isModified('read') && this.read && !this.readAt) {
-    this.readAt = new Date();
-  }
-  if (this.isModified('status')) {
-    this.statusUpdatedAt = new Date();
-  }
-  next();
 });
 
-// Static method to get conversation between two users
-MessageSchema.statics.getConversation = async function(user1Id, user2Id, options = {}) {
-  const { page = 1, limit = 50, includeDeleted = false } = options;
+// ---------------------------------
+// Static: fetch paginated history
+// ---------------------------------
+MessageSchema.statics.getConversation = async function(u1, u2, opts = {}) {
+  const page   = Number(opts.page)   || 1;
+  const limit  = Number(opts.limit)  || 50;
+  const includeDeleted = !!opts.includeDeleted;
 
-  // Ensure we have valid ObjectIds
-  const u1 = typeof user1Id === 'string' ? Types.ObjectId(user1Id) : user1Id;
-  const u2 = typeof user2Id === 'string' ? Types.ObjectId(user2Id) : user2Id;
+  const user1 = safeObjectId(u1, 'user1');
+  const user2 = safeObjectId(u2, 'user2');
 
-  const query = {
-    $or: [
-      { sender: u1, recipient: u2 },
-      { sender: u2, recipient: u1 }
-    ]
-  };
+  let orClauses = [
+    { sender: user1, recipient: user2 },
+    { sender: user2, recipient: user1 },
+  ];
 
   if (!includeDeleted) {
-    query.$or = query.$or.map(condition => {
-      if (condition.sender.toString() === u1.toString()) {
-        return { ...condition, deletedBySender: false };
-      } else {
-        return { ...condition, deletedByRecipient: false };
-      }
-    });
+    orClauses = orClauses.map(cond => ({
+      ...cond,
+      ...(cond.sender.equals(user1)
+        ? { deletedBySender: false }
+        : { deletedByRecipient: false })
+    }));
   }
 
-  try {
-    const messages = await this.find(query)
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
-
-    const total = await this.countDocuments(query);
-
-    return {
-      messages,
-      pagination: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit)
-      }
-    };
-  } catch (error) {
-    logger.error(`Error retrieving conversation: ${error.message}`);
-    throw error;
-  }
+  const query = this.find({ $or: orClauses }).sort({ createdAt: -1 });
+  return paginate(query, { page, limit });
 };
 
-// Static method to mark messages as read
+// ---------------------------------
+// Static: mark many as read
+// ---------------------------------
 MessageSchema.statics.markAsRead = async function(recipientId, senderId) {
-  try {
-    const result = await this.updateMany(
-      {
-        sender: senderId,
-        recipient: recipientId,
-        read: false
-      },
-      {
-        read: true,
-        readAt: new Date()
-      }
-    );
-    return result.modifiedCount;
-  } catch (error) {
-    logger.error(`Error marking messages as read: ${error.message}`);
-    throw error;
-  }
+  const r = safeObjectId(recipientId, 'recipientId');
+  const s = safeObjectId(senderId,    'senderId');
+
+  const res = await this.updateMany(
+    { sender: s, recipient: r, read: false },
+    { read: true, readAt: new Date() }
+  );
+  return res.modifiedCount;
 };
 
-// Static method to get unread count by sender
+// ---------------------------------
+// Static: unread count per sender
+// ---------------------------------
 MessageSchema.statics.getUnreadCountBySender = async function(recipientId) {
-  try {
-    return this.aggregate([
-      {
-        $match: {
-          recipient: Types.ObjectId(recipientId),
-          read: false,
-          deletedByRecipient: false
-        }
-      },
-      {
-        $group: {
-          _id: '$sender',
-          count: { $sum: 1 },
-          lastMessage: { $max: '$createdAt' }
-        }
-      },
-      {
-        $sort: { lastMessage: -1 }
-      }
-    ]);
-  } catch (error) {
-    logger.error(`Error getting unread count: ${error.message}`);
-    throw error;
-  }
+  const r = safeObjectId(recipientId, 'recipientId');
+  return this.aggregate([
+    { $match: { recipient: r, read: false, deletedByRecipient: false } },
+    { $group: { _id: '$sender', count: { $sum: 1 }, lastMessage: { $max: '$createdAt' } } },
+    { $sort: { lastMessage: -1 } },
+  ]);
 };
 
-// Method to mark a message as edited
+// ---------------------------------
+// Instance: edit a text message
+// ---------------------------------
 MessageSchema.methods.editMessage = async function(newContent) {
   if (this.type !== 'text') {
-    throw new Error('Only text messages can be edited');
+    throw new MongooseError.ValidationError('Only text messages can be edited');
   }
-  if (!this.editHistory) this.editHistory = [];
-  this.editHistory.push({
-    content: this.content,
-    editedAt: new Date()
-  });
+  this.editHistory = this.editHistory || [];
+  this.editHistory.push({ content: this.content, editedAt: new Date() });
   this.content = sanitizeHtml(newContent, {
-    allowedTags: [],
-    allowedAttributes: {},
-    disallowedTagsMode: 'discard'
-  }).trim().substring(0, 2000);
+    allowedTags: [], allowedAttributes: {}, disallowedTagsMode: 'discard'
+  }).trim().slice(0, 2000);
   this.isEdited = true;
   return this.save();
 };
 
-// Method to add a reaction to a message
+// ---------------------------------
+// Instance: add or update reaction
+// ---------------------------------
 MessageSchema.methods.addReaction = async function(userId, emoji) {
-  const existingReaction = this.reactions.find(
-    r => r.user.toString() === userId.toString()
-  );
-  if (existingReaction) {
-    existingReaction.emoji = emoji;
-    existingReaction.createdAt = new Date();
+  const uid = safeObjectId(userId, 'reaction.user');
+  const existing = this.reactions.find(r => r.user.equals(uid));
+  if (existing) {
+    existing.emoji     = emoji;
+    existing.createdAt = new Date();
   } else {
-    this.reactions.push({
-      user: userId,
-      emoji,
-      createdAt: new Date()
-    });
+    this.reactions.push({ user: uid, emoji, createdAt: new Date() });
   }
   return this.save();
 };
 
-// Method to remove a reaction
+// ---------------------------------
+// Instance: remove a reaction
+// ---------------------------------
 MessageSchema.methods.removeReaction = async function(userId) {
-  this.reactions = this.reactions.filter(
-    r => r.user.toString() !== userId.toString()
-  );
+  const uid = safeObjectId(userId, 'reaction.user');
+  this.reactions = this.reactions.filter(r => !r.user.equals(uid));
   return this.save();
 };
 
-// Method to mark a message as deleted for a user
+// ---------------------------------
+// Instance: soft-delete for a user
+// ---------------------------------
 MessageSchema.methods.markAsDeletedFor = async function(userId, mode = 'self') {
-  const isSender = this.sender.toString() === userId.toString();
-  const isRecipient = this.recipient.toString() === userId.toString();
+  const uid = safeObjectId(userId, 'markAsDeletedFor.user');
+  const isSender    = this.sender.equals(uid);
+  const isRecipient = this.recipient.equals(uid);
 
   if (!isSender && !isRecipient) {
-    throw new Error('User is not authorized to delete this message');
+    throw new MongooseError.ValidationError('Not authorized to delete this message');
   }
 
   if (mode === 'self') {
-    if (isSender) {
-      this.deletedBySender = true;
-    }
-    if (isRecipient) {
-      this.deletedByRecipient = true;
-    }
+    if (isSender)    this.deletedBySender    = true;
+    if (isRecipient) this.deletedByRecipient = true;
   } else if (mode === 'both' && isSender) {
-    this.deletedBySender = true;
-    this.deletedByRecipient = true;
+    this.deletedBySender = this.deletedByRecipient = true;
   } else {
-    throw new Error('Invalid delete mode or unauthorized action');
+    throw new MongooseError.ValidationError('Invalid delete mode');
   }
 
+  // If both parties have deleted, remove from DB
   if (this.deletedBySender && this.deletedByRecipient) {
-    return model('Message').deleteOne({ _id: this._id });
+    return this.constructor.deleteOne({ _id: this._id });
   }
-
   return this.save();
 };
 
-// Method to check if the message should be hidden from a user
+// ---------------------------------
+// Instance: check hidden status
+// ---------------------------------
 MessageSchema.methods.isHiddenFrom = function(userId) {
-  const isSender = this.sender.toString() === userId.toString();
-  const isRecipient = this.recipient.toString() === userId.toString();
-
-  if (isSender && this.deletedBySender) return true;
-  if (isRecipient && this.deletedByRecipient) return true;
-
-  return false;
+  const uid = safeObjectId(userId, 'isHiddenFrom.user');
+  return (this.sender.equals(uid)    && this.deletedBySender)
+      || (this.recipient.equals(uid) && this.deletedByRecipient);
 };
 
-// Create the Message model
+// -------------------------
+// Export Model
+// -------------------------
 const Message = model('Message', MessageSchema);
-
 export default Message;

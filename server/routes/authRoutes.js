@@ -1,565 +1,406 @@
-// server/routes/authRoutes.js - Enhanced with ES modules and improved imports/exports
+// server/routes/authRoutes.js
 import express from "express"
 import jwt from "jsonwebtoken"
+import crypto from "crypto"
+import rateLimit from "express-rate-limit"
 import { check, validationResult } from "express-validator"
-import { User } from "../models/index.js" // Adjust the path according to your project structure
-import { protect, generateToken, asyncHandler } from "../middleware/auth.js"
+import asyncHandler from "express-async-handler"
+import { User } from "../models/index.js"
+import { protect, generateToken } from "../middleware/auth.js"
+import { sendVerificationEmail } from "../utils/emailService.js"
 import config from "../config.js"
 import logger from "../logger.js"
-import rateLimit from "express-rate-limit"
-import crypto from "crypto"
-import { sendVerificationEmail } from "../utils/emailService.js"
 
 const router = express.Router()
+const log = logger.child({ component: "AuthRoutes" })
 
-// Configure rate limiting for authentication routes
+// Rate limiter for auth endpoints
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // max 10 requests per IP per windowMs
-  message: {
-    success: false,
-    error: "Too many authentication attempts. Please try again later.",
-  },
+  windowMs: 15 * 60 * 1000,  // 15 minutes
+  max: 10,
+  message: { success: false, error: "Too many requests—please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
 })
 
-// Update the password validator function to be more explicit
-const passwordValidator = (value) => {
-  // Check for minimum length
-  if (value.length < 8) {
-    return "Password must be at least 8 characters"
-  }
-
-  // Check for uppercase letter
-  if (!/(?=.*[A-Z])/.test(value)) {
-    return "Password must include at least one uppercase letter"
-  }
-
-  // Check for lowercase letter
-  if (!/(?=.*[a-z])/.test(value)) {
-    return "Password must include at least one lowercase letter"
-  }
-
-  // Check for number
-  if (!/\d/.test(value)) {
-    return "Password must include at least one number"
-  }
-
-  // Check for special character
-  if (!/(?=.*[@$!%*?&])/.test(value)) {
-    return "Password must include at least one special character (@$!%*?&)"
-  }
-
-  return true
+// Helper to return the first validation error
+function validationError(res, errors) {
+  return res.status(400).json({ success: false, error: errors.array()[0].msg })
 }
 
+// Strong password policy
+const passwordChecks = [
+  check("password")
+    .isLength({ min: 8 }).withMessage("Password must be at least 8 characters")
+    .matches(/[A-Z]/).withMessage("Password must include an uppercase letter")
+    .matches(/[a-z]/).withMessage("Password must include a lowercase letter")
+    .matches(/\d/).withMessage("Password must include a number")
+    .matches(/[@$!%*?&]/).withMessage("Password must include a special character (@$!%*?&)"),
+]
+
+// ──────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/register
-// @desc    Register a new user
+// @desc    Create new user & send verification email
 // @access  Public
+// ──────────────────────────────────────────────────────────────────────────────
 router.post(
   "/register",
   authLimiter,
   [
-    check("email", "Please include a valid email").isEmail(),
-    check("password").custom(passwordValidator),
-    check("nickname", "Nickname is required").notEmpty().trim().isLength({ min: 3, max: 30 }),
+    check("email").isEmail().withMessage("Invalid email"),
+    ...passwordChecks,
+    check("nickname")
+      .trim()
+      .isLength({ min: 3, max: 30 })
+      .withMessage("Nickname must be 3–30 characters"),
   ],
   asyncHandler(async (req, res) => {
     const errors = validationResult(req)
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        error: errors.array()[0].msg,
-      })
+    if (!errors.isEmpty()) return validationError(res, errors)
+
+    const { email, password, nickname, details = {}, accountTier = "FREE", isCouple = false } = req.body
+
+    if (await User.exists({ email })) {
+      log.warn(`Attempted register with existing email: ${email}`)
+      return res
+        .status(400)
+        .json({ success: false, error: "Email already in use", code: "EMAIL_EXISTS" })
     }
 
-    const { email, password, nickname, details, accountTier, isCouple } = req.body
+    const user = new User({ email, password, nickname, details, accountTier, isCouple })
+    const verificationToken = user.createVerificationToken()
+    await user.save()
 
-    try {
-      // Check if user already exists
-      let user = await User.findOne({ email })
-      if (user) {
-        logger.warn(`Registration attempt with existing email: ${email}`)
-        return res.status(400).json({
-          success: false,
-          error: "User already exists",
-          code: "EMAIL_EXISTS",
-        })
-      }
+    // Send verification email asynchronously
+    sendVerificationEmail({ email, nickname, token: verificationToken })
+      .then(() => log.info(`Verification email sent to ${email}`))
+      .catch(err => log.error(`Email send failure: ${err.message}`))
 
-      // Create new user instance with all profile details
-      user = new User({
-        email,
-        password,
-        nickname,
-        isVerified: false,
-        version: 1,
-        details: details || {},
-        accountTier: accountTier || "FREE",
-        isCouple: isCouple || false,
-      })
-
-      // Generate verification token
-      const verificationToken = user.createVerificationToken()
-
-      // Save the user to the database
-      await user.save()
-
-      // Send verification email
-      try {
-        await sendVerificationEmail({
-          email: user.email,
-          nickname: user.nickname,
-          token: verificationToken,
-        })
-        logger.info(`Verification email sent to: ${user.email}`)
-      } catch (emailError) {
-        logger.error(`Failed to send verification email: ${emailError.message}`)
-        // Continue with registration even if email fails
-      }
-
-      // Create token payload for authentication
-      const payload = {
+    const token = generateToken({ id: user._id, role: user.role, version: user.version })
+    res.status(201).json({
+      success: true,
+      message: "Registered—please check your inbox to verify.",
+      token,
+      user: {
         id: user._id,
+        email: user.email,
+        nickname: user.nickname,
         role: user.role,
-        version: user.version,
-      }
-
-      const token = generateToken(payload)
-
-      res.status(201).json({
-        success: true,
-        token,
-        user: {
-          id: user._id,
-          email: user.email,
-          nickname: user.nickname,
-          role: user.role,
-          isVerified: user.isVerified,
-          accountTier: user.accountTier,
-        },
-        message: "Registration successful! Please verify your email address.",
-      })
-    } catch (err) {
-      logger.error(`Registration error: ${err.message}`)
-
-      // Provide more specific error messages for validation errors
-      if (err.name === "ValidationError") {
-        const messages = Object.values(err.errors).map((val) => val.message)
-        return res.status(400).json({
-          success: false,
-          error: messages[0], // Return the first validation error
-        })
-      }
-
-      res.status(500).json({ success: false, error: "Server error" })
-    }
-  }),
+        isVerified: user.isVerified,
+        accountTier: user.accountTier,
+      },
+    })
+  })
 )
 
+// ──────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/login
-// @desc    Authenticate user and return token
+// @desc    Authenticate & issue JWT + refresh token
 // @access  Public
+// ──────────────────────────────────────────────────────────────────────────────
 router.post(
   "/login",
   authLimiter,
-  [check("email", "Please include a valid email").isEmail(), check("password", "Password is required").exists()],
+  [
+    check("email").isEmail().withMessage("Invalid email"),
+    check("password").exists().withMessage("Password required"),
+  ],
   asyncHandler(async (req, res) => {
     const errors = validationResult(req)
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        error: errors.array()[0].msg,
-      })
-    }
+    if (!errors.isEmpty()) return validationError(res, errors)
 
     const { email, password } = req.body
-
-    try {
-      // Find user (explicitly selecting the password field)
-      const user = await User.findOne({ email }).select("+password")
-
-      if (!user) {
-        logger.warn(`Login attempt with non-existent email: ${email}`)
-        return res.status(400).json({
-          success: false,
-          error: "Invalid credentials",
-        })
-      }
-
-      // Check if account is locked
-      if (user.isLocked && user.isLocked()) {
-        const lockTime = new Date(user.lockUntil)
-        logger.warn(`Login attempt on locked account: ${email}`)
-        return res.status(403).json({
-          success: false,
-          error: `Account is temporarily locked. Try again after ${lockTime.toLocaleString()}`,
-        })
-      }
-
-      // Verify password
-      const isMatch = await user.correctPassword(password, user.password)
-      if (!isMatch) {
-        await user.incrementLoginAttempts()
-        logger.warn(`Failed login attempt for user: ${email}`)
-        return res.status(400).json({ success: false, error: "Invalid credentials" })
-      }
-
-      // Reset login attempts upon successful login
-      user.loginAttempts = 0
-      user.lockUntil = undefined
-      await user.save()
-
-      // Update user's last active timestamp
-      await User.findByIdAndUpdate(user._id, { lastActive: Date.now() })
-
-      const payload = {
-        id: user._id,
-        role: user.role,
-        version: user.version,
-      }
-
-      const token = generateToken(payload)
-      const refreshToken = user.createRefreshToken()
-      await user.save()
-
-      res.json({
-        success: true,
-        token,
-        user: {
-          id: user._id,
-          email: user.email,
-          nickname: user.nickname,
-          role: user.role,
-          isVerified: user.isVerified,
-          accountTier: user.accountTier,
-        },
-      })
-    } catch (err) {
-      logger.error(`Login error: ${err.message}`, {
-        email: email,
-        stack: err.stack,
-      })
-      res.status(500).json({ success: false, error: "Server error" })
+    const user = await User.findOne({ email }).select("+password")
+    if (!user) {
+      log.warn(`Login failed—no user: ${email}`)
+      return res.status(400).json({ success: false, error: "Invalid credentials" })
     }
-  }),
+
+    if (user.isLocked?.()) {
+      const unlockAt = new Date(user.lockUntil).toLocaleString()
+      return res.status(403).json({
+        success: false,
+        error: `Account locked—try again after ${unlockAt}`,
+      })
+    }
+
+    const correct = await user.correctPassword(password, user.password)
+    if (!correct) {
+      await user.incrementLoginAttempts()
+      log.warn(`Failed login attempt for ${email}`)
+      return res.status(400).json({ success: false, error: "Invalid credentials" })
+    }
+
+    // Reset counters & update status
+    user.loginAttempts = 0
+    user.lockUntil = undefined
+    await user.save()
+    await User.findByIdAndUpdate(user._id, { lastActive: Date.now(), isOnline: true })
+
+    // Issue tokens
+    const payload = { id: user._id, role: user.role, version: user.version }
+    const token = generateToken(payload)
+    user.createRefreshToken()
+    await user.save()
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        nickname: user.nickname,
+        role: user.role,
+        isVerified: user.isVerified,
+        accountTier: user.accountTier,
+      },
+    })
+  })
 )
 
-// @route   GET /api/auth/me
-// @desc    Get current user details
+// ──────────────────────────────────────────────────────────────────────────────
+// @route   GET /api/auth/verify
+// @desc    Verify that the JWT is valid
 // @access  Private
+// ──────────────────────────────────────────────────────────────────────────────
+router.get(
+  "/verify",
+  protect,
+  (req, res) => {
+    // If we reach here, protect() succeeded
+    res.json({ success: true })
+  }
+)
+
+// ──────────────────────────────────────────────────────────────────────────────
+// @route   GET /api/auth/me
+// @desc    Get current user
+// @access  Private
+// ──────────────────────────────────────────────────────────────────────────────
 router.get(
   "/me",
   protect,
   asyncHandler(async (req, res) => {
-    try {
-      const user = await User.findById(req.user._id).select("-password")
-      if (!user) {
-        logger.warn(`User not found with ID: ${req.user._id}`)
-        return res.status(404).json({ success: false, error: "User not found" })
-      }
-      res.json({ success: true, data: user })
-    } catch (err) {
-      logger.error(`Get user error: ${err.message}`, {
-        userId: req.user._id,
-        stack: err.stack,
-      })
-      res.status(500).json({ success: false, error: "Server error" })
+    const user = await User.findById(req.user.id).select("-password")
+    if (!user) {
+      log.warn(`User not found: ${req.user.id}`)
+      return res.status(404).json({ success: false, error: "User not found" })
     }
-  }),
+    res.json({ success: true, data: user })
+  })
 )
 
+// ──────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/refresh-token
-// @desc    Refresh authentication token
+// @desc    Refresh JWT using expired token
 // @access  Public
+// ──────────────────────────────────────────────────────────────────────────────
 router.post(
   "/refresh-token",
   asyncHandler(async (req, res) => {
-    const { token } = req.body
+    const raw = req.body.token
+    if (!raw) return res.status(400).json({ success: false, error: "Token required" })
 
-    if (!token) {
-      return res.status(400).json({ success: false, error: "Token is required" })
-    }
-
+    let decoded
     try {
-      // IMPORTANT: Ignore expiration when verifying the token for refresh purposes
-      const decoded = jwt.verify(token, config.JWT_SECRET, { ignoreExpiration: true })
-
-      // Get user from database
-      const user = await User.findById(decoded.id).select("-password")
-
-      if (!user) {
-        return res.status(401).json({ success: false, error: "User not found" })
-      }
-
-      // Check if token has been revoked by comparing versions
-      if (decoded.version !== user.version) {
-        return res.status(401).json({ success: false, error: "Token has been revoked" })
-      }
-
-      // Check if token is too old (optional security measure)
-      const tokenIssuedAt = decoded.iat * 1000 // Convert to milliseconds
-      const now = Date.now()
-      const maxRefreshAge = 30 * 24 * 60 * 60 * 1000 // 30 days in milliseconds
-
-      if (now - tokenIssuedAt > maxRefreshAge) {
-        return res.status(401).json({ success: false, error: "Token too old for refresh" })
-      }
-
-      // Create new token payload
-      const payload = {
-        id: user._id,
-        role: user.role,
-        version: user.version,
-      }
-
-      // Generate new token
-      const newToken = generateToken(payload)
-
-      // Log successful refresh
-      logger.info(`Token refreshed for user: ${user._id}`)
-
-      // Return new token
-      res.json({ success: true, token: newToken })
+      decoded = jwt.verify(raw, config.JWT_SECRET, { ignoreExpiration: true })
     } catch (err) {
-      // Log the specific error for debugging
-      logger.error(`Token refresh error: ${err.message}, ${err.name}`)
-
-      // Return a more specific error message based on the type of error
-      if (err.name === "JsonWebTokenError") {
-        return res.status(401).json({ success: false, error: "Invalid token format" })
-      } else if (err.name === "TokenExpiredError") {
-        // This shouldn't happen with ignoreExpiration: true, but just in case
-        return res.status(401).json({ success: false, error: "Token expired" })
-      } else {
-        return res.status(401).json({ success: false, error: "Invalid token" })
-      }
+      log.error(`Refresh error: ${err.message}`)
+      return res.status(401).json({ success: false, error: "Invalid token" })
     }
-  }),
+
+    const user = await User.findById(decoded.id).select("-password")
+    if (!user || decoded.version !== user.version) {
+      return res.status(401).json({ success: false, error: "Token revoked or user not found" })
+    }
+
+    if (Date.now() - decoded.iat * 1000 > config.MAX_REFRESH_AGE_MS) {
+      return res.status(401).json({ success: false, error: "Token too old" })
+    }
+
+    const newToken = generateToken({ id: user._id, role: user.role, version: user.version })
+    res.json({ success: true, token: newToken })
+  })
 )
 
+// ──────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/logout
-// @desc    Logout user and invalidate tokens
+// @desc    Invalidate all tokens by bumping version
 // @access  Private
+// ──────────────────────────────────────────────────────────────────────────────
 router.post(
   "/logout",
   protect,
   asyncHandler(async (req, res) => {
-    try {
-      const user = await User.findById(req.user._id)
-      if (!user) {
-        return res.status(404).json({ success: false, error: "User not found" })
-      }
-      user.refreshToken = undefined
-      user.refreshTokenExpires = undefined
-      user.version = (user.version || 0) + 1
-      await user.save()
-      await User.findByIdAndUpdate(req.user._id, { isOnline: false, lastActive: Date.now() })
-      res.json({ success: true, message: "Logged out successfully" })
-    } catch (err) {
-      logger.error(`Logout error: ${err.message}`)
-      res.status(500).json({ success: false, error: "Server error" })
-    }
-  }),
+    const user = await User.findById(req.user.id)
+    if (!user) return res.status(404).json({ success: false, error: "User not found" })
+
+    user.refreshToken = undefined
+    user.version += 1
+    user.isOnline = false
+    user.lastActive = Date.now()
+    await user.save()
+
+    res.json({ success: true, message: "Logged out" })
+  })
 )
 
+// ──────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/verify-email
-// @desc    Verify user email address
+// @desc    Verify email token
 // @access  Public
+// ──────────────────────────────────────────────────────────────────────────────
 router.post(
   "/verify-email",
   asyncHandler(async (req, res) => {
     const { token } = req.body
-    if (!token) {
-      return res.status(400).json({ success: false, error: "Verification token is required" })
+    if (!token) return res.status(400).json({ success: false, error: "Token required" })
+
+    const hash = crypto.createHash("sha256").update(token).digest("hex")
+    const user = await User.findOne({
+      verificationToken: hash,
+      verificationTokenExpires: { $gt: Date.now() },
+    })
+
+    if (!user) {
+      return res.status(400).json({ success: false, error: "Invalid or expired token" })
     }
-    try {
-      const hashedToken = crypto.createHash("sha256").update(token).digest("hex")
-      const user = await User.findOne({
-        verificationToken: hashedToken,
-        verificationTokenExpires: { $gt: Date.now() },
-      })
-      if (!user) {
-        return res.status(400).json({ success: false, error: "Invalid or expired verification token" })
-      }
-      user.isVerified = true
-      user.verificationToken = undefined
-      user.verificationTokenExpires = undefined
-      await user.save()
-      res.json({ success: true, message: "Email verified successfully" })
-    } catch (err) {
-      logger.error(`Email verification error: ${err.message}`)
-      res.status(500).json({ success: false, error: "Server error" })
-    }
-  }),
+
+    user.isVerified = true
+    user.verificationToken = undefined
+    user.verificationTokenExpires = undefined
+    await user.save()
+
+    res.json({ success: true, message: "Email verified" })
+  })
 )
 
+// ──────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/resend-verification
-// @desc    Resend verification email
+// @desc    Throttled resend of verification email
 // @access  Private
+// ──────────────────────────────────────────────────────────────────────────────
 router.post(
   "/resend-verification",
   protect,
   asyncHandler(async (req, res) => {
-    try {
-      const user = await User.findById(req.user._id)
+    const user = await User.findById(req.user.id)
+    if (!user) return res.status(404).json({ success: false, error: "User not found" })
+    if (user.isVerified) return res.status(400).json({ success: false, error: "Already verified" })
 
-      if (!user) {
-        return res.status(404).json({ success: false, error: "User not found" })
-      }
-
-      if (user.isVerified) {
-        return res.status(400).json({ success: false, error: "Email is already verified" })
-      }
-
-      // Check if we should throttle resend attempts
-      const ONE_HOUR = 60 * 60 * 1000
-      if (user.verificationTokenExpires && user.verificationTokenExpires > Date.now() - ONE_HOUR) {
-        const timeLeft = Math.ceil((user.verificationTokenExpires - (Date.now() - ONE_HOUR)) / (60 * 1000))
-        return res.status(429).json({
-          success: false,
-          error: `Please wait ${timeLeft} minutes before requesting another verification email`,
-        })
-      }
-
-      // Generate new verification token
-      const verificationToken = user.createVerificationToken()
-      await user.save()
-
-      // Send verification email
-      await sendVerificationEmail({
-        email: user.email,
-        nickname: user.nickname,
-        token: verificationToken,
-      })
-
-      res.json({
-        success: true,
-        message: "Verification email sent successfully",
-      })
-    } catch (err) {
-      logger.error(`Resend verification error: ${err.message}`)
-      res.status(500).json({ success: false, error: "Server error" })
+    const cooldown = 60 * 60 * 1000
+    if (user.verificationTokenExpires > Date.now() - cooldown) {
+      return res.status(429).json({ success: false, error: "Please wait before resending." })
     }
-  }),
+
+    const token = user.createVerificationToken()
+    await user.save()
+    await sendVerificationEmail({ email: user.email, nickname: user.nickname, token })
+    res.json({ success: true, message: "Verification email resent" })
+  })
 )
 
+// ──────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/forgot-password
-// @desc    Request a password reset
+// @desc    Issue a password reset token
 // @access  Public
+// ──────────────────────────────────────────────────────────────────────────────
 router.post(
   "/forgot-password",
-  [check("email", "Please include a valid email").isEmail()],
+  [ check("email").isEmail().withMessage("Invalid email") ],
   asyncHandler(async (req, res) => {
     const errors = validationResult(req)
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, error: errors.array()[0].msg })
-    }
-    const { email } = req.body
-    try {
-      const user = await User.findOne({ email })
-      if (!user) {
-        return res.json({
-          success: true,
-          message: "If your email is registered, you will receive reset instructions",
-        })
-      }
-      const resetToken = user.createPasswordResetToken()
+    if (!errors.isEmpty()) return validationError(res, errors)
+
+    const user = await User.findOne({ email: req.body.email })
+    if (user) {
+      user.createPasswordResetToken()
       await user.save()
-      res.json({
-        success: true,
-        message: "If your email is registered, you will receive reset instructions",
-      })
-    } catch (err) {
-      logger.error(`Forgot password error: ${err.message}`)
-      res.status(500).json({ success: false, error: "Server error" })
+      // TODO: send reset email
     }
-  }),
+    res.json({
+      success: true,
+      message: "If registered, reset instructions have been sent.",
+    })
+  })
 )
 
+// ──────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/reset-password
-// @desc    Reset user password
+// @desc    Reset password using a valid token
 // @access  Public
+// ──────────────────────────────────────────────────────────────────────────────
 router.post(
   "/reset-password",
-  [check("token", "Reset token is required").exists(), check("password").custom(passwordValidator)],
+  [
+    check("token").exists().withMessage("Token required"),
+    ...passwordChecks,
+  ],
   asyncHandler(async (req, res) => {
     const errors = validationResult(req)
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, error: errors.array()[0].msg })
+    if (!errors.isEmpty()) return validationError(res, errors)
+
+    const hash = crypto.createHash("sha256").update(req.body.token).digest("hex")
+    const user = await User.findOne({
+      passwordResetToken: hash,
+      passwordResetExpires: { $gt: Date.now() },
+    }).select("+password")
+
+    if (!user) {
+      return res.status(400).json({ success: false, error: "Invalid or expired token" })
     }
-    const { token, password } = req.body
-    try {
-      const hashedToken = crypto.createHash("sha256").update(token).digest("hex")
-      const user = await User.findOne({
-        passwordResetToken: hashedToken,
-        passwordResetExpires: { $gt: Date.now() },
-      })
-      if (!user) {
-        return res.status(400).json({ success: false, error: "Invalid or expired reset token" })
-      }
-      user.password = password
-      user.passwordResetToken = undefined
-      user.passwordResetExpires = undefined
-      user.version = (user.version || 0) + 1
-      await user.save()
-      res.json({ success: true, message: "Password reset successful" })
-    } catch (err) {
-      logger.error(`Password reset error: ${err.message}`)
-      res.status(500).json({ success: false, error: "Server error" })
-    }
-  }),
+
+    user.password = req.body.password
+    user.passwordResetToken = undefined
+    user.passwordResetExpires = undefined
+    user.version += 1
+    await user.save()
+
+    res.json({ success: true, message: "Password reset successful" })
+  })
 )
 
+// ──────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/change-password
-// @desc    Change current password
+// @desc    Authenticated password change
 // @access  Private
+// ──────────────────────────────────────────────────────────────────────────────
 router.post(
   "/change-password",
   protect,
-  [check("currentPassword", "Current password is required").exists(), check("newPassword").custom(passwordValidator)],
+  [
+    check("currentPassword").exists().withMessage("Current password required"),
+    check("newPassword").exists().withMessage("New password required"),
+    ...passwordChecks,
+  ],
   asyncHandler(async (req, res) => {
     const errors = validationResult(req)
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, error: errors.array()[0].msg })
+    if (!errors.isEmpty()) return validationError(res, errors)
+
+    const user = await User.findById(req.user.id).select("+password")
+    if (!user) return res.status(404).json({ success: false, error: "User not found" })
+
+    const ok = await user.correctPassword(req.body.currentPassword, user.password)
+    if (!ok) {
+      return res.status(400).json({ success: false, error: "Current password incorrect" })
     }
-    const { currentPassword, newPassword } = req.body
-    try {
-      const user = await User.findById(req.user._id).select("+password")
-      if (!user) {
-        return res.status(404).json({ success: false, error: "User not found" })
-      }
-      const isMatch = await user.correctPassword(currentPassword, user.password)
-      if (!isMatch) {
-        return res.status(400).json({ success: false, error: "Current password is incorrect" })
-      }
-      user.password = newPassword
-      user.version = (user.version || 0) + 1
-      await user.save()
-      const payload = {
-        id: user._id,
-        role: user.role,
-        version: user.version,
-      }
-      const token = generateToken(payload)
-      res.json({ success: true, message: "Password changed successfully", token })
-    } catch (err) {
-      logger.error(`Change password error: ${err.message}`)
-      res.status(500).json({ success: false, error: "Server error" })
-    }
-  }),
+
+    user.password = req.body.newPassword
+    user.version += 1
+    await user.save()
+
+    const token = generateToken({ id: user._id, role: user.role, version: user.version })
+    res.json({ success: true, message: "Password changed", token })
+  })
 )
 
+// ──────────────────────────────────────────────────────────────────────────────
 // @route   GET /api/auth/test-connection
-// @desc    Test API connectivity
+// @desc    Simple connectivity check
 // @access  Public
+// ──────────────────────────────────────────────────────────────────────────────
 router.get("/test-connection", (req, res) => {
-  res.json({
-    success: true,
-    message: "API connection successful",
-    timestamp: new Date().toISOString(),
-  })
+  res.json({ success: true, message: "API is up!", timestamp: new Date().toISOString() })
 })
 
 export default router

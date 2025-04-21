@@ -1,227 +1,148 @@
-import { User } from "../models/index.js";
-import logger from "../logger.js";
+// server/src/sockets/permissions.js
+
 import mongoose from "mongoose";
+import { sendNotification } from "./notification.js";
+import logger from "../logger.js";
+
+const log = logger.create("socket:permissions");
+
+// ——— Socket event names ———
+const EVENTS = {
+  REQUEST:    "requestPhotoPermission",
+  REQUESTED:  "photoPermissionRequested",
+  RESPOND:    "respondToPhotoPermission",
+  RESPONDED:  "photoPermissionResponded",
+  ERROR:      "photoPermissionError"
+};
 
 /**
- * Send a notification when a user requests access to a private photo
- * @param {Object} io - Socket.IO server instance
- * @param {Object} requester - User requesting access
- * @param {Object} owner - Owner of the photo
- * @param {Object} permission - Permission request object
+ * Wraps a socket listener to catch and log errors.
+ * @param {Function} fn
+ * @returns {Function}
  */
-const sendPhotoPermissionRequestNotification = async (io, requester, owner, permission) => {
+const safeListener = fn => async payload => {
   try {
-    const ownerIdString = owner._id.toString();
-    const userConnections = io.userConnectionsMap || new Map();
-    
-    // Check if the owner has socket connections
-    if (userConnections.has(ownerIdString)) {
-      const notificationPayload = {
-        type: "photoRequest",
-        title: `${requester.nickname} requested access to your private photo`,
-        message: "Click to review the request",
-        sender: {
-          _id: requester._id,
-          nickname: requester.nickname,
-          photos: requester.photos
-        },
-        permissionId: permission._id,
-        photoId: permission.photo,
-        data: {
-          requester: {
-            _id: requester._id,
-            nickname: requester.nickname,
-            photos: requester.photos
-          },
-          photoId: permission.photo,
-          permissionId: permission._id
-        },
-        createdAt: new Date()
-      };
-
-      // Send to all owner's connected sockets
-      userConnections.get(ownerIdString).forEach(socketId => {
-        io.to(socketId).emit("photoPermissionRequestReceived", notificationPayload);
-        io.to(socketId).emit("notification", notificationPayload);
-      });
-      
-      logger.info(`Photo permission request notification sent to user ${ownerIdString}`);
-      
-      // Create a notification in database
-      try {
-        const Notification = mongoose.models.Notification || 
-          (await import("../models/Notification.js")).default;
-        
-        if (Notification) {
-          await Notification.create({
-            recipient: owner._id,
-            type: "photoRequest",
-            sender: requester._id,
-            content: `${requester.nickname} requested access to your private photo`,
-            reference: permission._id
-          });
-        }
-      } catch (notificationDbError) {
-        logger.debug(`Notification DB save skipped: ${notificationDbError.message}`);
-      }
-    } else {
-      logger.info(`User ${ownerIdString} is not connected. Photo request notification saved for later.`);
-    }
-  } catch (error) {
-    logger.error(`Error sending photo permission request notification: ${error.message}`);
+    await fn(payload);
+  } catch (err) {
+    log.error("Handler error:", err);
   }
 };
 
 /**
- * Send a notification when a photo owner responds to a permission request
- * @param {Object} io - Socket.IO server instance
- * @param {Object} owner - Owner of the photo
- * @param {Object} requester - User who requested access
- * @param {Object} permission - Permission request object
+ * Safely emit an event on a socket.
+ * @param {import("socket.io").Socket} socket
+ * @param {string} event
+ * @param {any} data
  */
-const sendPhotoPermissionResponseNotification = async (io, owner, requester, permission) => {
+const safeEmit = (socket, event, data) => {
   try {
-    const requesterIdString = requester._id.toString();
-    const userConnections = io.userConnectionsMap || new Map();
-    
-    // Check if the requester has socket connections
-    if (userConnections.has(requesterIdString)) {
-      const notificationPayload = {
-        type: "photoResponse",
-        title: `${owner.nickname} ${permission.status === "approved" ? "approved" : "rejected"} your photo request`,
-        message: permission.status === "approved" 
-          ? "You can now view the private photo." 
-          : "Your request to view the private photo was declined.",
-        sender: {
-          _id: owner._id,
-          nickname: owner.nickname,
-          photos: owner.photos
-        },
-        permissionId: permission._id,
-        photoId: permission.photo,
-        status: permission.status,
-        data: {
-          owner: {
-            _id: owner._id,
-            nickname: owner.nickname,
-            photos: owner.photos
-          },
-          photoId: permission.photo,
-          permissionId: permission._id,
-          status: permission.status
-        },
-        createdAt: new Date()
-      };
-
-      // Send to all requester's connected sockets
-      userConnections.get(requesterIdString).forEach(socketId => {
-        io.to(socketId).emit("photoPermissionResponseReceived", notificationPayload);
-        io.to(socketId).emit("notification", notificationPayload);
-      });
-      
-      logger.info(`Photo permission response notification sent to user ${requesterIdString}`);
-      
-      // Create a notification in database
-      try {
-        const Notification = mongoose.models.Notification || 
-          (await import("../models/Notification.js")).default;
-        
-        if (Notification) {
-          await Notification.create({
-            recipient: requester._id,
-            type: "photoResponse",
-            sender: owner._id,
-            content: `${owner.nickname} ${permission.status === "approved" ? "approved" : "rejected"} your photo request`,
-            reference: permission._id,
-            data: { status: permission.status }
-          });
-        }
-      } catch (notificationDbError) {
-        logger.debug(`Notification DB save skipped: ${notificationDbError.message}`);
-      }
-    } else {
-      logger.info(`User ${requesterIdString} is not connected. Photo response notification saved for later.`);
-    }
-  } catch (error) {
-    logger.error(`Error sending photo permission response notification: ${error.message}`);
+    socket.emit(event, data);
+  } catch (err) {
+    log.error(`Emit error [${event}]:`, err);
   }
 };
 
 /**
- * Register permission-related socket handlers
- * @param {Object} io - Socket.IO server instance
- * @param {Object} socket - Socket connection
- * @param {Map} userConnections - Map of user connections
+ * Handle a photo-permission request: acknowledge to requester and notify owner.
+ *
+ * @param {import("socket.io").Server} io
+ * @param {import("socket.io").Socket} socket
+ * @param {object} data
+ * @param {string} data.photoId
+ * @param {string} data.ownerId
+ * @param {string} data.permissionId
  */
-const registerPermissionHandlers = (io, socket, userConnections) => {
-  // Handle photo permission request
-  socket.on("requestPhotoPermission", async (data) => {
-    try {
-      const { photoId, ownerId } = data;
-      
-      if (!mongoose.Types.ObjectId.isValid(photoId) || !mongoose.Types.ObjectId.isValid(ownerId)) {
-        socket.emit("photoPermissionError", {
-          error: "Invalid photo ID or owner ID format",
-          requestId: `req-${photoId}-${socket.user._id}`
-        });
-        return;
-      }
-      
-      // Implementation would be handled by API endpoints, this is a passthrough
-      socket.emit("photoPermissionRequested", {
-        success: true,
-        photoId,
-        ownerId,
-        requestId: `req-${photoId}-${socket.user._id}`,
-        timestamp: Date.now()
-      });
-    } catch (error) {
-      logger.error(`Error handling photo permission request: ${error.message}`);
-      socket.emit("photoPermissionError", {
-        error: "Failed to process permission request",
-        requestId: data?.requestId || `req-${data?.photoId}-${socket.user._id}`
-      });
-    }
+export async function sendPhotoPermissionRequestNotification(io, socket, data) {
+  const { photoId, ownerId, permissionId } = data;
+  const requestId = `req-${photoId}-${socket.user._id}`;
+
+  // Validate IDs
+  if (
+    !mongoose.Types.ObjectId.isValid(photoId) ||
+    !mongoose.Types.ObjectId.isValid(ownerId) ||
+    !mongoose.Types.ObjectId.isValid(permissionId)
+  ) {
+    return safeEmit(socket, EVENTS.ERROR, { error: "Invalid ID format", requestId });
+  }
+
+  // Acknowledge back to requester
+  safeEmit(socket, EVENTS.REQUESTED, {
+    success:      true,
+    photoId,
+    ownerId,
+    permissionId,
+    requestId,
+    timestamp:    Date.now()
   });
-  
-  // Handle photo permission response
-  socket.on("respondToPhotoPermission", async (data) => {
-    try {
-      const { permissionId, status } = data;
-      
-      if (!mongoose.Types.ObjectId.isValid(permissionId)) {
-        socket.emit("photoPermissionError", {
-          error: "Invalid permission ID format",
-          requestId: `res-${permissionId}-${socket.user._id}`
-        });
-        return;
-      }
-      
-      if (!["approved", "rejected"].includes(status)) {
-        socket.emit("photoPermissionError", {
-          error: "Invalid status. Must be 'approved' or 'rejected'",
-          requestId: `res-${permissionId}-${socket.user._id}`
-        });
-        return;
-      }
-      
-      // Implementation would be handled by API endpoints, this is a passthrough
-      socket.emit("photoPermissionResponded", {
-        success: true,
-        permissionId,
-        status,
-        requestId: `res-${permissionId}-${socket.user._id}`,
-        timestamp: Date.now()
-      });
-    } catch (error) {
-      logger.error(`Error handling photo permission response: ${error.message}`);
-      socket.emit("photoPermissionError", {
-        error: "Failed to process permission response",
-        requestId: data?.requestId || `res-${data?.permissionId}-${socket.user._id}`
-      });
-    }
+
+  // Send an actual notification to owner
+  await sendNotification(io, {
+    recipient: ownerId,
+    sender:    socket.user._id,
+    type:      "photoRequest",
+    title:     `${socket.user.nickname || "Someone"} requested access to your private photo`,
+    content:   "Click to review the request",
+    reference: permissionId,
+    data:      { permissionId, photoId }
   });
-};
+}
+
+/**
+ * Handle a photo-permission response: acknowledge to owner and notify requester.
+ *
+ * @param {import("socket.io").Server} io
+ * @param {import("socket.io").Socket} socket
+ * @param {object} data
+ * @param {string} data.permissionId
+ * @param {'approved'|'rejected'} data.status
+ * @param {string} data.requesterId  // must be passed so we know whom to notify
+ */
+export async function sendPhotoPermissionResponseNotification(io, socket, data) {
+  const { permissionId, status, requesterId } = data;
+  const requestId = `res-${permissionId}-${socket.user._id}`;
+
+  // Validate inputs
+  if (
+    !mongoose.Types.ObjectId.isValid(permissionId) ||
+    !mongoose.Types.ObjectId.isValid(requesterId) ||
+    !["approved", "rejected"].includes(status)
+  ) {
+    return safeEmit(socket, EVENTS.ERROR, { error: "Invalid input", requestId });
+  }
+
+  // Acknowledge back to responder
+  safeEmit(socket, EVENTS.RESPONDED, {
+    success:      true,
+    permissionId,
+    status,
+    requestId,
+    timestamp:    Date.now()
+  });
+
+  // Send an actual notification to the original requester
+  await sendNotification(io, {
+    recipient: requesterId,
+    sender:    socket.user._id,
+    type:      "photoResponse",
+    title:     `${socket.user.nickname || "Someone"} ${status} your photo request`,
+    content:   status === "approved"
+                 ? "You can now view the private photo."
+                 : "Your request was declined.",
+    reference: permissionId,
+    data:      { permissionId, status }
+  });
+}
+
+/**
+ * Register photo-permission socket handlers for this connection.
+ *
+ * @param {import("socket.io").Server} io
+ * @param {import("socket.io").Socket} socket
+ */
+export function registerPermissionHandlers(io, socket) {
+  socket.on(EVENTS.REQUEST,   safeListener(data => sendPhotoPermissionRequestNotification(io, socket, data)));
+  socket.on(EVENTS.RESPOND,   safeListener(data => sendPhotoPermissionResponseNotification(io, socket, data)));
+}
 
 export {
   registerPermissionHandlers,

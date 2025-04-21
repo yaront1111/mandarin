@@ -12,10 +12,12 @@ import {
   FaSignal,
   FaExclamationTriangle
 } from "react-icons/fa";
-import socketService from "../services/socketService";
 import { toast } from "react-toastify";
+import PropTypes from "prop-types";
 import { logger } from "../utils";
 import styles from "../styles/videoCall.module.css";
+
+// NOTE: socketService is now passed as a prop instead of being imported directly
 
 const log = logger.create("VideoCall");
 
@@ -292,15 +294,21 @@ const formatDuration = (seconds) => {
 };
 
 // --- Main VideoCall Component ---
+// MODIFIED: Changed isActive to isOpen and added socketService as a prop
 const VideoCall = ({
-  isActive,
-  userId,
-  recipientId,
+  isOpen, // Renamed from isActive
+  user,
+  recipient,
   onEndCall,
+  socketService, // Added socketService as a prop
   isIncoming = false,
   callId = null,
-  recipientName = "User"
+  // recipientName is derived below now
 }) => {
+  // --- Derived values ---
+  const recipientId = recipient?._id;
+  const recipientName = recipient?.nickname || "User";
+  const userId = user?._id;
   // --- Refs ---
   const refs = {
     // Video elements
@@ -308,6 +316,7 @@ const VideoCall = ({
     remoteVideo: useRef(null),
     localPlaceholder: useRef(null),
     remotePlaceholder: useRef(null),
+
 
     // Visualization canvases
     qualityCanvas: useRef(null),
@@ -585,6 +594,142 @@ const VideoCall = ({
     }
   }, []);
 
+
+  // MODIFIED: Create an offer with socketService prop
+  const createOffer = useCallback(async (options = {}) => {
+    // Check if socketService prop is available
+    if (!socketService) {
+        log.warn("createOffer: socketService prop is not available.");
+        return;
+    }
+
+    if (!refs.peerConnection.current) {
+      log.error("Cannot create offer: Peer connection does not exist.");
+      return;
+    }
+
+    const pc = refs.peerConnection.current;
+
+    // Prevent offer creation if state is not stable or negotiation is ongoing
+    if (pc.signalingState !== "stable") {
+      log.warn(`Cannot create offer in signaling state: ${pc.signalingState}. Aborting.`);
+      return;
+    }
+
+    if (refs.negotiationInProgress.current) {
+      log.warn("Negotiation already in progress, skipping offer creation.");
+      return;
+    }
+
+    try {
+      refs.negotiationInProgress.current = true;
+
+      // Options: iceRestart can be used for recovery
+      const offerOptions = {
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+        iceRestart: options?.iceRestart || false,
+      };
+
+      const offer = await pc.createOffer(offerOptions);
+
+      // Check state again before setting local description
+      if (pc.signalingState !== "stable") {
+        log.warn(`Signaling state changed to ${pc.signalingState} during offer creation. Aborting.`);
+        refs.negotiationInProgress.current = false;
+        return;
+      }
+
+      await pc.setLocalDescription(offer);
+
+      // Send the offer via signaling using the socketService prop
+      const signalPayload = { type: "offer", sdp: pc.localDescription };
+      const signalId = rtcUtils.getSignalId(signalPayload);
+      refs.processedSignals.current.add(signalId);
+
+      socketService.emit("videoSignal", {
+        recipientId,
+        signal: signalPayload,
+        from: { userId, callId },
+      });
+
+      flushCandidateQueue();
+
+      // If caller, set a flag to show we're waiting for the call to be answered
+      if (!isIncoming && !refs.callAnswered.current) {
+        setIsWaitingForResponse(true);
+
+        // Set timeout for unanswered call
+        if (refs.unansweredCallTimeout.current) {
+          clearTimeout(refs.unansweredCallTimeout.current);
+        }
+
+        refs.unansweredCallTimeout.current = setTimeout(() => {
+          if (!refs.callAnswered.current && refs.isMounted.current) {
+            log.warn("Call went unanswered for too long. Ending call attempt.");
+            setConnectionError("No answer from the recipient. They may be away or unable to accept calls right now.");
+            setIsConnecting(false);
+            setIsWaitingForResponse(false);
+
+            // Auto-hang up after timeout
+            if (onEndCall) {
+              setTimeout(() => {
+                if (refs.isMounted.current) onEndCall();
+              }, 5000);
+            }
+          }
+        }, CONFIG.timeouts.unansweredCall);
+      }
+    } catch (err) {
+      log.error("Error creating or setting offer:", err);
+      setConnectionError(`Signaling Error: ${err.message}`);
+      refs.negotiationInProgress.current = false;
+      attemptConnectionRecovery(createOffer);
+    }
+  }, [recipientId, userId, callId, flushCandidateQueue, isIncoming, onEndCall, socketService]); // Added socketService
+
+
+  // Start the signaling process
+  const startSignaling = useCallback(async () => {
+    log.debug(`Starting signaling. Role: ${isIncoming ? "Callee (Incoming)" : "Caller (Outgoing)"}`);
+
+    if (refs.signallingTimeout.current) {
+      clearTimeout(refs.signallingTimeout.current);
+    }
+
+    // Timeout for the signaling phase
+    refs.signallingTimeout.current = setTimeout(() => {
+      if (refs.isMounted.current && !isConnected && isConnecting) {
+        log.error("Signaling timeout reached. Connection failed.");
+        setConnectionError(
+          "Connection timed out. The other user may be offline or have network issues."
+        );
+        setIsConnecting(false);
+        setIsWaitingForResponse(false);
+      }
+    }, CONFIG.timeouts.signaling);
+
+    try {
+      if (!refs.peerConnection.current) {
+        throw new Error("Peer connection not initialized before starting signaling.");
+      }
+
+      if (isIncoming) {
+        // Callee waits for an offer
+        log.debug("Incoming call: Waiting for offer from caller.");
+      } else {
+        // Caller initiates by creating an offer
+        log.debug("Outgoing call: Creating initial offer.");
+        await createOffer();
+      }
+    } catch (err) {
+      log.error("Error during signaling initiation:", err);
+      setConnectionError(`Signaling Error: ${err.message}`);
+      setIsConnecting(false);
+      setIsWaitingForResponse(false);
+    }
+  }, [isIncoming, createOffer, isConnected, isConnecting]);
+
   // Flush signals that arrived before the peer connection was ready
   const flushIncomingSignalQueue = useCallback(() => {
     if (refs.incomingSignalQueue.current.length > 0) {
@@ -599,8 +744,14 @@ const VideoCall = ({
     }
   }, []);
 
-  // Handle local ICE candidates gathering
+  // MODIFIED: Handle local ICE candidates gathering with socketService prop
   const handleICECandidate = useCallback((event) => {
+    // Check if socketService prop is available
+    if (!socketService) {
+        log.warn("handleICECandidate: socketService prop is not available.");
+        return;
+    }
+
     if (event.candidate && refs.peerConnection.current) {
       const fingerprint = rtcUtils.getCandidateFingerprint(event.candidate);
 
@@ -610,13 +761,14 @@ const VideoCall = ({
 
       refs.processedCandidates.current.add(fingerprint);
 
+      // Use the socketService prop to emit
       socketService.emit("videoSignal", {
         recipientId,
         signal: { type: "ice-candidate", candidate: event.candidate.toJSON() },
         from: { userId, callId },
       });
     }
-  }, [recipientId, userId, callId]);
+  }, [recipientId, userId, callId, socketService]); // Added socketService to dependency array
 
   // Handle remote tracks
   const handleRemoteTrack = useCallback((event) => {
@@ -864,95 +1016,14 @@ const VideoCall = ({
     flushIncomingSignalQueue
   ]);
 
-  // Create an offer
-  const createOffer = useCallback(async (options = {}) => {
-    if (!refs.peerConnection.current) {
-      log.error("Cannot create offer: Peer connection does not exist.");
-      return;
-    }
-
-    const pc = refs.peerConnection.current;
-
-    // Prevent offer creation if state is not stable or negotiation is ongoing
-    if (pc.signalingState !== "stable") {
-      log.warn(`Cannot create offer in signaling state: ${pc.signalingState}. Aborting.`);
-      return;
-    }
-
-    if (refs.negotiationInProgress.current) {
-      log.warn("Negotiation already in progress, skipping offer creation.");
-      return;
-    }
-
-    try {
-      refs.negotiationInProgress.current = true;
-
-      // Options: iceRestart can be used for recovery
-      const offerOptions = {
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: true,
-        iceRestart: options?.iceRestart || false,
-      };
-
-      const offer = await pc.createOffer(offerOptions);
-
-      // Check state again before setting local description
-      if (pc.signalingState !== "stable") {
-        log.warn(`Signaling state changed to ${pc.signalingState} during offer creation. Aborting.`);
-        refs.negotiationInProgress.current = false;
-        return;
-      }
-
-      await pc.setLocalDescription(offer);
-
-      // Send the offer via signaling
-      const signalPayload = { type: "offer", sdp: pc.localDescription };
-      const signalId = rtcUtils.getSignalId(signalPayload);
-      refs.processedSignals.current.add(signalId);
-
-      socketService.emit("videoSignal", {
-        recipientId,
-        signal: signalPayload,
-        from: { userId, callId },
-      });
-
-      flushCandidateQueue();
-
-      // If caller, set a flag to show we're waiting for the call to be answered
-      if (!isIncoming && !refs.callAnswered.current) {
-        setIsWaitingForResponse(true);
-
-        // Set timeout for unanswered call
-        if (refs.unansweredCallTimeout.current) {
-          clearTimeout(refs.unansweredCallTimeout.current);
-        }
-
-        refs.unansweredCallTimeout.current = setTimeout(() => {
-          if (!refs.callAnswered.current && refs.isMounted.current) {
-            log.warn("Call went unanswered for too long. Ending call attempt.");
-            setConnectionError("No answer from the recipient. They may be away or unable to accept calls right now.");
-            setIsConnecting(false);
-            setIsWaitingForResponse(false);
-
-            // Auto-hang up after timeout
-            if (onEndCall) {
-              setTimeout(() => {
-                if (refs.isMounted.current) onEndCall();
-              }, 5000);
-            }
-          }
-        }, CONFIG.timeouts.unansweredCall);
-      }
-    } catch (err) {
-      log.error("Error creating or setting offer:", err);
-      setConnectionError(`Signaling Error: ${err.message}`);
-      refs.negotiationInProgress.current = false;
-      attemptConnectionRecovery(createOffer);
-    }
-  }, [recipientId, userId, callId, flushCandidateQueue, isIncoming, onEndCall]);
-
-  // Create an answer
+  // MODIFIED: Create an answer with socketService prop
   const createAnswer = useCallback(async () => {
+    // Check if socketService prop is available
+    if (!socketService) {
+        log.warn("createAnswer: socketService prop is not available.");
+        return;
+    }
+
     if (!refs.peerConnection.current) {
       log.error("Cannot create answer: Peer connection does not exist.");
       return;
@@ -980,7 +1051,7 @@ const VideoCall = ({
 
       await pc.setLocalDescription(answer);
 
-      // Send the answer via signaling
+      // Send the answer via signaling using the socketService prop
       const signalPayload = { type: "answer", sdp: pc.localDescription };
       const signalId = rtcUtils.getSignalId(signalPayload);
       refs.processedSignals.current.add(signalId);
@@ -1003,7 +1074,7 @@ const VideoCall = ({
       refs.negotiationInProgress.current = false;
       attemptConnectionRecovery(createOffer);
     }
-  }, [recipientId, userId, callId, flushCandidateQueue, createOffer, isIncoming]);
+  }, [recipientId, userId, callId, flushCandidateQueue, createOffer, isIncoming, socketService]); // Added socketService
 
   // Socket signal handler for incoming WebRTC signaling messages
   const handleVideoSignal = useCallback((data) => {
@@ -1276,46 +1347,6 @@ const VideoCall = ({
     }, CONFIG.timeouts.reconnect);
   }, [retryCount, createPeerConnection]);
 
-  // Start the signaling process
-  const startSignaling = useCallback(async () => {
-    log.debug(`Starting signaling. Role: ${isIncoming ? "Callee (Incoming)" : "Caller (Outgoing)"}`);
-
-    if (refs.signallingTimeout.current) {
-      clearTimeout(refs.signallingTimeout.current);
-    }
-
-    // Timeout for the signaling phase
-    refs.signallingTimeout.current = setTimeout(() => {
-      if (refs.isMounted.current && !isConnected && isConnecting) {
-        log.error("Signaling timeout reached. Connection failed.");
-        setConnectionError(
-          "Connection timed out. The other user may be offline or have network issues."
-        );
-        setIsConnecting(false);
-        setIsWaitingForResponse(false);
-      }
-    }, CONFIG.timeouts.signaling);
-
-    try {
-      if (!refs.peerConnection.current) {
-        throw new Error("Peer connection not initialized before starting signaling.");
-      }
-
-      if (isIncoming) {
-        // Callee waits for an offer
-        log.debug("Incoming call: Waiting for offer from caller.");
-      } else {
-        // Caller initiates by creating an offer
-        log.debug("Outgoing call: Creating initial offer.");
-        await createOffer();
-      }
-    } catch (err) {
-      log.error("Error during signaling initiation:", err);
-      setConnectionError(`Signaling Error: ${err.message}`);
-      setIsConnecting(false);
-      setIsWaitingForResponse(false);
-    }
-  }, [isIncoming, createOffer, isConnected, isConnecting]);
 
   // Gather WebRTC stats for debugging and quality monitoring
   const getConnectionStats = useCallback(async () => {
@@ -1445,8 +1476,14 @@ const VideoCall = ({
     refs.callAnswered.current = false;
   }, []);
 
-  // Media control functions
+  // MODIFIED: Media control with socketService prop
   const toggleMute = useCallback(() => {
+    // Check if socketService prop is available
+    if (!socketService) {
+        log.warn("toggleMute: socketService prop is not available.");
+        return;
+    }
+
     if (!refs.localStream.current) return;
 
     const audioTracks = refs.localStream.current.getAudioTracks();
@@ -1460,16 +1497,23 @@ const VideoCall = ({
         canvasUtils.drawAudioLevel(refs.localAudioCanvas.current, newMuteState ? 0 : localAudioLevel);
       }
 
-      // Notify remote peer
+      // Notify remote peer using the socketService prop
       socketService.emit("videoMediaControl", {
         recipientId,
         type: "audio",
         muted: newMuteState,
       });
     }
-  }, [isLocalMuted, recipientId, localAudioLevel]);
+  }, [isLocalMuted, recipientId, localAudioLevel, socketService]); // Added socketService
 
+  // MODIFIED: Toggle video with socketService prop
   const toggleVideo = useCallback(() => {
+    // Check if socketService prop is available
+    if (!socketService) {
+        log.warn("toggleVideo: socketService prop is not available.");
+        return;
+    }
+
     if (!refs.localStream.current) return;
 
     const videoTracks = refs.localStream.current.getVideoTracks();
@@ -1485,22 +1529,34 @@ const VideoCall = ({
         }
       }
 
-      // Notify remote peer
+      // Notify remote peer using the socketService prop
       socketService.emit("videoMediaControl", {
         recipientId,
         type: "video",
         muted: newVideoState,
       });
     }
-  }, [isLocalVideoOff, recipientId]);
+  }, [isLocalVideoOff, recipientId, socketService]); // Added socketService
 
+  // MODIFIED: End call with socketService prop
   const handleEndCall = useCallback(() => {
+    // Check if socketService prop is available
+    if (!socketService) {
+        log.warn("handleEndCall: socketService prop is not available.");
+        // Still call onEndCall locally even if socket fails
+        if (onEndCall) {
+            onEndCall();
+        }
+        return;
+    }
+
+    // Use the socketService prop to emit
     socketService.emit("videoHangup", { recipientId });
 
     if (onEndCall) {
       onEndCall();
     }
-  }, [recipientId, onEndCall]);
+  }, [recipientId, onEndCall, socketService]); // Added socketService
 
   const toggleFullscreen = useCallback(() => {
     const container = document.querySelector(`.${styles.videoContainer}`);
@@ -1529,8 +1585,9 @@ const VideoCall = ({
   }, [closeConnection]);
 
   // Effect for setting up and initializing the call
+  // MODIFIED: Changed isActive to isOpen
   useEffect(() => {
-    if (isActive && refs.isMounted.current) {
+    if (isOpen && refs.isMounted.current) {
       // Reset connection state
       refs.connectionCompleted.current = false;
       refs.callAnswered.current = false;
@@ -1587,7 +1644,7 @@ const VideoCall = ({
         closeConnection();
         setCallDuration(0);
       };
-    } else if (!isActive && refs.peerConnection.current) {
+    } else if (!isOpen && refs.peerConnection.current) {
       // If call becomes inactive, ensure cleanup
       closeConnection();
 
@@ -1600,7 +1657,7 @@ const VideoCall = ({
       setCallDuration(0);
     }
   }, [
-    isActive,
+    isOpen, // Changed from isActive
     initializeMedia,
     createPeerConnection,
     startSignaling,
@@ -1608,15 +1665,22 @@ const VideoCall = ({
     getConnectionStats
   ]);
 
-  // Effect for setting up socket event listeners
+  // MODIFIED: Effect for setting up socket event listeners using socketService prop
   useEffect(() => {
-    if (!isActive) return;
+    // Check if required props are available
+    if (!isOpen || !socketService || !recipientId) {
+        log.debug("Socket listener effect skipped: component not open or props missing.");
+        return;
+    }
 
-    // Socket event handlers
-    const handleVideoSignalEvent = (data) => handleVideoSignal(data);
+    log.debug("Setting up socket listeners for VideoCall");
+
+    // Socket event handlers (ensure these are stable or defined outside/memoized if complex)
+    const handleVideoSignalEvent = (data) => handleVideoSignal(data); // handleVideoSignal is already useCallback
 
     const handleHangup = (data) => {
       if (data.userId === recipientId) {
+        log.info("Received hangup signal from peer.");
         toast.info("The other user has ended the call.");
         if (onEndCall) onEndCall();
       }
@@ -1624,6 +1688,7 @@ const VideoCall = ({
 
     const handleMediaControl = (data) => {
       if (data.userId === recipientId) {
+        log.debug(`Received media control: type=${data.type}, muted=${data.muted}`);
         if (data.type === "audio") {
           setIsRemoteMuted(data.muted);
           if (refs.remoteAudioCanvas.current) {
@@ -1640,24 +1705,29 @@ const VideoCall = ({
     };
 
     const handleErrorSignal = (data) => {
-      setConnectionError(`Remote Error: ${data?.error || 'Unknown issue'}`);
-      setIsConnecting(false);
-      setIsWaitingForResponse(false);
+       log.error(`Received remote error signal: ${data?.error}`);
+       setConnectionError(`Remote Error: ${data?.error || 'Unknown issue'}`);
+       setIsConnecting(false);
+       setIsWaitingForResponse(false);
     };
 
-    // Register event listeners
-    const listeners = [
-      socketService.on("videoSignal", handleVideoSignalEvent),
-      socketService.on("videoHangup", handleHangup),
-      socketService.on("videoMediaControl", handleMediaControl),
-      socketService.on("videoError", handleErrorSignal),
-    ];
+    // Register event listeners using the socketService prop
+    const unsubscribeSignal = socketService.on("videoSignal", handleVideoSignalEvent);
+    const unsubscribeHangup = socketService.on("videoHangup", handleHangup);
+    const unsubscribeMedia = socketService.on("videoMediaControl", handleMediaControl);
+    const unsubscribeError = socketService.on("videoError", handleErrorSignal);
 
     // Return cleanup function
     return () => {
-      listeners.forEach(removeListener => removeListener());
+      log.debug("Cleaning up socket listeners for VideoCall");
+      // Use the unsubscribe functions returned by socketService.on
+      if (typeof unsubscribeSignal === 'function') unsubscribeSignal();
+      if (typeof unsubscribeHangup === 'function') unsubscribeHangup();
+      if (typeof unsubscribeMedia === 'function') unsubscribeMedia();
+      if (typeof unsubscribeError === 'function') unsubscribeError();
     };
-  }, [isActive, recipientId, onEndCall, handleVideoSignal, remoteAudioLevel]);
+    // Add all stable dependencies used inside the effect
+  }, [isOpen, recipientId, onEndCall, handleVideoSignal, remoteAudioLevel, socketService]); // Added socketService
 
   // Effect for showing/hiding controls on mouse movement
   useEffect(() => {
@@ -1918,6 +1988,30 @@ const VideoCall = ({
       </div>
     </div>
   );
+};
+
+// MODIFIED: Updated PropTypes with new prop names
+VideoCall.propTypes = {
+  isOpen: PropTypes.bool.isRequired, // Renamed from isActive
+  user: PropTypes.shape({
+    _id: PropTypes.string.isRequired,
+  }),
+  recipient: PropTypes.shape({
+    _id: PropTypes.string.isRequired,
+    nickname: PropTypes.string,
+  }),
+  onEndCall: PropTypes.func.isRequired,
+  socketService: PropTypes.object.isRequired, // Added socketService prop type
+  isIncoming: PropTypes.bool,
+  callId: PropTypes.string,
+};
+
+// MODIFIED: Updated DefaultProps
+VideoCall.defaultProps = {
+  isIncoming: false,
+  callId: null,
+  user: null,
+  recipient: null,
 };
 
 export default VideoCall;

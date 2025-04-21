@@ -1,414 +1,230 @@
-// models/Story.js - Production-ready implementation with optimized queries and robust error handling
-import mongoose from "mongoose"
-import logger from "../logger.js"
+// models/Story.js
+import mongoose from 'mongoose';
+import logger from '../logger.js';
 
-const { Schema, model } = mongoose
+const { Schema, model, Types, Error: MongooseError } = mongoose;
+const { ObjectId } = Types;
 
-// Define a reaction schema for story reactions
+// -----------------------------
+// Helper: Safe ObjectId casting
+// -----------------------------
+function safeObjectId(value, fieldName) {
+  if (!value) return null;
+  if (value instanceof ObjectId) return value;
+  if (ObjectId.isValid(value)) return new ObjectId(value);
+  throw new MongooseError.CastError('ObjectId', value, fieldName);
+}
+
+// -------------------------------------
+// Helper: simple pagination for queries
+// -------------------------------------
+async function paginate(query, { page = 1, limit = 20 } = {}) {
+  const skip = (page - 1) * limit;
+  const [docs, total] = await Promise.all([
+    query.skip(skip).limit(limit).lean().exec(),
+    query.model.countDocuments(query.getQuery()),
+  ]);
+  return {
+    data: docs,
+    pagination: { total, page, pages: Math.ceil(total / limit), limit },
+  };
+}
+
+// -------------------------
+// Sub-Schemas
+// -------------------------
 const ReactionSchema = new Schema({
+  user:    { type: ObjectId, ref: 'User', required: true, index: true },
+  type:    { type: String, enum: ['like','love','laugh','wow','sad','angry'], default: 'like' },
+  createdAt:{ type: Date, default: Date.now },
+  updatedAt:{ type: Date, default: Date.now },
+}, { _id: false });
+
+const ViewerSchema = new Schema({
+  user:     { type: ObjectId, ref: 'User', required: true, index: true },
+  viewedAt: { type: Date, default: Date.now },
+}, { _id: false });
+
+// -------------------------
+// Main Story Schema
+// -------------------------
+const StorySchema = new Schema({
   user: {
-    type: Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
+    type: ObjectId,
+    ref: 'User',
+    required: [true, 'User is required'],
     index: true,
   },
   type: {
     type: String,
-    enum: ["like", "love", "laugh", "wow", "sad", "angry"],
-    default: "like",
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  },
-})
-
-// Define a viewer schema for tracking story views
-const ViewerSchema = new Schema({
-  user: {
-    type: Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
+    enum: ['image','video','text'],
+    required: [true, 'Story type is required'],
     index: true,
   },
-  viewedAt: {
-    type: Date,
-    default: Date.now,
+  media:    { type: String, trim: true },
+  mediaUrl: { type: String, trim: true },
+  mediaType:{ type: String, enum: ['image','video','text'] },
+  content:  { type: String, trim: true },
+  text:     { type: String, trim: true },
+  backgroundColor: { type: String, default: '#000000' },
+  backgroundStyle: { type: String, trim: true },
+  fontStyle:       { type: String, trim: true },
+  extraStyles:     { type: Schema.Types.Mixed, default: {} },
+  duration: {
+    type: Number,
+    default: 24,
+    min: [1, 'Duration must be at least 1 hour'],
+    max: [72, 'Duration cannot exceed 72 hours'],
   },
-})
+  viewers:   [ViewerSchema],
+  reactions: [ReactionSchema],
+  expiresAt: { type: Date, index: true },
+  isPremium: { type: Boolean, default: false },
+  userData:  { type: Schema.Types.Mixed, default: null },
+}, {
+  timestamps: true,
+  toJSON:    { virtuals: true },
+  toObject:  { virtuals: true },
+});
 
-/**
- * Story schema - user-created content with various types (image, video, text)
- */
-const StorySchema = new Schema(
-  {
-    // User who created the story
-    user: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-      required: [true, "User is required"],
-      index: true,
-    },
+// -------------------------
+// Virtuals
+// -------------------------
+StorySchema.virtual('isExpired').get(function() {
+  return this.expiresAt ? new Date() > this.expiresAt : true;
+});
 
-    // Type of story
-    type: {
-      type: String,
-      enum: {
-        values: ["image", "video", "text"],
-        message: "Story type must be image, video, or text",
-      },
-      required: [true, "Story type is required"],
-      index: true,
-    },
+StorySchema.virtual('viewCount').get(function() {
+  return this.viewers?.length || 0;
+});
 
-    // Added for client-side compatibility
-    mediaType: {
-      type: String,
-      enum: ["image", "video", "text"],
-    },
+StorySchema.virtual('reactionCount').get(function() {
+  return this.reactions?.length || 0;
+});
 
-    // Media URL for image/video stories
-    media: {
-      type: String,
-    },
+// -------------------------
+// Indexes
+// -------------------------
+StorySchema.index({ user: 1, expiresAt: 1 });
+StorySchema.index({ 'viewers.user': 1, expiresAt: 1 });
+StorySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-    // For consistency with client expectations
-    mediaUrl: {
-      type: String,
-    },
-
-    // Content for text stories
-    content: {
-      type: String,
-      trim: true,
-      validate: {
-        validator: function (val) {
-          // Text stories must have content
-          if (this.type === "text" && (!val || val.trim().length === 0)) {
-            return false
-          }
-          return true
-        },
-        message: "Text stories must have content",
-      },
-    },
-
-    // Added for client-side compatibility
-    text: {
-      type: String,
-    },
-
-    // Background color (primarily for text stories)
-    backgroundColor: {
-      type: String,
-      default: "#000000",
-    },
-
-    // Added for client-side compatibility
-    backgroundStyle: {
-      type: String,
-    },
-
-    // Font style for text stories
-    fontStyle: {
-      type: String,
-    },
-
-    // Store extra styles as an object
-    extraStyles: {
-      type: Schema.Types.Mixed,
-      default: {},
-    },
-
-    // Duration in hours that the story should be visible
-    duration: {
-      type: Number,
-      default: 24, // Duration in hours
-      min: [1, "Duration must be at least 1 hour"],
-      max: [72, "Duration cannot exceed 72 hours"],
-    },
-
-    // Users who have viewed the story
-    viewers: [ViewerSchema],
-
-    // User reactions to the story
-    reactions: [ReactionSchema],
-
-    // When the story was created
-    createdAt: {
-      type: Date,
-      default: Date.now,
-      index: true,
-    },
-
-    // When the story expires
-    expiresAt: {
-      type: Date,
-      default: function () {
-        const date = new Date(this.createdAt || Date.now())
-        date.setHours(date.getHours() + (this.duration || 24))
-        return date
-      },
-      index: true,
-    },
-
-    // Flag for highlighting premium content
-    isPremium: {
-      type: Boolean,
-      default: false,
-    },
-
-    // Cached user data for faster retrieval
-    userData: {
-      type: Schema.Types.Mixed,
-      default: null,
-    },
-  },
-  {
-    timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
-  },
-)
-
-// Virtual for determining if a story is expired
-StorySchema.virtual("isExpired").get(function () {
-  if (!this.createdAt) return true
-  return new Date() > this.expiresAt
-})
-
-// Virtual for view count
-StorySchema.virtual("viewCount").get(function () {
-  return this.viewers ? this.viewers.length : 0
-})
-
-// Virtual for reaction count
-StorySchema.virtual("reactionCount").get(function () {
-  return this.reactions ? this.reactions.length : 0
-})
-
-// Middleware to ensure consistent data before saving
-StorySchema.pre("save", function (next) {
+// -------------------------------------------------
+// Pre-save: cast IDs, normalize fields, set expiresAt
+// -------------------------------------------------
+StorySchema.pre('save', function(next) {
   try {
-    // Calculate expiration date
-    const expiryDate = new Date(this.createdAt || Date.now())
-    expiryDate.setHours(expiryDate.getHours() + (this.duration || 24))
-    this.expiresAt = expiryDate
+    // Cast user ID
+    this.user = safeObjectId(this.user, 'user');
 
-    // Ensure mediaType matches type for consistency
-    if (this.type && !this.mediaType) {
-      this.mediaType = this.type
+    // Normalize media vs mediaUrl
+    if (this.media && !this.mediaUrl) this.mediaUrl = this.media;
+    if (this.mediaUrl && !this.media) this.media = this.mediaUrl;
+
+    // Normalize content vs text
+    if (this.content && !this.text) this.text = this.content;
+    if (this.text && !this.content) this.content = this.text;
+
+    // Ensure mediaType
+    if (!this.mediaType) {
+      this.mediaType = this.type;
     }
 
-    // Ensure text and content are consistent
-    if (this.content && !this.text && this.type === "text") {
-      this.text = this.content
+    // Validate required fields per type
+    if ((this.type === 'image' || this.type === 'video') && !this.media) {
+      throw new MongooseError.ValidationError(`Media is required for ${this.type} stories`);
+    }
+    if (this.type === 'text' && !this.content) {
+      throw new MongooseError.ValidationError('Content is required for text stories');
     }
 
-    if (this.text && !this.content && this.type === "text") {
-      this.content = this.text
-    }
+    // Calculate expiresAt based on duration
+    const base = this.createdAt || new Date();
+    const exp  = new Date(base);
+    exp.setHours(exp.getHours() + (this.duration || 24));
+    this.expiresAt = exp;
 
-    // Ensure mediaUrl matches media
-    if (this.media && !this.mediaUrl) {
-      this.mediaUrl = this.media
-    }
-
-    if (this.mediaUrl && !this.media) {
-      this.media = this.mediaUrl
-    }
-
-    // Ensure backgroundStyle matches backgroundColor
-    if (this.backgroundColor && !this.backgroundStyle) {
-      this.backgroundStyle = this.backgroundColor
-    }
-
-    if (this.backgroundStyle && !this.backgroundColor) {
-      this.backgroundColor = this.backgroundStyle
-    }
-
-    // Type-specific validations
-    if ((this.type === "image" || this.type === "video") && !this.media && !this.mediaUrl) {
-      return next(new Error("Media is required for image and video stories"))
-    }
-
-    if (this.type === "text" && !this.content && !this.text) {
-      return next(new Error("Content is required for text stories"))
-    }
-
-    next()
-  } catch (error) {
-    logger.error(`Error in Story pre-save middleware: ${error.message}`)
-    next(error)
+    next();
+  } catch (err) {
+    logger.error(`Story pre-save error: ${err.message}`);
+    next(err);
   }
-})
+});
 
-// Create TTL index on expiresAt for auto-deletion of expired stories
-StorySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
-
-// Create compound index for efficient user story queries
-StorySchema.index({ user: 1, expiresAt: 1 })
-
-// Create compound index for efficient viewer queries
-StorySchema.index({ "viewers.user": 1, expiresAt: 1 })
-
-/**
- * Static method to find active stories by user
- * @param {ObjectId|String} userId - User ID
- * @param {Object} options - Query options
- * @returns {Promise<Array>} Active stories
- */
-StorySchema.statics.findActiveByUser = async function (userId, options = {}) {
-  const { page = 1, limit = 20 } = options
-  const skip = (page - 1) * limit
-
+// ---------------------------------
+// Static: find active stories by user
+// ---------------------------------
+StorySchema.statics.findActiveByUser = async function(userId, opts = {}) {
   try {
-    const now = new Date()
-
-    const query = {
-      user: userId,
-      expiresAt: { $gt: now },
-    }
-
-    const [stories, total] = await Promise.all([
-      this.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate("user", "nickname username name profilePicture avatar")
-        .lean(),
-      this.countDocuments(query),
-    ])
-
-    return {
-      data: stories,
-      pagination: {
-        total,
-        page,
-        pages: Math.ceil(total / limit),
-        limit,
-      },
-    }
-  } catch (error) {
-    logger.error(`Error in findActiveByUser: ${error.message}`)
-    throw error
+    const userObj = safeObjectId(userId, 'userId');
+    const now     = new Date();
+    const query   = this.find({ user: userObj, expiresAt: { $gt: now } }).sort({ createdAt: -1 });
+    return paginate(query, opts);
+  } catch (err) {
+    logger.error(`findActiveByUser error: ${err.message}`);
+    throw err;
   }
-}
+};
 
-/**
- * Static method to find all active stories for the feed
- * @param {Object} options - Query options
- * @returns {Promise<Array>} Feed stories
- */
-StorySchema.statics.findAllActive = async function (options = {}) {
-  const { page = 1, limit = 50 } = options
-  const skip = (page - 1) * limit
-
+// ---------------------------------
+// Static: find all active stories
+// ---------------------------------
+StorySchema.statics.findAllActive = async function(opts = {}) {
   try {
-    const now = new Date()
-
-    // Get all active stories
-    const query = {
-      expiresAt: { $gt: now },
-    }
-
-    const [stories, total] = await Promise.all([
-      this.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate("user", "nickname username name profilePicture avatar")
-        .lean(),
-      this.countDocuments(query),
-    ])
-
-    return {
-      data: stories,
-      pagination: {
-        total,
-        page,
-        pages: Math.ceil(total / limit),
-        limit,
-      },
-    }
-  } catch (error) {
-    logger.error(`Error in findAllActive: ${error.message}`)
-    throw error
+    const now   = new Date();
+    const query = this.find({ expiresAt: { $gt: now } }).sort({ createdAt: -1 });
+    return paginate(query, opts);
+  } catch (err) {
+    logger.error(`findAllActive error: ${err.message}`);
+    throw err;
   }
-}
+};
 
-/**
- * Instance method to add a viewer
- * @param {ObjectId|String} userId - Viewing user's ID
- * @returns {Promise<Object>} Updated story
- */
-StorySchema.methods.addViewer = async function (userId) {
-  // Check if already viewed
-  const alreadyViewed = this.viewers.some((v) => v.user && v.user.toString() === userId.toString())
-
-  if (!alreadyViewed) {
-    this.viewers.push({
-      user: userId,
-      viewedAt: new Date(),
-    })
-
-    return this.save()
+// ---------------------------------
+// Instance: add a viewer
+// ---------------------------------
+StorySchema.methods.addViewer = async function(userId) {
+  const uid = safeObjectId(userId, 'viewer.user');
+  if (!this.viewers.some(v => v.user.equals(uid))) {
+    this.viewers.push({ user: uid, viewedAt: new Date() });
+    return this.save();
   }
+  return this;
+};
 
-  return this
-}
-
-/**
- * Instance method to add a reaction
- * @param {ObjectId|String} userId - User ID adding the reaction
- * @param {String} type - Reaction type
- * @returns {Promise<Object>} Updated story
- */
-StorySchema.methods.addReaction = async function (userId, type = "like") {
-  // Check for existing reaction
-  const existingIndex = this.reactions.findIndex((r) => r.user && r.user.toString() === userId.toString())
-
-  if (existingIndex >= 0) {
-    // Update existing reaction
-    this.reactions[existingIndex].type = type
-    this.reactions[existingIndex].updatedAt = new Date()
+// ---------------------------------
+// Instance: add or update reaction
+// ---------------------------------
+StorySchema.methods.addReaction = async function(userId, type = 'like') {
+  const uid = safeObjectId(userId, 'reaction.user');
+  const idx = this.reactions.findIndex(r => r.user.equals(uid));
+  if (idx >= 0) {
+    this.reactions[idx].type = type;
+    this.reactions[idx].updatedAt = new Date();
   } else {
-    // Add new reaction
-    this.reactions.push({
-      user: userId,
-      type,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
+    this.reactions.push({ user: uid, type, createdAt: new Date(), updatedAt: new Date() });
   }
+  return this.save();
+};
 
-  return this.save()
-}
+// ---------------------------------
+// Instance: remove a reaction
+// ---------------------------------
+StorySchema.methods.removeReaction = async function(userId) {
+  const uid = safeObjectId(userId, 'reaction.user');
+  this.reactions = this.reactions.filter(r => !r.user.equals(uid));
+  return this.save();
+};
 
-/**
- * Instance method to remove a reaction
- * @param {ObjectId|String} userId - User ID removing the reaction
- * @returns {Promise<Object>} Updated story
- */
-StorySchema.methods.removeReaction = async function (userId) {
-  this.reactions = this.reactions.filter((r) => !r.user || r.user.toString() !== userId.toString())
+// ---------------------------------
+// Instance: check if viewed by user
+// ---------------------------------
+StorySchema.methods.isViewedBy = function(userId) {
+  const uid = safeObjectId(userId, 'isViewedBy.user');
+  return this.viewers.some(v => v.user.equals(uid));
+};
 
-  return this.save()
-}
-
-/**
- * Check if a user has viewed this story
- * @param {ObjectId|String} userId - User ID to check
- * @returns {Boolean} Whether the user has viewed the story
- */
-StorySchema.methods.isViewedBy = function (userId) {
-  return this.viewers.some((v) => v.user && v.user.toString() === userId.toString())
-}
-
-const Story = model("Story", StorySchema)
-
-export default Story
+// -------------------------
+// Export Model
+// -------------------------
+export default model('Story', StorySchema);

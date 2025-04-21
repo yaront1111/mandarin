@@ -1,451 +1,288 @@
+// src/socket/registerCallHandlers.js
+
 import { User } from "../models/index.js";
 import logger from "../logger.js";
 import mongoose from "mongoose";
 
 /**
- * Register call and video-related socket handlers
- * @param {Object} io - Socket.IO server instance
- * @param {Object} socket - Socket connection
- * @param {Map} userConnections - Map of user connections
- * @param {Object} rateLimiters - Rate limiters
+ * Validate that a string is a valid Mongo ObjectId
+ * @param {string} id
+ * @returns {boolean}
  */
-const registerCallHandlers = (io, socket, userConnections, rateLimiters) => {
+const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
+
+/**
+ * Deliver a socket event to a user with retry logic
+ * @param {Object} io - Socket.IO server instance
+ * @param {Map<string, Set<string>>} userConnections
+ * @param {string} recipientId
+ * @param {string} eventName
+ * @param {Function} buildPayload - () => payload object
+ * @param {Object}   [opts]
+ * @param {number}   [opts.maxAttempts=3]
+ * @param {number}   [opts.delayMs=1000]
+ * @param {string}   [opts.errorEvent]   - event to emit on failure back to sender
+ * @param {string}   [opts.errorMessage] - message to include in error payload
+ * @param {string}   [opts.fromSocketId]  - socket ID of sender to notify on final failure
+ */
+const deliverEventToUser = async (
+  io,
+  userConnections,
+  recipientId,
+  eventName,
+  buildPayload,
+  {
+    maxAttempts = 3,
+    delayMs = 1000,
+    errorEvent,
+    errorMessage,
+    fromSocketId,
+  } = {}
+) => {
+  if (!userConnections.has(recipientId)) {
+    if (errorEvent && fromSocketId) {
+      io.to(fromSocketId).emit(errorEvent, { error: "Recipient is offline", recipientId });
+    }
+    return false;
+  }
+
+  let attempts = 0,
+    succeeded = false;
+
+  const tryOnce = async () => {
+    attempts++;
+    const payload = buildPayload();
+    const socketIds = userConnections.get(recipientId);
+
+    for (const sid of socketIds) {
+      try {
+        io.to(sid).emit(eventName, payload);
+        succeeded = true;
+      } catch (err) {
+        logger.error(`Error emitting ${eventName} to ${sid}: ${err.message}`);
+      }
+    }
+
+    if (!succeeded && attempts < maxAttempts) {
+      logger.debug(`${eventName} attempt ${attempts} failed, retrying in ${delayMs}ms`);
+      await new Promise((r) => setTimeout(r, delayMs));
+      await tryOnce();
+    } else if (!succeeded && errorEvent && fromSocketId) {
+      logger.error(`${eventName} failed after ${attempts} attempts`);
+      io.to(fromSocketId).emit(errorEvent, { error: errorMessage, recipientId });
+    }
+
+    return succeeded;
+  };
+
+  return tryOnce();
+};
+
+/**
+ * Register call & video socket handlers
+ * @param {import("socket.io").Server} io
+ * @param {import("socket.io").Socket} socket
+ * @param {Map<string, Set<string>>} userConnections
+ * @param {Object} rateLimiters
+ */
+export const registerCallHandlers = (io, socket, userConnections, rateLimiters) => {
   const { callLimiter } = rateLimiters;
 
-  // WebRTC signaling - pass signal data between peers
-  socket.on("videoSignal", (data) => {
+  socket.on("videoSignal", async (data) => {
     try {
       const { recipientId, signal, from } = data;
-
-      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
-        logger.error(`Invalid recipient ID in video signal: ${recipientId}`);
-        return;
+      if (!isValidId(recipientId) || !signal) {
+        logger.error("Invalid videoSignal payload", data);
+        return socket.emit("videoError", { error: "Invalid video signal", recipientId });
       }
 
-      if (!signal) {
-        logger.error("Missing signal data in video signal message");
-        return;
-      }
-
-      logger.debug(`Forwarding video signal from ${socket.user._id} to ${recipientId}`);
-
-      // Forward the signal to the recipient with retry logic
-      if (userConnections.has(recipientId)) {
-        let delivered = false;
-        let deliveryAttempts = 0;
-        const maxDeliveryAttempts = 3;
-
-        const attemptDelivery = (socketIds) => {
-          deliveryAttempts++;
-
-          let currentDeliverySuccess = false;
-          socketIds.forEach((recipientSocketId) => {
-            try {
-              io.to(recipientSocketId).emit("videoSignal", {
-                signal,
-                userId: socket.user._id,
-                from: from || {
-                  userId: socket.user._id,
-                  name: socket.user.nickname || "User",
-                },
-                timestamp: Date.now(),
-              });
-              delivered = true;
-              currentDeliverySuccess = true;
-            } catch (err) {
-              logger.error(`Error sending signal to socket ${recipientSocketId}: ${err.message}`);
-            }
-          });
-
-          // If delivery failed and we haven't reached max attempts, try again
-          if (!currentDeliverySuccess && deliveryAttempts < maxDeliveryAttempts) {
-            setTimeout(() => {
-              // Get fresh socket IDs in case they've changed
-              const currentSocketIds = userConnections.get(recipientId);
-              if (currentSocketIds && currentSocketIds.size > 0) {
-                attemptDelivery(currentSocketIds);
-              }
-            }, 1000); // Wait 1 second before retry
-          }
-        };
-
-        attemptDelivery(userConnections.get(recipientId));
-
-        if (!delivered) {
-          // Notify sender that delivery failed
-          socket.emit("videoError", {
-            error: "Failed to deliver signal to recipient",
-            recipientId,
-          });
+      logger.debug(`videoSignal from ${socket.user._id} → ${recipientId}`);
+      await deliverEventToUser(
+        io,
+        userConnections,
+        recipientId,
+        "videoSignal",
+        () => ({
+          signal,
+          userId: socket.user._id,
+          from: from || {
+            userId: socket.user._id,
+            name: socket.user.nickname || "User",
+          },
+          timestamp: Date.now(),
+        }),
+        {
+          maxAttempts: 3,
+          delayMs: 1000,
+          errorEvent: "videoError",
+          errorMessage: "Failed to deliver signal to recipient",
+          fromSocketId: socket.id,
         }
-      } else {
-        // Recipient is offline
-        socket.emit("videoError", {
-          error: "Recipient is offline",
-          recipientId,
-        });
-      }
-    } catch (error) {
-      logger.error(`Error handling video signal: ${error.message}`);
+      );
+    } catch (err) {
+      logger.error(`videoSignal handler error: ${err.message}`);
       socket.emit("videoError", { error: "Signal processing error" });
     }
   });
 
-  // Handle peer ID exchange with guaranteed delivery
-  socket.on("peerIdExchange", (data) => {
+  socket.on("peerIdExchange", async (data) => {
     try {
       const { recipientId, peerId, from, isFallback } = data;
-
-      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
-        logger.error(`Invalid recipient ID in peerIdExchange: ${recipientId}`);
-        return;
+      if (!isValidId(recipientId) || !peerId) {
+        logger.error("Invalid peerIdExchange payload", data);
+        return socket.emit("videoError", { error: "Invalid peer ID exchange", recipientId });
       }
 
-      if (!peerId) {
-        logger.error(`Missing peerId in peerIdExchange request`);
-        return;
-      }
-
-      logger.debug(`Processing peerIdExchange from ${socket.user._id} to ${recipientId} with ID ${peerId}`);
-
-      // Make sure we have proper from data
-      const fromData = from || {
-        userId: socket.user._id,
-        name: socket.user.nickname || "User"
-      };
-
-      // Forward the peer ID to the recipient with retry logic
-      if (userConnections.has(recipientId)) {
-        let delivered = false;
-        let deliveryAttempts = 0;
-        const maxDeliveryAttempts = 5; // More retries for critical peerId exchange
-
-        const attemptDelivery = (socketIds) => {
-          deliveryAttempts++;
-
-          let currentDeliverySuccess = false;
-          socketIds.forEach((recipientSocketId) => {
-            try {
-              io.to(recipientSocketId).emit("peerIdExchange", {
-                peerId,
-                userId: socket.user._id,
-                from: fromData,
-                isFallback: isFallback || false,
-                timestamp: Date.now()
-              });
-              delivered = true;
-              currentDeliverySuccess = true;
-              logger.debug(`Successfully delivered peerIdExchange to socket ${recipientSocketId}`);
-            } catch (err) {
-              logger.error(`Error sending peerIdExchange to socket ${recipientSocketId}: ${err.message}`);
-            }
-          });
-
-          // If delivery failed and we haven't reached max attempts, try again
-          if (!currentDeliverySuccess && deliveryAttempts < maxDeliveryAttempts) {
-            logger.debug(`peerIdExchange delivery attempt ${deliveryAttempts} failed, retrying in 800ms`);
-            setTimeout(() => {
-              // Get fresh socket IDs in case they've changed
-              const currentSocketIds = userConnections.get(recipientId);
-              if (currentSocketIds && currentSocketIds.size > 0) {
-                attemptDelivery(currentSocketIds);
-              }
-            }, 800); // Wait 800ms before retry
-          } else if (!currentDeliverySuccess) {
-            logger.error(`Failed to deliver peerIdExchange after ${maxDeliveryAttempts} attempts`);
-            socket.emit("videoError", {
-              error: "Failed to deliver peer ID to recipient after multiple attempts",
-              recipientId
-            });
-          }
-        };
-
-        attemptDelivery(userConnections.get(recipientId));
-      } else {
-        // Recipient is offline
-        logger.warn(`Recipient ${recipientId} is offline for peerIdExchange`);
-        socket.emit("videoError", {
-          error: "Recipient is offline",
-          recipientId,
-        });
-      }
-    } catch (error) {
-      logger.error(`Error handling peerIdExchange: ${error.message}`);
+      logger.debug(`peerIdExchange ${peerId} from ${socket.user._id} → ${recipientId}`);
+      await deliverEventToUser(
+        io,
+        userConnections,
+        recipientId,
+        "peerIdExchange",
+        () => ({
+          peerId,
+          userId: socket.user._id,
+          from: from || { userId: socket.user._id, name: socket.user.nickname || "User" },
+          isFallback: Boolean(isFallback),
+          timestamp: Date.now(),
+        }),
+        {
+          maxAttempts: 5,
+          delayMs: 800,
+          errorEvent: "videoError",
+          errorMessage: "Failed to deliver peer ID after multiple attempts",
+          fromSocketId: socket.id,
+        }
+      );
+    } catch (err) {
+      logger.error(`peerIdExchange handler error: ${err.message}`);
       socket.emit("videoError", { error: "Peer ID exchange error" });
     }
   });
 
-  // Handle video call hangup
-  socket.on("videoHangup", (data) => {
+  socket.on("videoHangup", async ({ recipientId }) => {
     try {
-      const { recipientId } = data;
-
-      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
-        logger.error(`Invalid recipient ID in video hangup: ${recipientId}`);
+      if (!isValidId(recipientId)) {
+        logger.error(`Invalid videoHangup recipientId: ${recipientId}`);
         return;
       }
-
-      logger.debug(`Forwarding video hangup from ${socket.user._id} to ${recipientId}`);
-
-      // Use guaranteed delivery for hangup as well
-      if (userConnections.has(recipientId)) {
-        let delivered = false;
-        let deliveryAttempts = 0;
-        const maxDeliveryAttempts = 3;
-
-        const attemptDelivery = (socketIds) => {
-          deliveryAttempts++;
-
-          let currentDeliverySuccess = false;
-          socketIds.forEach((recipientSocketId) => {
-            try {
-              io.to(recipientSocketId).emit("videoHangup", {
-                userId: socket.user._id,
-                timestamp: Date.now(),
-              });
-              delivered = true;
-              currentDeliverySuccess = true;
-            } catch (err) {
-              logger.error(`Error sending hangup to socket ${recipientSocketId}: ${err.message}`);
-            }
-          });
-
-          // If delivery failed and we haven't reached max attempts, try again
-          if (!currentDeliverySuccess && deliveryAttempts < maxDeliveryAttempts) {
-            setTimeout(() => {
-              // Get fresh socket IDs in case they've changed
-              const currentSocketIds = userConnections.get(recipientId);
-              if (currentSocketIds && currentSocketIds.size > 0) {
-                attemptDelivery(currentSocketIds);
-              }
-            }, 1000); // Wait 1 second before retry
-          }
-        };
-
-        attemptDelivery(userConnections.get(recipientId));
-      }
-    } catch (error) {
-      logger.error(`Error handling video hangup: ${error.message}`);
+      logger.debug(`videoHangup from ${socket.user._id} → ${recipientId}`);
+      await deliverEventToUser(
+        io,
+        userConnections,
+        recipientId,
+        "videoHangup",
+        () => ({ userId: socket.user._id, timestamp: Date.now() }),
+        { maxAttempts: 3, delayMs: 1000 }
+      );
+    } catch (err) {
+      logger.error(`videoHangup handler error: ${err.message}`);
     }
   });
 
-  // Handle video media control events (mute audio/video)
-  socket.on("videoMediaControl", (data) => {
+  socket.on("videoMediaControl", ({ recipientId, type, muted }) => {
     try {
-      const { recipientId, type, muted } = data;
-
-      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
-        logger.error(`Invalid recipient ID in media control: ${recipientId}`);
+      if (!isValidId(recipientId) || !["audio", "video"].includes(type)) {
+        logger.error("Invalid videoMediaControl payload", { recipientId, type });
         return;
       }
-
-      if (!type || !["audio", "video"].includes(type)) {
-        logger.error(`Invalid media control type: ${type}`);
-        return;
-      }
-
-      logger.debug(`Forwarding ${type} control (muted: ${muted}) from ${socket.user._id} to ${recipientId}`);
-
-      if (userConnections.has(recipientId)) {
-        userConnections.get(recipientId).forEach((recipientSocketId) => {
-          io.to(recipientSocketId).emit("videoMediaControl", {
-            userId: socket.user._id,
-            type,
-            muted,
-            timestamp: Date.now(),
-          });
+      logger.debug(`videoMediaControl (${type}:${muted}) from ${socket.user._id} → ${recipientId}`);
+      const sockets = userConnections.get(recipientId) || [];
+      for (const sid of sockets) {
+        io.to(sid).emit("videoMediaControl", {
+          userId: socket.user._id,
+          type,
+          muted,
+          timestamp: Date.now(),
         });
       }
-    } catch (error) {
-      logger.error(`Error handling video media control: ${error.message}`);
+    } catch (err) {
+      logger.error(`videoMediaControl handler error: ${err.message}`);
     }
   });
 
-  // Handle call initiation
   socket.on("initiateCall", async (data) => {
     try {
       const { recipientId, callType, callId } = data;
-
-      // Apply rate limiting
+      // rate limit
       try {
         await callLimiter.consume(socket.user._id.toString());
-      } catch (rateLimitError) {
-        logger.warn(`Rate limit exceeded for call initiation by user ${socket.user._id}`);
-        socket.emit("callError", {
-          error: "Rate limit exceeded. Please try again later.",
-        });
-        return;
+      } catch {
+        logger.warn(`Rate limit exceeded for ${socket.user._id}`);
+        return socket.emit("callError", { error: "Rate limit exceeded" });
       }
 
-      // Validate recipient ID
-      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
-        socket.emit("callError", {
-          error: "Invalid recipient ID",
-        });
-        return;
+      if (!isValidId(recipientId)) {
+        return socket.emit("callError", { error: "Invalid recipient ID" });
       }
-
-      // Check if recipient exists
       const recipient = await User.findById(recipientId);
       if (!recipient) {
-        socket.emit("callError", {
-          error: "Recipient not found",
-        });
-        return;
+        return socket.emit("callError", { error: "Recipient not found" });
+      }
+      const caller = await User.findById(socket.user._id);
+      if (callType === "video" && caller.accountTier === "FREE") {
+        return socket.emit("callError", { error: "Upgrade required for video calls" });
       }
 
-      // Get full user object to check permissions
-      const user = await User.findById(socket.user._id);
+      logger.info(`initiateCall from ${socket.user._id} → ${recipientId}`);
+      const payload = {
+        callId: callId || `call-${Date.now()}`,
+        callType,
+        userId: socket.user._id.toString(),
+        caller: {
+          userId: caller._id.toString(),
+          name: caller.nickname || "User",
+          photo: caller.photos?.[0]?.url || null,
+        },
+        timestamp: Date.now(),
+      };
 
-      // Check if user can make video calls
-      if (callType === "video" && user.accountTier === "FREE") {
-        socket.emit("callError", {
-          error: "Free accounts cannot make video calls. Upgrade for video calls.",
-        });
-        return;
-      }
-
-      logger.info(`Call initiated from ${socket.user._id} to ${recipientId}`);
-
-      // Notify the recipient about the incoming call with guaranteed delivery
-      if (userConnections.has(recipientId)) {
-        let delivered = false;
-        let deliveryAttempts = 0;
-        const maxDeliveryAttempts = 3;
-
-        const callPayload = {
-          callId: callId || `call-${Date.now()}`,
-          callType,
-          userId: socket.user._id.toString(),
-          caller: {
-            userId: socket.user._id.toString(),
-            name: user.nickname || "User",
-            photo: user.photos && user.photos.length > 0 ? user.photos[0].url : null,
-          },
-          timestamp: Date.now(),
-        };
-
-        const attemptDelivery = (socketIds) => {
-          deliveryAttempts++;
-
-          let currentDeliverySuccess = false;
-          socketIds.forEach((recipientSocketId) => {
-            try {
-              io.to(recipientSocketId).emit("incomingCall", callPayload);
-              delivered = true;
-              currentDeliverySuccess = true;
-            } catch (err) {
-              logger.error(`Error sending incomingCall to socket ${recipientSocketId}: ${err.message}`);
-            }
-          });
-
-          // If delivery failed and we haven't reached max attempts, try again
-          if (!currentDeliverySuccess && deliveryAttempts < maxDeliveryAttempts) {
-            setTimeout(() => {
-              // Get fresh socket IDs in case they've changed
-              const currentSocketIds = userConnections.get(recipientId);
-              if (currentSocketIds && currentSocketIds.size > 0) {
-                attemptDelivery(currentSocketIds);
-              }
-            }, 1000); // Wait 1 second before retry
-          }
-        };
-
-        attemptDelivery(userConnections.get(recipientId));
-
-        if (delivered) {
-          // Confirm to the caller that the call was initiated
-          socket.emit("callInitiated", {
-            success: true,
-            recipientId,
-            callId: callPayload.callId,
-          });
-        } else {
-          // Recipient couldn't be reached
-          socket.emit("callError", {
-            error: "Failed to reach recipient",
-            recipientId,
-          });
+      const delivered = await deliverEventToUser(
+        io,
+        userConnections,
+        recipientId,
+        "incomingCall",
+        () => payload,
+        {
+          maxAttempts: 3,
+          delayMs: 1000,
+          errorEvent: "callError",
+          errorMessage: "Failed to reach recipient",
+          fromSocketId: socket.id,
         }
-      } else {
-        // Recipient is offline
-        socket.emit("callError", {
-          error: "Recipient is offline",
-          recipientId,
-        });
+      );
+
+      if (delivered) {
+        socket.emit("callInitiated", { success: true, recipientId, callId: payload.callId });
       }
-    } catch (error) {
-      logger.error(`Error initiating call: ${error.message}`);
-      socket.emit("callError", {
-        error: "Failed to initiate call",
-      });
+    } catch (err) {
+      logger.error(`initiateCall handler error: ${err.message}`);
+      socket.emit("callError", { error: "Failed to initiate call" });
     }
   });
 
-  // Handle call answer
-  socket.on("answerCall", (data) => {
+  socket.on("answerCall", async (data) => {
     try {
       const { callerId, accept, callId } = data;
-
-      if (!mongoose.Types.ObjectId.isValid(callerId)) {
-        logger.error(`Invalid caller ID in call answer: ${callerId}`);
+      if (!isValidId(callerId)) {
+        logger.error(`Invalid answerCall callerId: ${callerId}`);
         return;
       }
+      logger.info(`${accept ? "accepted" : "rejected"} call ${callId} by ${socket.user._id}`);
 
-      logger.info(`Call ${accept ? "accepted" : "rejected"} by ${socket.user._id} from ${callerId}`);
-
-      // Notify the caller about the answer with guaranteed delivery
-      if (userConnections.has(callerId)) {
-        let delivered = false;
-        let deliveryAttempts = 0;
-        const maxDeliveryAttempts = 5; // More attempts for critical call answer
-
-        const answerPayload = {
-          userId: socket.user._id.toString(),
-          accept,
-          callId,
-          timestamp: Date.now(),
-        };
-
-        const attemptDelivery = (socketIds) => {
-          deliveryAttempts++;
-
-          let currentDeliverySuccess = false;
-          socketIds.forEach((callerSocketId) => {
-            try {
-              io.to(callerSocketId).emit("callAnswered", answerPayload);
-              delivered = true;
-              currentDeliverySuccess = true;
-            } catch (err) {
-              logger.error(`Error sending call answer to socket ${callerSocketId}: ${err.message}`);
-            }
-          });
-
-          // If delivery failed and we haven't reached max attempts, try again
-          if (!currentDeliverySuccess && deliveryAttempts < maxDeliveryAttempts) {
-            setTimeout(() => {
-              // Get fresh socket IDs in case they've changed
-              const currentSocketIds = userConnections.get(callerId);
-              if (currentSocketIds && currentSocketIds.size > 0) {
-                attemptDelivery(currentSocketIds);
-              }
-            }, 800); // Wait 800ms before retry
-          }
-        };
-
-        attemptDelivery(userConnections.get(callerId));
-
-        if (!delivered) {
-          // Log that delivery failed
-          logger.error(`Failed to deliver call answer to caller ${callerId} after ${maxDeliveryAttempts} attempts`);
+      await deliverEventToUser(
+        io,
+        userConnections,
+        callerId,
+        "callAnswered",
+        () => ({ userId: socket.user._id.toString(), accept, callId, timestamp: Date.now() }),
+        {
+          maxAttempts: 5,
+          delayMs: 800,
         }
-      } else {
-        logger.warn(`Caller ${callerId} is no longer connected`);
-      }
-    } catch (error) {
-      logger.error(`Error handling call answer: ${error.message}`);
+      );
+    } catch (err) {
+      logger.error(`answerCall handler error: ${err.message}`);
     }
   });
 };
-
-export { registerCallHandlers };

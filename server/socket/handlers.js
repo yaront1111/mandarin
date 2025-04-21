@@ -1,3 +1,5 @@
+// server/src/sockets/index.js
+
 import { User } from "../models/index.js";
 import logger from "../logger.js";
 import {
@@ -12,171 +14,168 @@ import {
   sendPhotoPermissionResponseNotification
 } from "./permissions.js";
 
+const log = logger.create("socket");
+
+// --- Socket event constants ---
+const EVENTS = {
+  PING: "ping",
+  PONG: "pong",
+  UPDATE_PRIVACY: "updatePrivacySettings",
+  DISCONNECT: "disconnect",
+  USER_ONLINE: "userOnline",
+  USER_OFFLINE: "userOffline"
+};
+
+// --- Which privacy fields we accept ---
+const PRIVACY_FIELDS = [
+  "showOnlineStatus",
+  "showReadReceipts",
+  "showLastSeen",
+  "allowStoryReplies"
+];
+
 /**
- * Handle user disconnect
- * @param {Object} io - Socket.IO server instance
- * @param {Object} socket - Socket connection
- * @param {Map} userConnections - Map of user connections
+ * Wraps a listener to catch & log any errors
+ * @param {(data: any) => Promise<void>} fn
+ * @returns {(data: any) => void}
  */
-const handleUserDisconnect = async (io, socket, userConnections) => {
+const safeListener = fn => data => {
+  Promise.resolve(fn(data)).catch(err => {
+    log.error("Listener error:", err);
+  });
+};
+
+/**
+ * Broadcast user presence (online/offline) if allowed by their privacy
+ * @param {import("socket.io").Server} io
+ * @param {string} eventName one of EVENTS.USER_ONLINE | EVENTS.USER_OFFLINE
+ * @param {string} userId
+ */
+async function emitPresence(io, eventName, userId) {
   try {
-    logger.info(`Socket ${socket.id} disconnected`);
-
-    if (socket.user && socket.user._id) {
-      const userId = socket.user._id.toString();
-
-      if (userConnections.has(userId)) {
-        userConnections.get(userId).delete(socket.id);
-
-        if (userConnections.get(userId).size === 0) {
-          userConnections.delete(userId);
-
-          // Get the latest user data to check privacy settings
-          const user = await User.findById(userId);
-          
-          // Update online status
-          user.isOnline = false;
-          user.lastActive = Date.now();
-          await user.save();
-
-          // Only emit offline status if the user's settings allow it
-          const showOnlineStatus = user.settings?.privacy?.showOnlineStatus !== false;
-          
-          if (showOnlineStatus) {
-            io.emit("userOffline", { userId, timestamp: Date.now() });
-            logger.info(`User ${userId} is now offline (no active connections) - status broadcast to others`);
-          } else {
-            logger.info(`User ${userId} is now offline (no active connections) - status hidden from others`);
-          }
-        } else {
-          logger.info(`User ${userId} still has ${userConnections.get(userId).size} active connections`);
-        }
-      }
+    const user = await User.findById(userId).select("settings.privacy");
+    const show = user?.settings?.privacy?.showOnlineStatus !== false;
+    if (!show) {
+      log.info(`Privacy hides presence for ${userId}`);
+      return;
     }
-  } catch (error) {
-    logger.error(`Error handling disconnect for ${socket.id}: ${error.message}`);
+    io.emit(eventName, { userId, timestamp: Date.now() });
+    log.info(`Emitted ${eventName} for ${userId}`);
+  } catch (err) {
+    log.error(`Failed to emit presence for ${userId}:`, err);
+  }
+}
+
+/**
+ * Handles cleanup and status update when a socket disconnects
+ * @param {import("socket.io").Server} io
+ * @param {import("socket.io").Socket} socket
+ * @param {Map<string, Set<string>>} userConnections
+ */
+export const handleUserDisconnect = async (io, socket, userConnections) => {
+  log.info(`Socket ${socket.id} disconnected`);
+  const userId = socket.user?._id?.toString();
+  if (!userId || !userConnections.has(userId)) return;
+
+  // Remove this socket from the user’s connection set
+  const conns = userConnections.get(userId);
+  conns.delete(socket.id);
+
+  // If no more sockets, mark offline
+  if (conns.size === 0) {
+    userConnections.delete(userId);
+    try {
+      await User.findByIdAndUpdate(userId, {
+        isOnline: false,
+        lastActive: Date.now()
+      });
+      await emitPresence(io, EVENTS.USER_OFFLINE, userId);
+    } catch (err) {
+      log.error(`Error updating offline status for ${userId}:`, err);
+    }
+  } else {
+    log.info(`User ${userId} still has ${conns.size} connection(s)`);
   }
 };
 
 /**
- * Register all socket event handlers
- * @param {Object} io - Socket.IO server instance
- * @param {Object} socket - Socket connection
- * @param {Map} userConnections - Map of user connections
- * @param {Object} rateLimiters - Rate limiters
+ * Apply allowed privacy updates onto a user document
+ * @param {import("mongoose").Document & { settings?: any }} user
+ * @param {object} data
  */
-const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
-  // Save userConnections map to the io object for global access
+function applyPrivacyUpdates(user, data) {
+  user.settings = user.settings || {};
+  user.settings.privacy = user.settings.privacy || {};
+  PRIVACY_FIELDS.forEach(field => {
+    if (data[field] !== undefined) {
+      user.settings.privacy[field] = data[field];
+    }
+  });
+}
+
+/**
+ * Register all socket event handlers for a new connection
+ * @param {import("socket.io").Server} io
+ * @param {import("socket.io").Socket} socket
+ * @param {Map<string, Set<string>>} userConnections
+ * @param {object} rateLimiters
+ */
+export const registerSocketHandlers = (io, socket, userConnections, rateLimiters) => {
+  // Save map for global access if needed
   io.userConnectionsMap = userConnections;
 
-  socket.on("ping", () => {
-    try {
-      socket.emit("pong");
-    } catch (error) {
-      logger.error(`Error handling ping from ${socket.id}: ${error.message}`);
-    }
-  });
-  
-  // Handle privacy settings updates
-  socket.on("updatePrivacySettings", async (data) => {
-    try {
-      if (!socket.user || !socket.user._id) {
-        logger.warn(`Unauthenticated socket ${socket.id} tried to update privacy settings`);
-        return;
-      }
-      
-      logger.info(`Updating privacy settings for user ${socket.user._id}: ${JSON.stringify(data)}`);
-      
-      // Update the user's settings in the database
-      const userId = socket.user._id;
-      const currentUser = await User.findById(userId);
-      
-      if (!currentUser) {
-        logger.warn(`User ${userId} not found when updating privacy settings`);
-        return;
-      }
-      
-      // Initialize settings object if it doesn't exist
-      if (!currentUser.settings) {
-        currentUser.settings = {};
-      }
-      if (!currentUser.settings.privacy) {
-        currentUser.settings.privacy = {};
-      }
-      
-      // Apply the updates
-      if (data.showOnlineStatus !== undefined) {
-        currentUser.settings.privacy.showOnlineStatus = data.showOnlineStatus;
-      }
-      if (data.showReadReceipts !== undefined) {
-        currentUser.settings.privacy.showReadReceipts = data.showReadReceipts;
-      }
-      if (data.showLastSeen !== undefined) {
-        currentUser.settings.privacy.showLastSeen = data.showLastSeen;
-      }
-      if (data.allowStoryReplies !== undefined) {
-        currentUser.settings.privacy.allowStoryReplies = data.allowStoryReplies;
-      }
-      
-      // Save the updated user
-      await currentUser.save();
-      logger.info(`Privacy settings updated for user ${userId}`);
-      
-      // If online status visibility was disabled, emit userOffline to other users
-      if (data.showOnlineStatus === false) {
-        io.emit("userOffline", { 
-          userId: userId.toString(), 
-          timestamp: Date.now() 
-        });
-        logger.info(`Emitted userOffline for ${userId} due to privacy setting change`);
-      }
-      // If online status visibility was enabled, emit userOnline to other users
-      else if (data.showOnlineStatus === true) {
-        io.emit("userOnline", { 
-          userId: userId.toString(), 
-          timestamp: Date.now() 
-        });
-        logger.info(`Emitted userOnline for ${userId} due to privacy setting change`);
-      }
-    } catch (error) {
-      logger.error(`Error updating privacy settings: ${error.message}`);
-    }
-  });
+  // Pong reply
+  socket.on(EVENTS.PING, safeListener(() => socket.emit(EVENTS.PONG)));
 
-  socket.on("disconnect", async (reason) => {
-    try {
-      await handleUserDisconnect(io, socket, userConnections);
-      logger.debug(`Disconnect reason: ${reason}`);
-    } catch (error) {
-      logger.error(`Error in disconnect event: ${error.message}`);
+  // Update privacy settings
+  socket.on(EVENTS.UPDATE_PRIVACY, safeListener(async data => {
+    const userId = socket.user?._id;
+    if (!userId) {
+      log.warn(`Unauthenticated socket ${socket.id} tried to update privacy`);
+      return;
     }
-  });
 
+    log.info(`Privacy update request from ${userId}: ${JSON.stringify(data)}`);
+    const user = await User.findById(userId);
+    if (!user) {
+      log.warn(`User ${userId} not found`);
+      return;
+    }
+
+    applyPrivacyUpdates(user, data);
+    await user.save();
+
+    // Broadcast presence change if they toggled showOnlineStatus
+    if (data.showOnlineStatus === false) {
+      await emitPresence(io, EVENTS.USER_OFFLINE, userId.toString());
+    } else if (data.showOnlineStatus === true) {
+      await emitPresence(io, EVENTS.USER_ONLINE, userId.toString());
+    }
+  }));
+
+  // Clean up on disconnect
+  socket.on(EVENTS.DISCONNECT, safeListener(reason => {
+    log.debug(`Disconnect reason: ${reason}`);
+    return handleUserDisconnect(io, socket, userConnections);
+  }));
+
+  // Delegate to feature modules
   registerMessagingHandlers(io, socket, userConnections, rateLimiters);
   registerCallHandlers(io, socket, userConnections, rateLimiters);
   registerPermissionHandlers(io, socket, userConnections);
 
-  if (socket.user && socket.user._id) {
-     // Only emit userOnline if the user's privacy settings allow it
-     const showOnlineStatus = socket.user.settings?.privacy?.showOnlineStatus !== false;
-     
-     if (showOnlineStatus) {
-       io.emit("userOnline", {
-         userId: socket.user._id.toString(),
-         timestamp: Date.now(),
-       });
-       logger.info(`Socket handlers registered for user ${socket.user._id} (online status visible)`);
-     } else {
-       logger.info(`Socket handlers registered for user ${socket.user._id} (online status hidden)`);
-     }
+  // On initial connect, broadcast userOnline if allowed
+  const userId = socket.user?._id?.toString();
+  if (userId) {
+    emitPresence(io, EVENTS.USER_ONLINE, userId);
   } else {
-     logger.warn(`Socket connected (${socket.id}) but user details are missing. Cannot emit userOnline.`);
+    log.warn(`Socket ${socket.id} connected without user context`);
   }
 };
 
+// Re‑export notification helpers from submodules
 export {
-  registerSocketHandlers,
-  handleUserDisconnect,
+  sendMessageNotification,
   sendLikeNotification,
   sendPhotoPermissionRequestNotification,
   sendPhotoPermissionResponseNotification

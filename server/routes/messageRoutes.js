@@ -53,6 +53,83 @@ const isValidObjectId = (id) => {
 };
 
 /**
+ * @route POST /api/messages/start
+ * @desc  Start a new conversation (or reuse existing) and send the first message
+ * @access Private
+ */
+router.post(
+  '/start',
+  protect,
+  messageRateLimit,
+  asyncHandler(async (req, res) => {
+    const senderId = safeObjectId(req.user._id);
+    const recipientId = safeObjectId(req.body.toUserId);
+
+    if (!senderId) {
+      return res.status(401).json({ success: false, error: 'Authentication invalid.' });
+    }
+    if (!recipientId) {
+      return res.status(400).json({ success: false, error: 'Invalid recipient ID.' });
+    }
+    if (senderId.equals(recipientId)) {
+      return res.status(400).json({ success: false, error: 'Cannot start a conversation with yourself.' });
+    }
+
+    // Make sure recipient actually exists
+    const recipient = await User.findById(recipientId);
+    if (!recipient) {
+      return res.status(404).json({ success: false, error: 'Recipient user not found.' });
+    }
+
+    // Validate and sanitize text
+    const rawText = String(req.body.text || '').trim();
+    if (!rawText) {
+      return res.status(400).json({ success: false, error: 'Message text is required.' });
+    }
+    const content = sanitizeText(rawText);
+
+    // 1️⃣ Find existing conversation…
+    let conversation = await Conversation.findOne({
+      participants: { $all: [senderId, recipientId] }
+    });
+
+    // 2️⃣ …or create a new one
+    if (!conversation) {
+      conversation = await Conversation.create({
+        participants: [senderId, recipientId],
+        createdAt: new Date()
+      });
+      logger.info(`New conversation ${conversation._id} created between ${senderId} and ${recipientId}`);
+    }
+
+    // 3️⃣ Create the first message
+    const message = await Message.create({
+      conversation: conversation._id,
+      sender: senderId,
+      recipient: recipientId,
+      type: 'text',
+      content,
+      createdAt: new Date(),
+      read: false
+    });
+
+    // Optionally, you can push the message into a messages[] array on Conversation:
+    // conversation.messages = conversation.messages || [];
+    // conversation.messages.push(message._id);
+    // await conversation.save();
+
+    logger.info(`Message ${message._id} sent in conversation ${conversation._id}`);
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        conversation,
+        message
+      }
+    });
+  })
+);
+/**
  * Helper to safely convert any value to a MongoDB ObjectId
  * @param {any} id - ID to convert
  * @returns {mongoose.Types.ObjectId|null} - Mongoose ObjectId or null if invalid

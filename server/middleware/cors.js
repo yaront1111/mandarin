@@ -1,48 +1,54 @@
-// middleware/cors.js - Enhanced with ES modules and improved CORS configuration
+// server/middleware/cors.js
 import cors from "cors";
 import logger from "../logger.js";
 
 /**
- * CORS configuration middleware
+ * CORS configuration middleware factory.
  *
- * This module configures CORS settings based on environment.
- * It allows requests from specified origins, with a more flexible
- * approach for development environments.
+ * In production, only allow domains listed in ALLOWED_ORIGINS (or FRONTEND_URL).
+ * In development, allow common localhost ports.
  *
- * @returns {Function} Express middleware
+ * @returns {import('cors').CorsOptionsDelegate} the configured CORS middleware
  */
-const configureCors = () => {
-  // In production, use specific domains from environment variables; in development, allow multiple localhost ports.
-  const allowedOrigins =
-    process.env.NODE_ENV === "production"
-      ? process.env.ALLOWED_ORIGINS
-        ? process.env.ALLOWED_ORIGINS.split(",")
-        : [process.env.FRONTEND_URL || "https://yourdomain.com"]
-      : ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173"];
+export const configureCors = () => {
+  const devOrigins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+  ];
 
-  // Log the allowed origins
-  logger.info(`CORS configured with origins: ${JSON.stringify(allowedOrigins)}`);
+  const prodOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",")
+    : [process.env.FRONTEND_URL || "https://flirtss.com"];
+
+  const allowedOrigins =
+    process.env.NODE_ENV === "production" ? prodOrigins : devOrigins;
+
+  logger.info(`CORS allowed origins: ${JSON.stringify(allowedOrigins)}`);
 
   return cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, Postman)
+      // allow requests with no origin (e.g. curl, mobile apps)
       if (!origin) {
-        logger.debug("Request with no origin allowed");
+        logger.debug("CORS: no-origin request allowed");
         return callback(null, true);
       }
 
-      // Check if origin is allowed
-      if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== "production") {
-        logger.debug(`CORS allowed for origin: ${origin}`);
+      if (allowedOrigins.includes(origin)) {
+        logger.debug(`CORS: allowing origin ${origin}`);
         return callback(null, true);
       }
 
-      // Log rejected origins for debugging
-      logger.warn(`CORS rejected for origin: ${origin}`);
-      const msg = "CORS policy does not allow access from the specified Origin";
-      return callback(new Error(msg), false);
+      logger.warn(`CORS: rejecting origin ${origin}`);
+      return callback(
+        new Error(
+          "The CORS policy for this site does not allow access from the specified Origin."
+        ),
+        false
+      );
     },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: [
       "Content-Type",
       "Authorization",
@@ -50,38 +56,32 @@ const configureCors = () => {
       "Accept",
       "Origin",
       "Cache-Control",
-      "x-no-cache",    // Allow x-no-cache header
-      "x-auth-token"   // Allow x-auth-token header
+      "x-no-cache",
+      "x-auth-token",
     ],
     exposedHeaders: [
       "Content-Length",
       "X-Rate-Limit-Limit",
       "X-Rate-Limit-Remaining",
-      "X-Rate-Limit-Reset"
+      "X-Rate-Limit-Reset",
     ],
-    credentials: true, // Enable credentials for auth scenarios
+    credentials: true,
     maxAge: 86400, // 24 hours
-    preflightContinue: false,
     optionsSuccessStatus: 204,
   });
 };
 
 /**
- * Custom CORS error handler
- * Provides better error messages for CORS failures
+ * Error handler to catch CORS failures and return a JSON payload.
  */
-const corsErrorHandler = (err, req, res, next) => {
-  if (err.message.includes("CORS")) {
-    logger.warn(`CORS Error: ${err.message}`, {
-      origin: req.headers.origin,
-      method: req.method,
-      path: req.path,
-    });
-
+export const corsErrorHandler = (err, req, res, next) => {
+  if (err.message && err.message.includes("CORS")) {
+    logger.warn(`CORS error on ${req.method} ${req.originalUrl}: ${err.message}`);
     return res.status(403).json({
       success: false,
-      error: "Cross-Origin Request Blocked",
-      message: "The request was blocked by CORS policy. If you are the API consumer, please contact the administrator.",
+      error: "Cross‑Origin Request Blocked",
+      message:
+        "The request was blocked by CORS policy. If you're the API consumer, please contact the administrator.",
       code: "CORS_ERROR",
     });
   }
@@ -89,40 +89,6 @@ const corsErrorHandler = (err, req, res, next) => {
 };
 
 /**
- * Default export: function to apply CORS configuration directly to an Express app.
- * This alternative approach uses a slightly different configuration.
+ * Default export: the same as configureCors()
  */
-const applyCors = (app) => {
-  const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(",")
-    : ["http://localhost:3000"];
-
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps, curl, etc)
-        if (!origin) return callback(null, true);
-
-        if (allowedOrigins.indexOf(origin) === -1) {
-          const msg = "The CORS policy for this site does not allow access from the specified Origin.";
-          return callback(new Error(msg), false);
-        }
-        return callback(null, true);
-      },
-      credentials: true,
-      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      allowedHeaders: [
-        "Origin",
-        "X-Requested-With",
-        "Content-Type",
-        "Accept",
-        "Authorization",
-        "x-auth-token",  // Allow x-auth-token header
-        "x-no-cache"     // Allow x-no-cache header
-      ],
-    })
-  );
-};
-
-export default applyCors;
-export { configureCors, corsErrorHandler };
+export default configureCors;

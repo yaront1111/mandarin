@@ -1,215 +1,194 @@
-// models/Notification.js - Enhanced with bundling support and more notification types
-import mongoose from "mongoose";
-import logger from "../logger.js";
+// models/Notification.js
+import mongoose from 'mongoose';
+import logger from '../logger.js';
 
-const notificationSchema = new mongoose.Schema({
+const { Schema, model, Types, Error: MongooseError } = mongoose;
+const { ObjectId } = Types;
+
+// -----------------------------
+// Helper: Safe ObjectId casting
+// -----------------------------
+function safeObjectId(value, fieldName) {
+  if (!value) return null;
+  if (value instanceof ObjectId) return value;
+  if (ObjectId.isValid(value)) return new ObjectId(value);
+  throw new MongooseError.CastError('ObjectId', value, fieldName);
+}
+
+// -----------------------------
+// Notification Schema
+// -----------------------------
+const notificationSchema = new Schema({
   recipient: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
+    type: ObjectId,
+    ref: 'User',
     required: true,
     index: true,
   },
   type: {
     type: String,
     enum: [
-      "message",
-      "like",
-      "match",
-      "photoRequest",
-      "photoResponse",
-      "story",
-      "comment",
-      "system",
-      "call"
+      'message',
+      'like',
+      'match',
+      'photoRequest',
+      'photoResponse',
+      'story',
+      'comment',
+      'system',
+      'call',
     ],
     required: true,
-    index: true
+    index: true,
   },
   sender: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    index: true
+    type: ObjectId,
+    ref: 'User',
+    index: true,
   },
-  content: {
-    type: String,
-    trim: true
-  },
-  title: {
-    type: String,
-    trim: true
-  },
+  title:  { type: String, trim: true },
+  content:{ type: String, trim: true },
+
+  // reference to another model (Message, Like, etc.)
   reference: {
-    type: mongoose.Schema.Types.ObjectId,
-    refPath: "referenceModel"
+    type: ObjectId,
+    refPath: 'referenceModel',
   },
   referenceModel: {
     type: String,
-    enum: ["Message", "Like", "Photo", "Story", "Comment"]
+    enum: ['Message','Like','Photo','Story','Comment'],
   },
-  // For storing additional structured data about the notification
-  data: mongoose.Schema.Types.Mixed,
-  // Fields for notification status
-  read: {
-    type: Boolean,
-    default: false,
-    index: true
-  },
-  readAt: {
-    type: Date
-  },
-  // Fields for notification bundling
-  count: {
-    type: Number,
-    default: 1,
-    min: 1
-  },
-  bundleKey: {
-    type: String,
-    index: true
-  },
+
+  data: { type: Schema.Types.Mixed },
+
+  read:  { type: Boolean, default: false, index: true },
+  readAt:{ type: Date, default: null },
+
+  // bundling fields
+  count: { type: Number, default: 1, min: 1 },
+  bundleKey: { type: String, index: true },
   parentNotification: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Notification"
+    type: ObjectId,
+    ref: 'Notification',
   },
-  // Tracking when notifications were created/updated
-  createdAt: {
-    type: Date,
-    default: Date.now,
-    index: true,
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
+}, {
+  timestamps: true, // adds createdAt & updatedAt
 });
 
-// Create compound indexes for efficient querying
+// ---------------------------------
+// Indexes for efficient querying
+// ---------------------------------
 notificationSchema.index({ recipient: 1, type: 1, read: 1 });
 notificationSchema.index({ recipient: 1, sender: 1, type: 1 });
 notificationSchema.index({ recipient: 1, createdAt: -1 });
 
-// Pre-save hook to generate bundle key and update timestamps
+// -------------------------------------------------
+// Pre-save: cast IDs, generate bundleKey, set readAt
+// -------------------------------------------------
 notificationSchema.pre('save', function(next) {
-  if (this.isNew || this.isModified('sender') || this.isModified('type')) {
-    // Generate a bundle key for grouping similar notifications
-    if (this.sender && this.type) {
-      this.bundleKey = `${this.recipient.toString()}:${this.sender.toString()}:${this.type}`;
+  try {
+    // Cast required ObjectIds
+    this.recipient = safeObjectId(this.recipient, 'recipient');
+    if (this.sender)    this.sender    = safeObjectId(this.sender,    'sender');
+    if (this.reference) this.reference = safeObjectId(this.reference, 'reference');
+    if (this.parentNotification) {
+      this.parentNotification = safeObjectId(this.parentNotification, 'parentNotification');
     }
-  }
 
-  // Update timestamps
-  if (this.isNew) {
-    this.createdAt = Date.now();
-  }
-  this.updatedAt = Date.now();
+    // Build bundleKey on new or when sender/type change
+    if (this.isNew || this.isModified('sender') || this.isModified('type')) {
+      if (this.recipient && this.sender && this.type) {
+        this.bundleKey = `${this.recipient.toString()}:${this.sender.toString()}:${this.type}`;
+      }
+    }
 
-  // Set readAt when marked as read
-  if (this.isModified('read') && this.read && !this.readAt) {
-    this.readAt = Date.now();
-  }
+    // Stamp readAt when marking read
+    if (this.isModified('read') && this.read && !this.readAt) {
+      this.readAt = new Date();
+    }
 
-  next();
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
 /**
- * Static method to find recent similar notifications (for bundling)
- * @param {Object} notification - The notification to find similar ones for
- * @param {number} timeframeMs - Timeframe in milliseconds to consider for bundling
- * @returns {Promise<Object|null>} - Existing notification that can be bundled, or null
+ * Find a recent, un‑bundled notification to group with
+ * @param {Object|Types.ObjectId} notificationData
+ * @param {number} timeframeMs
+ * @returns {Promise<Notification|null>}
  */
-notificationSchema.statics.findSimilarForBundling = async function(notification, timeframeMs = 3600000) {
-  if (!notification.sender || !notification.type || !notification.recipient) {
-    return null;
-  }
+notificationSchema.statics.findSimilarForBundling = async function(notificationData, timeframeMs = 3600000) {
+  const rec = safeObjectId(notificationData.recipient, 'recipient');
+  const snd = safeObjectId(notificationData.sender,    'sender');
+  const typ = notificationData.type;
 
+  if (!rec || !snd || !typ) return null;
+
+  const cutoff = new Date(Date.now() - timeframeMs);
   try {
-    const cutoffTime = new Date(Date.now() - timeframeMs);
-
-    // Find similar notifications from the same sender, of the same type, to the same recipient
-    return await this.findOne({
-      recipient: notification.recipient,
-      sender: notification.sender,
-      type: notification.type,
-      createdAt: { $gte: cutoffTime },
-      // Don't bundle with notifications that are already bundles
-      parentNotification: { $exists: false }
+    return this.findOne({
+      recipient: rec,
+      sender:    snd,
+      type:      typ,
+      createdAt: { $gte: cutoff },
+      parentNotification: { $exists: false },
     }).sort({ createdAt: -1 });
   } catch (err) {
-    logger.error(`Error finding similar notifications: ${err.message}`);
+    logger.error(`findSimilarForBundling failed: ${err.message}`);
     return null;
   }
 };
 
 /**
- * Static method to create a notification with automatic bundling
- * @param {Object} data - Notification data
- * @param {boolean} enableBundling - Whether to enable bundling
- * @returns {Promise<Object>} - Created or updated notification
+ * Create or update a notification, automatically bundling if desired
+ * @param {Object} data
+ * @param {boolean} enableBundling
+ * @returns {Promise<Notification>}
  */
 notificationSchema.statics.createWithBundling = async function(data, enableBundling = true) {
-  try {
-    // Validate required fields
-    if (!data.recipient || !data.type) {
-      throw new Error("Recipient and type are required for notifications");
-    }
-
-    // If bundling is disabled or there's no sender, just create a new notification
-    if (!enableBundling || !data.sender) {
-      const notification = new this(data);
-      await notification.save();
-      return notification;
-    }
-
-    // Look for similar notifications to bundle with
-    const existingNotification = await this.findSimilarForBundling(data);
-
-    if (existingNotification) {
-      // Update the existing notification
-      existingNotification.count += 1;
-      existingNotification.read = false; // Mark as unread since there's new activity
-      existingNotification.updatedAt = Date.now();
-
-      // Update content if provided
-      if (data.content) {
-        existingNotification.content = data.content;
-      }
-
-      // Merge data objects if both exist
-      if (data.data && existingNotification.data) {
-        existingNotification.data = {
-          ...existingNotification.data,
-          ...data.data,
-          bundled: true,
-          count: existingNotification.count
-        };
-      }
-
-      await existingNotification.save();
-      return existingNotification;
-    } else {
-      // Create a new notification
-      const notification = new this(data);
-      await notification.save();
-      return notification;
-    }
-  } catch (err) {
-    logger.error(`Error creating bundled notification: ${err.message}`);
+  // Validate required
+  if (!data.recipient || !data.type) {
+    const err = new MongooseError.ValidationError();
+    if (!data.recipient) err.addError('recipient', new MongooseError.ValidatorError({ message: 'Recipient is required' }));
+    if (!data.type)      err.addError('type',      new MongooseError.ValidatorError({ message: 'Type is required' }));
     throw err;
   }
+
+  // Simple create if bundling off or no sender
+  if (!enableBundling || !data.sender) {
+    return this.create(data);
+  }
+
+  // Attempt to bundle
+  const existing = await this.findSimilarForBundling(data);
+  if (existing) {
+    existing.count += 1;
+    existing.read = false;
+    existing.updatedAt = new Date();
+    if (data.content) existing.content = data.content;
+    if (data.data && existing.data) {
+      existing.data = { ...existing.data, ...data.data, bundled: true, count: existing.count };
+    }
+    return existing.save();
+  }
+
+  // Otherwise new
+  return this.create(data);
 };
 
 /**
- * Mark notification as read
+ * Mark this notification as read
+ * @returns {Promise<Notification>}
  */
 notificationSchema.methods.markAsRead = async function() {
-  if (this.read) return this;
-
-  this.read = true;
-  this.readAt = new Date();
-  return this.save();
+  if (!this.read) {
+    this.read = true;
+    this.readAt = new Date();
+    await this.save();
+  }
+  return this;
 };
 
-// Create the model
-const Notification = mongoose.model("Notification", notificationSchema);
-
-export default Notification;
+export default model('Notification', notificationSchema);

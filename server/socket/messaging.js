@@ -1,363 +1,304 @@
-import { Message, User } from "../models/index.js"
-import logger from "../logger.js"
-import mongoose from "mongoose"
-import { safeObjectId } from "../utils/index.js" // Import from shared utils
+// server/src/sockets/messaging.js
+
+import { Message, User, Notification } from "../models/index.js";
+import logger from "../logger.js";
+import { safeObjectId } from "../utils/index.js";
+
+const log = logger.create("socket:messaging");
+
+// Socket event names
+const EVENTS = {
+  SEND_MESSAGE:     "sendMessage",
+  MESSAGE_SENT:     "messageSent",
+  MESSAGE_RECEIVED: "messageReceived",
+  MESSAGE_ERROR:    "messageError",
+  TYPING:           "typing",
+  USER_TYPING:      "userTyping",
+  MESSAGE_READ:     "messageRead",
+  MESSAGES_READ:    "messagesRead"
+};
 
 /**
- * Send a message notification
- * @param {Object} io - Socket.IO server instance
- * @param {Object} sender - Sender user object
- * @param {Object} recipient - Recipient user object
- * @param {Object} message - Message object
+ * Wrap a handler so that any thrown error is caught & logged
+ * @param {Function} fn
+ * @returns {Function}
  */
-const sendMessageNotification = async (io, sender, recipient, message) => {
+const safeListener = fn => async (data) => {
   try {
-    const recipientUser = await User.findById(recipient._id).select("settings socketId blockedUsers")
+    await fn(data);
+  } catch (err) {
+    log.error("Handler error:", err);
+  }
+};
 
-    // Check if recipient has blocked the sender
-    if (recipientUser && typeof recipientUser.hasBlocked === 'function' && recipientUser.hasBlocked(sender._id)) {
-      logger.debug(`Notification blocked: User ${recipient._id} has blocked sender ${sender._id}`)
-      return
+/**
+ * Check whether `user.hasBlocked(otherId)` without throwing
+ * @param {import("mongoose").Document} userDoc
+ * @param {string} otherId
+ */
+async function isBlocked(userDoc, otherId) {
+  return (
+    typeof userDoc.hasBlocked === "function" &&
+    userDoc.hasBlocked(otherId)
+  );
+}
+
+/**
+ * Send a message notification both via socket and DB
+ */
+export async function sendMessageNotification(io, sender, recipient, message) {
+  try {
+    const recipientDoc = await User
+      .findById(recipient._id)
+      .select("settings socketId")
+      .lean();
+
+    if (!recipientDoc) return;
+
+    if (await isBlocked(recipientDoc, sender._id)) {
+      log.debug(`sendMessageNotification: ${recipient._id} blocked ${sender._id}`);
+      return;
     }
 
-    // Check if recipient has message notifications enabled
-    if (recipientUser?.settings?.notifications?.messages !== false) {
-      // Send socket notification if user is online
-      if (recipientUser?.socketId) {
-        io.to(recipientUser.socketId).emit("messageReceived", {
+    if (recipientDoc.settings?.notifications?.messages !== false) {
+      // socket push
+      if (recipientDoc.socketId) {
+        io.to(recipientDoc.socketId).emit(EVENTS.MESSAGE_RECEIVED, {
           ...message,
-          senderName: sender.nickname || sender.username || "User",
-        })
+          senderName: sender.nickname || sender.username || "User"
+        });
       }
-
-      // Attempt to store a notification in the database if the model exists
-      try {
-        // Use the Notification model if it exists; otherwise, dynamically import it.
-        const Notification = mongoose.models.Notification || (await import("../models/Notification.js")).default
-
-        if (Notification) {
-          await Notification.create({
-            recipient: recipient._id,
-            type: "message",
-            sender: sender._id,
-            content: message.content,
-            reference: message._id,
-          })
-        }
-      } catch (notificationError) {
-        logger.debug(`Notification saving skipped: ${notificationError.message}`)
-      }
+      // DB persist
+      await Notification.create({
+        recipient: recipient._id,
+        type:      "message",
+        sender:    sender._id,
+        content:   message.content,
+        reference: message._id
+      });
     }
-  } catch (error) {
-    logger.error(`Error sending message notification: ${error.message}`)
+  } catch (err) {
+    log.error("sendMessageNotification error:", err);
   }
 }
 
 /**
- * Send a like notification
- * @param {Object} io - Socket.IO server instance
- * @param {Object} sender - Sender user object
- * @param {Object} recipient - Recipient user object
- * @param {Object} likeData - Like data
- * @param {Map} userConnections - User connections map
+ * Send a like notification via all active sockets & DB
  */
-const sendLikeNotification = async (io, sender, recipient, likeData, userConnections) => {
+export async function sendLikeNotification(io, sender, recipient, likeData, userConnections) {
   try {
-    const recipientUser = await User.findById(recipient._id).select("settings blockedUsers")
+    const recipientDoc = await User
+      .findById(recipient._id)
+      .select("settings")
+      .lean();
+    if (!recipientDoc) return;
 
-    // Check if recipient has blocked the sender
-    if (recipientUser && typeof recipientUser.hasBlocked === 'function' && recipientUser.hasBlocked(sender._id)) {
-      logger.debug(`Like notification blocked: User ${recipient._id} has blocked sender ${sender._id}`)
-      return
+    if (await isBlocked(recipientDoc, sender._id)) {
+      log.debug(`sendLikeNotification: ${recipient._id} blocked ${sender._id}`);
+      return;
     }
 
-    // Check if recipient has like notifications enabled
-    if (recipientUser?.settings?.notifications?.likes !== false) {
-      // Send socket notification if user is online
-      if (userConnections.has(recipient._id.toString())) {
-        userConnections.get(recipient._id.toString()).forEach((socketId) => {
-          io.to(socketId).emit("newLike", {
-            sender: {
-              _id: sender._id,
-              nickname: sender.nickname,
-              photos: sender.photos,
-            },
-            timestamp: new Date(),
-            ...likeData,
-          })
-        })
+    if (recipientDoc.settings?.notifications?.likes !== false) {
+      const recId = recipient._id.toString();
+      const sockets = userConnections.get(recId) || new Set();
+      for (const sockId of sockets) {
+        io.to(sockId).emit("newLike", {
+          sender: {
+            _id:      sender._id,
+            nickname: sender.nickname,
+            photos:   sender.photos
+          },
+          timestamp: Date.now(),
+          ...likeData
+        });
       }
-
-      // Attempt to store a notification in the database if the model exists
-      try {
-        const Notification = mongoose.models.Notification || (await import("../models/Notification.js")).default
-
-        if (Notification) {
-          await Notification.create({
-            recipient: recipient._id,
-            type: "like",
-            sender: sender._id,
-            content: `${sender.nickname} liked your profile`,
-            reference: likeData._id,
-          })
-        }
-      } catch (notificationError) {
-        logger.debug(`Notification saving skipped: ${notificationError.message}`)
-      }
+      await Notification.create({
+        recipient: recipient._id,
+        type:      "like",
+        sender:    sender._id,
+        content:   `${sender.nickname} liked your profile`,
+        reference: likeData._id
+      });
     }
-  } catch (error) {
-    logger.error(`Error sending like notification: ${error.message}`)
+  } catch (err) {
+    log.error("sendLikeNotification error:", err);
   }
 }
 
 /**
- * Register messaging-related socket handlers
- * @param {Object} io - Socket.IO server instance
- * @param {Object} socket - Socket connection
- * @param {Map} userConnections - Map of user connections
- * @param {Object} rateLimiters - Rate limiters
+ * Register all messaging‑related handlers on `socket`
  */
-const registerMessagingHandlers = (io, socket, userConnections, rateLimiters) => {
-  const { typingLimiter, messageLimiter } = rateLimiters
+export function registerMessagingHandlers(io, socket, userConnections, rateLimiters) {
+  const { typingLimiter, messageLimiter } = rateLimiters;
 
-  // Handle sending messages
-  socket.on("sendMessage", async (data) => {
-    try {
-      const { recipientId, type, content, metadata, tempMessageId } = data
+  socket.on(
+    EVENTS.SEND_MESSAGE,
+    safeListener(data => handleSendMessage(io, socket, userConnections, messageLimiter, data))
+  );
 
-      logger.debug(`Socket message received: ${type} from ${socket.user._id} to ${recipientId}`)
+  socket.on(
+    EVENTS.TYPING,
+    safeListener(data => handleTyping(io, socket, userConnections, typingLimiter, data))
+  );
 
-      // Apply rate limiting
-      try {
-        await messageLimiter.consume(socket.user._id.toString())
-      } catch (rateLimitError) {
-        logger.warn(`Rate limit exceeded for message sending by user ${socket.user._id}`)
-        socket.emit("messageError", {
-          error: "Rate limit exceeded. Please try again later.",
-          tempMessageId,
-        })
-        return
-      }
+  socket.on(
+    EVENTS.MESSAGE_READ,
+    safeListener(data => handleMessageRead(io, socket, userConnections, data))
+  );
+}
 
-      // Using the global safeObjectId helper function defined at the top of the file
+/**
+ * Handle a client "sendMessage" event
+ */
+async function handleSendMessage(io, socket, userConnections, messageLimiter, data) {
+  const { recipientId, type, content, metadata, tempMessageId } = data;
+  const senderId = socket.user?._id?.toString();
 
-      // Try to convert recipientId to a valid ObjectId
-      const recipientObjectId = safeObjectId(recipientId)
+  if (!senderId) {
+    socket.emit(EVENTS.MESSAGE_ERROR, { error: "Not authenticated", tempMessageId });
+    return;
+  }
 
-      // Validate recipient ID
-      if (!recipientObjectId) {
-        logger.error(`Invalid recipient ID format: ${recipientId}`)
-        socket.emit("messageError", {
-          error: "Invalid recipient ID",
-          tempMessageId,
-        })
-        return
-      }
+  log.debug(`sendMessage from ${senderId} to ${recipientId}: ${type}`);
 
-      // Check if recipient exists
-      const recipient = await User.findById(recipientObjectId)
-      if (!recipient) {
-        logger.error(`Recipient not found: ${recipientId}`)
-        socket.emit("messageError", {
-          error: "Recipient not found",
-          tempMessageId,
-        })
-        return
-      }
+  // rate limit
+  try {
+    await messageLimiter.consume(senderId);
+  } catch {
+    socket.emit(EVENTS.MESSAGE_ERROR, {
+      error: "Rate limit exceeded",
+      tempMessageId
+    });
+    return;
+  }
 
-      // Get full user object to check permissions
-      const user = await User.findById(socket.user._id)
+  const recOid = safeObjectId(recipientId);
+  if (!recOid) {
+    socket.emit(EVENTS.MESSAGE_ERROR, { error: "Invalid recipient", tempMessageId });
+    return;
+  }
 
-      // Check if recipient has blocked the sender
-      if (typeof recipient.hasBlocked === 'function' && recipient.hasBlocked(socket.user._id)) {
-        logger.warn(`Message blocked: User ${recipientId} has blocked sender ${socket.user._id}`)
-        socket.emit("messageError", {
-          error: "Unable to send message. You have been blocked by this user.",
-          tempMessageId,
-        })
-        return
-      }
-      
-      // Check if sender has blocked the recipient
-      if (typeof user.hasBlocked === 'function' && user.hasBlocked(recipientId)) {
-        logger.warn(`Message blocked: Sender ${socket.user._id} has blocked recipient ${recipientId}`)
-        socket.emit("messageError", {
-          error: "Unable to send message. You have blocked this user.",
-          tempMessageId,
-        })
-        return
-      }
+  const [recipientDoc, senderDoc] = await Promise.all([
+    User.findById(recOid),
+    User.findById(senderId)
+  ]);
+  if (!recipientDoc) {
+    socket.emit(EVENTS.MESSAGE_ERROR, { error: "Recipient not found", tempMessageId });
+    return;
+  }
+  if (await isBlocked(recipientDoc, senderId)) {
+    socket.emit(EVENTS.MESSAGE_ERROR, { error: "You are blocked", tempMessageId });
+    return;
+  }
+  if (await isBlocked(senderDoc, recipientId)) {
+    socket.emit(EVENTS.MESSAGE_ERROR, { error: "You have blocked this user", tempMessageId });
+    return;
+  }
 
-      // Check if user can send this type of message
-      // First, safely check if the method exists, then call it if it does
-      if (
-        type !== "wink" &&
-        (user.accountTier === "FREE" || (typeof user.canSendMessages === "function" && !user.canSendMessages()))
-      ) {
-        logger.warn(`Free user ${socket.user._id} attempted to send non-wink message`)
-        socket.emit("messageError", {
-          error: "Free accounts can only send winks. Upgrade to send messages.",
-          tempMessageId,
-        })
-        return
-      }
+  // enforce account tier restrictions
+  if (
+    type !== "wink" &&
+    (senderDoc.accountTier === "FREE" || (typeof senderDoc.canSendMessages === "function" && !senderDoc.canSendMessages()))
+  ) {
+    socket.emit(EVENTS.MESSAGE_ERROR, {
+      error: "Upgrade to send messages",
+      tempMessageId
+    });
+    return;
+  }
 
-      // Get a sanitized sender ObjectId
-      const senderObjectId = safeObjectId(socket.user._id)
-      if (!senderObjectId) {
-        logger.error(`Invalid sender ID format: ${socket.user._id}`)
-        socket.emit("messageError", {
-          error: "Invalid sender ID",
-          tempMessageId,
-        })
-        return
-      }
+  // save message
+  const msg = await new Message({
+    sender:    senderId,
+    recipient: recOid,
+    type,
+    content,
+    metadata,
+    read:      false,
+    createdAt: new Date()
+  }).save();
 
-      // Create and save message with sanitized IDs
-      const message = new Message({
-        sender: senderObjectId,
-        recipient: recipientObjectId,
-        type,
-        content,
-        metadata,
-        read: false,
-        createdAt: new Date(),
-      })
+  const response = {
+    _id:      msg._id.toString(),
+    sender:   senderId,
+    recipient: recOid.toString(),
+    type,
+    content,
+    metadata,
+    createdAt: msg.createdAt,
+    read:      false,
+    tempMessageId
+  };
 
-      await message.save()
-      logger.info(`Message saved to database: ${message._id}`)
+  socket.emit(EVENTS.MESSAGE_SENT, response);
+  log.info(`Message ${msg._id} sent`);
 
-      // Format message for response - use string IDs consistently
-      const messageResponse = {
-        _id: message._id.toString(),
-        sender: senderObjectId.toString(),
-        recipient: recipientObjectId.toString(),
-        type,
-        content,
-        metadata,
-        createdAt: message.createdAt,
-        read: false,
-        tempMessageId,
-      }
+  // forward to recipient sockets
+  const recSet = userConnections.get(recOid.toString()) || new Set();
+  for (const sockId of recSet) {
+    io.to(sockId).emit(EVENTS.MESSAGE_RECEIVED, response);
+  }
 
-      // Send message to sender for confirmation
-      socket.emit("messageSent", messageResponse)
-      logger.debug(`Message sent confirmation emitted: ${message._id} (tempId: ${tempMessageId})`)
+  // async notification (no await)
+  sendMessageNotification(io, socket.user, recipientDoc, response);
+}
 
-      // Send message to recipient if they're online - use string ID for map lookup
-      const recipientIdStr = recipientObjectId.toString()
-      if (userConnections.has(recipientIdStr)) {
-        const connectedSockets = userConnections.get(recipientIdStr)
-        logger.debug(`Recipient ${recipientIdStr} has ${connectedSockets.size} active connections`)
+/**
+ * Handle a client "typing" event
+ */
+async function handleTyping(io, socket, userConnections, typingLimiter, data) {
+  const senderId = socket.user?._id?.toString();
+  if (!senderId) return;
 
-        connectedSockets.forEach((recipientSocketId) => {
-          io.to(recipientSocketId).emit("messageReceived", messageResponse)
-          logger.debug(`Message forwarded to recipient socket: ${recipientSocketId}`)
-        })
-      } else {
-        logger.debug(`Recipient ${recipientIdStr} is not currently connected`)
-      }
+  try {
+    await typingLimiter.consume(senderId);
+  } catch {
+    return;
+  }
 
-      // Send message notification
-      sendMessageNotification(io, socket.user, recipient, messageResponse)
+  const recOid = safeObjectId(data.recipientId);
+  if (!recOid) return;
 
-      logger.info(`Message sent successfully from ${socket.user._id} to ${recipientId}`)
-    } catch (error) {
-      logger.error(`Error sending message: ${error.message}`, error)
-      socket.emit("messageError", {
-        error: "Failed to send message: " + (error.message || "Unknown error"),
-        tempMessageId: data?.tempMessageId,
-      })
-    }
-  })
+  const recSet = userConnections.get(recOid.toString()) || new Set();
+  for (const sockId of recSet) {
+    io.to(sockId).emit(EVENTS.USER_TYPING, {
+      userId:    senderId,
+      timestamp: Date.now()
+    });
+  }
+}
 
-  // Handle typing indicator
-  socket.on("typing", async (data) => {
-    try {
-      const { recipientId } = data
+/**
+ * Handle a client "messageRead" event
+ */
+async function handleMessageRead(io, socket, userConnections, data) {
+  const { messageIds = [], sender } = data;
+  if (!Array.isArray(messageIds) || messageIds.length === 0) return;
 
-      // Rate limiting
-      try {
-        await typingLimiter.consume(socket.user._id.toString())
-      } catch (rateLimitError) {
-        return
-      }
+  const senderOid = safeObjectId(sender);
+  const readerOid = safeObjectId(socket.user?._id);
+  if (!senderOid || !readerOid) return;
 
-      // Using the global safeObjectId helper function defined at the top of the file
+  const validIds = messageIds
+    .map(safeObjectId)
+    .filter(id => id !== null);
 
-      // Try to convert recipientId to a valid ObjectId
-      const recipientObjectId = safeObjectId(recipientId)
-      if (!recipientObjectId) return
+  if (validIds.length === 0) return;
 
-      // Use string version for map lookup
-      const recipientIdStr = recipientObjectId.toString()
-      if (userConnections.has(recipientIdStr)) {
-        userConnections.get(recipientIdStr).forEach((recipientSocketId) => {
-          io.to(recipientSocketId).emit("userTyping", {
-            userId: socket.user._id.toString(),
-            timestamp: Date.now(),
-          })
-        })
-      }
-    } catch (error) {
-      logger.error(`Error handling typing indicator: ${error.message}`)
-    }
-  })
+  await Message.updateMany(
+    { _id: { $in: validIds }, sender: senderOid, recipient: readerOid },
+    { $set: { read: true, readAt: new Date() } }
+  );
 
-  // Mark messages as read handler
-  socket.on("messageRead", async (data) => {
-    try {
-      const { messageIds, sender } = data
-
-      if (!Array.isArray(messageIds) || messageIds.length === 0) {
-        return
-      }
-
-      // Using the global safeObjectId helper function defined at the top of the file
-
-      // Try to convert sender ID to a valid ObjectId
-      const senderObjectId = safeObjectId(sender)
-      if (!senderObjectId) {
-        logger.error(`Invalid sender ID format in messageRead: ${sender}`)
-        return
-      }
-
-      // Get current user's ID as ObjectId
-      const userObjectId = safeObjectId(socket.user._id)
-      if (!userObjectId) {
-        logger.error(`Invalid user ID format in messageRead: ${socket.user._id}`)
-        return
-      }
-
-      // Convert message IDs to ObjectIds
-      const validMessageIds = messageIds.map((id) => safeObjectId(id)).filter((id) => id !== null)
-
-      if (validMessageIds.length === 0) {
-        logger.error("No valid message IDs found in messageRead")
-        return
-      }
-
-      // Update messages in database
-      await Message.updateMany(
-        { _id: { $in: validMessageIds }, sender: senderObjectId, recipient: userObjectId },
-        { $set: { read: true, readAt: new Date() } },
-      )
-
-      // Notify sender if they're online - use string ID for map lookup
-      const senderIdStr = senderObjectId.toString()
-      if (userConnections.has(senderIdStr)) {
-        userConnections.get(senderIdStr).forEach((senderSocketId) => {
-          io.to(senderSocketId).emit("messagesRead", {
-            reader: userObjectId.toString(),
-            messageIds: validMessageIds.map((id) => id.toString()),
-            timestamp: Date.now(),
-          })
-        })
-      }
-    } catch (error) {
-      logger.error(`Error handling read receipts: ${error.message}`)
-    }
-  })
+  // notify original sender
+  const senderSet = userConnections.get(senderOid.toString()) || new Set();
+  for (const sockId of senderSet) {
+    io.to(sockId).emit(EVENTS.MESSAGES_READ, {
+      reader:     readerOid.toString(),
+      messageIds: validIds.map(id => id.toString()),
+      timestamp:  Date.now()
+    });
+  }
 }
 
 export { registerMessagingHandlers, sendMessageNotification, sendLikeNotification }

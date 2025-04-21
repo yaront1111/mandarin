@@ -1,189 +1,180 @@
 /**
- * Database helper utilities for common operations
+ * dbHelpers.js — Database helper utilities for common operations
  */
 import mongoose from 'mongoose';
 import { createNotFoundError } from './errorHandler.js';
 
 /**
- * Get paginated results from a Mongoose query
- * @param {Object} query - Mongoose query object
- * @param {Object} options - Pagination options
- * @returns {Promise<Object>} - Paginated results with metadata
+ * Execute a paginated query and return results with metadata.
+ *
+ * @param {import("mongoose").Query} query      Mongoose Query (without skip/limit)
+ * @param {object}                 [opts]       Pagination & projection options
+ * @param {number|string}          [opts.page=1]    Page number (1‑indexed)
+ * @param {number|string}          [opts.limit=20]  Items per page
+ * @param {string|object}          [opts.sort='-createdAt']   Sort spec
+ * @param {string}                 [opts.select]  Space-separated list of fields to include/exclude
+ * @param {Array|string}           [opts.populate] Paths to populate
+ * @returns {Promise<object>}       { data, pagination: { total, page, pages, limit, hasMore } }
  */
-export const getPaginatedResults = async (query, options = {}) => {
-  const page = Number.parseInt(options.page, 10) || 1;
-  const limit = Number.parseInt(options.limit, 10) || 20;
-  const skip = (page - 1) * limit;
-  
-  // Clone the query to use for count
-  const countQuery = query.model.find().merge(query);
-  
-  // Execute the queries in parallel
-  const [results, total] = await Promise.all([
-    query.skip(skip).limit(limit).exec(),
-    countQuery.countDocuments()
-  ]);
-  
+export async function getPaginatedResults(query, opts = {}) {
+  const page  = Math.max(1, parseInt(opts.page, 10) || 1);
+  const limit = Math.max(1, parseInt(opts.limit, 10) || 20);
+  const skip  = (page - 1) * limit;
+
+  // Apply projection & population if given
+  if (opts.select) {
+    query = query.select(opts.select);
+  }
+  if (opts.populate) {
+    if (Array.isArray(opts.populate)) {
+      opts.populate.forEach(path => { query = query.populate(path); });
+    } else {
+      query = query.populate(opts.populate);
+    }
+  }
+
+  // Clone filter for counting without skip/limit
+  const model = query.model;
+  const filter = query.getFilter();
+  const countPromise = model.countDocuments(filter).exec();
+
+  // Apply pagination and sort, then execute
+  const docsPromise = query
+    .sort(opts.sort || '-createdAt')
+    .skip(skip)
+    .limit(limit)
+    .lean()
+    .exec();
+
+  const [data, total] = await Promise.all([docsPromise, countPromise]);
+  const pages = Math.ceil(total / limit);
+
   return {
-    data: results,
+    data,
     pagination: {
       total,
       page,
-      pages: Math.ceil(total / limit),
+      pages,
       limit,
-      hasMore: page < Math.ceil(total / limit)
+      hasMore: page < pages
     }
   };
-};
+}
 
 /**
- * Find document by ID with error handling
- * @param {Model} model - Mongoose model
- * @param {string} id - Document ID
- * @param {Object} options - Query options
- * @returns {Promise<Document>} - Found document
- * @throws {Error} - If document not found
+ * Find a document by ID, applying select/populate/lean, or throw 404.
+ *
+ * @param {import("mongoose").Model} model    Mongoose model
+ * @param {string|import("mongoose").Types.ObjectId} id
+ * @param {object}                   [opts]
+ * @param {string}                   [opts.select]   projection
+ * @param {Array|string}             [opts.populate] populate paths
+ * @param {boolean}                  [opts.lean=false]
+ * @returns {Promise<object>}
+ * @throws If ID invalid or no document found
  */
-export const findByIdOrThrow = async (model, id, options = {}) => {
-  const { select, populate, lean = false } = options;
-  
+export async function findByIdOrThrow(model, id, opts = {}) {
+  if (!mongoose.isValidObjectId(id)) {
+    throw createNotFoundError(`${model.modelName} not found`);
+  }
+
   let query = model.findById(id);
-  
-  if (select) {
-    query = query.select(select);
-  }
-  
-  if (populate) {
-    if (Array.isArray(populate)) {
-      populate.forEach(field => {
-        query = query.populate(field);
-      });
+  if (opts.select) query = query.select(opts.select);
+  if (opts.populate) {
+    if (Array.isArray(opts.populate)) {
+      opts.populate.forEach(path => { query = query.populate(path); });
     } else {
-      query = query.populate(populate);
+      query = query.populate(opts.populate);
     }
   }
-  
-  if (lean) {
-    query = query.lean();
-  }
-  
+  if (opts.lean) query = query.lean();
+
   const doc = await query.exec();
-  
   if (!doc) {
-    const modelName = model.modelName || 'Document';
-    throw createNotFoundError(`${modelName} not found`);
+    throw createNotFoundError(`${model.modelName} not found`);
   }
-  
   return doc;
-};
+}
 
 /**
- * Apply user privacy settings to user data
- * @param {Object|Array} userData - User data to process
- * @returns {Object|Array} - Processed data with privacy applied
+ * Strip sensitive user settings according to privacy preferences.
+ *
+ * @param {object|Array<object>} userData
+ * @returns {object|Array<object>|null}
  */
-export const applyPrivacySettings = (userData) => {
-  const processUser = (user) => {
-    // Skip if no user data
-    if (!user) return null;
-    
-    // Convert to plain object if it's a Mongoose document
-    const userObj = user.toObject ? user.toObject() : { ...user };
-    
-    // Apply privacy settings
-    if (userObj.settings?.privacy?.showOnlineStatus === false) {
-      userObj.isOnline = false;
+export function applyPrivacySettings(userData) {
+  const sanitize = (u) => {
+    if (!u) return null;
+    const obj = typeof u.toObject === 'function' ? u.toObject() : { ...u };
+
+    const privacy = obj.settings?.privacy;
+    if (privacy?.showOnlineStatus === false) {
+      obj.isOnline = false;
     }
-    
-    // Apply read receipts privacy setting
-    if (userObj.settings?.privacy?.showReadReceipts === false) {
-      if (userObj.lastRead) {
-        delete userObj.lastRead;
-      }
+    if (privacy?.showReadReceipts === false) {
+      delete obj.lastRead;
     }
-    
-    // Apply last seen privacy setting
-    if (userObj.settings?.privacy?.showLastSeen === false) {
-      if (userObj.lastActive) {
-        delete userObj.lastActive;
-      }
+    if (privacy?.showLastSeen === false) {
+      delete obj.lastActive;
     }
-    
-    // Remove settings from response to prevent leaking user settings
-    delete userObj.settings;
-    
-    return userObj;
+
+    delete obj.settings;
+    return obj;
   };
-  
-  // Handle both single user and arrays
+
   if (Array.isArray(userData)) {
-    return userData.map(user => processUser(user)).filter(Boolean);
+    return userData.map(sanitize).filter(Boolean);
   }
-  
-  return processUser(userData);
-};
+  return sanitize(userData);
+}
 
 /**
- * Create standard query options from request query params
- * @param {Object} reqQuery - Express request query object
- * @returns {Object} - Standardized query options
+ * Build standardized query options from Express request query.
+ *
+ * @param {object} reqQuery — req.query
+ * @returns {object} { page, limit, sort, select, populate, lean }
  */
-export const createQueryOptions = (reqQuery) => {
-  const options = {
-    page: Number.parseInt(reqQuery.page, 10) || 1,
+export function createQueryOptions(reqQuery = {}) {
+  const opts = {
+    page:  Number.parseInt(reqQuery.page, 10)  || 1,
     limit: Number.parseInt(reqQuery.limit, 10) || 20,
-    sort: reqQuery.sort || '-createdAt',
-    select: reqQuery.select || '',
+    sort:  reqQuery.sort || '-createdAt',
+    select: reqQuery.select || undefined,
     lean: reqQuery.lean !== 'false'
   };
-  
-  // Handle populate parameter
+
   if (reqQuery.populate) {
     try {
-      // Check if it's a JSON string
-      if (reqQuery.populate.startsWith('[') || reqQuery.populate.startsWith('{')) {
-        options.populate = JSON.parse(reqQuery.populate);
-      } else {
-        // Comma-separated field names
-        options.populate = reqQuery.populate.split(',');
-      }
-    } catch (error) {
-      // If parsing fails, use as is
-      options.populate = reqQuery.populate;
+      opts.populate = JSON.parse(reqQuery.populate);
+    } catch {
+      opts.populate = reqQuery.populate.split(',').map(s => s.trim());
     }
   }
-  
-  return options;
-};
+
+  return opts;
+}
 
 /**
- * Create standard filter object from request query params
- * @param {Object} reqQuery - Express request query object
- * @param {Array} allowedFields - Fields that can be used for filtering
- * @returns {Object} - MongoDB filter object
+ * Create a MongoDB filter object from request query, optionally whitelisting fields.
+ *
+ * @param {object} reqQuery       — req.query
+ * @param {string[]} allowed     — array of allowed filter keys
+ * @returns {object} MongoDB filter
  */
-export const createFilterObject = (reqQuery, allowedFields = []) => {
-  const filter = {};
-  
-  // Copy query
-  const queryObj = { ...reqQuery };
-  
-  // Remove special fields
-  const excludedFields = ['page', 'limit', 'sort', 'select', 'populate', 'lean'];
-  excludedFields.forEach(field => delete queryObj[field]);
-  
-  // Filter only allowed fields if specified
-  if (allowedFields.length > 0) {
-    Object.keys(queryObj).forEach(key => {
-      if (!allowedFields.includes(key)) {
-        delete queryObj[key];
-      }
+export function createFilterObject(reqQuery = {}, allowed = []) {
+  // Clone and remove pagination/sorting params
+  const filter = { ...reqQuery };
+  ['page', 'limit', 'sort', 'select', 'populate', 'lean'].forEach(f => delete filter[f]);
+
+  // Whitelist fields if provided
+  if (allowed.length) {
+    Object.keys(filter).forEach(key => {
+      if (!allowed.includes(key)) delete filter[key];
     });
   }
-  
-  // Handle range operators
-  let queryStr = JSON.stringify(queryObj);
-  queryStr = queryStr.replace(/\b(gt|gte|lt|lte)\b/g, match => `$${match}`);
-  
-  return JSON.parse(queryStr);
-};
+
+  // Support range operators: gt, gte, lt, lte
+  let str = JSON.stringify(filter);
+  str = str.replace(/\b(gt|gte|lt|lte)\b/g, m => `$${m}`);
+  return JSON.parse(str);
+}

@@ -1,19 +1,40 @@
+/* src/styles/videoCall.module.css */
+
+/* --- OVERLAY STYLE --- */
 .videoCall {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  background-color: #1a1a1a;
-  overflow: hidden;
-  border-radius: 8px;
+  /* Changed from relative to fixed for overlay */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw; /* Full viewport width */
+  height: 100vh; /* Full viewport height */
+  background-color: rgba(26, 26, 26, 0.9); /* Dark semi-transparent background (was #1a1a1a) */
+  z-index: 1000; /* High z-index to appear on top */
+  display: flex; /* Use flexbox to center the content */
+  align-items: center;
+  justify-content: center;
+  overflow: hidden; /* Prevent scrollbars on the overlay itself */
   color: #fff;
   font-family: system-ui, -apple-system, sans-serif;
+  /* Optional: Add transitions for smooth appearance */
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 
+/* Container for the actual call content within the overlay */
 .videoContainer {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  display: flex;
+  /* Define the size of the call area within the overlay */
+  width: 90%; /* Example: Use 90% of viewport */
+  height: 90%; /* Example: Use 90% of viewport */
+  max-width: 1400px; /* Optional: Max width */
+  max-height: 900px; /* Optional: Max height */
+
+  position: relative; /* Children are positioned relative to this */
+  background-color: #1a1a1a; /* Keep the dark background for the call area */
+  border-radius: 8px;
+  overflow: hidden; /* Crucial to keep content like controls inside */
+  display: flex; /* Was already flex, keep if needed for internal layout */
   align-items: center;
   justify-content: center;
 }
@@ -22,16 +43,17 @@
 .remoteVideoWrapper {
   width: 100%;
   height: 100%;
-  position: relative;
+  position: relative; /* Positioned within videoContainer */
   overflow: hidden;
-  background-color: #222;
+  background-color: #222; /* Background shown before video loads */
 }
 
 .remoteVideo {
+  display: block; /* Ensure no extra space */
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  background-color: #222;
+  object-fit: cover; /* Cover the area, might crop */
+  background-color: #222; /* Fallback */
 }
 
 /* Video Placeholders */
@@ -39,13 +61,13 @@
   position: absolute;
   top: 0;
   left: 0;
-  background-color: rgba(0, 0, 0, 0.8);
+  /* Background color removed, rely on drawPlaceholderVideo canvas */
 }
 
 .remoteVideoPlaceholder {
   width: 100%;
   height: 100%;
-  z-index: 5;
+  z-index: 5; /* Above video, below indicators */
 }
 
 /* Connection Quality Indicator */
@@ -58,7 +80,7 @@
   background-color: rgba(0, 0, 0, 0.6);
   padding: 5px 10px;
   border-radius: 12px;
-  z-index: 25;
+  z-index: 25; /* High z-index */
   backdrop-filter: blur(3px);
 }
 
@@ -88,7 +110,7 @@
   position: absolute;
   bottom: 5px;
   right: 5px;
-  z-index: 15;
+  z-index: 15; /* Should be relative to localVideoWrapper */
   background-color: rgba(0, 0, 0, 0.6);
   padding: 3px;
   border-radius: 5px;
@@ -113,8 +135,10 @@
   align-items: center;
   justify-content: center;
   background-color: rgba(0, 0, 0, 0.75);
-  z-index: 20;
+  z-index: 20; /* Below controls/quality, above video */
   backdrop-filter: blur(4px);
+  text-align: center;
+  padding: 20px;
 }
 
 .connectingIndicator,
@@ -147,7 +171,7 @@
 }
 
 .errorIndicator {
-  pointer-events: auto;
+  pointer-events: auto; /* Allow clicking buttons inside */
 }
 
 .errorMessage {
@@ -181,7 +205,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin: 0 auto;
+  margin: 10px auto 0 auto; /* Added top margin */
   transition: background-color 0.2s, transform 0.2s;
   font-size: 0.9em;
   font-weight: 500;
@@ -204,7 +228,8 @@
 .audioOffIndicator {
   position: absolute;
   top: 20px;
-  right: 90px;
+  /* Adjust positioning relative to quality indicator if needed */
+  right: 130px; /* Example: move left of quality */
   background-color: rgba(0, 0, 0, 0.6);
   color: #dc3545;
   padding: 8px;
@@ -217,15 +242,15 @@
 /* Local Video */
 .localVideoWrapper {
   position: absolute;
-  width: clamp(120px, 20%, 180px);
+  width: clamp(120px, 15%, 200px); /* Adjusted max size slightly */
   aspect-ratio: 4/3;
-  bottom: 20px;
+  bottom: 90px; /* Raise above controls */
   left: 20px;
   border-radius: 8px;
   overflow: hidden;
   border: 2px solid rgba(255, 255, 255, 0.5);
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
-  z-index: 10;
+  z-index: 10; /* Above remote video */
   transition: transform 0.3s ease;
 }
 
@@ -234,6 +259,7 @@
 }
 
 .localVideo {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -244,7 +270,7 @@
 .localVideoPlaceholder {
   width: 100%;
   height: 100%;
-  z-index: 5;
+  z-index: 5; /* Above video element */
 }
 
 /* Call Info */
@@ -260,7 +286,7 @@
   border-radius: 15px;
   font-size: 0.9em;
   font-weight: 500;
-  z-index: 20;
+  z-index: 20; /* Above video, below quality indicator if overlapping */
   backdrop-filter: blur(3px);
 }
 
@@ -281,7 +307,7 @@
   padding: 12px 20px;
   border-radius: 32px;
   transition: opacity 0.4s ease, transform 0.4s ease;
-  z-index: 20;
+  z-index: 20; /* Ensure controls are above video */
   backdrop-filter: blur(10px);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
@@ -293,7 +319,7 @@
 
 .callControls.hidden {
   opacity: 0;
-  transform: translateX(-50%) translateY(80px);
+  transform: translateX(-50%) translateY(80px); /* Move down when hidden */
   pointer-events: none;
 }
 
@@ -310,7 +336,7 @@
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  position: relative;
+  position: relative; /* For quality dot */
 }
 
 .controlButton:hover {
@@ -319,63 +345,41 @@
 }
 
 .controlButton.active {
-  background-color: #4a90e2;
+  background-color: #4a90e2; /* Blue for active (like mic/video off) */
 }
 
 .controlButton.endCall {
-  background-color: #dc3545;
+  background-color: #dc3545; /* Red for end call */
 }
 
 .controlButton.endCall:hover {
   background-color: #c82333;
 }
 
+/* Quality dot inside signal button */
 .qualityDot {
   position: absolute;
-  bottom: 3px;
-  right: 3px;
-  width: 8px;
-  height: 8px;
+  bottom: 5px; /* Adjusted position slightly */
+  right: 5px; /* Adjusted position slightly */
+  width: 10px; /* Slightly larger */
+  height: 10px;
   border-radius: 50%;
-  background-color: #aaa;
+  border: 1px solid rgba(0, 0, 0, 0.5); /* Add border for contrast */
 }
 
-.qualityDot.excellent {
-  background-color: #4caf50;
-}
-
-.qualityDot.good {
-  background-color: #8bc34a;
-}
-
-.qualityDot.fair {
-  background-color: #ffc107;
-}
-
-.qualityDot.poor {
-  background-color: #f44336;
-}
+/* Color logic for quality dot */
+.qualityDot.excellent { background-color: #4caf50; }
+.qualityDot.good { background-color: #8bc34a; }
+.qualityDot.fair { background-color: #ffc107; }
+.qualityDot.poor { background-color: #f44336; }
+.qualityDot.unknown { background-color: #aaa; } /* Default/unknown */
 
 /* Connection Quality Text Colors */
-.qualityText.excellent,
-.qualityCanvas.excellent {
-  color: #4caf50;
-}
-
-.qualityText.good,
-.qualityCanvas.good {
-  color: #8bc34a;
-}
-
-.qualityText.fair,
-.qualityCanvas.fair {
-  color: #ffc107;
-}
-
-.qualityText.poor,
-.qualityCanvas.poor {
-  color: #f44336;
-}
+.qualityText.excellent { color: #4caf50; }
+.qualityText.good { color: #8bc34a; }
+.qualityText.fair { color: #ffc107; }
+.qualityText.poor { color: #f44336; }
+.qualityText.unknown { color: #aaa; }
 
 /* Call Duration */
 .callDuration {

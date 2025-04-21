@@ -1,627 +1,357 @@
-// server/routes/notificationRoutes.js - Enhanced to support bundling and more notification types
-import express from "express";
-import mongoose from "mongoose";
-import { protect, asyncHandler } from "../middleware/auth.js";
-import logger from "../logger.js";
-import { User, Notification } from "../models/index.js";
+// server/routes/notifications.js
+import express from 'express'
+import mongoose from 'mongoose'
+import { check, validationResult } from 'express-validator'
+import asyncHandler from 'express-async-handler'
+import { protect } from '../middleware/auth.js'
+import { User, Notification } from '../models/index.js'
+import logger from '../logger.js'
+import config from '../config.js'
 
-const router = express.Router();
+const router = express.Router()
+
+// --- Constants & Helpers ---
+
+const DEFAULT_PAGE_SIZE = parseInt(config.NOTIFICATIONS_PER_PAGE, 10) || 20
+const ALLOWED_TYPES = Array.isArray(config.ALLOWED_NOTIFICATION_TYPES)
+  ? config.ALLOWED_NOTIFICATION_TYPES
+  : ['message','like','match','photoRequest','photoResponse','story','comment','system','call']
+
+// Middleware to validate req.params[id] is a Mongo ObjectId
+const validateObjectId = param => (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params[param])) {
+    return res.status(400).json({ success: false, error: `${param} is not a valid ID` })
+  }
+  next()
+}
+
+// Express‑validator errors
+const validateRequest = (req, res, next) => {
+  const errs = validationResult(req)
+  if (!errs.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errs.array() })
+  }
+  next()
+}
+
+// Build a mongoose filter object from query params
+function buildFilter(userId, { type, read, sender }) {
+  const filter = { recipient: userId }
+  if (type && ALLOWED_TYPES.includes(type)) filter.type = type
+  if (read === 'true') filter.read = true
+  else if (read === 'false') filter.read = false
+  if (sender && mongoose.Types.ObjectId.isValid(sender)) filter.sender = sender
+  return filter
+}
+
+// Emit a notification over socket.io if configured
+function emitNotification(io, userId, notification) {
+  if (!io?.userConnectionsMap) return
+  const sockets = io.userConnectionsMap.get(userId.toString())
+  if (!sockets) return
+  sockets.forEach(socketId => {
+    io.to(socketId).emit('notification', notification)
+  })
+}
+
+// --- Routes ---
 
 /**
- * @route   GET /api/notifications
- * @desc    Get notifications for the current user
- * @access  Private
+ * GET /api/notifications
+ * List notifications with optional filters + pagination.
  */
 router.get(
-  "/",
+  '/',
   protect,
   asyncHandler(async (req, res) => {
-    try {
-      const page = Number.parseInt(req.query.page, 10) || 1;
-      const limit = Number.parseInt(req.query.limit, 10) || 20;
-      const skip = (page - 1) * limit;
+    const page  = parseInt(req.query.page,  10) || 1
+    const limit = parseInt(req.query.limit, 10) || DEFAULT_PAGE_SIZE
+    const skip  = (page - 1) * limit
 
-      // Get filter conditions from query params
-      const filter = { recipient: req.user._id };
-      
-      // Filter by type if provided
-      if (req.query.type && ["message", "like", "match", "photoRequest", "photoResponse", "story", "comment", "system", "call"].includes(req.query.type)) {
-        filter.type = req.query.type;
-      }
-      
-      // Filter by read status if provided
-      if (req.query.read === 'true') {
-        filter.read = true;
-      } else if (req.query.read === 'false') {
-        filter.read = false;
-      }
-      
-      // Filter by sender if provided
-      if (req.query.sender && mongoose.Types.ObjectId.isValid(req.query.sender)) {
-        filter.sender = req.query.sender;
-      }
-      
-      // Find notifications with filtering and pagination
-      const notifications = await Notification.find(filter)
-        .sort({ updatedAt: -1, createdAt: -1 }) // Sort by updated first, then created
+    const filter = buildFilter(req.user._id, req.query)
+
+    const [ total, notifications, unreadCount ] = await Promise.all([
+      Notification.countDocuments(filter),
+      Notification.find(filter)
+        .sort({ updatedAt: -1, createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate("sender", "nickname username photos avatar")
-        .lean();
+        .populate('sender', 'nickname username photos avatar')
+        .lean(),
+      Notification.countDocuments({ recipient: req.user._id, read: false })
+    ])
 
-      // Get total count for pagination
-      const total = await Notification.countDocuments(filter);
-      
-      // Get total unread count (for status badges)
-      const unreadCount = await Notification.countDocuments({ 
-        recipient: req.user._id,
-        read: false
-      });
-
-      // Log the response
-      logger.info(`Retrieved ${notifications.length} notifications for user ${req.user._id} (total: ${total}, unread: ${unreadCount})`);
-
-      res.status(200).json({
-        success: true,
-        count: notifications.length,
-        total,
-        unreadCount,
-        page,
-        pages: Math.ceil(total / limit),
-        data: notifications,
-      });
-    } catch (err) {
-      logger.error(`Error fetching notifications: ${err.message}`);
-      res.status(500).json({
-        success: false,
-        error: "Server error while fetching notifications",
-      });
-    }
+    res.json({
+      success:     true,
+      count:       notifications.length,
+      total,
+      unreadCount,
+      page,
+      pages:       Math.ceil(total / limit),
+      data:        notifications
+    })
   })
-);
+)
 
 /**
- * @route   PUT /api/notifications/read
- * @desc    Mark notifications as read
- * @access  Private
+ * PUT /api/notifications/read
+ * Mark multiple notifications as read.
  */
 router.put(
-  "/read",
+  '/read',
   protect,
+  [ check('ids').isArray({ min: 1 }).withMessage('ids must be a non-empty array') ],
+  validateRequest,
   asyncHandler(async (req, res) => {
-    try {
-      const { ids } = req.body;
-
-      if (!ids || !Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: "Notification IDs array is required",
-        });
-      }
-
-      // Filter out invalid ObjectIDs to prevent MongoDB errors
-      const validIds = ids.filter(id => mongoose.Types.ObjectId.isValid(id));
-      
-      if (validIds.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: "No valid notification IDs provided",
-        });
-      }
-
-      // Ensure we only update this user's notifications
-      const result = await Notification.updateMany(
-        { 
-          _id: { $in: validIds }, 
-          recipient: req.user._id,
-          read: false // Only update unread ones
-        },
-        { 
-          read: true,
-          readAt: new Date()
-        }
-      );
-
-      logger.info(`Marked ${result.modifiedCount} notifications as read for user ${req.user._id}`);
-
-      res.status(200).json({
-        success: true,
-        count: result.modifiedCount,
-      });
-    } catch (err) {
-      logger.error(`Error marking notifications as read: ${err.message}`);
-      res.status(500).json({
-        success: false,
-        error: "Server error while marking notifications as read",
-      });
+    const validIds = req.body.ids.filter(mongoose.Types.ObjectId.isValid)
+    if (validIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid notification IDs provided' })
     }
+
+    const result = await Notification.updateMany(
+      { _id: { $in: validIds }, recipient: req.user._id, read: false },
+      { $set: { read: true, readAt: new Date(), updatedAt: new Date() } }
+    )
+
+    res.json({ success: true, count: result.modifiedCount })
   })
-);
+)
 
 /**
- * @route   PUT /api/notifications/:id/read
- * @desc    Mark a single notification as read
- * @access  Private
+ * PUT /api/notifications/:id/read
+ * Mark a single notification as read.
  */
 router.put(
-  "/:id/read",
+  '/:id/read',
   protect,
+  validateObjectId('id'),
   asyncHandler(async (req, res) => {
-    try {
-      const notificationId = req.params.id;
-      
-      if (!mongoose.Types.ObjectId.isValid(notificationId)) {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid notification ID format",
-        });
-      }
+    const notif = await Notification.findOne({
+      _id: req.params.id,
+      recipient: req.user._id
+    })
 
-      // Find the notification and ensure it belongs to this user
-      const notification = await Notification.findOne({
-        _id: notificationId,
-        recipient: req.user._id
-      });
-
-      if (!notification) {
-        return res.status(404).json({
-          success: false,
-          error: "Notification not found or does not belong to you",
-        });
-      }
-
-      // Skip if already read
-      if (notification.read) {
-        return res.status(200).json({
-          success: true,
-          message: "Notification was already marked as read",
-        });
-      }
-
-      // Mark as read
-      notification.read = true;
-      notification.readAt = new Date();
-      await notification.save();
-
-      logger.info(`Marked notification ${notificationId} as read for user ${req.user._id}`);
-
-      res.status(200).json({
-        success: true,
-        data: notification,
-      });
-    } catch (err) {
-      logger.error(`Error marking notification as read: ${err.message}`);
-      res.status(500).json({
-        success: false,
-        error: "Server error while marking notification as read",
-      });
+    if (!notif) {
+      return res.status(404).json({ success: false, error: 'Notification not found or not yours' })
     }
+
+    if (!notif.read) {
+      notif.read    = true
+      notif.readAt  = new Date()
+      notif.updatedAt = new Date()
+      await notif.save()
+    }
+
+    res.json({ success: true, data: notif })
   })
-);
+)
 
 /**
- * @route   PUT /api/notifications/read-all
- * @desc    Mark all notifications as read for the current user
- * @access  Private
+ * PUT /api/notifications/read-all
+ * Mark *all* of this user’s notifications as read.
  */
 router.put(
-  "/read-all",
+  '/read-all',
   protect,
   asyncHandler(async (req, res) => {
-    try {
-      const result = await Notification.updateMany(
-        { 
-          recipient: req.user._id, 
-          read: false 
-        },
-        { 
-          read: true,
-          readAt: new Date()
-        }
-      );
-
-      logger.info(`Marked all ${result.modifiedCount} unread notifications as read for user ${req.user._id}`);
-
-      res.status(200).json({
-        success: true,
-        count: result.modifiedCount,
-      });
-    } catch (err) {
-      logger.error(`Error marking all notifications as read: ${err.message}`);
-      res.status(500).json({
-        success: false,
-        error: "Server error while marking all notifications as read",
-      });
-    }
+    const result = await Notification.updateMany(
+      { recipient: req.user._id, read: false },
+      { $set: { read: true, readAt: new Date(), updatedAt: new Date() } }
+    )
+    res.json({ success: true, count: result.modifiedCount })
   })
-);
+)
 
 /**
- * @route   POST /api/notifications/create
- * @desc    Create a new notification
- * @access  Private (admin or system only)
+ * POST /api/notifications/create
+ * Create a new notification (no bundling service).
  */
 router.post(
-  "/create",
+  '/create',
   protect,
+  [
+    check('recipientId')
+      .notEmpty().withMessage('recipientId is required')
+      .bail()
+      .isMongoId().withMessage('recipientId must be a valid ID'),
+    check('type')
+      .notEmpty().withMessage('type is required')
+      .bail()
+      .isIn(ALLOWED_TYPES)
+      .withMessage(`type must be one of ${ALLOWED_TYPES.join(', ')}`)
+  ],
+  validateRequest,
   asyncHandler(async (req, res) => {
-    try {
-      const { 
-        recipientId, 
-        type, 
-        title, 
-        content, 
-        data = {}, 
-        enableBundling = true 
-      } = req.body;
+    const { recipientId, type, title, content, data = {} } = req.body
 
-      // Validate required fields
-      if (!recipientId || !type) {
-        return res.status(400).json({
-          success: false,
-          error: "Recipient ID and type are required",
-        });
-      }
-
-      // Validate recipient ID
-      if (!mongoose.Types.ObjectId.isValid(recipientId)) {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid recipient ID format",
-        });
-      }
-
-      // Check if recipient exists
-      const recipient = await User.findById(recipientId);
-      if (!recipient) {
-        return res.status(404).json({
-          success: false,
-          error: "Recipient user not found",
-        });
-      }
-
-      // Create notification (using the bundling method if enabled)
-      const notificationData = {
-        recipient: recipientId,
-        type,
-        title,
-        content,
-        data,
-        sender: req.user._id, // Current user as sender
-      };
-
-      let notification;
-      if (enableBundling) {
-        notification = await Notification.createWithBundling(notificationData);
-      } else {
-        notification = new Notification(notificationData);
-        await notification.save();
-      }
-
-      // If we have socket.io, emit notification to recipient
-      if (req.app.io) {
-        const recipientStr = recipientId.toString();
-        const userConnections = req.app.io.userConnectionsMap;
-        
-        if (userConnections && userConnections.has(recipientStr)) {
-          const sockets = userConnections.get(recipientStr);
-          
-          if (sockets && sockets.size > 0) {
-            // Populate sender data for notification
-            const populatedNotification = await Notification.findById(notification._id)
-              .populate("sender", "nickname username photos avatar")
-              .lean();
-            
-            // Emit to all recipient's sockets
-            sockets.forEach(socketId => {
-              req.app.io.to(socketId).emit("notification", populatedNotification);
-            });
-            
-            logger.info(`Notification emitted to ${sockets.size} socket(s) for user ${recipientId}`);
-          }
-        }
-      }
-
-      res.status(201).json({
-        success: true,
-        data: notification,
-      });
-    } catch (err) {
-      logger.error(`Error creating notification: ${err.message}`);
-      res.status(500).json({
-        success: false,
-        error: "Server error while creating notification",
-      });
+    // ensure recipient exists
+    if (!await User.exists({ _id: recipientId })) {
+      return res.status(404).json({ success: false, error: 'Recipient not found' })
     }
+
+    const now = new Date()
+    const notification = new Notification({
+      recipient:  recipientId,
+      sender:     req.user._id,
+      type,
+      title:      title || '',
+      content:    content || '',
+      data,
+      read:       false,
+      createdAt:  now,
+      updatedAt:  now
+    })
+    await notification.save()
+
+    // real‑time emit
+    emitNotification(req.app.io, recipientId, notification)
+
+    res.status(201).json({ success: true, data: notification })
   })
-);
+)
 
 /**
- * @route   POST /api/notifications/create-test
- * @desc    Create a test notification for development
- * @access  Private
+ * POST /api/notifications/create-test
+ * Generate a dummy notification for dev/testing.
  */
 router.post(
-  "/create-test",
+  '/create-test',
   protect,
+  [
+    check('type')
+      .optional()
+      .isIn(ALLOWED_TYPES)
+      .withMessage(`type must be one of ${ALLOWED_TYPES.join(', ')}`)
+  ],
+  validateRequest,
   asyncHandler(async (req, res) => {
-    try {
-      const { type = "system" } = req.body;
+    const type = req.body.type || 'system'
+    let title, content, data = {}
 
-      // Validate notification type
-      const validTypes = [
-        "message", "like", "match", "photoRequest", 
-        "photoResponse", "story", "comment", "system", "call"
-      ];
-      
-      if (!validTypes.includes(type)) {
-        return res.status(400).json({
-          success: false,
-          error: `Invalid notification type. Must be one of: ${validTypes.join(", ")}`
-        });
-      }
-
-      // Generate content based on type
-      let title, content, data = {};
-      
-      switch (type) {
-        case "message":
-          title = "Test Message Notification";
-          content = "This is a test message notification.";
-          data = { messageId: new mongoose.Types.ObjectId() };
-          break;
-        case "like":
-          title = "Test Like Notification";
-          content = "Someone liked your profile.";
-          data = { likeId: new mongoose.Types.ObjectId() };
-          break;
-        case "match":
-          title = "Test Match Notification";
-          content = "You have a new match!";
-          data = { matchId: new mongoose.Types.ObjectId() };
-          break;
-        case "photoRequest":
-          title = "Test Photo Request";
-          content = "Someone requested access to your photo.";
-          data = { photoId: new mongoose.Types.ObjectId() };
-          break;
-        case "photoResponse":
-          title = "Test Photo Response";
-          content = "Your photo request was approved.";
-          data = { 
-            photoId: new mongoose.Types.ObjectId(),
-            status: Math.random() > 0.5 ? "approved" : "rejected"
-          };
-          break;
-        case "story":
-          title = "Test Story Notification";
-          content = "Someone shared a new story.";
-          data = { storyId: new mongoose.Types.ObjectId() };
-          break;
-        case "comment":
-          title = "Test Comment Notification";
-          content = "Someone commented on your post.";
-          data = { commentId: new mongoose.Types.ObjectId() };
-          break;
-        case "call":
-          title = "Test Call Notification";
-          content = "You missed a call.";
-          data = { callId: new mongoose.Types.ObjectId() };
-          break;
-        default:
-          title = "Test System Notification";
-          content = `Test ${type} notification created at ${new Date().toLocaleTimeString()}`;
-      }
-
-      // Create a new notification (self-reference for testing)
-      const notification = new Notification({
-        recipient: req.user._id,
-        type: type,
-        sender: req.user._id,
-        title,
-        content,
-        data,
-        read: false
-      });
-
-      await notification.save();
-      logger.info(`Created test notification (${type}) for user ${req.user._id}`);
-
-      // If socket server is available, emit the notification
-      if (req.app.io) {
-        const userConnections = req.app.io.userConnectionsMap;
-        const userId = req.user._id.toString();
-
-        if (userConnections && userConnections.has(userId)) {
-          // Populate before sending
-          const populatedNotification = await Notification.findById(notification._id)
-            .populate("sender", "nickname username photos avatar")
-            .lean();
-            
-          userConnections.get(userId).forEach(socketId => {
-            req.app.io.to(socketId).emit("notification", populatedNotification);
-          });
-
-          logger.info(`Emitted test notification to ${userConnections.get(userId).size} socket(s)`);
-        }
-      }
-
-      res.status(201).json({
-        success: true,
-        data: notification
-      });
-    } catch (err) {
-      logger.error(`Error creating test notification: ${err.message}`);
-      res.status(500).json({
-        success: false,
-        error: "Server error while creating test notification",
-        details: err.message
-      });
+    switch (type) {
+      case 'message':
+        title   = 'Test Message'
+        content = 'This is a test message notification.'
+        data    = { messageId: new mongoose.Types.ObjectId() }
+        break
+      case 'like':
+        title   = 'Test Like'
+        content = 'Someone liked your profile.'
+        data    = { likeId: new mongoose.Types.ObjectId() }
+        break
+      case 'match':
+        title   = 'Test Match'
+        content = 'You have a new match!'
+        data    = { matchId: new mongoose.Types.ObjectId() }
+        break
+      case 'story':
+        title   = 'Test Story'
+        content = 'Someone posted a new story.'
+        data    = { storyId: new mongoose.Types.ObjectId() }
+        break
+      default:
+        title   = `Test ${type}`
+        content = `This is a test ${type} notification.`
     }
+
+    const now = new Date()
+    const notification = new Notification({
+      recipient:  req.user._id,
+      sender:     req.user._id,
+      type,
+      title,
+      content,
+      data,
+      read:       false,
+      createdAt:  now,
+      updatedAt:  now
+    })
+    await notification.save()
+
+    emitNotification(req.app.io, req.user._id, notification)
+
+    res.status(201).json({ success: true, data: notification })
   })
-);
+)
 
 /**
- * @route   GET /api/notifications/count
- * @desc    Get notification count statistics
- * @access  Private
+ * GET /api/notifications/count
+ * Retrieve per‑type and overall read/unread totals.
  */
 router.get(
-  "/count",
+  '/count',
   protect,
   asyncHandler(async (req, res) => {
-    try {
-      // Get counts by type
-      const counts = await Notification.aggregate([
-        { $match: { recipient: req.user._id } },
-        { 
-          $group: { 
-            _id: { 
-              type: "$type", 
-              read: "$read" 
-            },
-            count: { $sum: 1 }
-          }
-        },
-        { 
-          $group: {
-            _id: "$_id.type",
-            read: { $sum: { $cond: [{ $eq: ["$_id.read", true] }, "$count", 0] } },
-            unread: { $sum: { $cond: [{ $eq: ["$_id.read", false] }, "$count", 0] } },
-            total: { $sum: "$count" }
-          }
-        },
-        { $sort: { _id: 1 } }
-      ]);
-      
-      // Get overall totals
-      const totals = await Notification.aggregate([
-        { $match: { recipient: req.user._id } },
-        { 
-          $group: { 
-            _id: "$read",
-            count: { $sum: 1 }
-          }
-        }
-      ]);
+    const userId = req.user._id
 
-      // Format totals into a cleaner structure
-      const overallTotals = {
-        read: 0,
-        unread: 0,
-        total: 0
-      };
+    // by‑type + read/unread
+    const byType = await Notification.aggregate([
+      { $match: { recipient: userId } },
+      { $group: { _id: { type: '$type', read: '$read' }, count: { $sum: 1 } } },
+      { $group: {
+          _id: '$_id.type',
+          read:   { $sum: { $cond: [ { $eq: ['$_id.read', true] }, '$count', 0 ] } },
+          unread: { $sum: { $cond: [ { $eq: ['$_id.read', false] }, '$count', 0 ] } },
+          total:  { $sum: '$count' }
+      }},
+      { $sort: { _id: 1 } }
+    ])
 
-      totals.forEach(item => {
-        if (item._id === true) {
-          overallTotals.read = item.count;
-        } else {
-          overallTotals.unread = item.count;
-        }
-        overallTotals.total += item.count;
-      });
+    // overall totals
+    const totalsAgg = await Notification.aggregate([
+      { $match: { recipient: userId } },
+      { $group: { _id: '$read', count: { $sum: 1 } } }
+    ])
+    const totals = { read: 0, unread: 0, total: 0 }
+    totalsAgg.forEach(item => {
+      if (item._id) totals.read = item.count
+      else totals.unread = item.count
+      totals.total += item.count
+    })
 
-      res.status(200).json({
-        success: true,
-        counts: {
-          byType: counts,
-          totals: overallTotals
-        }
-      });
-    } catch (err) {
-      logger.error(`Error fetching notification counts: ${err.message}`);
-      res.status(500).json({
-        success: false,
-        error: "Server error while fetching notification counts",
-      });
-    }
+    res.json({ success: true, counts: { byType, totals } })
   })
-);
+)
 
 /**
- * @route   DELETE /api/notifications/:id
- * @desc    Delete a notification
- * @access  Private
+ * DELETE /api/notifications/:id
+ * Delete one notification (must belong to you).
  */
 router.delete(
-  "/:id",
+  '/:id',
   protect,
+  validateObjectId('id'),
   asyncHandler(async (req, res) => {
-    try {
-      const notificationId = req.params.id;
-      
-      if (!mongoose.Types.ObjectId.isValid(notificationId)) {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid notification ID format",
-        });
-      }
-
-      // Find and ensure it belongs to this user
-      const notification = await Notification.findOne({
-        _id: notificationId,
-        recipient: req.user._id
-      });
-
-      if (!notification) {
-        return res.status(404).json({
-          success: false,
-          error: "Notification not found or does not belong to you",
-        });
-      }
-
-      // Delete the notification
-      await notification.remove();
-
-      logger.info(`Deleted notification ${notificationId} for user ${req.user._id}`);
-
-      res.status(200).json({
-        success: true,
-        message: "Notification deleted successfully",
-      });
-    } catch (err) {
-      logger.error(`Error deleting notification: ${err.message}`);
-      res.status(500).json({
-        success: false,
-        error: "Server error while deleting notification",
-      });
+    const notif = await Notification.findOne({
+      _id: req.params.id,
+      recipient: req.user._id
+    })
+    if (!notif) {
+      return res.status(404).json({ success: false, error: 'Not found or not yours' })
     }
+    await notif.remove()
+    res.json({ success: true, message: 'Deleted' })
   })
-);
+)
 
 /**
- * @route   DELETE /api/notifications/clear-all
- * @desc    Clear all notifications for current user
- * @access  Private
+ * DELETE /api/notifications/clear-all
+ * Bulk‑delete notifications, optionally only those already read.
  */
 router.delete(
-  "/clear-all",
+  '/clear-all',
   protect,
   asyncHandler(async (req, res) => {
-    try {
-      // Only allow deleting read notifications if specified
-      const filter = { recipient: req.user._id };
-      if (req.query.readOnly === 'true') {
-        filter.read = true;
-      }
-      
-      const result = await Notification.deleteMany(filter);
+    const filter = { recipient: req.user._id }
+    if (req.query.readOnly === 'true') filter.read = true
 
-      logger.info(`Cleared ${result.deletedCount} notifications for user ${req.user._id}`);
-
-      res.status(200).json({
-        success: true,
-        count: result.deletedCount,
-        message: "Notifications cleared successfully",
-      });
-    } catch (err) {
-      logger.error(`Error clearing notifications: ${err.message}`);
-      res.status(500).json({
-        success: false,
-        error: "Server error while clearing notifications",
-      });
-    }
+    const result = await Notification.deleteMany(filter)
+    res.json({
+      success: true,
+      count: result.deletedCount,
+      message: 'Notifications cleared'
+    })
   })
-);
+)
 
-export default router;
+export default router

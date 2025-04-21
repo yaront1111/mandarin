@@ -1,348 +1,235 @@
-// middleware/upload.js - Enhanced with ES modules, improved file validation, and directory organization
-import multer from "multer"
-import path from "path"
-import fs from "fs"
-import crypto from "crypto"
-import { fileTypeFromBuffer } from "file-type"
-import config from "../config.js"
-import logger from "../logger.js"
+// server/middleware/upload.js
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import crypto from "crypto";
+import { fileTypeFromBuffer } from "file-type";
+import config from "../config.js";
+import logger from "../logger.js";
 
-// Create base uploads directory if it doesn't exist
-const uploadDir = path.join(process.cwd(), "uploads")
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true })
-  logger.info(`Created uploads directory: ${uploadDir}`)
-}
+// Base upload directory (configurable via FILE_UPLOAD_PATH, default "uploads")
+const BASE_UPLOAD_DIR = path.resolve(process.cwd(), config.FILE_UPLOAD_PATH || "uploads");
 
-// Sub-directories for different file types with enhanced organization
-const directories = {
-  images: path.join(uploadDir, "images"),
-  photos: path.join(uploadDir, "photos"),
-  videos: path.join(uploadDir, "videos"),
-  messages: path.join(uploadDir, "messages"),
-  profiles: path.join(uploadDir, "profiles"),
-  stories: path.join(uploadDir, "stories"),
-  temp: path.join(uploadDir, "temp"),
-  deleted: path.join(uploadDir, "deleted"), // For soft-deleted files
-}
+// Named subdirectories for organization
+const DIRECTORIES = {
+  images: path.join(BASE_UPLOAD_DIR, "images"),
+  photos: path.join(BASE_UPLOAD_DIR, "photos"),
+  videos: path.join(BASE_UPLOAD_DIR, "videos"),
+  messages: path.join(BASE_UPLOAD_DIR, "messages"),
+  profiles: path.join(BASE_UPLOAD_DIR, "profiles"),
+  stories: path.join(BASE_UPLOAD_DIR, "stories"),
+  temp: path.join(BASE_UPLOAD_DIR, "temp"),
+  deleted: path.join(BASE_UPLOAD_DIR, "deleted"),
+};
 
-// Ensure all sub-directories exist
-Object.values(directories).forEach((dir) => {
+// Ensure base + all subdirectories exist
+[BASE_UPLOAD_DIR, ...Object.values(DIRECTORIES)].forEach((dir) => {
   if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true })
-    logger.info(`Created directory: ${dir}`)
+    fs.mkdirSync(dir, { recursive: true });
+    logger.info(`Created upload directory: ${dir}`);
   }
-})
+});
 
 /**
- * Generate a secure filename to prevent path traversal and ensure uniqueness
- * @param {string} originalname - Original filename
- * @returns {string} Secure filename
+ * Generate a secure, unique filename from the original name.
  */
 const generateSecureFilename = (originalname) => {
-  const timestamp = Date.now()
-  const randomString = crypto.randomBytes(8).toString("hex")
-  const extension = path.extname(originalname).toLowerCase()
-  const sanitizedName = path
-    .basename(originalname, extension)
+  const timestamp = Date.now();
+  const random = crypto.randomBytes(8).toString("hex");
+  const ext = path.extname(originalname).toLowerCase();
+  const base = path
+    .basename(originalname, ext)
     .replace(/[^a-z0-9]/gi, "-")
-    .toLowerCase()
-
-  return `${timestamp}-${randomString}-${sanitizedName}${extension}`
-}
+    .toLowerCase();
+  return `${timestamp}-${random}-${base}${ext}`;
+};
 
 /**
- * Get appropriate upload directory based on file type and route
- * @param {Object} req - Express request object
- * @param {Object} file - Multer file object
- * @returns {string} Directory path
+ * Determine which subdirectory to use for a given request & file.
  */
 const getUploadDirectory = (req, file) => {
-  const url = req.originalUrl.toLowerCase()
+  const url = (req.originalUrl || "").toLowerCase();
 
-  // If route includes "/photos" but file is an image, use images directory
-  if (url.includes("/photos") && file.mimetype.startsWith("image/")) {
-    return directories.images
+  // Route-based overrides
+  if (url.includes("/stories") || file.fieldname === "media") {
+    return DIRECTORIES.stories;
   }
-
-  // For image routes, use images directory
-  if (url.includes("/images") || url.includes("/upload/image")) {
-    return directories.images
+  if (url.includes("/profiles") || url.includes("/avatar")) {
+    return DIRECTORIES.profiles;
   }
-
-  // Classify by URL first
+  if (url.includes("/messages")) {
+    return DIRECTORIES.messages;
+  }
   if (url.includes("/photos")) {
-    return directories.photos
-  } else if (url.includes("/messages")) {
-    return directories.messages
-  } else if (url.includes("/stories")) {
-    return directories.stories
-  } else if (url.includes("/profiles") || url.includes("/users")) {
-    return directories.profiles
+    return DIRECTORIES.photos;
   }
-
-  // Then classify by file type if not already categorized
+  if (url.includes("/videos") || file.mimetype.startsWith("video/")) {
+    return DIRECTORIES.videos;
+  }
   if (file.mimetype.startsWith("image/")) {
-    return directories.images
-  } else if (file.mimetype.startsWith("video/")) {
-    return directories.videos
+    return DIRECTORIES.images;
   }
 
-  // Default fallback
-  return directories.temp
-}
+  // Fallback
+  return DIRECTORIES.temp;
+};
 
-// Configure storage with enhanced security and organization
+/**
+ * Multer storage engine: saves to dynamically chosen directory with secure filenames.
+ */
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     try {
-      // Always use the images directory for uploaded photos
-      const uploadPath = path.join(process.cwd(), "uploads", "images");
-
-      // Ensure the directory exists
-      if (!fs.existsSync(uploadPath)) {
-        fs.mkdirSync(uploadPath, { recursive: true });
-        logger.info(`Created upload directory: ${uploadPath}`);
-      }
-
-      logger.debug(`Setting upload destination: ${uploadPath}`);
+      const uploadPath = getUploadDirectory(req, file);
+      fs.mkdirSync(uploadPath, { recursive: true });
       cb(null, uploadPath);
-    } catch (error) {
-      logger.error(`Error determining upload destination: ${error.message}`);
-      cb(error);
+    } catch (err) {
+      logger.error(`upload.destination error: ${err.message}`);
+      cb(err);
     }
   },
   filename: (req, file, cb) => {
     try {
-      // Create a unique filename that includes original extension
-      const fileExt = path.extname(file.originalname).toLowerCase();
-      const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${fileExt}`;
-
-      logger.debug(`Generated filename for upload: ${uniqueName}`);
-      cb(null, uniqueName);
-    } catch (error) {
-      logger.error(`Error generating filename: ${error.message}`);
-      cb(error);
+      const name = generateSecureFilename(file.originalname);
+      cb(null, name);
+    } catch (err) {
+      logger.error(`upload.filename error: ${err.message}`);
+      cb(err);
     }
   },
 });
 
 /**
- * Validate file type and contents
- * @param {Object} req - Express request object
- * @param {Object} file - Multer file object
- * @param {Function} cb - Callback function
+ * First‑pass file filter: checks MIME type and extension.
  */
-const fileFilter = async (req, file, cb) => {
-  // Allowed MIME types
-  const allowedImageTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"]
-  const allowedVideoTypes = ["video/mp4", "video/quicktime", "video/x-msvideo", "video/x-ms-wmv", "video/webm"]
-  const allowedDocumentTypes = [
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ]
+const fileFilter = (req, file, cb) => {
+  const allowed = {
+    images: ["image/jpeg", "image/png", "image/gif", "image/webp"],
+    videos: ["video/mp4", "video/quicktime", "video/webm"],
+    docs: [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ],
+  };
 
-  try {
-    // Check declared MIME type
-    const isDeclaredImage = allowedImageTypes.includes(file.mimetype)
-    const isDeclaredVideo = allowedVideoTypes.includes(file.mimetype)
-    const isDeclaredDocument = allowedDocumentTypes.includes(file.mimetype)
+  const isImage = allowed.images.includes(file.mimetype);
+  const isVideo = allowed.videos.includes(file.mimetype);
+  const isDoc = allowed.docs.includes(file.mimetype);
 
-    if (!isDeclaredImage && !isDeclaredVideo && !isDeclaredDocument) {
-      logger.warn(`Rejected file upload with disallowed MIME type: ${file.mimetype}`)
-      return cb(new Error("Only images, videos, and documents are allowed"), false)
-    }
-
-    // Basic extension check
-    const ext = path.extname(file.originalname).toLowerCase()
-    const allowedImageExts = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
-    const allowedVideoExts = [".mp4", ".mov", ".avi", ".wmv", ".webm"]
-    const allowedDocumentExts = [".pdf", ".doc", ".docx"]
-
-    const isValidImageExt = allowedImageExts.includes(ext)
-    const isValidVideoExt = allowedVideoExts.includes(ext)
-    const isValidDocumentExt = allowedDocumentExts.includes(ext)
-
-    if (isDeclaredImage && !isValidImageExt) {
-      logger.warn(`Rejected image upload with invalid extension: ${ext}`)
-      return cb(new Error("Invalid image file extension"), false)
-    }
-
-    if (isDeclaredVideo && !isValidVideoExt) {
-      logger.warn(`Rejected video upload with invalid extension: ${ext}`)
-      return cb(new Error("Invalid video file extension"), false)
-    }
-
-    if (isDeclaredDocument && !isValidDocumentExt) {
-      logger.warn(`Rejected document upload with invalid extension: ${ext}`)
-      return cb(new Error("Invalid document file extension"), false)
-    }
-
-    // Deep validation will be done after upload using file-type
-    // This is just a first pass to reject obviously invalid files
-
-    cb(null, true)
-  } catch (error) {
-    logger.error(`Error in file filter: ${error.message}`)
-    cb(new Error("Error validating file"), false)
+  if (!isImage && !isVideo && !isDoc) {
+    logger.warn(`Rejected upload: unsupported MIME ${file.mimetype}`);
+    return cb(new Error("Only images, videos, or PDFs/DOCs are allowed"), false);
   }
-}
+
+  const ext = path.extname(file.originalname).toLowerCase();
+  const validExts = [
+    ...[".jpg", ".jpeg", ".png", ".gif", ".webp"],
+    ...[".mp4", ".mov", ".webm"],
+    ...[".pdf", ".doc", ".docx"],
+  ];
+  if (!validExts.includes(ext)) {
+    logger.warn(`Rejected upload: bad extension ${ext}`);
+    return cb(new Error("File extension does not match its MIME type"), false);
+  }
+
+  cb(null, true);
+};
 
 /**
- * Perform deep validation of uploaded file
- * @param {Object} file - Multer file object
- * @returns {Promise<boolean>} True if file is valid
+ * After multer saves the file, verify actual contents match declared type.
  */
 const validateFileContents = async (file) => {
   try {
-    if (!file || !file.path) {
-      return false
+    const buffer = fs.readFileSync(file.path);
+    const type = await fileTypeFromBuffer(buffer);
+    if (!type) {
+      logger.warn(`validateFileContents: could not determine type for ${file.originalname}`);
+      return false;
     }
-
-    const buffer = fs.readFileSync(file.path)
-    const fileType = await fileTypeFromBuffer(buffer)
-
-    if (!fileType) {
-      logger.warn(`Could not determine file type for ${file.originalname}`)
-      return false
+    // JPEG edge-case: allow both image/jpg & image/jpeg
+    const mimeMatch =
+      file.mimetype === type.mime ||
+      (file.mimetype.startsWith("image/jp") && type.mime === "image/jpeg");
+    if (!mimeMatch) {
+      logger.warn(`validateFileContents: mismatch (${file.mimetype} vs ${type.mime})`);
+      return false;
     }
-
-    const declaredMime = file.mimetype
-    const actualMime = fileType.mime
-
-    // Check for MIME type mismatch (excluding edge cases like jpg/jpeg)
-    const isJpegEdgeCase =
-      (declaredMime === "image/jpg" && actualMime === "image/jpeg") ||
-      (declaredMime === "image/jpeg" && actualMime === "image/jpg")
-
-    if (declaredMime !== actualMime && !isJpegEdgeCase) {
-      logger.warn(`MIME type mismatch: declared ${declaredMime}, actual ${actualMime}`)
-      return false
-    }
-
-    return true
-  } catch (error) {
-    logger.error(`Error validating file contents: ${error.message}`)
-    return false
+    return true;
+  } catch (err) {
+    logger.error(`validateFileContents error: ${err.message}`);
+    return false;
   }
-}
+};
 
 /**
- * Move a file to the deleted directory instead of deleting it
- * @param {string} filePath - Path to the file to soft-delete
- * @returns {Promise<boolean>} - Whether the operation was successful
+ * When a file fails validation, move it to the "deleted" folder (soft delete).
  */
-const softDeleteFile = async (filePath) => {
+const softDeleteFile = (filePath) => {
   try {
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      logger.warn(`Cannot soft-delete non-existent file: ${filePath}`)
-      return false
-    }
-
-    // Generate a unique filename for the deleted file
-    const filename = path.basename(filePath)
-    const timestamp = Date.now()
-    const deletedFilename = `${timestamp}-${filename}`
-    const deletedFilePath = path.join(directories.deleted, deletedFilename)
-
-    // Move file to deleted directory
-    fs.renameSync(filePath, deletedFilePath)
-    logger.info(`File soft-deleted: ${filePath} -> ${deletedFilePath}`)
-
-    return true
-  } catch (error) {
-    logger.error(`Error soft-deleting file: ${error.message}`)
-    return false
+    if (!fs.existsSync(filePath)) return false;
+    const name = path.basename(filePath);
+    const dest = path.join(
+      DIRECTORIES.deleted,
+      `${Date.now()}-${name}`
+    );
+    fs.renameSync(filePath, dest);
+    logger.info(`Soft-deleted invalid file: ${filePath} → ${dest}`);
+    return true;
+  } catch (err) {
+    logger.error(`softDeleteFile error: ${err.message}`);
+    return false;
   }
-}
+};
 
 /**
- * Clean up invalid file by moving it to deleted directory
- * @param {Object} file - Multer file object
- */
-const cleanupInvalidFile = (file) => {
-  if (file && file.path && fs.existsSync(file.path)) {
-    try {
-      softDeleteFile(file.path)
-      logger.debug(`Moved invalid file to deleted directory: ${file.path}`)
-    } catch (error) {
-      logger.error(`Error cleaning up invalid file: ${error.message}`)
-      // Fallback to direct deletion if soft delete fails
-      try {
-        fs.unlinkSync(file.path)
-        logger.debug(`Deleted invalid file: ${file.path}`)
-      } catch (unlinkError) {
-        logger.error(`Error deleting invalid file: ${unlinkError.message}`)
-      }
-    }
-  }
-}
-
-// Initialize upload with enhanced configuration
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: config.MAX_FILE_SIZE || 10 * 1024 * 1024, // Default 10MB
-    files: 1,
-  },
-  fileFilter: fileFilter,
-})
-
-/**
- * Middleware to validate uploaded file after multer processes it
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next function
+ * Express middleware to run deep validation and clean up invalid files.
  */
 const validateUpload = async (req, res, next) => {
-  if (!req.file) {
-    return next();
-  }
+  if (!req.file) return next();
 
-  const isValid = await validateFileContents(req.file);
-
-  if (!isValid) {
-    cleanupInvalidFile(req.file);
+  const ok = await validateFileContents(req.file);
+  if (!ok) {
+    softDeleteFile(req.file.path);
     return res.status(400).json({
       success: false,
-      error: "The uploaded file appears to be corrupted or is not the type it claims to be.",
+      error: "Uploaded file appears corrupted or its contents don’t match its type.",
     });
   }
 
-  // Set the correct URL for the file
-  if (req.file) {
-    // Get just the filename without the path
-    const fileName = path.basename(req.file.path);
-
-    // Get the subdirectory (like "images", "photos", etc.)
-    const subDir = path.basename(path.dirname(req.file.path));
-
-    // Set the URL in the consistent format: /uploads/subdirectory/filename
-    req.file.url = `/uploads/${subDir}/${fileName}`;
-
-    logger.debug(`File URL set to: ${req.file.url}`);
-  }
+  // Attach a public URL for convenience
+  const sub = path.basename(path.dirname(req.file.path));
+  req.file.url = `/uploads/${sub}/${req.file.filename}`;
+  logger.debug(`Upload validated, URL set to ${req.file.url}`);
 
   next();
 };
 
-// Create a wrapped upload middleware that includes validation
-const createUploadMiddleware = (field) => {
-  return [upload.single(field), validateUpload]
-}
+// Core multer instance
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: config.MAX_FILE_SIZE || 10 * 1024 * 1024,
+    files: 1,
+  },
+});
 
-// Export various upload configurations
-export const uploadImage = createUploadMiddleware("image")
-export const uploadVideo = createUploadMiddleware("video")
-export const uploadFile = createUploadMiddleware("file")
-export const uploadProfilePicture = createUploadMiddleware("profilePicture")
-export const uploadPhoto = createUploadMiddleware("photo")
-export const uploadStory = createUploadMiddleware("media")
+/**
+ * Factory: single‑file upload + post‑validation
+ */
+const makeUploader = (fieldName) => [upload.single(fieldName), validateUpload];
 
-// Export utility functions
-export { softDeleteFile, cleanupInvalidFile, directories }
+// Export pre‑configured middlewares
+export const uploadImage = makeUploader("image");
+export const uploadVideo = makeUploader("video");
+export const uploadFile = makeUploader("file");
+export const uploadProfilePicture = makeUploader("profilePicture");
+export const uploadPhoto = makeUploader("photo");
+export const uploadStory = makeUploader("media");
 
-// Export the base upload for custom configurations
-export default upload
+// Export utilities if you need them elsewhere
+export { softDeleteFile, DIRECTORIES };
+
+// Default export for custom setups
+export default upload;

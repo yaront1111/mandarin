@@ -1,216 +1,222 @@
-import jwt from "jsonwebtoken";
-import { User } from "../models/index.js"; // Adjust if necessary
-import logger from "../logger.js";
-import config from "../config.js";
+// socketAuth.js
+import jwt from 'jsonwebtoken';
+import { User } from '../models/index.js';
+import logger from '../logger.js';
+import config from '../config.js';
 
-// Improved in-memory rate limiter for sockets
-const ipLimiter = {
-  attempts: new Map(),
-  maxAttempts: 100,
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  lastCleanup: Date.now(),
-  cleanupInterval: 5 * 60 * 1000, // 5 minutes
+const {
+  JWT_SECRET,
+  SOCKET_RATE_LIMIT_MAX = 100,
+  SOCKET_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000,    // 15 min
+  SOCKET_CLEANUP_INTERVAL_MS = 5  * 60 * 1000,     // 5 min
+  INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000,        // 10 min
+} = config;
 
-  // Check if an IP is rate limited
-  isLimited(ip) {
-    this._conditionalCleanup();
-    const ipData = this.attempts.get(ip) || {
-      count: 0,
-      resetTime: Date.now() + this.windowMs,
-    };
-    ipData.count++;
-    this.attempts.set(ip, ipData);
-    return ipData.count > this.maxAttempts;
-  },
+/**
+ * Simple in‑memory sliding‑window rate limiter keyed by an identifier (e.g. IP).
+ */
+class RateLimiter {
+  constructor({ maxAttempts, windowMs, cleanupIntervalMs }) {
+    this.maxAttempts       = maxAttempts;
+    this.windowMs           = windowMs;
+    this.attempts           = new Map();
+    this.cleanupIntervalMs = cleanupIntervalMs;
 
-  // Perform cleanup if enough time has passed since last cleanup
-  _conditionalCleanup() {
+    // Periodic cleanup
+    this._cleanupTimer = setInterval(
+      () => this.cleanup(),
+      this.cleanupIntervalMs
+    ).unref();
+  }
+
+  /**
+   * Record one attempt for `key`. Returns true if limit is exceeded.
+   * @param {string} key
+   * @returns {boolean}
+   */
+  isLimited(key) {
     const now = Date.now();
-    if (now - this.lastCleanup > this.cleanupInterval) {
-      this.cleanup();
-      this.lastCleanup = now;
-    }
-  },
+    let entry = this.attempts.get(key);
 
-  // Clean up expired entries
+    if (!entry || entry.resetTime <= now) {
+      entry = { count: 1, resetTime: now + this.windowMs };
+    } else {
+      entry.count += 1;
+    }
+
+    this.attempts.set(key, entry);
+    return entry.count > this.maxAttempts;
+  }
+
+  /**
+   * Remove expired entries.
+   */
   cleanup() {
     const now = Date.now();
-    let cleanedEntries = 0;
-    for (const [ip, data] of this.attempts.entries()) {
-      if (data.resetTime <= now) {
-        this.attempts.delete(ip);
-        cleanedEntries++;
+    let removed = 0;
+    for (const [key, { resetTime }] of this.attempts) {
+      if (resetTime <= now) {
+        this.attempts.delete(key);
+        removed += 1;
       }
     }
-    if (cleanedEntries > 0) {
-      logger.debug(
-        `Rate limiter cleanup: removed ${cleanedEntries} expired entries. Current size: ${this.attempts.size}`
-      );
+    if (removed) {
+      logger.debug(`RateLimiter: cleaned ${removed} entries`);
     }
-  },
-};
-
-// Scheduled cleanup independent of incoming requests
-setInterval(() => {
-  ipLimiter.cleanup();
-}, ipLimiter.cleanupInterval);
-
-/**
- * Socket.IO authentication middleware
- * Verifies JWT token and attaches user to socket
- */
-const socketAuthMiddleware = async (socket, next) => {
-  try {
-    // Get IP address safely
-    const ip = socket.handshake.address || "0.0.0.0";
-
-    // Check rate limiting
-    if (ipLimiter.isLimited(ip)) {
-      logger.warn(`Socket rate limit exceeded for IP: ${ip}`);
-      return next(new Error("Too many connection attempts, please try again later"));
-    }
-
-    // Get token from handshake query, auth, or headers
-    const token =
-      socket.handshake.query?.token ||
-      socket.handshake.auth?.token ||
-      (socket.handshake.headers?.authorization &&
-        socket.handshake.headers.authorization.split(" ")[1]);
-
-    if (!token) {
-      logger.warn(`Socket ${socket.id} connection attempt without token`);
-      return next(new Error("Authentication token is required"));
-    }
-
-    try {
-      const jwtSecret = config.JWT_SECRET || process.env.JWT_SECRET;
-      if (!jwtSecret) {
-        logger.error("Missing JWT_SECRET in configuration");
-        return next(new Error("Server authentication configuration error"));
-      }
-
-      // Enhanced token debugging - show more details safely
-      logger.debug(`Socket ${socket.id} auth attempt with token: ${token.substring(0, 10)}...`);
-      logger.debug(`Token length: ${token.length}, IP: ${socket.handshake.address}`);
-      
-      // Try JWT verification with detailed error logging
-      let decoded;
-      try {
-        decoded = jwt.verify(token, jwtSecret);
-        logger.debug(`Token verified successfully for socket ${socket.id}, userId: ${decoded.id}, exp: ${decoded.exp}`);
-      } catch (jwtError) {
-        // Detailed JWT error logging
-        logger.error(`JWT verification failed for socket ${socket.id}: ${jwtError.name} - ${jwtError.message}`);
-        
-        // Check if token is expired and provide specific error
-        if (jwtError.name === 'TokenExpiredError') {
-          logger.error(`Token expired at: ${new Date(jwtError.expiredAt)}, current time: ${new Date()}`);
-          return next(new Error(`Authentication token expired at ${jwtError.expiredAt}`));
-        }
-        
-        // Re-throw for outer catch block
-        throw jwtError;
-      }
-
-      if (!decoded || !decoded.id) {
-        logger.warn(`Socket ${socket.id} provided invalid token format: ${JSON.stringify(decoded || {})}`);
-        return next(new Error("Invalid authentication token format"));
-      }
-
-      // Find user with enhanced error handling
-      const user = await User.findById(decoded.id).select("-password")
-        .catch(err => {
-          logger.error(`DB error while finding user ${decoded.id}: ${err.message}`);
-          return null;
-        });
-        
-      if (!user) {
-        logger.warn(`Socket ${socket.id} token has valid format but user not found: ${decoded.id}`);
-        return next(new Error("User not found"));
-      }
-
-      // Enhanced token version check
-      if (decoded.version && user.version && decoded.version !== user.version) {
-        logger.warn(`Socket ${socket.id} token version mismatch: token=${decoded.version}, user=${user.version}`);
-        return next(new Error("Token has been revoked. Please log in again."));
-      }
-
-      // Attach user to socket and update online status
-      socket.user = user;
-      user.socketId = socket.id;
-      await User.findByIdAndUpdate(user._id, {
-        isOnline: true,
-        lastActive: Date.now(),
-        socketId: socket.id,
-        lastLoginIp: ip,
-      });
-
-      logger.info(`Socket ${socket.id} authenticated as user ${user._id}`);
-      next();
-    } catch (jwtError) {
-      if (jwtError.name === "TokenExpiredError") {
-        logger.error(`Socket ${socket.id} JWT expired: ${jwtError.message}`);
-        return next(new Error("Authentication token has expired"));
-      } else if (jwtError.name === "JsonWebTokenError") {
-        logger.error(`Socket ${socket.id} JWT invalid: ${jwtError.message}`);
-        return next(new Error("Invalid authentication token"));
-      } else {
-        logger.error(`Socket ${socket.id} JWT verification error: ${jwtError.message}`);
-        return next(new Error("Authentication token verification failed"));
-      }
-    }
-  } catch (error) {
-    logger.error(`Socket auth error: ${error.message}`);
-    return next(new Error("Authentication error"));
   }
-};
+}
+
+// Initialize a single global limiter
+const ipLimiter = new RateLimiter({
+  maxAttempts:       SOCKET_RATE_LIMIT_MAX,
+  windowMs:          SOCKET_RATE_LIMIT_WINDOW_MS,
+  cleanupIntervalMs: SOCKET_CLEANUP_INTERVAL_MS,
+});
 
 /**
- * Check if user has specific permissions
- * @param {Object} socket - Socket instance
- * @param {String} permission - Permission to check
- * @returns {Boolean} - Whether user has permission
+ * Extract Bearer token from socket handshake.
+ * @param {Object} socket
+ * @returns {string|null}
  */
-const checkSocketPermission = (socket, permission) => {
+function extractToken(socket) {
+  const { query, auth, headers } = socket.handshake;
+  if (query?.token) return query.token;
+  if (auth?.token)  return auth.token;
+  if (headers?.authorization) {
+    const parts = headers.authorization.split(' ');
+    if (parts[0] === 'Bearer' && parts[1]) return parts[1];
+  }
+  return null;
+}
+
+/**
+ * Socket.IO authentication middleware.
+ * Verifies JWT, checks rate limit, and attaches `socket.user`.
+ */
+async function socketAuthMiddleware(socket, next) {
+  try {
+    const ip = socket.handshake.address || '0.0.0.0';
+
+    // Rate-limit by IP
+    if (ipLimiter.isLimited(ip)) {
+      logger.warn(`Rate limit exceeded for IP ${ip}`);
+      return next(new Error('Too many connection attempts; please try later'));
+    }
+
+    const token = extractToken(socket);
+    if (!token) {
+      logger.warn(`Socket ${socket.id} missing auth token`);
+      return next(new Error('Authentication token required'));
+    }
+
+    if (!JWT_SECRET) {
+      logger.error('JWT_SECRET not configured');
+      return next(new Error('Server configuration error'));
+    }
+
+    let payload;
+    try {
+      payload = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      logger.error(`JWT verify failed for socket ${socket.id}: ${err.name}: ${err.message}`);
+      if (err.name === 'TokenExpiredError') {
+        return next(new Error(`Token expired at ${err.expiredAt}`));
+      }
+      return next(new Error('Invalid authentication token'));
+    }
+
+    if (!payload.id) {
+      logger.warn(`Socket ${socket.id} JWT missing user ID`);
+      return next(new Error('Invalid token payload'));
+    }
+
+    // Load user
+    const user = await User.findById(payload.id).select('-password').exec();
+    if (!user) {
+      logger.warn(`Socket ${socket.id} no user found for ID ${payload.id}`);
+      return next(new Error('User not found'));
+    }
+
+    // Token version check
+    if (payload.version && user.version && payload.version !== user.version) {
+      logger.warn(`Socket ${socket.id} token version mismatch`);
+      return next(new Error('Token has been revoked; please reauthenticate'));
+    }
+
+    // Attach user and update online status
+    socket.user = user;
+    user.socketId   = socket.id;
+    user.isOnline   = true;
+    user.lastActive = Date.now();
+    user.lastLoginIp = ip;
+    await user.save();
+
+    logger.info(`Socket ${socket.id} authenticated as user ${user._id}`);
+    next();
+  } catch (err) {
+    logger.error(`Socket auth error: ${err.message}`);
+    next(new Error('Authentication error'));
+  }
+}
+
+/**
+ * Permission checker for socket actions.
+ * @param {Object} socket
+ * @param {string} permission
+ * @returns {boolean}
+ */
+function checkSocketPermission(socket, permission) {
   if (!socket.user) return false;
   switch (permission) {
-    case "sendMessage":
-      return socket.user.canSendMessages ? socket.user.canSendMessages() : true;
-    case "createStory":
-      return socket.user.canCreateStory ? socket.user.canCreateStory() : true;
-    case "initiateCall":
-      // Users can always initiate calls, even free users
-      return true;
+    case 'sendMessage':
+      return typeof socket.user.canSendMessages === 'function'
+        ? socket.user.canSendMessages()
+        : true;
+    case 'createStory':
+      return typeof socket.user.canCreateStory === 'function'
+        ? socket.user.canCreateStory()
+        : true;
+    case 'initiateCall':
+      return true; // all authenticated users may call
     default:
       return true;
   }
-};
+}
 
 /**
- * Setup socket monitoring for inactive connections
- * @param {Object} io - Socket.IO instance
+ * Disconnect sockets that have been inactive too long.
+ * @param {import('socket.io').Server} io
  */
-const setupSocketMonitoring = (io) => {
-  // Check for inactive connections every 10 minutes
+function setupSocketMonitoring(io) {
   setInterval(() => {
-    const sockets = io.sockets.sockets;
     const now = Date.now();
-    const inactiveThreshold = 10 * 60 * 1000; // 10 minutes
-    sockets.forEach((socket) => {
-      if (socket.user && socket.lastActivity && now - socket.lastActivity > inactiveThreshold) {
-        logger.warn(`User ${socket.user._id} has been inactive for >10 minutes, disconnecting socket`);
+    for (const socket of io.sockets.sockets.values()) {
+      if (
+        socket.user &&
+        socket.lastActivity &&
+        now - socket.lastActivity > INACTIVITY_THRESHOLD_MS
+      ) {
+        logger.warn(`Disconnecting inactive socket ${socket.id}`);
         socket.disconnect(true);
       }
-    });
-  }, 10 * 60 * 1000);
-};
+    }
+  }, INACTIVITY_THRESHOLD_MS).unref();
+}
 
 /**
- * Track socket activity by updating the last activity timestamp.
- * @param {Object} socket - Socket instance
+ * Middleware to track activity timestamp on each incoming event.
+ * @param {Object} socket
  */
-const trackSocketActivity = (socket) => {
-  socket.lastActivity = Date.now();
-};
+function trackSocketActivity(socket) {
+  socket.use(([event, ...args], next) => {
+    socket.lastActivity = Date.now();
+    next();
+  });
+}
 
-export { socketAuthMiddleware, checkSocketPermission, setupSocketMonitoring, trackSocketActivity };
+export {
+  socketAuthMiddleware,
+  checkSocketPermission,
+  setupSocketMonitoring,
+  trackSocketActivity,
+};
