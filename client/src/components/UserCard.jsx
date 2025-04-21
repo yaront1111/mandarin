@@ -2,81 +2,72 @@ import React, { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { useTranslation } from "react-i18next";
-import { FaHeart, FaComment, FaUser, FaMapMarkerAlt, FaClock, FaChevronDown, FaChevronUp } from "react-icons/fa";
-import { Avatar, Card, Button } from "./common";
-import { formatDate, normalizePhotoUrl, logger } from "../utils";
+import {
+  FaHeart,
+  FaComment,
+  FaMapMarkerAlt,
+  FaClock,
+  FaChevronDown,
+  FaChevronUp
+} from "react-icons/fa";
 import { withMemo } from "./common";
 import { useLanguage } from "../context";
+import { formatDate, normalizePhotoUrl, logger } from "../utils";
 import styles from "../styles/usercard.module.css";
 
-// Constants
+const log = logger.create("UserCard");
+
+// Tag type constants
 const TAG_TYPES = {
+  IDENTITY: "identity",
   LOOKING_FOR: "lookingFor",
   INTO: "into",
   INTEREST: "interest",
 };
 
 /**
- * Safely gets a translation string, handling cases where the translation might return an object
- * @param {Function} t - Translation function from useTranslation
- * @param {String} key - Translation key
- * @param {String} defaultValue - Default value if translation is missing or invalid
- * @returns {String} The translated string or default value
+ * Safely gets a translation string, handling different translation formats and fallbacks
  */
 const safeTranslate = (t, key, defaultValue = "") => {
   try {
-    // For the problematic nested path keys, try flat format first
+    // For nested path keys, try flat format first
     const flatKey = key.replace(/\./g, '_');
-    
-    // Handle two-level and three-level nested keys
     const parts = key.split('.');
-    
-    // Try to use paths in different ways to ensure we get strings
+
+    // Try various formats
     if (parts.length > 1) {
-      // Try getting direct access from parent object
+      // Try direct access from parent object
       try {
-        // Get the parent object (e.g., 'profile' from 'profile.maritalStatus')
         const parentKey = parts[0];
-        // Get the rest of the path as array
         const childPath = parts.slice(1);
-        
-        // Get the parent object from i18n
         const parent = t(parentKey, { returnObjects: true });
-        
-        // If parent is an object, try to access the child path directly
+
         if (typeof parent === 'object' && parent !== null) {
-          // Navigate to the final value through the object structure
           let value = parent;
           for (const pathPart of childPath) {
             if (value && typeof value === 'object' && pathPart in value) {
               value = value[pathPart];
             } else {
-              // Path doesn't exist, break out
               value = null;
               break;
             }
           }
-          
-          // If we found a string value, return it
+
           if (typeof value === 'string') {
             return value;
           }
         }
-      } catch (e) {
-        // Ignore errors in alternative lookup
-      }
-      
-      // Try flat key format (e.g., 'profile_maritalStatus')
+      } catch (e) { /* Continue with other methods */ }
+
+      // Try flat key format
       try {
         const flatTranslation = t(flatKey);
         if (typeof flatTranslation === 'string' && flatTranslation !== flatKey) {
           return flatTranslation;
         }
-      } catch (e) {
-        // Ignore errors in alternative lookup
-      }
-      
-      // For three-level nesting, also try two-level format
+      } catch (e) { /* Continue with other methods */ }
+
+      // For three-level nesting, try two-level format
       if (parts.length > 2) {
         try {
           const twoLevelKey = `${parts[0]}_${parts[1]}_${parts[2]}`;
@@ -84,38 +75,131 @@ const safeTranslate = (t, key, defaultValue = "") => {
           if (typeof twoLevelTranslation === 'string' && twoLevelTranslation !== twoLevelKey) {
             return twoLevelTranslation;
           }
-        } catch (e) {
-          // Ignore errors in alternative lookup
-        }
+        } catch (e) { /* Continue with other methods */ }
       }
     }
-    
+
     // Try direct translation
     const translated = t(key);
-    
+
     // If it's a string and not just returning the key, use it
     if (typeof translated === 'string' && translated !== key) {
       return translated;
     }
-    
-    // If it's an object, likely a nested translation object - try to get a string representation or use default
+
+    // For objects, try to get a string representation
     if (typeof translated === 'object' && translated !== null) {
-      // Try to find a string representation
-      if (translated.toString && typeof translated.toString === 'function' && 
+      if (translated.toString && typeof translated.toString === 'function' &&
           translated.toString() !== '[object Object]') {
         return translated.toString();
       }
-      
-      // If it's a valid translation object with string representation, use that
       return defaultValue;
     }
-    
-    // Return translated or default
+
     return translated || defaultValue;
   } catch (error) {
-    logger.error(`Translation error for key '${key}':`, error);
+    log.error(`Translation error for key '${key}':`, error);
     return defaultValue;
   }
+};
+
+/**
+ * Returns the correct tag style class based on the tag type and content
+ */
+const getTagClassName = (tagType, tagContent = "") => {
+  const baseClass = styles.tag;
+  const text = tagContent.toLowerCase();
+
+  // First check content-based styles that override the tag type
+  if (text.includes("woman")) return `${baseClass} ${styles.identityWoman}`;
+  if (text.includes("man")) return `${baseClass} ${styles.identityMan}`;
+  if (text.includes("couple")) return `${baseClass} ${styles.identityCouple}`;
+
+  // Then apply type-based styles
+  switch (tagType) {
+    case TAG_TYPES.IDENTITY: return `${baseClass} ${styles.identityTag}`;
+    case TAG_TYPES.LOOKING_FOR: return `${baseClass} ${styles.lookingForTag}`;
+    case TAG_TYPES.INTO: return `${baseClass} ${styles.intoTag}`;
+    case TAG_TYPES.INTEREST: return `${baseClass} ${styles.interestTag}`;
+    default: return baseClass;
+  }
+};
+
+/**
+ * TagGroup component for rendering a collection of tags
+ */
+const TagGroup = ({ title, tags, tagType, translationNamespace, t, showAll, toggleShowAll, maxVisible = 3 }) => {
+  if (!tags || tags.length === 0) return null;
+
+  const getTranslatedTag = (namespace, tag) => {
+    if (!tag) return "";
+
+    // Format key for translation patterns
+    const nestedKey = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
+    const prefixKey = namespace === 'profile.intoTags'
+      ? `profile.intoTag_${tag.toLowerCase().replace(/\s+/g, '_')}`
+      : namespace === 'profile.turnOns'
+      ? `profile.turnOn_${tag.toLowerCase().replace(/\s+/g, '_')}`
+      : namespace === 'profile.interests'
+      ? `profile.interests${tag.charAt(0).toUpperCase() + tag.slice(1).replace(/\s+/g, '_')}`
+      : null;
+
+    const flatKey = nestedKey.replace(/\./g, '_');
+
+    // Try each translation pattern
+    if (prefixKey) {
+      try {
+        const prefixTranslation = t(prefixKey);
+        if (typeof prefixTranslation === 'string' && prefixTranslation !== prefixKey) {
+          return prefixTranslation;
+        }
+      } catch (e) { /* Continue with other methods */ }
+    }
+
+    const safeResult = safeTranslate(t, nestedKey, null);
+    if (safeResult && safeResult !== nestedKey) {
+      return safeResult;
+    }
+
+    try {
+      const flatTranslation = t(flatKey);
+      if (typeof flatTranslation === 'string' && flatTranslation !== flatKey) {
+        return flatTranslation;
+      }
+    } catch (e) { /* Continue with other methods */ }
+
+    try {
+      const directTagTranslation = t(tag.toLowerCase().replace(/\s+/g, '_'));
+      if (typeof directTagTranslation === 'string' &&
+          directTagTranslation !== tag.toLowerCase().replace(/\s+/g, '_')) {
+        return directTagTranslation;
+      }
+    } catch (e) { /* Continue with other methods */ }
+
+    // Fallback: Clean up and return the tag
+    return tag.charAt(0).toUpperCase() + tag.slice(1).replace(/_/g, ' ');
+  };
+
+  const visibleTags = showAll ? tags : tags.slice(0, maxVisible);
+  const hasMoreTags = tags.length > maxVisible;
+
+  return (
+    <div className={styles.tagCategory}>
+      {title && <h4 className={styles.categoryTitle}>{title}</h4>}
+      <div className={styles.tagsGroup}>
+        {visibleTags.map((tag, idx) => (
+          <span key={`${tagType}-${idx}`} className={getTagClassName(tagType, tag)}>
+            {getTranslatedTag(translationNamespace, tag)}
+          </span>
+        ))}
+        {hasMoreTags && !showAll && (
+          <span className={styles.moreCount} onClick={toggleShowAll}>
+            +{tags.length - maxVisible}
+          </span>
+        )}
+      </div>
+    </div>
+  );
 };
 
 /**
@@ -136,233 +220,121 @@ const UserCard = ({
   const [showAllTags, setShowAllTags] = useState(false);
   const [showMoreSections, setShowMoreSections] = useState(false);
 
-  // Navigation and internationalization
+  // Hooks
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
 
-  // Helper functions
-  const getTagClass = useCallback((type) => {
-    switch (type) {
-      case TAG_TYPES.LOOKING_FOR:
-        return "looking-for-tag";
-      case TAG_TYPES.INTO:
-        return "into-tag";
-      case TAG_TYPES.INTEREST:
-        return "interest-tag";
-      default:
-        return "interest-tag";
-    }
-  }, []);
-
-  // Event handlers
+  // Event Handlers
   const handleCardClick = useCallback((e) => {
-    // Don't navigate if the click was on a button inside the card
+    // Don't navigate if the click was on a button
     if (e?.target?.closest('button')) {
-      console.log('Skipping card click - clicked on a button');
       return;
     }
 
-    console.log('UserCard clicked:', user?._id, user?.nickname);
-
     if (onClick) {
-      console.log('Using provided onClick handler');
       onClick();
-    } else {
-      console.log('Navigating to user profile:', `/user/${user._id}`);
+    } else if (user?._id) {
       navigate(`/user/${user._id}`);
     }
   }, [onClick, navigate, user?._id]);
 
-  // Fixed like click handler to properly pass user data
-  const handleLikeClick = useCallback(
-    (e) => {
-      // Prevent event propagation to avoid triggering parent click
-      e.stopPropagation();
-      e.preventDefault();
+  const handleLikeClick = useCallback((e) => {
+    e.stopPropagation();
+    e.preventDefault();
 
-      if (onLike) {
-        logger.debug(`Like button clicked for user ${user._id}, current isLiked: ${isLiked}`);
-        // Pass the user ID and name to the parent component for like handling
-        onLike(user._id, user.nickname);
-      }
-    },
-    [onLike, user?._id, user?.nickname, isLiked],
-  );
+    if (onLike && user?._id) {
+      log.debug(`Like button clicked for user ${user._id}, current isLiked: ${isLiked}`);
+      onLike(user._id, user.nickname);
+    }
+  }, [onLike, user?._id, user?.nickname, isLiked]);
 
-  const handleMessageClick = useCallback(
-    (e) => {
-      // Ensure the event doesn't bubble up and trigger card click
-      e.stopPropagation();
-      e.preventDefault();
+  const handleMessageClick = useCallback((e) => {
+    e.stopPropagation();
+    e.preventDefault();
 
-      if (onMessage) {
-        onMessage(e, user);
-      } else {
-        // Create an embedded chat dialog with this user
-        const chatEvent = new CustomEvent('openChat', {
-          detail: { recipient: user }
-        });
-        window.dispatchEvent(chatEvent);
-
-        // Log the event to help debug
-        console.log('Dispatched openChat event with recipient:', user);
-        console.log('User data in event:', JSON.stringify(user));
-      }
-    },
-    [onMessage, user],
-  );
+    if (onMessage) {
+      onMessage(e, user);
+    } else if (user) {
+      // Create an embedded chat dialog with this user
+      const chatEvent = new CustomEvent('openChat', {
+        detail: { recipient: user }
+      });
+      window.dispatchEvent(chatEvent);
+    }
+  }, [onMessage, user]);
 
   const toggleShowAllTags = useCallback((e) => {
     e?.stopPropagation();
-    setShowAllTags((prev) => !prev);
+    setShowAllTags(prev => !prev);
   }, []);
 
   const toggleShowMoreSections = useCallback((e) => {
     e?.stopPropagation();
-    setShowMoreSections((prev) => !prev);
+    setShowMoreSections(prev => !prev);
   }, []);
 
-  // Memoized data calculations
+  // Memoized data
   const profilePhotoUrl = useMemo(() => {
     if (!user?.photos?.length) return "/default-avatar.png";
 
-    // Normalize the photo URL
     const url = user.photos[0]?.url;
     if (!url) return "/default-avatar.png";
 
-    // Use the normalizePhotoUrl utility function
     return normalizePhotoUrl(url);
   }, [user?.photos]);
 
-  const subtitle = useMemo(() => {
-    if (!user?.details) return "";
-    const { age, gender, location } = user.details;
-    const parts = [];
-    if (age) parts.push(age);
-    if (gender) parts.push(gender);
-    if (location) parts.push(location);
-    return parts.join(" • ");
-  }, [user?.details]);
-
-  const extendedDetails = useMemo(() => {
-    if (!user?.details)
+  const userDetails = useMemo(() => {
+    if (!user?.details) {
       return {
-        status: null,
+        age: null,
+        location: null,
         identity: null,
+        status: null,
+        tags: {
+          lookingFor: [],
+          into: [],
+          interests: []
+        }
       };
-
-    const details = {
-      status: null,
-      identity: null,
-    };
-
-    const { maritalStatus, iAm } = user.details;
-
-    if (maritalStatus) {
-      details.status = maritalStatus;
     }
 
-    if (iAm) {
-      details.identity = iAm;
-    }
+    const {
+      age,
+      location,
+      iAm,
+      maritalStatus,
+      lookingFor = [],
+      intoTags = [],
+      interests = []
+    } = user.details;
 
-    return details;
-  }, [user?.details]);
-
-  const tags = useMemo(() => {
-    if (!user?.details) return [];
-
-    const allTags = {
-      lookingFor: [],
-      into: [],
-      interests: [],
+    return {
+      age,
+      location: location || safeTranslate(t, 'profile.unknownLocation', 'Unknown location'),
+      identity: iAm || null,
+      status: maritalStatus || null,
+      tags: {
+        lookingFor,
+        into: intoTags,
+        interests
+      }
     };
-
-    const { lookingFor = [], intoTags = [], interests = [] } = user.details;
-
-    lookingFor.forEach((item) => allTags.lookingFor.push(item));
-    intoTags.forEach((item) => allTags.into.push(item));
-    interests.forEach((item) => allTags.interests.push(item));
-
-    return allTags;
-  }, [user?.details]);
+  }, [user?.details, t]);
 
   // Last active formatting
   const lastActiveText = useMemo(() => {
-    // If user is currently online, show "Active now" regardless of lastActive timestamp
+    // If user is currently online, show "Active now"
     if (user?.isOnline) return safeTranslate(t, 'common.activeNow', 'Active now');
 
     if (!user?.lastActive) return safeTranslate(t, 'common.neverActive', 'Never active');
 
-    return formatDate(user.lastActive, { showRelative: true, showTime: false, showDate: false });
+    return formatDate(user.lastActive, {
+      showRelative: true,
+      showTime: false,
+      showDate: false
+    });
   }, [user?.lastActive, user?.isOnline, t]);
-
-  // Helper to translate profile data (identity, lookingFor, etc.)
-  const getTranslatedTag = useCallback((namespace, tag) => {
-    if (!tag) return "";
-    
-    // Format the tag key according to the patterns we've been supporting
-    // Method 1: Direct nested access
-    const nestedKey = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
-    
-    // Method 2: Special prefixed key format for common patterns
-    let prefixKey = null;
-    
-    if (namespace === 'profile.intoTags') {
-      prefixKey = `profile.intoTag_${tag.toLowerCase().replace(/\s+/g, '_')}`;
-    } else if (namespace === 'profile.turnOns') {
-      prefixKey = `profile.turnOn_${tag.toLowerCase().replace(/\s+/g, '_')}`;
-    } else if (namespace === 'profile.interests') {
-      prefixKey = `profile.interests${tag.charAt(0).toUpperCase() + tag.slice(1).replace(/\s+/g, '_')}`;
-    }
-    
-    // Method 3: Flattened key
-    const flatKey = nestedKey.replace(/\./g, '_');
-    
-    // Try each of the key formats in order
-    // First try the special prefixed format
-    if (prefixKey) {
-      try {
-        const prefixTranslation = t(prefixKey);
-        if (typeof prefixTranslation === 'string' && prefixTranslation !== prefixKey) {
-          return prefixTranslation;
-        }
-      } catch (e) {
-        // Ignore errors in lookup
-      }
-    }
-    
-    // Then try the direct path access through safeTranslate
-    const safeResult = safeTranslate(t, nestedKey, null);
-    if (safeResult && safeResult !== nestedKey) {
-      return safeResult;
-    }
-    
-    // Then try the flat key
-    try {
-      const flatTranslation = t(flatKey);
-      if (typeof flatTranslation === 'string' && flatTranslation !== flatKey) {
-        return flatTranslation;
-      }
-    } catch (e) {
-      // Ignore errors in lookup
-    }
-    
-    // Fallback 1: Try to get the tag directly from translations
-    try {
-      const directTagTranslation = t(tag.toLowerCase().replace(/\s+/g, '_'));
-      if (typeof directTagTranslation === 'string' && 
-          directTagTranslation !== tag.toLowerCase().replace(/\s+/g, '_')) {
-        return directTagTranslation;
-      }
-    } catch (e) {
-      // Ignore errors in lookup
-    }
-    
-    // Fallback 2: Just clean up and return the tag
-    return tag.charAt(0).toUpperCase() + tag.slice(1).replace(/_/g, ' ');
-  }, [t]);
 
   // Validation
   if (!user) return null;
@@ -375,51 +347,154 @@ const UserCard = ({
         aria-label={`${isLiked ? "Unlike" : "Like"} ${user.nickname}`}
         className={`${styles.actionBtn} ${styles.likeBtn} ${isLiked ? styles.active : ""}`}
       >
-        <FaHeart size={18} />
-        {isLiked ? safeTranslate(t, 'common.liked', 'Liked') : safeTranslate(t, 'common.like', 'Like')}
+        <FaHeart />
+        {isLiked
+          ? safeTranslate(t, 'common.liked', 'Liked')
+          : safeTranslate(t, 'common.like', 'Like')}
       </button>
       <button
         onClick={handleMessageClick}
         aria-label={`Message ${user.nickname}`}
         className={`${styles.actionBtn} ${styles.messageBtn}`}
       >
-        <FaComment size={18} />
+        <FaComment />
         {safeTranslate(t, 'common.message', 'Message')}
       </button>
     </>
   );
 
-  // Render the user card
+  // Common component for rendering tag toggle buttons
+  const renderTagsToggle = ({ isShowingMore, onToggle, showMoreText, showLessText }) => (
+    <div className={styles.tagsToggle}>
+      <span className={styles.toggleBtn} onClick={onToggle}>
+        {isShowingMore ? (
+          <>
+            {showLessText} <FaChevronUp size={12} />
+          </>
+        ) : (
+          <>
+            {showMoreText} <FaChevronDown size={12} />
+          </>
+        )}
+      </span>
+    </div>
+  );
+
+  // Render basic user identity and details
+  const renderUserDetails = () => (
+    <div className={styles.tagsContainer}>
+      <div className={styles.detailsRow}>
+        {userDetails.identity && (
+          <div className={styles.detailItem}>
+            <span className={styles.detailLabel}>
+              {safeTranslate(t, 'profile.iAm', 'I am')}:
+            </span>
+            <span className={getTagClassName(TAG_TYPES.IDENTITY, userDetails.identity)}>
+              {safeTranslate(t, `profile.identity.${userDetails.identity.toLowerCase().replace(/\s+/g, '_')}`, userDetails.identity)}
+            </span>
+          </div>
+        )}
+
+        {userDetails.tags.lookingFor.length > 0 && (
+          <div className={styles.detailItem}>
+            <span className={styles.detailLabel}>
+              {safeTranslate(t, 'profile.lookingFor', 'Looking for')}:
+            </span>
+            <span className={getTagClassName(TAG_TYPES.LOOKING_FOR, userDetails.tags.lookingFor[0])}>
+              {safeTranslate(t, `profile.lookingFor.${userDetails.tags.lookingFor[0].toLowerCase().replace(/\s+/g, '_')}`, userDetails.tags.lookingFor[0])}
+            </span>
+            {userDetails.tags.lookingFor.length > 1 && (
+              <span className={styles.moreCount}>
+                +{userDetails.tags.lookingFor.length - 1}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Render the extended tags section
+  const renderExtendedTags = () => (
+    <>
+      {(userDetails.tags.lookingFor.length > 0 ||
+        userDetails.tags.into.length > 0 ||
+        userDetails.tags.interests.length > 0) && (
+        renderTagsToggle({
+          isShowingMore: showMoreSections,
+          onToggle: toggleShowMoreSections,
+          showMoreText: safeTranslate(t, 'common.viewMore', 'View more'),
+          showLessText: safeTranslate(t, 'common.viewLess', 'View less')
+        })
+      )}
+
+      {showMoreSections && (
+        <>
+          <TagGroup
+            title={safeTranslate(t, 'profile.interests', 'Interests')}
+            tags={userDetails.tags.interests}
+            tagType={TAG_TYPES.INTEREST}
+            translationNamespace="profile.interests"
+            t={t}
+            showAll={showAllTags}
+            toggleShowAll={toggleShowAllTags}
+            maxVisible={viewMode === "grid" ? 3 : 2}
+          />
+
+          <TagGroup
+            title={safeTranslate(t, 'profile.preferences', 'Preferences')}
+            tags={userDetails.tags.into}
+            tagType={TAG_TYPES.INTO}
+            translationNamespace="profile.intoTags"
+            t={t}
+            showAll={showAllTags}
+            toggleShowAll={toggleShowAllTags}
+            maxVisible={viewMode === "grid" ? 3 : 2}
+          />
+
+          {/* Show all tags toggle */}
+          {(userDetails.tags.lookingFor.length > (viewMode === "grid" ? 3 : 2) ||
+            userDetails.tags.into.length > (viewMode === "grid" ? 3 : 2) ||
+            userDetails.tags.interests.length > (viewMode === "grid" ? 3 : 2)) && (
+            renderTagsToggle({
+              isShowingMore: showAllTags,
+              onToggle: toggleShowAllTags,
+              showMoreText: safeTranslate(t, 'common.showAllTags', 'Show all tags'),
+              showLessText: safeTranslate(t, 'common.showLessTags', 'Show less tags')
+            })
+          )}
+        </>
+      )}
+    </>
+  );
+
+  // Render the user card in grid view
   if (viewMode === "grid") {
     return (
-      <Card
+      <div
         className={styles.userCard}
         onClick={handleCardClick}
-        hover={true}
-        noPadding={true}
-        headerClassName={styles.cardHeader}
-        bodyClassName={styles.cardBody}
         data-userid={user._id}
       >
         {/* User Photo */}
         <div className={styles.cardPhoto}>
           <img
-            src={profilePhotoUrl || "/default-avatar.png"}
+            src={profilePhotoUrl}
             alt={user.nickname}
             onError={(e) => {
               e.target.onerror = null;
               e.target.src = "/default-avatar.png";
             }}
           />
-          {user.isOnline && <span className="status-indicator online"></span>}
+          {user.isOnline && <span className={`${styles.statusIndicator} ${styles.online}`}></span>}
         </div>
 
         {/* User Info */}
         <div className={styles.userInfo}>
-          <div className="d-flex justify-content-between align-items-center mb-1">
+          <div className={styles.userNameRow}>
             <h3 className={styles.userName}>
               {user.nickname}
-              {user.details?.age && <span className={styles.userAge}>, {user.details.age}</span>}
+              {userDetails.age && <span className={styles.userAge}>, {userDetails.age}</span>}
             </h3>
             {hasUnreadMessages && <span className={styles.unreadBadge}>{unreadMessageCount}</span>}
           </div>
@@ -432,149 +507,23 @@ const UserCard = ({
 
           <p className={styles.location}>
             <FaMapMarkerAlt className={styles.icon} />
-            {user.details?.location || safeTranslate(t, 'profile.unknownLocation', 'Unknown location')}
+            {userDetails.location}
           </p>
 
-          {/* Extended Details Section */}
+          {/* User Details & Tags */}
           {showExtendedDetails && (
-            <div className={styles.tagsContainer}>
-              <div className={styles.detailsRow}>
-                {extendedDetails.identity && (
-                  <div className={styles.detailItem}>
-                    <span className={styles.detailLabel}>{safeTranslate(t, 'profile.iAm', 'I am')}:</span>
-                    <span
-                      className={`${styles.tag} ${styles.identityTag} ${
-                        extendedDetails.identity.toLowerCase().includes("woman")
-                          ? styles.identityWoman
-                          : extendedDetails.identity.toLowerCase().includes("man")
-                            ? styles.identityMan
-                            : extendedDetails.identity.toLowerCase().includes("couple")
-                              ? styles.identityCouple
-                              : ""
-                      }`}
-                    >
-                      {getTranslatedTag('profile.identity', extendedDetails.identity)}
-                    </span>
-                  </div>
-                )}
-
-                {tags.lookingFor.length > 0 && (
-                  <div className={styles.detailItem}>
-                    <span className={styles.detailLabel}>{safeTranslate(t, 'profile.lookingFor', 'Looking for')}:</span>
-                    <span className={`${styles.tag} ${
-                      tags.lookingFor[0].toLowerCase().includes("women") || tags.lookingFor[0].toLowerCase().includes("woman")
-                        ? styles.identityWoman
-                        : tags.lookingFor[0].toLowerCase().includes("men") || tags.lookingFor[0].toLowerCase().includes("man")
-                          ? styles.identityMan
-                          : tags.lookingFor[0].toLowerCase().includes("couple")
-                            ? styles.identityCouple
-                            : styles.lookingForTag
-                    }`}>
-                      {getTranslatedTag('profile.lookingFor', tags.lookingFor[0])}
-                    </span>
-                    {tags.lookingFor.length > 1 && (
-                      <span className={styles.moreCount}>+{tags.lookingFor.length - 1}</span>
-                    )}
-                  </div>
-                )}
+            <>
+              {renderUserDetails()}
+              <div className={styles.tagsContainer}>
+                {renderExtendedTags()}
               </div>
-            </div>
-          )}
-
-          {/* User Tags */}
-          {showExtendedDetails && (
-            <div className={styles.tagsContainer}>
-              {/* Show More/Less Toggle for all sections */}
-              {(tags.lookingFor.length > 0 || tags.into.length > 0 || tags.interests.length > 0) && (
-                <div className={styles.tagsToggle}>
-                  <span className={styles.toggleBtn} onClick={toggleShowMoreSections}>
-                    {showMoreSections ? (
-                      <>{safeTranslate(t, 'common.viewLess', 'View less')} <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
-                    ) : (
-                      <>{safeTranslate(t, 'common.viewMore', 'View more')} <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
-                    )}
-                  </span>
-                </div>
-              )}
-
-              {/* All sections now only visible when showMoreSections is true */}
-              {showMoreSections && (
-                <>
-                  {/* Interests */}
-                  {tags.interests.length > 0 && (
-                    <div className={styles.tagCategory}>
-                      <h4 className={styles.categoryTitle}>{safeTranslate(t, 'profile.interests', 'Interests')}</h4>
-                      <div className={styles.interestTags}>
-                        {(showAllTags ? tags.interests : tags.interests.slice(0, 3)).map((tag, idx) => (
-                          <span key={`interest-${idx}`} className={`${styles.tag} ${
-                            tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
-                              ? styles.identityWoman
-                              : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
-                                ? styles.identityMan
-                                : tag.toLowerCase().includes("couple")
-                                  ? styles.identityCouple
-                                  : ""
-                          }`}>
-                            {getTranslatedTag('profile.interests', tag)}
-                          </span>
-                        ))}
-                        {tags.interests.length > 3 && !showAllTags && (
-                          <span className={styles.moreCount} onClick={toggleShowAllTags}>
-                            +{tags.interests.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Preferences section (formerly Into) */}
-                  {tags.into.length > 0 && (
-                    <div className={styles.tagCategory}>
-                      <h4 className={styles.categoryTitle}>{safeTranslate(t, 'profile.preferences', 'Preferences')}</h4>
-                      <div className={styles.interestTags}>
-                        {(showAllTags ? tags.into : tags.into.slice(0, 3)).map((tag, idx) => (
-                          <span key={`into-${idx}`} className={`${styles.tag} ${
-                            tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
-                              ? styles.identityWoman
-                              : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
-                                ? styles.identityMan
-                                : tag.toLowerCase().includes("couple")
-                                  ? styles.identityCouple
-                                  : styles.intoTag
-                          }`}>
-                            {getTranslatedTag('profile.intoTags', tag)}
-                          </span>
-                        ))}
-                        {tags.into.length > 3 && !showAllTags && (
-                          <span className={styles.moreCount} onClick={toggleShowAllTags}>
-                            +{tags.into.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Global More/Less Toggle for all tags */}
-                  {(tags.lookingFor.length > 3 || tags.into.length > 3 || tags.interests.length > 3) && (
-                    <div className={styles.tagsToggle}>
-                      <span className={styles.toggleBtn} onClick={toggleShowAllTags}>
-                        {showAllTags ? (
-                          <>{safeTranslate(t, 'common.showLessTags', 'Show less tags')} <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
-                        ) : (
-                          <>{safeTranslate(t, 'common.showAllTags', 'Show all tags')} <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
-                        )}
-                      </span>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            </>
           )}
 
           {/* Action Buttons */}
           <div className={styles.actions}>{renderActionButtons()}</div>
         </div>
-      </Card>
+      </div>
     );
   }
 
@@ -584,7 +533,7 @@ const UserCard = ({
       {/* User Photo - List View */}
       <div className={styles.listPhotoContainer}>
         <img
-          src={profilePhotoUrl || "/default-avatar.png"}
+          src={profilePhotoUrl}
           alt={user.nickname}
           onError={(e) => {
             e.target.onerror = null;
@@ -592,7 +541,7 @@ const UserCard = ({
           }}
           className={styles.listPhoto}
         />
-        {user.isOnline && <span className="status-indicator online-small"></span>}
+        {user.isOnline && <span className={`${styles.statusIndicator} ${styles.online}`}></span>}
       </div>
 
       {/* User Info - List View */}
@@ -600,7 +549,7 @@ const UserCard = ({
         <div className={styles.listHeader}>
           <h3 className={styles.listName}>
             {user.nickname}
-            {user.details?.age && <span className={styles.userAge}>, {user.details.age}</span>}
+            {userDetails.age && <span className={styles.userAge}>, {userDetails.age}</span>}
           </h3>
           {hasUnreadMessages && <span className={styles.unreadBadge}>{unreadMessageCount}</span>}
         </div>
@@ -613,143 +562,17 @@ const UserCard = ({
 
         <p className={styles.location}>
           <FaMapMarkerAlt className={styles.icon} />
-          {user.details?.location || safeTranslate(t, 'profile.unknownLocation', 'Unknown location')}
+          {userDetails.location}
         </p>
 
-        {/* Extended Details - List View */}
+        {/* User Details & Tags */}
         {showExtendedDetails && (
-          <div className={styles.tagsContainer}>
-            <div className={styles.detailsRow}>
-              {extendedDetails.identity && (
-                <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>{safeTranslate(t, 'profile.iAm', 'I am')}:</span>
-                  <span
-                    className={`${styles.tag} ${styles.identityTag} ${
-                      extendedDetails.identity.toLowerCase().includes("woman")
-                        ? styles.identityWoman
-                        : extendedDetails.identity.toLowerCase().includes("man")
-                          ? styles.identityMan
-                          : extendedDetails.identity.toLowerCase().includes("couple")
-                            ? styles.identityCouple
-                            : ""
-                    }`}
-                  >
-                    {getTranslatedTag('profile.identity', extendedDetails.identity)}
-                  </span>
-                </div>
-              )}
-
-              {tags.lookingFor.length > 0 && (
-                <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>{safeTranslate(t, 'profile.into', 'Into')}:</span>
-                  <span className={`${styles.tag} ${
-                    tags.lookingFor[0].toLowerCase().includes("women") || tags.lookingFor[0].toLowerCase().includes("woman")
-                      ? styles.identityWoman
-                      : tags.lookingFor[0].toLowerCase().includes("men") || tags.lookingFor[0].toLowerCase().includes("man")
-                        ? styles.identityMan
-                        : tags.lookingFor[0].toLowerCase().includes("couple")
-                          ? styles.identityCouple
-                          : styles.lookingForTag
-                  }`}>
-                    {getTranslatedTag('profile.lookingFor', tags.lookingFor[0])}
-                  </span>
-                  {tags.lookingFor.length > 1 && (
-                    <span className={styles.moreCount}>+{tags.lookingFor.length - 1}</span>
-                  )}
-                </div>
-              )}
+          <>
+            {renderUserDetails()}
+            <div className={styles.tagsContainer}>
+              {renderExtendedTags()}
             </div>
-          </div>
-        )}
-
-        {/* User Tags - List View */}
-        {showExtendedDetails && (
-          <div className={styles.tagsContainer}>
-            {/* Show More/Less Toggle for all sections */}
-            {(tags.lookingFor.length > 0 || tags.into.length > 0 || tags.interests.length > 0) && (
-              <div className={styles.tagsToggle}>
-                <span className={styles.toggleBtn} onClick={toggleShowMoreSections}>
-                  {showMoreSections ? (
-                    <>{safeTranslate(t, 'common.showLess', 'Show less')} <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
-                  ) : (
-                    <>{safeTranslate(t, 'common.showMore', 'Show more')} <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
-                  )}
-                </span>
-              </div>
-            )}
-
-            {/* All sections now only visible when showMoreSections is true */}
-            {showMoreSections && (
-              <>
-                {/* Interests */}
-                {tags.interests.length > 0 && (
-                  <div className={styles.tagCategory}>
-                    <h4 className={styles.categoryTitle}>{safeTranslate(t, 'profile.interests', 'Interests')}</h4>
-                    <div className={styles.interestTags}>
-                      {(showAllTags ? tags.interests : tags.interests.slice(0, 2)).map((tag, idx) => (
-                        <span key={`interest-${idx}`} className={`${styles.tag} ${
-                          tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
-                            ? styles.identityWoman
-                            : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
-                              ? styles.identityMan
-                              : tag.toLowerCase().includes("couple")
-                                ? styles.identityCouple
-                                : ""
-                        }`}>
-                          {getTranslatedTag('profile.interests', tag)}
-                        </span>
-                      ))}
-                      {tags.interests.length > 2 && !showAllTags && (
-                        <span className={styles.moreCount} onClick={toggleShowAllTags}>
-                          +{tags.interests.length - 2}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Preferences section (formerly Into) */}
-                {tags.into.length > 0 && (
-                  <div className={styles.tagCategory}>
-                    <h4 className={styles.categoryTitle}>{safeTranslate(t, 'profile.preferences', 'Preferences')}</h4>
-                    <div className={styles.interestTags}>
-                      {(showAllTags ? tags.into : tags.into.slice(0, 2)).map((tag, idx) => (
-                        <span key={`into-${idx}`} className={`${styles.tag} ${
-                          tag.toLowerCase().includes("women") || tag.toLowerCase().includes("woman")
-                            ? styles.identityWoman
-                            : tag.toLowerCase().includes("men") || tag.toLowerCase().includes("man")
-                              ? styles.identityMan
-                              : tag.toLowerCase().includes("couple")
-                                ? styles.identityCouple
-                                : styles.intoTag
-                        }`}>
-                          {getTranslatedTag('profile.intoTags', tag)}
-                        </span>
-                      ))}
-                      {tags.into.length > 2 && !showAllTags && (
-                        <span className={styles.moreCount} onClick={toggleShowAllTags}>
-                          +{tags.into.length - 2}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Global More/Less Toggle for all tags */}
-                {(tags.lookingFor.length > 2 || tags.into.length > 2 || tags.interests.length > 2) && (
-                  <div className={styles.tagsToggle}>
-                    <span className={styles.toggleBtn} onClick={toggleShowAllTags}>
-                      {showAllTags ? (
-                        <>{safeTranslate(t, 'common.showLessTags', 'Show less tags')} <FaChevronUp size={12} style={{ marginLeft: "4px" }} /></>
-                      ) : (
-                        <>{safeTranslate(t, 'common.showAllTags', 'Show all tags')} <FaChevronDown size={12} style={{ marginLeft: "4px" }} /></>
-                      )}
-                    </span>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+          </>
         )}
       </div>
 
@@ -759,7 +582,7 @@ const UserCard = ({
   );
 };
 
-// PropTypes for better type checking
+// PropTypes for type checking
 UserCard.propTypes = {
   user: PropTypes.shape({
     _id: PropTypes.string.isRequired,
@@ -792,7 +615,19 @@ UserCard.propTypes = {
   hasUnreadMessages: PropTypes.bool,
 };
 
-// Use the withMemo HOC instead of React.memo
+// PropTypes for the TagGroup component
+TagGroup.propTypes = {
+  title: PropTypes.string,
+  tags: PropTypes.arrayOf(PropTypes.string).isRequired,
+  tagType: PropTypes.string.isRequired,
+  translationNamespace: PropTypes.string.isRequired,
+  t: PropTypes.func.isRequired,
+  showAll: PropTypes.bool.isRequired,
+  toggleShowAll: PropTypes.func.isRequired,
+  maxVisible: PropTypes.number
+};
+
+// Use the withMemo HOC for efficient re-rendering
 export default withMemo(UserCard, (prevProps, nextProps) => {
   // Custom comparison function for UserCard
   return (
