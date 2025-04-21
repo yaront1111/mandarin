@@ -108,6 +108,17 @@ deploy_server() {
     log "Installing server dependencies..."
     npm ci || npm install
     
+    # Ensure production environment settings are available
+    log "Setting up production environment..."
+    if [ -f ".env.production" ]; then
+        log "Found .env.production file, using it for production settings"
+        # Set appropriate permissions
+        chown www-data:www-data ".env.production"
+        chmod 640 ".env.production"
+    else
+        log "WARNING: No .env.production file found, production settings may be incomplete"
+    fi
+    
     # Ensure uploads directory exists with proper permissions
     log "Ensuring uploads directory exists with proper permissions..."
     mkdir -p "$SERVER_DIR/uploads/images"
@@ -162,11 +173,11 @@ start_server() {
         # Check if the app is already running in PM2 for www-data user
         if sudo -u www-data pm2 list | grep -q "$PM2_APP_NAME"; then
             log "Restarting existing PM2 process as www-data..."
-            sudo -u www-data pm2 restart "$PM2_APP_NAME" || log "WARNING: Failed to restart PM2 process"
+            sudo -u www-data NODE_ENV=production pm2 restart "$PM2_APP_NAME" || log "WARNING: Failed to restart PM2 process"
         else
             log "Creating new PM2 process as www-data..."
             cd "$SERVER_DIR"
-            sudo -u www-data pm2 start server.js --name "$PM2_APP_NAME" --time || log "WARNING: Failed to create PM2 process"
+            sudo -u www-data NODE_ENV=production pm2 start server.js --name "$PM2_APP_NAME" --time || log "WARNING: Failed to create PM2 process"
         fi
         
         # Save PM2 configuration to survive system restarts
@@ -188,11 +199,11 @@ start_server() {
         # Check if the app is already running in PM2
         if pm2 list | grep -q "$PM2_APP_NAME"; then
             log "Restarting existing PM2 process..."
-            pm2 restart "$PM2_APP_NAME" || log "WARNING: Failed to restart PM2 process"
+            NODE_ENV=production pm2 restart "$PM2_APP_NAME" || log "WARNING: Failed to restart PM2 process"
         else
             log "Creating new PM2 process..."
             cd "$SERVER_DIR"
-            pm2 start server.js --name "$PM2_APP_NAME" --time || log "WARNING: Failed to create PM2 process"
+            NODE_ENV=production pm2 start server.js --name "$PM2_APP_NAME" --time || log "WARNING: Failed to create PM2 process"
         fi
         
         # Save PM2 configuration to survive system restarts
