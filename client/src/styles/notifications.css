@@ -1,5 +1,5 @@
 /* Notification styles */
-
+@import "base.css";
 /* Container styles */
 .notification-container {
   background-color: var(--bg-color, #ffffff);

@@ -6,7 +6,7 @@
   - Avoid duplicating styles already defined globally
 =============================================
 */
-
+@import "base.css";
 /* 
 =============================================
   HOME PAGE STYLES

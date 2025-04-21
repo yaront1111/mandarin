@@ -1,5 +1,5 @@
 /* UserProfileModal Module CSS with Enhanced RTL Support - 2025 */
-
+@import "base.css";
 /* Container styles */
 .modalContainer {
   display: flex;

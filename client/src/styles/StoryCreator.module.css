@@ -1,5 +1,5 @@
 /* StoryCreator.module.css - Simple Design */
-
+@import "base.css";
 .container {
   position: fixed;
   top: 0;

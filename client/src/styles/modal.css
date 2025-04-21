@@ -1,4 +1,5 @@
 /* Essential Modal Component Styles with RTL Support */
+@import "base.css";
 html[lang="he"] body {
   direction: rtl;
 }

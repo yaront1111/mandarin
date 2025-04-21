@@ -1,5 +1,5 @@
 /* src/styles/videoCall.module.css */
-
+@import "base.css";
 /* --- OVERLAY STYLE --- */
 .videoCall {
   /* Changed from relative to fixed for overlay */

@@ -1,4 +1,5 @@
 /* Settings Module CSS with Dark/Light Theme Support */
+@import "base.css";
 
 .settingsPage {
   min-height: 100vh;

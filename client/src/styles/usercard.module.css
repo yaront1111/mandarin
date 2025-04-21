@@ -1,5 +1,5 @@
 /* UserCard Module Styles - With Locally Scoped Variables */
-
+@import "base.css";
 /* Create a wrapper class to contain all variables */
 .userCardVars {
   /* Colors */

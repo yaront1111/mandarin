@@ -1,5 +1,5 @@
 /* Instagram-Style Stories Module CSS - 2025 */
-
+@import "base.css";
 /* Stories Container */
 .storiesContainer {
   max-width: 100%;

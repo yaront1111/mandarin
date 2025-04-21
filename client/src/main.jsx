@@ -14,7 +14,6 @@ import "./styles/pages.css";
 // Assuming these are needed globally as well
 import "./styles/notifications.css";
 import "./styles/stories.module.css"
-import "./styles/chat.css"; // General chat styling
 import "./styles/modal.css"; // Modal component styling
 import "./styles/home.css"; // Home page specific styling
 import "./styles/policy-pages.css"; // Policy pages styling

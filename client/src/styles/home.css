@@ -1,5 +1,5 @@
 /* Enhanced Home Styles with RTL support */
-
+@import "base.css";
 .modern-home-page {
   --hero-height: 600px;
   --section-spacing: 5rem;

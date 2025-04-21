@@ -274,7 +274,7 @@ const Settings = () => {
   // Handle user logout
   const handleLogout = () => {
     if (hasUnsavedChanges) {
-      if (window.confirm("You have unsaved changes. Are you sure you want to log out?")) {
+      if (window.confirm(t('settings.unsavedChangesLogout', 'You have unsaved changes. Are you sure you want to log out?'))) {
         logout()
         navigate("/login")
       }
@@ -295,22 +295,22 @@ const Settings = () => {
       setDeleteError("")
 
       if (!deletePassword) {
-        setDeleteError("Please enter your password to confirm account deletion")
+        setDeleteError(t('settings.passwordRequired', 'Please enter your password to confirm account deletion'))
         return
       }
 
       const response = await settingsService.deleteAccount({ password: deletePassword })
 
       if (response.success) {
-        toast.success("Account deleted successfully")
+        toast.success(t('settings.accountDeletedSuccess', 'Account deleted successfully'))
         logout()
         navigate("/login")
       } else {
-        setDeleteError(response.error || "Failed to delete account")
+        setDeleteError(response.error || t('settings.deleteAccountFailed', 'Failed to delete account'))
       }
     } catch (error) {
       console.error("Error deleting account:", error)
-      setDeleteError(error.error || "Failed to delete account. Please try again.")
+      setDeleteError(error.error || t('settings.deleteAccountFailedRetry', 'Failed to delete account. Please try again.'))
     }
   }
 
@@ -463,8 +463,8 @@ const Settings = () => {
           <div className={styles.settingsContent}>
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
-                <h3 className={styles.optionTitle}>Message Notifications</h3>
-                <p className={styles.optionDescription}>Get notified when you receive new messages</p>
+                <h3 className={styles.optionTitle}>{t('settings.messageNotifications', 'Message Notifications')}</h3>
+                <p className={styles.optionDescription}>{t('settings.messageNotificationsDesc', 'Get notified when you receive new messages')}</p>
               </div>
               <label className={styles.toggleWrapper}>
                 <input
@@ -479,8 +479,8 @@ const Settings = () => {
 
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
-                <h3 className={styles.optionTitle}>Call Notifications</h3>
-                <p className={styles.optionDescription}>Get notified for incoming calls</p>
+                <h3 className={styles.optionTitle}>{t('settings.callNotifications', 'Call Notifications')}</h3>
+                <p className={styles.optionDescription}>{t('settings.callNotificationsDesc', 'Get notified for incoming calls')}</p>
               </div>
               <label className={styles.toggleWrapper}>
                 <input
@@ -495,8 +495,8 @@ const Settings = () => {
 
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
-                <h3 className={styles.optionTitle}>Story Notifications</h3>
-                <p className={styles.optionDescription}>Get notified when friends post new stories</p>
+                <h3 className={styles.optionTitle}>{t('settings.storyNotifications', 'Story Notifications')}</h3>
+                <p className={styles.optionDescription}>{t('settings.storyNotificationsDesc', 'Get notified when friends post new stories')}</p>
               </div>
               <label className={styles.toggleWrapper}>
                 <input
@@ -511,8 +511,8 @@ const Settings = () => {
 
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
-                <h3 className={styles.optionTitle}>Like Notifications</h3>
-                <p className={styles.optionDescription}>Get notified when someone likes your content</p>
+                <h3 className={styles.optionTitle}>{t('settings.likeNotifications', 'Like Notifications')}</h3>
+                <p className={styles.optionDescription}>{t('settings.likeNotificationsDesc', 'Get notified when someone likes your content')}</p>
               </div>
               <label className={styles.toggleWrapper}>
                 <input
@@ -527,8 +527,8 @@ const Settings = () => {
 
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
-                <h3 className={styles.optionTitle}>Comment Notifications</h3>
-                <p className={styles.optionDescription}>Get notified when someone comments on your content</p>
+                <h3 className={styles.optionTitle}>{t('settings.commentNotifications', 'Comment Notifications')}</h3>
+                <p className={styles.optionDescription}>{t('settings.commentNotificationsDesc', 'Get notified when someone comments on your content')}</p>
               </div>
               <label className={styles.toggleWrapper}>
                 <input
@@ -548,8 +548,8 @@ const Settings = () => {
           <div className={styles.settingsContent}>
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
-                <h3 className={styles.optionTitle}>Online Status</h3>
-                <p className={styles.optionDescription}>Show when you're active on the app</p>
+                <h3 className={styles.optionTitle}>{t('settings.onlineStatus', 'Online Status')}</h3>
+                <p className={styles.optionDescription}>{t('settings.onlineStatusDesc', 'Show when you\'re active on the app')}</p>
               </div>
               <label className={styles.toggleWrapper}>
                 <input
@@ -564,8 +564,8 @@ const Settings = () => {
 
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
-                <h3 className={styles.optionTitle}>Read Receipts</h3>
-                <p className={styles.optionDescription}>Let others know when you've read their messages</p>
+                <h3 className={styles.optionTitle}>{t('settings.readReceipts', 'Read Receipts')}</h3>
+                <p className={styles.optionDescription}>{t('settings.readReceiptsDesc', 'Let others know when you\'ve read their messages')}</p>
               </div>
               <label className={styles.toggleWrapper}>
                 <input
@@ -580,8 +580,8 @@ const Settings = () => {
 
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
-                <h3 className={styles.optionTitle}>Last Seen</h3>
-                <p className={styles.optionDescription}>Show when you were last active</p>
+                <h3 className={styles.optionTitle}>{t('settings.lastSeen', 'Last Seen')}</h3>
+                <p className={styles.optionDescription}>{t('settings.lastSeenDesc', 'Show when you were last active')}</p>
               </div>
               <label className={styles.toggleWrapper}>
                 <input
@@ -596,8 +596,8 @@ const Settings = () => {
 
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
-                <h3 className={styles.optionTitle}>Story Replies</h3>
-                <p className={styles.optionDescription}>Control who can reply to your stories</p>
+                <h3 className={styles.optionTitle}>{t('settings.storyReplies', 'Story Replies')}</h3>
+                <p className={styles.optionDescription}>{t('settings.storyRepliesDesc', 'Control who can reply to your stories')}</p>
               </div>
               <div className={styles.radioGroup}>
                 <label className={styles.radioOption}>
@@ -609,7 +609,7 @@ const Settings = () => {
                     onChange={() => handleRadioChange("privacy", "allowStoryReplies", "everyone")}
                     className={styles.radioInput}
                   />
-                  Everyone
+                  {t('settings.everyone', 'Everyone')}
                 </label>
                 <label className={styles.radioOption}>
                   <input
@@ -620,7 +620,7 @@ const Settings = () => {
                     onChange={() => handleRadioChange("privacy", "allowStoryReplies", "friends")}
                     className={styles.radioInput}
                   />
-                  Friends only
+                  {t('settings.friendsOnly', 'Friends only')}
                 </label>
                 <label className={styles.radioOption}>
                   <input
@@ -631,7 +631,7 @@ const Settings = () => {
                     onChange={() => handleRadioChange("privacy", "allowStoryReplies", "none")}
                     className={styles.radioInput}
                   />
-                  No one
+                  {t('settings.noOne', 'No one')}
                 </label>
               </div>
             </div>
@@ -640,21 +640,21 @@ const Settings = () => {
             <div className={styles.blockedUsersSection}>
               <div className={styles.sectionHeader}>
                 <FaBan className={styles.sectionIcon} />
-                <h3 className={styles.sectionTitle}>Blocked Users</h3>
+                <h3 className={styles.sectionTitle}>{t('settings.blockedUsers', 'Blocked Users')}</h3>
               </div>
               <p className={styles.sectionDescription}>
-                Users you've blocked cannot message you or view your profile
+                {t('settings.blockedUsersDesc', 'Users you\'ve blocked cannot message you or view your profile')}
               </p>
               
               {loadingBlockedUsers ? (
                 <div className={styles.loadingState}>
                   <div className={styles.spinner}></div>
-                  <p>Loading blocked users...</p>
+                  <p>{t('settings.loadingBlockedUsers', 'Loading blocked users...')}</p>
                 </div>
               ) : blockedUsers.length === 0 ? (
                 <div className={styles.emptyState}>
                   <FaUserSlash className={styles.emptyStateIcon} />
-                  <p>You haven't blocked any users</p>
+                  <p>{t('settings.noBlockedUsers', 'You haven\'t blocked any users')}</p>
                 </div>
               ) : (
                 <div className={styles.blockedUsersList}>
@@ -667,14 +667,14 @@ const Settings = () => {
                           className={styles.blockedUserAvatar}
                         />
                         <span className={styles.blockedUserName}>
-                          {user.nickname || "User"}
+                          {user.nickname || t('settings.defaultUser', 'User')}
                         </span>
                       </div>
                       <button 
                         className={styles.unblockButton}
                         onClick={() => handleUnblock(user._id, user.nickname)}
                       >
-                        <FaUnlock /> Unblock
+                        <FaUnlock /> {t('settings.unblock', 'Unblock')}
                       </button>
                     </div>
                   ))}
@@ -689,8 +689,8 @@ const Settings = () => {
           <div className={styles.settingsContent}>
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
-                <h3 className={styles.optionTitle}>{t('settings.themeMode')}</h3>
-                <p className={styles.optionDescription}>{t('settings.themeMode')}</p>
+                <h3 className={styles.optionTitle}>{t('settings.themeMode', 'Theme Mode')}</h3>
+                <p className={styles.optionDescription}>{t('settings.themeModeDesc', 'Choose how the app appears to you')}</p>
               </div>
               <div className={styles.themeOptions}>
                 <button
@@ -698,29 +698,29 @@ const Settings = () => {
                   onClick={() => handleThemeChange("light")}
                 >
                   <div className={`${styles.themePreview} ${styles.light}`}></div>
-                  <span className={styles.themeName}>{t('settings.light')}</span>
+                  <span className={styles.themeName}>{t('settings.light', 'Light')}</span>
                 </button>
                 <button
                   className={`${styles.themeOption} ${theme === "dark" ? styles.active : ""}`}
                   onClick={() => handleThemeChange("dark")}
                 >
                   <div className={`${styles.themePreview} ${styles.dark}`}></div>
-                  <span className={styles.themeName}>{t('settings.dark')}</span>
+                  <span className={styles.themeName}>{t('settings.dark', 'Dark')}</span>
                 </button>
                 <button
                   className={`${styles.themeOption} ${theme === "system" ? styles.active : ""}`}
                   onClick={() => handleThemeChange("system")}
                 >
                   <div className={`${styles.themePreview} ${styles.system}`}></div>
-                  <span className={styles.themeName}>{t('settings.system')}</span>
+                  <span className={styles.themeName}>{t('settings.system', 'System')}</span>
                 </button>
               </div>
             </div>
 
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
-                <h3 className={styles.optionTitle}>Quick Theme Toggle</h3>
-                <p className={styles.optionDescription}>Quickly switch between light and dark mode</p>
+                <h3 className={styles.optionTitle}>{t('settings.quickThemeToggle', 'Quick Theme Toggle')}</h3>
+                <p className={styles.optionDescription}>{t('settings.quickThemeToggleDesc', 'Quickly switch between light and dark mode')}</p>
               </div>
               <ThemeToggle />
             </div>
@@ -729,10 +729,10 @@ const Settings = () => {
             <div className={styles.settingsOption}>
               <div className={styles.optionContent}>
                 <h3 className={styles.optionTitle}>
-                  <FaLanguage className={styles.optionIcon} /> {t('settings.language')}
+                  <FaLanguage className={styles.optionIcon} /> {t('settings.language', 'Language')}
                 </h3>
                 <p className={styles.optionDescription}>
-                  {t('settings.language')}
+                  {t('settings.languageDesc', 'Choose your preferred language')}
                 </p>
               </div>
               
@@ -749,34 +749,34 @@ const Settings = () => {
           <div className={styles.settingsContent}>
             <div className={styles.accountInfo}>
               <div className={styles.accountDetail}>
-                <span className={styles.accountLabel}>Username:</span> {user?.username || "Not available"}
+                <span className={styles.accountLabel}>{t('settings.username', 'Username')}:</span> {user?.username || t('settings.notAvailable', 'Not available')}
               </div>
               <div className={styles.accountDetail}>
-                <span className={styles.accountLabel}>Email:</span> {user?.email || "Not available"}
+                <span className={styles.accountLabel}>{t('settings.email', 'Email')}:</span> {user?.email || t('settings.notAvailable', 'Not available')}
               </div>
               <div className={styles.accountDetail}>
-                <span className={styles.accountLabel}>Member since:</span>{" "}
-                {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : "Not available"}
+                <span className={styles.accountLabel}>{t('settings.memberSince', 'Member since')}:</span>{" "}
+                {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : t('settings.notAvailable', 'Not available')}
               </div>
               <div className={styles.accountDetail}>
-                <span className={styles.accountLabel}>Subscription:</span> {user?.subscription?.plan || "Free"}
+                <span className={styles.accountLabel}>{t('settings.subscription', 'Subscription')}:</span> {user?.subscription?.plan ? t(`settings.${user.subscription.plan.toLowerCase()}Plan`, user.subscription.plan) : t('settings.freePlan', 'Free')}
               </div>
             </div>
 
             <div className={styles.accountActions}>
               <button className={`${styles.actionButton} ${styles.editButton}`} onClick={() => navigate("/profile")}>
                 <FaUser className={styles.actionIcon} />
-                <span>Edit Profile</span>
+                <span>{t('settings.editProfile', 'Edit Profile')}</span>
               </button>
 
               <button className={`${styles.actionButton} ${styles.logoutButton}`} onClick={handleLogout}>
                 <FaSignOutAlt className={styles.actionIcon} />
-                <span>Log out</span>
+                <span>{t('settings.logout', 'Log out')}</span>
               </button>
 
               <button className={`${styles.actionButton} ${styles.deleteButton}`} onClick={handleDeleteAccount}>
                 <FaTrash className={styles.actionIcon} />
-                <span>Delete Account</span>
+                <span>{t('settings.deleteAccount', 'Delete Account')}</span>
               </button>
             </div>
           </div>
@@ -796,10 +796,10 @@ const Settings = () => {
         <div className={styles.settingsContent}>
           <div className={styles.settingsContainer}>
             <div className={styles.gradientBar}></div>
-            <h1 className={styles.settingsTitle}>Settings</h1>
+            <h1 className={styles.settingsTitle}>{t('settings.settings', 'Settings')}</h1>
             <div className={styles.loadingState}>
               <div className={styles.spinner}></div>
-              <p className={styles.loadingText}>Loading your settings...</p>
+              <p className={styles.loadingText}>{t('settings.loadingSettings', 'Loading your settings...')}</p>
             </div>
           </div>
         </div>
@@ -813,7 +813,7 @@ const Settings = () => {
       <div className={styles.settingsContent}>
         <div className={styles.settingsContainer}>
           <div className={styles.gradientBar}></div>
-          <h1 className={styles.settingsTitle}>Settings</h1>
+          <h1 className={styles.settingsTitle}>{t('settings.settings', 'Settings')}</h1>
 
           {/* Settings navigation */}
           <div className={styles.settingsNavigation}>
@@ -822,7 +822,7 @@ const Settings = () => {
               onClick={() => setActiveTab("notifications")}
             >
               <FaBell className={styles.navIcon} />
-              <span>Notifications</span>
+              <span>{t('settings.notifications', 'Notifications')}</span>
             </button>
 
             <button
@@ -830,7 +830,7 @@ const Settings = () => {
               onClick={() => setActiveTab("privacy")}
             >
               <FaLock className={styles.navIcon} />
-              <span>Privacy</span>
+              <span>{t('settings.privacy', 'Privacy')}</span>
             </button>
 
             <button
@@ -838,7 +838,7 @@ const Settings = () => {
               onClick={() => setActiveTab("appearance")}
             >
               <FaPalette className={styles.navIcon} />
-              <span>Appearance</span>
+              <span>{t('settings.appearance', 'Appearance')}</span>
             </button>
 
             <button
@@ -846,7 +846,7 @@ const Settings = () => {
               onClick={() => setActiveTab("account")}
             >
               <FaUser className={styles.navIcon} />
-              <span>Account</span>
+              <span>{t('settings.account', 'Account')}</span>
             </button>
           </div>
 
@@ -859,10 +859,10 @@ const Settings = () => {
               {activeTab === "account" && <FaUser className={styles.sectionIcon} />}
 
               <h2 className={styles.sectionTitle}>
-                {activeTab === "notifications" && "Notification Settings"}
-                {activeTab === "privacy" && "Privacy Settings"}
-                {activeTab === "appearance" && "Appearance Settings"}
-                {activeTab === "account" && "Account Settings"}
+                {activeTab === "notifications" && t('settings.notificationSettings', 'Notification Settings')}
+                {activeTab === "privacy" && t('settings.privacySettings', 'Privacy Settings')}
+                {activeTab === "appearance" && t('settings.appearanceSettings', 'Appearance Settings')}
+                {activeTab === "account" && t('settings.accountSettings', 'Account Settings')}
               </h2>
             </div>
 
@@ -877,7 +877,7 @@ const Settings = () => {
                   disabled={saving || !hasUnsavedChanges}
                 >
                   <FaSave />
-                  {saving ? "Saving..." : "Save Changes"}
+                  {saving ? t('settings.saving', 'Saving...') : t('settings.saveChanges', 'Save Changes')}
                 </button>
               </div>
             )}
@@ -891,7 +891,7 @@ const Settings = () => {
           <div className={styles.modalContainer}>
             <div className={styles.modalHeader}>
               <h2 className={styles.modalTitle}>
-                <FaTrash /> Delete Account
+                <FaTrash /> {t('settings.deleteAccount', 'Delete Account')}
               </h2>
               <button className={styles.closeButton} onClick={cancelDeleteAccount}>
                 <FaTimes />
@@ -902,24 +902,24 @@ const Settings = () => {
               <div className={styles.warningBox}>
                 <FaShieldAlt className={styles.warningIcon} />
                 <p className={styles.warningText}>
-                  This action <strong>cannot be undone</strong>. All your data will be permanently deleted, including:
+                  {t('settings.deleteWarning', 'This action')} <strong>{t('settings.cannotBeUndone', 'cannot be undone')}</strong>. {t('settings.deleteDataWarning', 'All your data will be permanently deleted, including:')}
                 </p>
                 <ul className={styles.warningList}>
-                  <li className={styles.warningItem}>Your profile information</li>
-                  <li className={styles.warningItem}>All messages and conversations</li>
-                  <li className={styles.warningItem}>Photos and media you've shared</li>
-                  <li className={styles.warningItem}>Stories and other content</li>
+                  <li className={styles.warningItem}>{t('settings.profileInformation', 'Your profile information')}</li>
+                  <li className={styles.warningItem}>{t('settings.messagesAndConversations', 'All messages and conversations')}</li>
+                  <li className={styles.warningItem}>{t('settings.photosAndMedia', 'Photos and media you\'ve shared')}</li>
+                  <li className={styles.warningItem}>{t('settings.storiesAndContent', 'Stories and other content')}</li>
                 </ul>
               </div>
 
               <div className={styles.passwordSection}>
-                <label className={styles.passwordLabel} htmlFor="delete-password">Enter your password to confirm:</label>
+                <label className={styles.passwordLabel} htmlFor="delete-password">{t('settings.enterPasswordConfirm', 'Enter your password to confirm:')}</label>
                 <input
                   id="delete-password"
                   type="password"
                   value={deletePassword}
                   onChange={(e) => setDeletePassword(e.target.value)}
-                  placeholder="Your password"
+                  placeholder={t('settings.yourPassword', 'Your password')}
                   className={`${styles.passwordInput} ${deleteError ? styles.error : ""}`}
                 />
                 {deleteError && (
@@ -932,10 +932,10 @@ const Settings = () => {
 
             <div className={styles.modalActions}>
               <button className={styles.buttonCancel} onClick={cancelDeleteAccount}>
-                <FaTimes /> Cancel
+                <FaTimes /> {t('settings.cancel', 'Cancel')}
               </button>
               <button className={styles.buttonDelete} onClick={confirmDeleteAccount} disabled={!deletePassword}>
-                <FaTrash /> Delete My Account
+                <FaTrash /> {t('settings.deleteMyAccount', 'Delete My Account')}
               </button>
             </div>
           </div>
