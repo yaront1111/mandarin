@@ -49,7 +49,7 @@ class SocketClient {
     this.userId = userId
 
     // IMPORTANT: Always connect to the backend server, not the frontend
-    // Use relative path when in the same domain or origin
+    // Just use the main domain with socket.io path for now
     const serverUrl = options.serverUrl || process.env.REACT_APP_SOCKET_URL || window.location.origin
     console.log(`Connecting to socket server at ${serverUrl}`)
 
