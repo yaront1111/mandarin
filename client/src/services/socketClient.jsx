@@ -58,7 +58,8 @@ class SocketClient {
       // Note: Changed transports order to try polling first for better reliability
       // IMPORTANT: Use a direct URL to the Socket.IO endpoint on the Node.js server
       // Bypass Nginx completely by using the direct port 5000
-      const directSocketUrl = 'http://flirtss.com:5000';
+      // CRITICAL: Use HTTPS protocol to avoid mixed content blocking
+      const directSocketUrl = 'https://flirtss.com:5000';
       console.log(`Attempting direct socket connection to: ${directSocketUrl}`);
       
       this.socket = io(directSocketUrl, {

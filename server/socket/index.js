@@ -76,6 +76,7 @@ const initSocketServer = async (server) => {
   // IMPORTANT: Add these origins for direct socket access
   allowedOrigins.push("https://flirtss.com");
   allowedOrigins.push("http://flirtss.com:5000");
+  allowedOrigins.push("https://flirtss.com:5000");
 
   logger.info(`Socket.IO configured with allowed origins: ${JSON.stringify(allowedOrigins)}`);
 
