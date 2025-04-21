@@ -73,19 +73,6 @@ backup_current() {
 # Update from git repository
 update_from_git() {
     log "Updating from git repository..."
-    
-    # Check if the app directory exists and is a git repo
-    if [ -d "$APP_DIR/.git" ]; then
-        cd "$APP_DIR"
-        git fetch --all
-        git reset --hard origin/main  # Adjust branch name if different
-        log "Git repository updated successfully"
-    else
-        log "Directory is not a git repository. Attempting to clone..."
-        mkdir -p "$APP_DIR"
-        git clone "$GITHUB_REPO" "$APP_DIR"
-        log "Git repository cloned successfully"
-    fi
 }
 
 # Build and deploy client
