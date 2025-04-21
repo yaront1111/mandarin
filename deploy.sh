@@ -147,27 +147,60 @@ setup_turn_server() {
 start_server() {
     log "Starting server with PM2..."
     
-    # Check if PM2 is installed
-    if ! command -v pm2 &> /dev/null; then
-        log "Installing PM2 globally..."
-        npm install -g pm2
-    fi
-    
-    # Check if the app is already running in PM2
-    if pm2 list | grep -q "$PM2_APP_NAME"; then
-        log "Restarting existing PM2 process..."
-        pm2 restart "$PM2_APP_NAME" || log "WARNING: Failed to restart PM2 process"
+    # Make sure www-data user exists and has proper permissions
+    if id "www-data" &>/dev/null; then
+        # Make sure the server directory is owned by www-data
+        log "Setting proper ownership for server directory..."
+        chown -R www-data:www-data "$SERVER_DIR"
+        
+        # Check if PM2 is installed
+        if ! sudo -u www-data command -v pm2 &> /dev/null; then
+            log "Installing PM2 globally for www-data..."
+            sudo -u www-data npm install -g pm2
+        fi
+        
+        # Check if the app is already running in PM2 for www-data user
+        if sudo -u www-data pm2 list | grep -q "$PM2_APP_NAME"; then
+            log "Restarting existing PM2 process as www-data..."
+            sudo -u www-data pm2 restart "$PM2_APP_NAME" || log "WARNING: Failed to restart PM2 process"
+        else
+            log "Creating new PM2 process as www-data..."
+            cd "$SERVER_DIR"
+            sudo -u www-data pm2 start server.js --name "$PM2_APP_NAME" --time || log "WARNING: Failed to create PM2 process"
+        fi
+        
+        # Save PM2 configuration to survive system restarts
+        sudo -u www-data pm2 save
+        
+        # Setup PM2 to start on system boot if not already configured
+        sudo -u www-data pm2 startup || log "WARNING: Could not configure PM2 startup. Manual configuration may be required."
+        
+        log "Server started successfully as www-data user"
     else
-        log "Creating new PM2 process..."
-        cd "$SERVER_DIR"
-        pm2 start server.js --name "$PM2_APP_NAME" --time || log "WARNING: Failed to create PM2 process"
+        log "ERROR: www-data user not found. Using current user instead."
+        
+        # Check if PM2 is installed
+        if ! command -v pm2 &> /dev/null; then
+            log "Installing PM2 globally..."
+            npm install -g pm2
+        fi
+        
+        # Check if the app is already running in PM2
+        if pm2 list | grep -q "$PM2_APP_NAME"; then
+            log "Restarting existing PM2 process..."
+            pm2 restart "$PM2_APP_NAME" || log "WARNING: Failed to restart PM2 process"
+        else
+            log "Creating new PM2 process..."
+            cd "$SERVER_DIR"
+            pm2 start server.js --name "$PM2_APP_NAME" --time || log "WARNING: Failed to create PM2 process"
+        fi
+        
+        # Save PM2 configuration to survive system restarts
+        pm2 save
+        
+        # Setup PM2 to start on system boot if not already configured
+        pm2 startup || log "WARNING: Could not configure PM2 startup. Manual configuration may be required."
     fi
-    
-    # Save PM2 configuration to survive system restarts
-    pm2 save
-    
-    # Setup PM2 to start on system boot if not already configured
-    pm2 startup || log "WARNING: Could not configure PM2 startup. Manual configuration may be required."
 }
 
 # Check and restart Nginx
