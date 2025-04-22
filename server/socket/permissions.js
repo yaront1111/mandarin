@@ -4,7 +4,13 @@ import mongoose from "mongoose";
 import { sendNotification } from "./notification.js";
 import logger from "../logger.js";
 
-const log = logger.create("socket:permissions");
+// Simple logger fallback if logger.create doesn't exist
+const log = {
+  info: (...args) => console.log("[socket:permissions]", ...args),
+  error: (...args) => console.error("[socket:permissions]", ...args),
+  warn: (...args) => console.warn("[socket:permissions]", ...args),
+  debug: (...args) => console.debug("[socket:permissions]", ...args)
+};
 
 // ——— Socket event names ———
 const EVENTS = {
@@ -143,9 +149,3 @@ export function registerPermissionHandlers(io, socket) {
   socket.on(EVENTS.REQUEST,   safeListener(data => sendPhotoPermissionRequestNotification(io, socket, data)));
   socket.on(EVENTS.RESPOND,   safeListener(data => sendPhotoPermissionResponseNotification(io, socket, data)));
 }
-
-export {
-  registerPermissionHandlers,
-  sendPhotoPermissionRequestNotification,
-  sendPhotoPermissionResponseNotification
-};

@@ -2,19 +2,20 @@
 
 import { User } from "../models/index.js";
 import logger from "../logger.js";
-import {
-  registerMessagingHandlers,
-  sendMessageNotification,
-  sendLikeNotification
-} from "./messaging.js";
 import { registerCallHandlers } from "./call.js";
 import {
   registerPermissionHandlers,
   sendPhotoPermissionRequestNotification,
-  sendPhotoPermissionResponseNotification
 } from "./permissions.js";
+import { registerMessagingHandlers } from "./messaging.js";
 
-const log = logger.create("socket");
+// Simple logger fallback
+const log = {
+  info: (...args) => console.log("[socket]", ...args),
+  error: (...args) => console.error("[socket]", ...args),
+  warn: (...args) => console.warn("[socket]", ...args),
+  debug: (...args) => console.debug("[socket]", ...args)
+};
 
 // --- Socket event constants ---
 const EVENTS = {
@@ -77,7 +78,7 @@ export const handleUserDisconnect = async (io, socket, userConnections) => {
   const userId = socket.user?._id?.toString();
   if (!userId || !userConnections.has(userId)) return;
 
-  // Remove this socket from the user’s connection set
+  // Remove this socket from the user's connection set
   const conns = userConnections.get(userId);
   conns.delete(socket.id);
 
@@ -173,10 +174,4 @@ export const registerSocketHandlers = (io, socket, userConnections, rateLimiters
   }
 };
 
-// Re‑export notification helpers from submodules
-export {
-  sendMessageNotification,
-  sendLikeNotification,
-  sendPhotoPermissionRequestNotification,
-  sendPhotoPermissionResponseNotification
-};
+// No re-exports at the bottom to avoid duplicate exports

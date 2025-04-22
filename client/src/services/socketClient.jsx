@@ -73,7 +73,7 @@ class SocketClient {
         transports: ["polling", "websocket"], // Try polling first for more reliability
         autoConnect: true,
         forceNew: true, // Force new connection attempt
-        path: '/socket.io/', // Explicitly set the socket.io path
+        //path: '/socket.io/', // Explicitly set the socket.io path
         extraHeaders: {  // Add extra headers that might help with CORS
           "X-Client-Version": "1.0.0",
           "X-Connection-Type": "mandarin-app"

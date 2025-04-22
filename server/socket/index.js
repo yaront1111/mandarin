@@ -131,7 +131,7 @@ const initSocketServer = async (server) => {
     pingInterval: 15000,    // Ping more frequently for better connection monitoring
     connectTimeout: 30000,  // Reduced connect timeout
     maxHttpBufferSize: 1e6, // 1MB max buffer size
-    path: "/socket.io",
+    //path: "/socket.io",
     allowEIO3: true,        // Allow Engine.IO v3 clients for better compatibility
   };
 

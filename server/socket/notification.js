@@ -3,7 +3,13 @@
 import { Notification, User } from "../models/index.js";
 import logger from "../logger.js";
 
-const log = logger.create("socket:notification");
+// Simple logger fallback if logger.create doesn't exist
+const log = {
+  info: (...args) => console.log("[socket:notification]", ...args),
+  error: (...args) => console.error("[socket:notification]", ...args),
+  warn: (...args) => console.warn("[socket:notification]", ...args),
+  debug: (...args) => console.debug("[socket:notification]", ...args)
+};
 
 // Socket event names
 const EVENTS = {
