@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import {
   FaHeart,
   FaComment,
-  FaEllipsisV,
+  FaEllipsisH,
   FaMapMarkerAlt,
   FaCalendarAlt,
   FaRegClock,
@@ -11,17 +11,13 @@ import {
   FaChevronRight,
   FaChevronLeft,
   FaLock,
+  FaUserAlt,
   FaTrophy,
   FaFlag,
   FaBan,
+  FaCamera,
   FaSpinner,
   FaEye,
-  FaShieldAlt,
-  FaInfoCircle,
-  FaStar,
-  FaTimes,
-  FaCamera,
-  FaChartBar
 } from "react-icons/fa"
 import { useTranslation } from "react-i18next"
 import { useUser, useAuth, useStories, useLanguage } from "../context"
@@ -141,176 +137,6 @@ const safeTranslate = (t, key, defaultValue = "") => {
 };
 
 /**
- * PhotoGallery component handles the display and navigation of user photos
- */
-const PhotoGallery = ({
-  photos,
-  activeIndex,
-  onPhotoChange,
-  onImageError,
-  canViewPrivatePhotos,
-  userPhotoAccess,
-  onRequestAccess,
-  isRTL,
-  nickname,
-  t,
-  showControls = true
-}) => {
-  // Handle swipe for photo navigation
-  const touchStartX = useRef(null);
-  const [isSwiping, setIsSwiping] = useState(false);
-
-  const handleTouchStart = (e) => {
-    touchStartX.current = e.touches[0].clientX;
-    setIsSwiping(true);
-  };
-
-  const handleTouchMove = (e) => {
-    if (!touchStartX.current || !isSwiping) return;
-  };
-
-  const handleTouchEnd = (e) => {
-    if (!touchStartX.current || !isSwiping) return;
-
-    const touchEndX = e.changedTouches[0].clientX;
-    const diffX = touchEndX - touchStartX.current;
-
-    if (Math.abs(diffX) > 50) {
-      // Significant swipe detected
-      if (diffX > 0) {
-        // Swiped right, go to previous photo
-        if (activeIndex > 0) {
-          onPhotoChange(activeIndex - 1);
-        }
-      } else {
-        // Swiped left, go to next photo
-        if (activeIndex < photos.length - 1) {
-          onPhotoChange(activeIndex + 1);
-        }
-      }
-    }
-
-    touchStartX.current = null;
-    setIsSwiping(false);
-  };
-
-  return (
-    <div className={`${styles.photoGallery} ${showControls ? '' : styles.noControls}`}>
-      <div
-        className={styles.galleryInner}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        {photos.map((photo, index) => (
-          <div
-            key={photo._id || index}
-            className={`${styles.photoSlide} ${index === activeIndex ? styles.activeSlide : ''}`}
-            style={{ transform: `translateX(${(index - activeIndex) * 100}%)` }}
-          >
-            {photo.isPrivate && !canViewPrivatePhotos ? (
-              <div className={styles.privatePhoto}>
-                <div className={styles.lockIconWrapper}>
-                  <FaLock className={styles.lockIcon} />
-                </div>
-                <p className={styles.privatePhotoText}>{safeTranslate(t, 'profile.privatePhoto', 'This photo is private')}</p>
-
-                {userPhotoAccess.status === "pending" && (
-                  <div className={`${styles.statusBadge} ${styles.pendingBadge}`}>
-                    {safeTranslate(t, 'profile.accessRequestPending', 'Access request pending')}
-                  </div>
-                )}
-
-                {userPhotoAccess.status === "rejected" && (
-                  <div className={`${styles.statusBadge} ${styles.rejectedBadge}`}>
-                    {safeTranslate(t, 'profile.accessDenied', 'Access request denied')}
-                  </div>
-                )}
-
-                {(!userPhotoAccess.status || userPhotoAccess.status === "none") && (
-                  <button
-                    className={styles.requestAccessBtn}
-                    onClick={onRequestAccess}
-                    disabled={userPhotoAccess.isLoading}
-                  >
-                    {userPhotoAccess.isLoading ? <FaSpinner className={styles.spinner} /> : <FaEye />}
-                    {safeTranslate(t, 'profile.requestPhotoAccess', 'Request Access')}
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className={styles.photoWrapper}>
-                <img
-                  src={normalizePhotoUrl(photo.url)}
-                  alt={`${nickname}'s photo`}
-                  className={styles.photoImage}
-                  onError={() => onImageError(photo._id)}
-                />
-              </div>
-            )}
-          </div>
-        ))}
-
-        {showControls && photos.length > 1 && (
-          <>
-            <button
-              className={`${styles.navBtn} ${styles.prevBtn} ${isRTL ? styles.rtlNav : ''}`}
-              onClick={() => activeIndex > 0 && onPhotoChange(activeIndex - 1)}
-              disabled={activeIndex === 0}
-              aria-label={safeTranslate(t, 'profile.previousPhoto', 'Previous photo')}
-            >
-              {isRTL ? <FaChevronRight /> : <FaChevronLeft />}
-            </button>
-            <button
-              className={`${styles.navBtn} ${styles.nextBtn} ${isRTL ? styles.rtlNav : ''}`}
-              onClick={() => activeIndex < photos.length - 1 && onPhotoChange(activeIndex + 1)}
-              disabled={activeIndex === photos.length - 1}
-              aria-label={safeTranslate(t, 'profile.nextPhoto', 'Next photo')}
-            >
-              {isRTL ? <FaChevronLeft /> : <FaChevronRight />}
-            </button>
-          </>
-        )}
-      </div>
-
-      {showControls && photos.length > 1 && (
-        <div className={styles.photoIndicators}>
-          {photos.map((_, index) => (
-            <button
-              key={index}
-              className={`${styles.indicator} ${index === activeIndex ? styles.activeIndicator : ''}`}
-              onClick={() => onPhotoChange(index)}
-              aria-label={`Go to photo ${index + 1}`}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-/**
- * DisplayTag - a reusable component for tags throughout the profile
- */
-const DisplayTag = ({ type, children }) => {
-  const tagClasses = {
-    identity: styles.identityTag,
-    status: styles.statusTag,
-    lookingFor: styles.lookingForTag,
-    into: styles.intoTag,
-    turnOn: styles.turnOnTag,
-    interest: styles.interestTag,
-    common: styles.commonInterestTag
-  };
-
-  return (
-    <span className={`${styles.tag} ${tagClasses[type] || ''}`}>
-      {children}
-    </span>
-  );
-};
-
-/**
  * UserProfileModal component displays a user's profile information
  * with photo gallery, compatibility score, and interaction options.
  *
@@ -367,7 +193,6 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
   // Refs
   const profileRef = useRef(null);
-  const contentRef = useRef(null);
   const storiesLoadingRef = useRef(false);
   const accessStatusLoadingRef = useRef(false);
   const requestsLoadingRef = useRef(false);
@@ -408,29 +233,6 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       (item) => item.user && profileUser && item.user._id === profileUser._id
     );
   }, [pendingRequests, profileUser]);
-
-  // Compatibility factors for display
-  const compatibilityFactors = useMemo(() => {
-    if (!profileUser || !currentUser) return [];
-
-    const locationMatch = profileUser.details?.location === currentUser.details?.location;
-    const locationScore = locationMatch ? 100 : 30;
-
-    const ageDiff = Math.abs((profileUser.details?.age || 0) - (currentUser.details?.age || 0));
-    let ageScore = 0;
-    if (ageDiff <= 5) ageScore = 100;
-    else if (ageDiff <= 10) ageScore = 60;
-    else ageScore = 30;
-
-    const maxInterestsMatch = 5; // Consider 5 interests to be a 100% match
-    const interestsScore = Math.min(100, (commonInterests.length / maxInterestsMatch) * 100);
-
-    return [
-      { label: safeTranslate(t, 'profile.location', 'Location'), value: locationScore },
-      { label: safeTranslate(t, 'profile.age', 'Age'), value: ageScore },
-      { label: safeTranslate(t, 'profile.interests', 'Interests'), value: interestsScore }
-    ];
-  }, [profileUser, currentUser, commonInterests, t]);
 
   // Check if user can view private photos
   const canViewPrivatePhotos = userPhotoAccess.status === "approved";
@@ -486,6 +288,13 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   // Explicitly exclude getUser from deps since it might change between renders
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, isOpen, isMounted]);
+
+  // IMPORTANT: We're not using this callback anymore - it's replaced with a direct API call
+  // in the useEffect to prevent loops. Keep this here just for reference and documentation.
+  const fetchUserPhotoAccess = useCallback(() => {
+    console.log("This function is no longer used - direct API call is made instead");
+    // No-op
+  }, []);
 
   // Fetch pending photo access requests
   const fetchPendingRequests = useCallback(async () => {
@@ -1014,6 +823,19 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   const handleCloseStories = () => setShowStories(false);
   const handleCloseChat = () => setShowChat(false);
 
+  // Photo navigation
+  const nextPhoto = () => {
+    if (profileUser?.photos && activePhotoIndex < profileUser.photos.length - 1) {
+      setActivePhotoIndex(activePhotoIndex + 1);
+    }
+  };
+
+  const prevPhoto = () => {
+    if (activePhotoIndex > 0) {
+      setActivePhotoIndex(activePhotoIndex - 1);
+    }
+  };
+
   // Calculate compatibility score between users
   function calculateCompatibility() {
     if (!profileUser?.details || !currentUser?.details) return 0;
@@ -1067,6 +889,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
     // Method 5: Simple key format
     const simpleKey = `profile_${tag.toLowerCase().replace(/\s+/g, '_')}`;
+
+    // Debug key resolution (uncomment for debugging)
+    // console.log('Translation tag lookup:', { namespace, tag, nestedKey, prefixKey, directKey, flatKey, simpleKey });
 
     // Try each of the key formats in order
     // First try the direct flat format for section values (most specific)
@@ -1190,26 +1015,16 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       isOpen={isOpen}
       onClose={onClose}
       size="xlarge"
-      className={`${styles.profileModal} ${isRTL ? 'rtl-layout' : ''}`}
-      showCloseButton={false}
-      headerClassName={styles.modalHeader}
-      bodyClassName={styles.modalBody}
+      className={`${styles.modalContainer} ${isRTL ? 'rtl-layout' : ''}`}
+      showCloseButton={true}
+      headerClassName={`${styles.modalHeader} ${isRTL ? 'rtl-layout' : ''}`}
+      bodyClassName={`modern-user-profile ${isRTL ? 'rtl-layout' : ''}`}
       closeOnClickOutside={true}
       data-force-rtl={isRTL ? 'true' : undefined}
       data-language={language || 'en'}
     >
-      <div
-        className={`${styles.profileWrapper} ${isRTL ? 'rtl-layout' : ''}`}
-        ref={profileRef}
-        data-force-rtl={isRTL ? 'true' : undefined}
-        data-language={language || 'en'}
-      >
-        {/* Close button */}
-        <button className={styles.closeButton} onClick={onClose} aria-label={safeTranslate(t, 'common.close', 'Close')}>
-          <FaTimes />
-        </button>
-
-        {/* Pending requests notification - appears at the top if present */}
+      <div className={`${styles.profileContent} ${isRTL ? 'rtl-layout' : ''}`} ref={profileRef} data-force-rtl={isRTL ? 'true' : undefined} data-language={language || 'en'}>
+        {/* Pending requests notification */}
         {!isOwnProfile && hasPendingRequestFromUser && currentUserRequests && (
           <div className={styles.requestNotification}>
             <div className={styles.notificationContent}>
@@ -1239,55 +1054,129 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
           </div>
         )}
 
-        {/* Main content layout */}
-        <div className={styles.contentLayout}>
-          {/* Left column: Photo gallery and stories */}
-          <div className={styles.leftColumn}>
-            {/* User info header for mobile view - shown only on small screens */}
-            <div className={styles.mobileHeader}>
-              <div className={styles.userInfoMobile}>
-                <h1 className={styles.userName}>{profileUser.nickname}, {profileUser.details?.age || "?"}</h1>
-                <div className={styles.locationBadge}>
-                  <FaMapMarkerAlt />
-                  <span>{profileUser.details?.location || safeTranslate(t, 'profile.unknownLocation', 'Unknown location')}</span>
-                </div>
-              </div>
-              {profileUser.isOnline && (
-                <div className={styles.onlineBadge}>
-                  <span className={styles.pulseStatus}></span>
-                  {safeTranslate(t, 'common.onlineNow', 'Online Now')}
-                </div>
-              )}
-            </div>
-
-            {/* Stories row */}
+        <div className={styles.profileLayout}>
+          {/* Left: Photos */}
+          <div className={styles.photosSection}>
+            {/* Stories Thumbnail */}
             {userStories && userStories.length > 0 && (
-              <div className={styles.storiesRow}>
+              <div className={styles.storiesThumbnail}>
                 <StoryThumbnail
                   user={profileUser}
                   hasUnviewedStories={hasUnviewedStories && hasUnviewedStories(profileUser._id)}
                   onClick={handleViewStories}
                 />
-                <span className={styles.viewStoriesText}>{safeTranslate(t, 'profile.viewStories', 'View Stories')}</span>
               </div>
             )}
 
             {/* Photo Gallery */}
             {profileUser && profileUser.photos && profileUser.photos.length > 0 ? (
-              <PhotoGallery
-                photos={profileUser.photos}
-                activeIndex={activePhotoIndex}
-                onPhotoChange={setActivePhotoIndex}
-                onImageError={handleImageError}
-                canViewPrivatePhotos={canViewPrivatePhotos}
-                userPhotoAccess={userPhotoAccess}
-                onRequestAccess={handleRequestAccessToAllPhotos}
-                isRTL={isRTL}
-                nickname={profileUser.nickname}
-                t={t}
-              />
+              <div className={styles.galleryContainer}>
+                <div className={styles.gallery}>
+                  {profileUser.photos[activePhotoIndex] &&
+                  profileUser.photos[activePhotoIndex].isPrivate &&
+                  !canViewPrivatePhotos ? (
+                    <div className={styles.privatePhoto}>
+                      <FaLock className={styles.lockIcon} />
+                      <p>{safeTranslate(t, 'profile.privatePhoto', 'This photo is private')}</p>
+
+                      {userPhotoAccess.status === "pending" && (
+                        <p className={`${styles.permissionStatus} ${styles.pending}`}>{safeTranslate(t, 'profile.accessRequestPending', 'Access request pending')}</p>
+                      )}
+
+                      {userPhotoAccess.status === "rejected" && (
+                        <p className={`${styles.permissionStatus} ${styles.rejected}`}>{safeTranslate(t, 'profile.accessDenied', 'Access request denied')}</p>
+                      )}
+
+                      {(!userPhotoAccess.status || userPhotoAccess.status === "none") && (
+                        <button
+                          className={styles.requestAccessBtn}
+                          onClick={handleRequestAccessToAllPhotos}
+                          disabled={userPhotoAccess.isLoading}
+                        >
+                          {userPhotoAccess.isLoading ? <FaSpinner className={styles.spinner} /> : null}
+                          {safeTranslate(t, 'profile.requestPhotoAccess', 'Request Access')}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    profileUser.photos[activePhotoIndex] && (
+                      <div className={styles.imageContainer}>
+                        <img
+                          src={normalizePhotoUrl(profileUser.photos[activePhotoIndex].url)}
+                          alt={`${profileUser.nickname}'s photo`}
+                          className={styles.galleryImage}
+                          onError={() => handleImageError(profileUser.photos[activePhotoIndex]._id)}
+                        />
+                      </div>
+                    )
+                  )}
+
+                  {/* Online badge */}
+                  {profileUser.isOnline && (
+                    <div className={styles.onlineBadge}>
+                      <span className={styles.pulse}></span>
+                      {safeTranslate(t, 'common.onlineNow', 'Online Now')}
+                    </div>
+                  )}
+
+                  {/* Gallery navigation */}
+                  {profileUser.photos.length > 1 && (
+                    <>
+                      <button
+                        className={`${styles.nav} ${styles.navPrev} ${isRTL ? 'rtl-nav' : ''}`}
+                        onClick={prevPhoto}
+                        disabled={activePhotoIndex === 0}
+                        aria-label={safeTranslate(t, 'profile.previousPhoto', 'Previous photo')}
+                      >
+                        {isRTL ? <FaChevronRight /> : <FaChevronLeft />}
+                      </button>
+                      <button
+                        className={`${styles.nav} ${styles.navNext} ${isRTL ? 'rtl-nav' : ''}`}
+                        onClick={nextPhoto}
+                        disabled={activePhotoIndex === profileUser.photos.length - 1}
+                        aria-label={safeTranslate(t, 'profile.nextPhoto', 'Next photo')}
+                      >
+                        {isRTL ? <FaChevronLeft /> : <FaChevronRight />}
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* Photo thumbnails */}
+                {profileUser.photos.length > 1 && (
+                  <div className={styles.thumbnails}>
+                    {profileUser.photos.map((photo, index) => (
+                      <div
+                        key={photo._id || index}
+                        className={`${styles.thumbnail} ${index === activePhotoIndex ? styles.thumbnailActive : ""}`}
+                        onClick={() => setActivePhotoIndex(index)}
+                      >
+                        {photo.isPrivate && !canViewPrivatePhotos ? (
+                          <div className={styles.privateThumbnail}>
+                            <FaLock />
+                            {userPhotoAccess.status && (
+                              <div className={`${styles.permissionStatus} ${styles[userPhotoAccess.status]}`}>
+                                {userPhotoAccess.status === "pending" && safeTranslate(t, 'common.pending', 'Pending')}
+                                {userPhotoAccess.status === "approved" && safeTranslate(t, 'common.granted', 'Granted')}
+                                {userPhotoAccess.status === "rejected" && safeTranslate(t, 'common.denied', 'Denied')}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <img
+                            src={normalizePhotoUrl(photo.url)}
+                            alt={`${profileUser.nickname} ${index + 1}`}
+                            className={styles.thumbnailImg}
+                            onError={() => handleImageError(photo._id)}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             ) : (
-              <div className={styles.noPhotosContainer}>
+              <div className={styles.gallery}>
                 <Avatar
                   size="xlarge"
                   placeholder={normalizePhotoUrl("/default-avatar.png")}
@@ -1298,122 +1187,19 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               </div>
             )}
 
-            {/* Action buttons for mobile view */}
-            {!isOwnProfile && (
-              <div className={`${styles.actionButtons} ${styles.mobileActions}`}>
-                <button
-                  className={`${styles.actionBtn} ${isUserLiked && isUserLiked(profileUser._id) ? styles.likedBtn : styles.likeBtn}`}
-                  onClick={handleLike}
-                  disabled={isLiking}
-                  aria-label={isUserLiked && isUserLiked(profileUser._id) ? safeTranslate(t, 'common.liked', 'Liked') : safeTranslate(t, 'common.like', 'Like')}
-                >
-                  {isLiking ? <FaSpinner className={styles.spinner} /> : <FaHeart />}
-                  <span>{isUserLiked && isUserLiked(profileUser._id)
-                    ? safeTranslate(t, 'common.liked', 'Liked')
-                    : safeTranslate(t, 'common.like', 'Like')}</span>
-                </button>
-                <button
-                  className={`${styles.actionBtn} ${styles.messageBtn}`}
-                  onClick={handleMessage}
-                  disabled={isChatInitiating}
-                  aria-label={safeTranslate(t, 'common.message', 'Message')}
-                >
-                  {isChatInitiating ? <FaSpinner className={styles.spinner} /> : <FaComment />}
-                  <span>{safeTranslate(t, 'common.message', 'Message')}</span>
-                </button>
-                <div className={styles.moreActions}>
-                  <button
-                    className={styles.moreBtn}
-                    onClick={() => setShowActions(!showActions)}
-                    aria-label="More actions"
-                  >
-                    <FaEllipsisV />
-                  </button>
-                  {showActions && (
-                    <div className={styles.actionsDropdown}>
-                      <button
-                        className={styles.dropdownItem}
-                        onClick={handleReport}
-                      >
-                        <FaFlag />
-                        <span>{safeTranslate(t, 'profile.reportUser', 'Report User')}</span>
-                      </button>
-                      <button
-                        className={styles.dropdownItem}
-                        onClick={handleBlock}
-                      >
-                        <FaBan />
-                        <span>{safeTranslate(t, 'profile.blockUser', 'Block User')}</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right column: User details */}
-          <div className={styles.rightColumn} ref={contentRef}>
-            {/* User header - desktop view */}
-            <div className={styles.userHeader}>
-              <div className={styles.userInfo}>
-                <div className={styles.nameRow}>
-                  <h1 className={styles.userName}>{profileUser.nickname}, {profileUser.details?.age || "?"}</h1>
-                  {profileUser.role === "premium" && (
-                    <div className={styles.premiumBadge}>
-                      <FaTrophy /> {safeTranslate(t, 'common.premium', 'Premium')}
-                    </div>
-                  )}
-                </div>
-                <div className={styles.locationInfo}>
-                  <div className={styles.locationBadge}>
-                    <FaMapMarkerAlt className={styles.locationIcon} />
-                    <span>{profileUser.details?.location || safeTranslate(t, 'profile.unknownLocation', 'Unknown location')}</span>
-                  </div>
-                  <div className={`${styles.onlineStatus} ${profileUser.isOnline ? styles.isOnline : ""}`}>
-                    {profileUser.isOnline
-                      ? safeTranslate(t, 'common.onlineNow', 'Online Now')
-                      : safeTranslate(t, 'common.offline', 'Offline')}
-                  </div>
-                </div>
-              </div>
-
-              {/* User details timeline */}
-              <div className={styles.userTimeline}>
-                <div className={styles.timelineItem}>
-                  <FaRegClock className={styles.timelineIcon} />
-                  <span>
-                    {profileUser.isOnline
-                      ? safeTranslate(t, 'common.activeNow', 'Active now')
-                      : safeTranslate(t, 'profile.lastActive', 'Last active: {{date}}', {
-                          date: profileUser.lastActive
-                            ? formatDate(profileUser.lastActive, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' })
-                            : 'N/A'
-                        })}
-                  </span>
-                </div>
-                <div className={styles.timelineItem}>
-                  <FaCalendarAlt className={styles.timelineIcon} />
-                  <span>{safeTranslate(t, 'profile.memberSince', 'Member since: {{date}}', {
-                    date: profileUser.createdAt
-                      ? formatDate(profileUser.createdAt, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' })
-                      : 'N/A'
-                  })}</span>
-                </div>
-              </div>
-
-              {/* Action buttons for desktop view */}
+            {/* Profile actions */}
+            <div className={styles.actions}>
               {!isOwnProfile && (
-                <div className={`${styles.actionButtons} ${styles.desktopActions}`}>
+                <>
                   <button
                     className={`${styles.actionBtn} ${isUserLiked && isUserLiked(profileUser._id) ? styles.likedBtn : styles.likeBtn}`}
                     onClick={handleLike}
                     disabled={isLiking}
                   >
                     {isLiking ? <FaSpinner className={styles.spinner} /> : <FaHeart />}
-                    <span>{isUserLiked && isUserLiked(profileUser._id)
+                    {isUserLiked && isUserLiked(profileUser._id)
                       ? safeTranslate(t, 'common.liked', 'Liked')
-                      : safeTranslate(t, 'common.like', 'Like')}</span>
+                      : safeTranslate(t, 'common.like', 'Like')}
                   </button>
                   <button
                     className={`${styles.actionBtn} ${styles.messageBtn}`}
@@ -1421,210 +1207,258 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     disabled={isChatInitiating}
                   >
                     {isChatInitiating ? <FaSpinner className={styles.spinner} /> : <FaComment />}
-                    <span>{safeTranslate(t, 'common.message', 'Message')}</span>
+                    {safeTranslate(t, 'common.message', 'Message')}
                   </button>
-                  <div className={styles.moreActions}>
+                </>
+              )}
+              <div className={styles.moreActions}>
+                <button
+                  className={styles.toggleBtn}
+                  onClick={() => setShowActions(!showActions)}
+                  aria-label="More actions"
+                >
+                  <FaEllipsisH />
+                </button>
+                {showActions && (
+                  <div className={styles.dropdown}>
                     <button
-                      className={styles.moreBtn}
-                      onClick={() => setShowActions(!showActions)}
-                      aria-label="More actions"
+                      className={styles.dropdownItem}
+                      onClick={handleReport}
                     >
-                      <FaEllipsisV />
+                      <FaFlag />
+                      {safeTranslate(t, 'profile.reportUser', 'Report User')}
                     </button>
-                    {showActions && (
-                      <div className={styles.actionsDropdown}>
-                        <button
-                          className={styles.dropdownItem}
-                          onClick={handleReport}
-                        >
-                          <FaFlag />
-                          <span>{safeTranslate(t, 'profile.reportUser', 'Report User')}</span>
-                        </button>
-                        <button
-                          className={styles.dropdownItem}
-                          onClick={handleBlock}
-                        >
-                          <FaBan />
-                          <span>{safeTranslate(t, 'profile.blockUser', 'Block User')}</span>
-                        </button>
-                      </div>
-                    )}
+                    <button
+                      className={styles.dropdownItem}
+                      onClick={handleBlock}
+                    >
+                      <FaBan />
+                      {safeTranslate(t, 'profile.blockUser', 'Block User')}
+                    </button>
                   </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: User Details */}
+          <div className={styles.detailsSection}>
+            {/* User headline */}
+            <div className={styles.headline}>
+              <h1 className={styles.headlineTitle}>
+                {profileUser.nickname}, {profileUser.details?.age || "?"}
+              </h1>
+              {profileUser.role === "premium" && (
+                <div className={styles.premiumBadge}>
+                  <FaTrophy /> {safeTranslate(t, 'common.premium', 'Premium')}
                 </div>
               )}
             </div>
 
-            {/* User details content */}
-            <div className={styles.userDetails}>
-              {/* Bio */}
-              {profileUser.details?.bio && (
-                <div className={styles.detailCard}>
-                  <h2 className={styles.cardTitle}>{t('profile.aboutMe', 'About Me')}</h2>
-                  <p className={styles.bioText}>{profileUser.details.bio}</p>
-                </div>
-              )}
+            {/* User location */}
+            <div className={styles.location}>
+              <FaMapMarkerAlt className={styles.icon} />
+              <span>{profileUser.details?.location || safeTranslate(t, 'profile.unknownLocation', 'Unknown location')}</span>
+              <div className={`${styles.onlineStatus} ${profileUser.isOnline ? styles.isOnline : ""}`}>
+                {profileUser.isOnline
+                  ? safeTranslate(t, 'common.onlineNow', 'Online Now')
+                  : safeTranslate(t, 'common.offline', 'Offline')}
+              </div>
+            </div>
 
-              {/* Looking For */}
-              {profileUser.details?.lookingFor && profileUser.details.lookingFor.length > 0 && (
-                <div className={styles.detailCard}>
-                  <h2 className={styles.cardTitle}>{t('profile.lookingForLabel', 'Looking For')}</h2>
-                  <div className={styles.tagsGroup}>
-                    {profileUser.details.lookingFor.map((item, index) => (
-                      <DisplayTag key={index} type="lookingFor">
-                        {getTranslatedTag('profile.lookingFor', item)}
-                      </DisplayTag>
-                    ))}
+            {/* User activity */}
+            <div className={styles.activity}>
+              <div className={styles.activityItem}>
+                <FaRegClock className={styles.icon} />
+                <span>
+                  {profileUser.isOnline
+                    ? safeTranslate(t, 'common.activeNow', 'Active now')
+                    : safeTranslate(t, 'profile.lastActive', 'פעילות אחרונה: {{date}}', {
+                        date: profileUser.lastActive
+                          ? formatDate(profileUser.lastActive, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' })
+                          : 'N/A'
+                      })}
+                </span>
+              </div>
+              <div className={styles.activityItem}>
+                <FaCalendarAlt className={styles.icon} />
+                <span>{safeTranslate(t, 'profile.memberSince', 'חבר מאז: {{date}}', {
+                  date: profileUser.createdAt
+                    ? formatDate(profileUser.createdAt, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' })
+                    : 'N/A'
+                })}</span>
+              </div>
+            </div>
+
+            {/* Compatibility section */}
+            {!isOwnProfile && (
+              <div className={styles.compatibilitySection}>
+                <h2 className={styles.sectionTitle}>{t('profile.compatibility', 'Compatibility')}</h2>
+                <div className={styles.compatibilityScore}>
+                  <div className={styles.scoreCircle}>
+                    <svg viewBox="0 0 100 100">
+                      <defs>
+                        <linearGradient id="compatibility-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#ff3366" />
+                          <stop offset="100%" stopColor="#ff6b98" />
+                        </linearGradient>
+                      </defs>
+                      <circle className={styles.scoreBg} cx="50" cy="50" r="45" />
+                      <circle
+                        className={styles.scoreFill}
+                        cx="50"
+                        cy="50"
+                        r="45"
+                        strokeDasharray="283"
+                        strokeDashoffset={283 - (283 * compatibility) / 100}
+                      />
+                    </svg>
+                    <div className={styles.scoreValue}>{compatibility}%</div>
                   </div>
-                </div>
-              )}
-
-              {/* I Am & Marital Status */}
-              {(profileUser.details?.iAm || profileUser.details?.maritalStatus) && (
-                <div className={styles.detailCard}>
-                  {profileUser.details?.iAm && (
-                    <div className={styles.infoRow}>
-                      <h2 className={styles.infoLabel}>{t('profile.iAm', 'I am')}</h2>
-                      <DisplayTag type="identity">
-                        {getTranslatedTag('profile.identity', profileUser.details.iAm)}
-                      </DisplayTag>
-                    </div>
-                  )}
-
-                  {profileUser.details?.maritalStatus && (
-                    <div className={styles.infoRow}>
-                      <h2 className={styles.infoLabel}>{t('profile.maritalStatusLabel', 'Marital Status')}</h2>
-                      <DisplayTag type="status">
-                        {getTranslatedTag('profile.maritalStatus', profileUser.details.maritalStatus)}
-                      </DisplayTag>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Into Tags & Turn Ons */}
-              {(profileUser.details?.intoTags?.length > 0 || profileUser.details?.turnOns?.length > 0) && (
-                <div className={styles.detailCard}>
-                  {profileUser.details?.intoTags && profileUser.details.intoTags.length > 0 && (
-                    <div className={styles.tagSection}>
-                      <h2 className={styles.cardTitle}>{t('profile.imIntoLabel', "I'm Into")}</h2>
-                      <div className={styles.tagsGroup}>
-                        {profileUser.details.intoTags.map((item, index) => (
-                          <DisplayTag key={index} type="into">
-                            {getTranslatedTag('profile.intoTags', item)}
-                          </DisplayTag>
-                        ))}
+                  <div className={styles.compatibilityDetails}>
+                    <div className={styles.compatibilityFactor}>
+                      <span className={styles.factorLabel}>{safeTranslate(t, 'profile.location', 'Location')}</span>
+                      <div className={styles.factorBar}>
+                        <div
+                          className={styles.factorFill}
+                          style={{
+                            width:
+                              profileUser.details?.location === currentUser?.details?.location ? "100%" : "30%",
+                          }}
+                        ></div>
                       </div>
                     </div>
-                  )}
-
-                  {profileUser.details?.turnOns && profileUser.details.turnOns.length > 0 && (
-                    <div className={styles.tagSection}>
-                      <h2 className={styles.cardTitle}>{t('profile.turnOnsLabel', 'Turn Ons')}</h2>
-                      <div className={styles.tagsGroup}>
-                        {profileUser.details.turnOns.map((item, index) => (
-                          <DisplayTag key={index} type="turnOn">
-                            {item === 'leather_latex_clothing'
-                              ? t('leather_latex_clothing', 'Leather/latex clothing')
-                              : getTranslatedTag('profile.turnOns', item)}
-                          </DisplayTag>
-                        ))}
+                    <div className={styles.compatibilityFactor}>
+                      <span className={styles.factorLabel}>{safeTranslate(t, 'profile.age', 'Age')}</span>
+                      <div className={styles.factorBar}>
+                        <div
+                          className={styles.factorFill}
+                          style={{
+                            width:
+                              Math.abs((profileUser.details?.age || 0) - (currentUser?.details?.age || 0)) <= 5
+                                ? "90%"
+                                : Math.abs((profileUser.details?.age || 0) - (currentUser?.details?.age || 0)) <= 10
+                                  ? "60%"
+                                  : "30%",
+                          }}
+                        ></div>
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
-
-              {/* Interests */}
-              {profileUser.details?.interests?.length > 0 && (
-                <div className={styles.detailCard}>
-                  <div className={styles.interestsHeader}>
-                    <h2 className={styles.cardTitle}>{t('profile.interests', 'Interests')}</h2>
-                    {commonInterests.length > 0 && (
-                      <div className={styles.commonBadge}>
-                        <FaCheck />
-                        <span>{commonInterests.length} {safeTranslate(t, 'profile.inCommon', 'in common')}</span>
+                    <div className={styles.compatibilityFactor}>
+                      <span className={styles.factorLabel}>{safeTranslate(t, 'profile.interests', 'Interests')}</span>
+                      <div className={styles.factorBar}>
+                        <div
+                          className={styles.factorFill}
+                          style={{
+                            width: `${Math.min(100, commonInterests.length * 20)}%`,
+                          }}
+                        ></div>
                       </div>
-                    )}
+                    </div>
                   </div>
+                </div>
+              </div>
+            )}
 
-                  <div className={styles.interestsList}>
-                    {(showAllInterests
-                      ? profileUser.details.interests
-                      : profileUser.details.interests.slice(0, 12)
-                    ).map((interest) => (
-                      <DisplayTag
-                        key={interest}
-                        type={commonInterests.includes(interest) ? "common" : "interest"}
-                      >
-                        {getTranslatedTag('profile.interests', interest)}
-                        {commonInterests.includes(interest) && (
-                          <FaCheck className={styles.checkIcon} />
-                        )}
-                      </DisplayTag>
-                    ))}
-                  </div>
+            {/* User details sections */}
+            {profileUser.details?.bio && (
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>{t('profile.aboutMe', 'About Me')}</h2>
+                <p className={styles.aboutText}>{profileUser.details.bio}</p>
+              </div>
+            )}
 
-                  {!showAllInterests && profileUser.details.interests.length > 12 && (
+            {profileUser.details?.iAm && (
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>{t('profile.iAm', 'I am')}</h2>
+                <div className={styles.tagsContainer}>
+                  <span className={`${styles.tag} ${styles.identityTag}`}>
+                    {getTranslatedTag('profile.identity', profileUser.details.iAm)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {profileUser.details?.maritalStatus && (
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>{t('profile.maritalStatusLabel', 'Marital Status')}</h2>
+                <div className={styles.tagsContainer}>
+                  <span className={`${styles.tag} ${styles.statusTag}`}>
+                    {getTranslatedTag('profile.maritalStatus', profileUser.details.maritalStatus)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {profileUser.details?.lookingFor && profileUser.details.lookingFor.length > 0 && (
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>{t('profile.lookingForLabel', 'Looking For')}</h2>
+                <div className={styles.tagsContainer}>
+                  {profileUser.details.lookingFor.map((item, index) => (
+                    <span key={index} className={`${styles.tag} ${styles.lookingForTag}`}>
+                      {getTranslatedTag('profile.lookingFor', item)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {profileUser.details?.intoTags && profileUser.details.intoTags.length > 0 && (
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>{t('profile.imIntoLabel', "I'm Into")}</h2>
+                <div className={styles.tagsContainer}>
+                  {profileUser.details.intoTags.map((item, index) => (
+                    <span key={index} className={`${styles.tag} ${styles.intoTag}`}>
+                      {getTranslatedTag('profile.intoTags', item)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {profileUser.details?.turnOns && profileUser.details.turnOns.length > 0 && (
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>{t('profile.turnOnsLabel', 'Turn Ons')}</h2>
+                <div className={styles.tagsContainer}>
+                  {profileUser.details.turnOns.map((item, index) => (
+                    <span key={index} className={`${styles.tag} ${styles.turnOnTag}`}>
+                      {item === 'leather_latex_clothing' ?
+                        t('leather_latex_clothing', 'Leather/latex clothing') :
+                        getTranslatedTag('profile.turnOns', item)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Interests section */}
+            {profileUser.details?.interests?.length > 0 && (
+              <div className={styles.section}>
+                <h2 className={styles.sectionTitle}>{t('profile.interests', 'Interests')}</h2>
+                <div className={styles.interestsTags}>
+                  {(showAllInterests
+                    ? profileUser.details.interests
+                    : profileUser.details.interests.slice(0, 8)
+                  ).map((interest) => (
+                    <span
+                      key={interest}
+                      className={`${styles.interestTag} ${commonInterests.includes(interest) ? styles.commonTag : ""}`}
+                    >
+                      {getTranslatedTag('profile.interests', interest)}
+                      {commonInterests.includes(interest) && <FaCheck className={styles.commonIcon} />}
+                    </span>
+                  ))}
+                  {!showAllInterests && profileUser.details.interests.length > 8 && (
                     <button
                       className={styles.showMoreBtn}
                       onClick={() => setShowAllInterests(true)}
                     >
-                      {safeTranslate(t, 'common.showMore', 'Show More')}
-                      (+{profileUser.details.interests.length - 12})
+                      +{profileUser.details.interests.length - 8} {safeTranslate(t, 'common.more', 'more')}
                     </button>
                   )}
                 </div>
-              )}
-
-              {/* Compatibility - only shown if not own profile */}
-              {!isOwnProfile && commonInterests.length > 0 && (
-                <div className={styles.detailCard}>
-                  <h2 className={styles.cardTitle}>{t('profile.compatibility', 'Compatibility')}</h2>
-
-                  <div className={styles.compatibilityLayout}>
-                    <div className={styles.compatibilityMeter}>
-                      <div className={styles.meterCircle}>
-                        <svg viewBox="0 0 100 100">
-                          <defs>
-                            <linearGradient id="compatibility-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                              <stop offset="0%" stopColor="var(--primary-500)" />
-                              <stop offset="100%" stopColor="var(--primary-300)" />
-                            </linearGradient>
-                          </defs>
-                          <circle className={styles.meterBg} cx="50" cy="50" r="45" />
-                          <circle
-                            className={styles.meterFill}
-                            cx="50"
-                            cy="50"
-                            r="45"
-                            strokeDasharray="283"
-                            strokeDashoffset={283 - (283 * compatibility) / 100}
-                          />
-                        </svg>
-                        <div className={styles.meterValue}>{compatibility}%</div>
-                      </div>
-                    </div>
-
-                    <div className={styles.compatibilityFactors}>
-                      {compatibilityFactors.map((factor, index) => (
-                        <div className={styles.factorRow} key={index}>
-                          <div className={styles.factorInfo}>
-                            <span className={styles.factorName}>{factor.label}</span>
-                            <span className={styles.factorValue}>{factor.value}%</span>
-                          </div>
-                          <div className={styles.factorBar}>
-                            <div
-                              className={styles.factorProgress}
-                              style={{ width: `${factor.value}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
