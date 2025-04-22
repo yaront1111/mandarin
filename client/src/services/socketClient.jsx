@@ -64,11 +64,11 @@ class SocketClient {
         reconnectionDelay: this.reconnectDelay,
         reconnectionDelayMax: 30000,
         timeout: 30000, // Increased timeout
-        transports: ["websocket", "polling"], // Prioritize websocket over polling for better cross-origin performance
+        transports: ["polling", "websocket"], // Try polling first for better reliability, then upgrade to websocket
         autoConnect: true,
         forceNew: true, // Force new connection attempt
+        withCredentials: true, // Enable sending credentials with cross-origin requests
         extraHeaders: {
-          // Remove problematic headers to avoid CORS issues
           "X-Client-Version": "1.0.0"
         }
       })
@@ -125,11 +125,33 @@ class SocketClient {
       )
     })
 
-    // Connection error handling
+    // Connection error handling with enhanced WebSocket diagnostics
     this.socket.on("connect_error", (error) => {
       console.error("Socket connection error:", error)
       this.connected = false
       this.connectionAttempts++
+      
+      // Enhanced error logging for websocket issues
+      console.error("Socket connection error details:", {
+        message: error.message || "Unknown error",
+        type: error.type || "Unknown type",
+        transport: this.socket.io?.engine?.transport?.name || "Unknown transport",
+        attempts: this.connectionAttempts,
+        url: this.socket.io?.uri || "Unknown URL"
+      });
+
+      // Try switching to polling transport if WebSocket is failing
+      if (this.connectionAttempts > 2 && 
+         (error.message?.includes('websocket') || 
+          this.socket.io?.engine?.transport?.name === 'websocket')) {
+        console.log("Switching to polling transport after WebSocket failures");
+        
+        // Force polling as the only transport option after repeated WebSocket failures
+        if (this.socket.io?.opts) {
+          this.socket.io.opts.transports = ['polling'];
+          console.log("Forced polling-only transport mode");
+        }
+      }
 
       if (this.connectionAttempts >= this.maxReconnectAttempts) {
         this._notifyEventHandlers("socketConnectionFailed", {
@@ -146,7 +168,11 @@ class SocketClient {
       // Dispatch global event for notification components
       window.dispatchEvent(
         new CustomEvent("socketConnectionError", {
-          detail: { error: error.message, attempts: this.connectionAttempts },
+          detail: { 
+            error: error.message, 
+            attempts: this.connectionAttempts,
+            transport: this.socket.io?.engine?.transport?.name || "unknown"
+          },
         }),
       )
     })
