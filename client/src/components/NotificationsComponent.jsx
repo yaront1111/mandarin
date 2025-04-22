@@ -15,6 +15,7 @@ import {
 } from "react-icons/fa";
 import { useNotifications } from "../context/NotificationContext"; // Corrected path assuming standard structure
 import { toast } from "react-toastify";
+import { useTranslation } from "react-i18next"; // Add translation hook
 
 // Import common components
 import { Button, LoadingSpinner } from "./common"; // Assuming path is correct
@@ -169,15 +170,17 @@ const NotificationsComponent = ({
   style = {},
   customFilters = null,
 }) => {
+  const { t } = useTranslation(); // Initialize translation function
+  
   const {
     notifications,
     unreadCount,
-    isLoading: loadingNotifications,
+    loading: loadingNotifications,
     socketConnected,
     markAllAsRead: contextMarkAllAsRead,
     addTestNotification: contextAddTestNotification,
     handleNotificationClick: contextHandleClick,
-    refreshNotifications: contextRefreshNotifications,
+    fetchNotifications: contextRefreshNotifications,
   } = useNotifications();
 
   const [activeFilter, setActiveFilter] = useState("all");
@@ -552,7 +555,7 @@ const NotificationsComponent = ({
             key={filter.id}
             className={`filter-btn ${activeFilter === filter.id ? "active" : ""}`}
             onClick={() => handleFilterChange(filter.id)}
-            variant={activeFilter === filter.id ? "primary" : "outline"} // Use outline for inactive
+            variant={activeFilter === filter.id ? "primary" : "secondary"} // Changed from outline to secondary
             size="small"
             role="tab"
             aria-selected={activeFilter === filter.id}
@@ -570,7 +573,7 @@ const NotificationsComponent = ({
     // ... (render logic remains the same) ...
      return (
       <div className={`notification-loading ${className}`} style={style}>
-        <LoadingSpinner size="medium" text="Loading notifications..." centered />
+        <LoadingSpinner size="medium" text={t('notifications.loading', 'Loading notifications...')} centered />
       </div>
     );
   }
@@ -582,9 +585,9 @@ const NotificationsComponent = ({
       <div className={`notification-empty ${className}`} style={style}>
         <FaBell size={32} aria-hidden="true" />
         <p>
-          {activeFilter === 'unread' ? 'No unread notifications' :
-           activeFilter === 'all' ? 'No notifications yet' :
-           `No ${activeFilter.toLowerCase()} notifications`}
+          {activeFilter === 'unread' ? t('notifications.noUnreadNotifications', 'No unread notifications') :
+           activeFilter === 'all' ? t('notifications.noNotifications', 'No notifications yet') :
+           t('notifications.noFilteredNotifications', 'No {{filter}} notifications', {filter: activeFilter.toLowerCase()})}
         </p>
         <div className="notification-empty-actions">
           <Button
@@ -595,7 +598,7 @@ const NotificationsComponent = ({
             size="small"
             icon={<FaSyncAlt />}
           >
-            {isRefreshing ? "Refreshing..." : "Refresh"}
+            {isRefreshing ? t('notifications.refreshing', 'Refreshing...') : t('notifications.refresh', 'Refresh')}
           </Button>
           {/* Optionally show add test button in dev environments */}
           {process.env.NODE_ENV === 'development' && (
@@ -614,7 +617,7 @@ const NotificationsComponent = ({
           <div className="notification-connection-status">
              <div className="connection-info"> {/* Wrapper for icon and text */}
                 <span className="connection-dot disconnected" title="Disconnected"></span>
-                <small>Real-time updates paused</small>
+                <small>{t('notifications.updatesPaused', 'Real-time updates paused')}</small>
             </div>
             <Button
               onClick={() => {
@@ -627,12 +630,12 @@ const NotificationsComponent = ({
                 }
               }}
               variant="link" // Use link style for less emphasis
-              size="x-small" // Make it smaller
+              size="small" // Smallest available size
               icon={<FaSyncAlt />}
               className="reconnect-btn"
               title="Attempt to reconnect"
             >
-              Reconnect
+              {t('notifications.reconnect', 'Reconnect')}
             </Button>
           </div>
         )}
@@ -648,12 +651,12 @@ const NotificationsComponent = ({
       {showHeader && (
         <div className="notification-header">
           <div className="notification-header-title">
-            <span>Notifications</span>
+            <span>{t('notifications.title', 'Notifications')}</span>
             {activeFilter !== "all" && <span className="notification-filter-indicator">({activeFilter})</span>}
             {/* Connection Status Indicator */}
             <div className="notification-connection-indicator" title={socketConnected ? "Real-time connection active" : "Disconnected - Updates via polling"}>
               <span className={`connection-dot ${socketConnected ? "connected" : "disconnected"}`}></span>
-              {!socketConnected && <small className="connection-status-text">Offline</small>}
+              {!socketConnected && <small className="connection-status-text">{t('notifications.offline', 'Offline')}</small>}
             </div>
           </div>
           <div className="notification-header-actions">
@@ -667,7 +670,9 @@ const NotificationsComponent = ({
               icon={<FaSyncAlt className={isRefreshing ? "spin" : ""} />}
               disabled={isRefreshing}
               aria-label="Refresh notifications"
-            />
+            >
+              {t('notifications.refresh', 'Refresh')}
+            </Button>
             {/* Mark All Read Button */}
             {unreadCount > 0 && (
               <Button
@@ -678,7 +683,7 @@ const NotificationsComponent = ({
                 title="Mark all notifications as read"
                 aria-label={`Mark all ${unreadCount} as read`} // More specific label
               >
-                Mark all read ({unreadCount})
+                {t('notifications.markAllRead', 'Mark all read')} ({unreadCount})
               </Button>
             )}
             {/* No "Clear All" button as per requirement */}
@@ -687,11 +692,13 @@ const NotificationsComponent = ({
               <Button
                 className="notification-close-btn"
                 onClick={onClose}
-                variant="ghost" // Use ghost for minimal appearance
+                variant="secondary" // Changed from ghost to secondary
                 size="small"
                 icon={<FaTimes />}
                 aria-label="Close notifications"
-              />
+              >
+                {t('common.close', 'Close')}
+              </Button>
             )}
           </div>
         </div>

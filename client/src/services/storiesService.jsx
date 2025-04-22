@@ -103,7 +103,7 @@ export const createStory = async (formData, onProgress) => {
     } else if (typeof formData === "object") {
       // For text stories, check if this is a text or media request
       if (formData.mediaType === "text" || formData.type === "text") {
-        // This is a text story, use the specific text story endpoint
+        // This is a text story, handle it with createTextStory function
         return createTextStory(formData, onProgress)
       }
       formData.timestamp = Date.now()
@@ -168,7 +168,8 @@ export const createTextStory = async (storyData, onProgress) => {
       mediaType: "text",
     }
 
-    const response = await apiService.post(`${BASE_URL}/text`, dataWithTimestamp, {
+    // Use the same endpoint as media stories - the server differentiates by the 'type' field
+    const response = await apiService.post(`${BASE_URL}`, dataWithTimestamp, {
       onUploadProgress: onProgress,
     })
 

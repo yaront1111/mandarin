@@ -19,8 +19,7 @@ import {
   FaSpinner,
   FaEye,
 } from "react-icons/fa"
-import { useTranslation } from "react-i18next"
-import { useUser, useAuth, useStories, useLanguage } from "../context"
+import { useUser, useAuth, useStories, useTheme, useLanguage } from "../context"
 import { EmbeddedChat } from "../components"
 import StoriesViewer from "./Stories/StoriesViewer"
 import StoryThumbnail from "./Stories/StoryThumbnail"
@@ -35,108 +34,6 @@ import { useApi, useMounted } from "../hooks"
 import { formatDate, logger, markUrlAsFailed, normalizePhotoUrl } from "../utils"
 
 /**
- * Safely gets a translation string, handling cases where the translation might return an object
- * @param {Function} t - Translation function from useTranslation
- * @param {String} key - Translation key
- * @param {String} defaultValue - Default value if translation is missing or invalid
- * @returns {String} The translated string or default value
- */
-const safeTranslate = (t, key, defaultValue = "") => {
-  try {
-    // For the problematic nested path keys, try flat format first
-    const flatKey = key.replace('.', '_');
-
-    // Handle two-level and three-level nested keys
-    const parts = key.split('.');
-
-    // Try to use paths in different ways to ensure we get strings
-    if (parts.length > 1) {
-      // Try getting direct access from parent object
-      try {
-        // Get the parent object (e.g., 'profile' from 'profile.maritalStatus')
-        const parentKey = parts[0];
-        // Get the rest of the path as array
-        const childPath = parts.slice(1);
-
-        // Get the parent object from i18n
-        const parent = t(parentKey, { returnObjects: true });
-
-        // If parent is an object, try to access the child path directly
-        if (typeof parent === 'object' && parent !== null) {
-          // Navigate to the final value through the object structure
-          let value = parent;
-          for (const pathPart of childPath) {
-            if (value && typeof value === 'object' && pathPart in value) {
-              value = value[pathPart];
-            } else {
-              // Path doesn't exist, break out
-              value = null;
-              break;
-            }
-          }
-
-          // If we found a string value, return it
-          if (typeof value === 'string') {
-            return value;
-          }
-        }
-      } catch (e) {
-        // Ignore errors in alternative lookup
-      }
-
-      // Try flat key format (e.g., 'profile_maritalStatus')
-      try {
-        const flatTranslation = t(flatKey);
-        if (typeof flatTranslation === 'string' && flatTranslation !== flatKey) {
-          return flatTranslation;
-        }
-      } catch (e) {
-        // Ignore errors in alternative lookup
-      }
-
-      // For three-level nesting, also try two-level format
-      if (parts.length > 2) {
-        try {
-          const twoLevelKey = `${parts[0]}_${parts[1]}_${parts[2]}`;
-          const twoLevelTranslation = t(twoLevelKey);
-          if (typeof twoLevelTranslation === 'string' && twoLevelTranslation !== twoLevelKey) {
-            return twoLevelTranslation;
-          }
-        } catch (e) {
-          // Ignore errors in alternative lookup
-        }
-      }
-    }
-
-    // Try direct translation
-    const translated = t(key);
-
-    // If it's a string and not just returning the key, use it
-    if (typeof translated === 'string' && translated !== key) {
-      return translated;
-    }
-
-    // If it's an object, likely a nested translation object - try to get a string representation or use default
-    if (typeof translated === 'object' && translated !== null) {
-      // Try to find a string representation
-      if (translated.toString && typeof translated.toString === 'function' &&
-          translated.toString() !== '[object Object]') {
-        return translated.toString();
-      }
-
-      // If it's a valid translation object with string representation, use that
-      return defaultValue;
-    }
-
-    // Return translated or default
-    return translated || defaultValue;
-  } catch (error) {
-    logger.error(`Translation error for key '${key}':`, error);
-    return defaultValue;
-  }
-};
-
-/**
  * UserProfileModal component displays a user's profile information
  * with photo gallery, compatibility score, and interaction options.
  *
@@ -146,10 +43,6 @@ const safeTranslate = (t, key, defaultValue = "") => {
  * @param {Function} props.onClose Function to call when closing the modal
  */
 const UserProfileModal = ({ userId, isOpen, onClose }) => {
-  // Hooks for translation and RTL support
-  const { t } = useTranslation();
-  const { isRTL, language } = useLanguage();
-
   // Auth context
   const { user: currentUser } = useAuth();
 
@@ -168,6 +61,30 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
   // Other contexts
   const { loadUserStories, hasUnviewedStories } = useStories();
+  
+  // Theme context
+  const { theme } = useTheme();
+  
+  // Language context
+  const { t, language } = useLanguage();
+  
+  // Memoize common translations to avoid unnecessary re-renders
+  const translations = useMemo(() => ({
+    compatibilityTitle: t('userProfile.compatibility'),
+    location: t('userProfile.location'),
+    age: t('userProfile.age'),
+    interests: t('userProfile.interests'),
+    aboutMe: t('userProfile.aboutMe'),
+    iAm: t('userProfile.iAm'),
+    maritalStatus: t('userProfile.maritalStatus'),
+    lookingFor: t('userProfile.lookingFor'),
+    imInto: t('userProfile.imInto'),
+    itTurnsMeOn: t('userProfile.itTurnsMeOn'),
+    onlineNow: t('userProfile.onlineNow'),
+    offline: t('userProfile.offline'),
+    lastActive: t('userProfile.lastActive'),
+    memberSince: t('userProfile.memberSince')
+  }), [t]);
 
   // State management
   const [userStories, setUserStories] = useState([]);
@@ -595,7 +512,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         status: "pending",
         isLoading: false
       });
-      toast.success(safeTranslate(t, "profile.accessRequestSent", "Access to photos requested"));
+      toast.success("Access to photos requested");
 
       try {
         // Make a single API call to request access to all photos (but don't block UI)
@@ -626,7 +543,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         status: "pending",
         isLoading: false
       });
-      toast.success(safeTranslate(t, "profile.accessRequestSent", "Access to photos requested"));
+      toast.success("Access to photos requested");
     }
   };
 
@@ -653,7 +570,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       if (!isMounted()) return;
 
       if (response && response.success) {
-        toast.success(safeTranslate(t, "profile.approvedAllRequests", "Approved all photo requests from this user"));
+        toast.success(`Approved all photo requests from this user`);
         log.debug("Successfully approved photo requests");
 
         // Remove this user from pending requests without refetching
@@ -662,13 +579,13 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         ));
       } else {
         log.warn("Failed to approve photo requests:", response);
-        toast.error(response?.error || safeTranslate(t, "errors.approvalFailed", "Failed to approve photo requests"));
+        toast.error(response?.error || "Failed to approve photo requests");
       }
     } catch (error) {
       if (!isMounted()) return;
 
       log.error("Error approving requests:", error);
-      toast.error(error?.error || safeTranslate(t, "errors.approvalFailed", "Failed to approve photo requests"));
+      toast.error(error?.error || "Failed to approve photo requests");
     } finally {
       if (isMounted()) {
         setIsProcessingApproval(false);
@@ -699,7 +616,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       if (!isMounted()) return;
 
       if (response && response.success) {
-        toast.success(safeTranslate(t, "profile.rejectedAllRequests", "Rejected all photo requests from this user"));
+        toast.success(`Rejected all photo requests from this user`);
         log.debug("Successfully rejected photo requests");
 
         // Remove this user from pending requests without refetching
@@ -708,13 +625,13 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         ));
       } else {
         log.warn("Failed to reject photo requests:", response);
-        toast.error(response?.error || safeTranslate(t, "errors.rejectionFailed", "Failed to reject photo requests"));
+        toast.error(response?.error || "Failed to reject photo requests");
       }
     } catch (error) {
       if (!isMounted()) return;
 
       log.error("Error rejecting requests:", error);
-      toast.error(error?.error || safeTranslate(t, "errors.rejectionFailed", "Failed to reject photo requests"));
+      toast.error(error?.error || "Failed to reject photo requests");
     } finally {
       if (isMounted()) {
         setIsProcessingApproval(false);
@@ -738,10 +655,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     )) {
       markUrlAsFailed(failedImage.url);
     }
-  }, [profileUser]);
+  }, [profileUser, log]);
 
   // Handle liking/unliking users
-  const handleLike = async () => {
+  const handleLike = useCallback(async () => {
     if (!profileUser || isLiking) return;
 
     setIsLiking(true);
@@ -754,52 +671,44 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       }
     } catch (error) {
       log.error("Error toggling like:", error);
-      toast.error(safeTranslate(t, "errors.likeUpdateFailed", "Failed to update like status"));
+      toast.error("Failed to update like status");
     } finally {
       if (isMounted()) {
         setIsLiking(false);
       }
     }
-  };
+  }, [profileUser, isLiking, isUserLiked, unlikeUser, likeUser, isMounted, log]);
 
   // Handle blocking a user
-  const handleBlock = async () => {
+  const handleBlock = useCallback(async () => {
     if (!userId) return;
 
     try {
       await blockUser(userId);
-      toast.success(safeTranslate(t, "profile.userBlocked", "User blocked successfully"));
+      toast.success("User blocked successfully");
       onClose();
     } catch (error) {
       log.error("Error blocking user:", error);
-      toast.error(safeTranslate(t, "errors.blockFailed", "Failed to block user"));
+      toast.error("Failed to block user");
     }
-  };
+  }, [userId, blockUser, onClose, log]);
 
   // Handle reporting a user
-  const handleReport = async () => {
+  const handleReport = useCallback(async () => {
     if (!userId) return;
 
-    // Create a simple prompt for the report reason
-    const reason = prompt(safeTranslate(t, "profile.reportPrompt", "Please provide a reason for reporting this user:"));
-
-    // If user cancels, abort the report
-    if (reason === null) {
-      return;
-    }
-
     try {
-      await reportUser(userId, reason);
-      toast.success(safeTranslate(t, "profile.userReported", "User reported successfully"));
+      await reportUser(userId);
+      toast.success("User reported successfully");
       onClose();
     } catch (error) {
       log.error("Error reporting user:", error);
-      toast.error(safeTranslate(t, "errors.reportFailed", "Failed to report user"));
+      toast.error("Failed to report user");
     }
-  };
+  }, [userId, reportUser, onClose, log]);
 
   // Handle starting a chat
-  const handleMessage = async () => {
+  const handleMessage = useCallback(async () => {
     if (!userId) return;
 
     setIsChatInitiating(true);
@@ -810,31 +719,31 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       onClose();
     } catch (error) {
       log.error("Error sending message:", error);
-      toast.error(safeTranslate(t, "errors.conversationFailed", "Failed to start conversation"));
+      toast.error("Failed to start conversation");
     } finally {
       if (isMounted()) {
         setIsChatInitiating(false);
       }
     }
-  };
+  }, [userId, sendMessage, navigate, onClose, isMounted, log]);
 
   // View and close story handlers
-  const handleViewStories = () => setShowStories(true);
-  const handleCloseStories = () => setShowStories(false);
-  const handleCloseChat = () => setShowChat(false);
+  const handleViewStories = useCallback(() => setShowStories(true), []);
+  const handleCloseStories = useCallback(() => setShowStories(false), []);
+  const handleCloseChat = useCallback(() => setShowChat(false), []);
 
   // Photo navigation
-  const nextPhoto = () => {
+  const nextPhoto = useCallback(() => {
     if (profileUser?.photos && activePhotoIndex < profileUser.photos.length - 1) {
       setActivePhotoIndex(activePhotoIndex + 1);
     }
-  };
+  }, [profileUser, activePhotoIndex]);
 
-  const prevPhoto = () => {
+  const prevPhoto = useCallback(() => {
     if (activePhotoIndex > 0) {
       setActivePhotoIndex(activePhotoIndex - 1);
     }
-  };
+  }, [activePhotoIndex]);
 
   // Calculate compatibility score between users
   function calculateCompatibility() {
@@ -862,106 +771,75 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     return Math.min(100, score);
   }
 
-  // Helper to translate profile data (identity, lookingFor, etc.)
-  const getTranslatedTag = useCallback((namespace, tag) => {
-    if (!tag) return "";
-
-    // Format the tag key according to the patterns we've been supporting
-    // Method 1: Direct nested access
-    const nestedKey = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
-
-    // Method 2: Special prefixed key format for common patterns
-    let prefixKey = null;
-
-    if (namespace === 'profile.intoTags') {
-      prefixKey = `profile.intoTag_${tag.toLowerCase().replace(/\s+/g, '_')}`;
-    } else if (namespace === 'profile.turnOns') {
-      prefixKey = `profile.turnOn_${tag.toLowerCase().replace(/\s+/g, '_')}`;
-    } else if (namespace === 'profile.interests') {
-      prefixKey = `profile.interests${capitalize(tag.replace(/\s+/g, '_'))}`;
-    }
-
-    // Method 3: Direct flat access for key section values
-    const directKey = `profile_${namespace.split('.').pop()}_${tag.toLowerCase().replace(/\s+/g, '_')}`;
-
-    // Method 4: Flattened key
-    const flatKey = nestedKey.replace(/\./g, '_');
-
-    // Method 5: Simple key format
-    const simpleKey = `profile_${tag.toLowerCase().replace(/\s+/g, '_')}`;
-
-    // Debug key resolution (uncomment for debugging)
-    // console.log('Translation tag lookup:', { namespace, tag, nestedKey, prefixKey, directKey, flatKey, simpleKey });
-
-    // Try each of the key formats in order
-    // First try the direct flat format for section values (most specific)
-    try {
-      const directTranslation = t(directKey);
-      if (typeof directTranslation === 'string' && directTranslation !== directKey) {
-        return directTranslation;
-      }
-    } catch (e) {
-      // Ignore errors in lookup
-    }
-
-    // Then try the special prefixed format
-    if (prefixKey) {
-      try {
-        const prefixTranslation = t(prefixKey);
-        if (typeof prefixTranslation === 'string' && prefixTranslation !== prefixKey) {
-          return prefixTranslation;
-        }
-      } catch (e) {
-        // Ignore errors in lookup
-      }
-    }
-
-    // Next try the simple key format
-    try {
-      const simpleTranslation = t(simpleKey);
-      if (typeof simpleTranslation === 'string' && simpleTranslation !== simpleKey) {
-        return simpleTranslation;
-      }
-    } catch (e) {
-      // Ignore errors in lookup
-    }
-
-    // Then try the direct path access through safeTranslate
-    const safeResult = safeTranslate(t, nestedKey, null);
-    if (safeResult && safeResult !== nestedKey) {
-      return safeResult;
-    }
-
-    // Then try the flat key
-    try {
-      const flatTranslation = t(flatKey);
-      if (typeof flatTranslation === 'string' && flatTranslation !== flatKey) {
-        return flatTranslation;
-      }
-    } catch (e) {
-      // Ignore errors in lookup
-    }
-
-    // Fallback 1: Try to get the tag directly from translations
-    try {
-      const directTagTranslation = t(tag.toLowerCase().replace(/\s+/g, '_'));
-      if (typeof directTagTranslation === 'string' &&
-          directTagTranslation !== tag.toLowerCase().replace(/\s+/g, '_')) {
-        return directTagTranslation;
-      }
-    } catch (e) {
-      // Ignore errors in lookup
-    }
-
-    // Fallback 2: Just clean up and return the tag
-    return capitalize(tag.replace(/_/g, ' '));
-  }, [t]);
-
-  // Text formatter
+  // Text formatters
   const capitalize = (str) => {
     if (!str || typeof str !== 'string') return '';
     return str.charAt(0).toUpperCase() + str.slice(1);
   };
+  
+  // Helper to translate tags - looks for translations first, falls back to original
+  const translateTag = useCallback((tag) => {
+    if (!tag) return '';
+    
+    // Normalize the tag - remove extra spaces, lowercase for lookup
+    const normalizedTag = tag.trim().toLowerCase();
+    
+    // Handle special case transformations
+    let lookupKey = normalizedTag
+      .replace(/[\/\\]/g, '_')     // Replace slashes with underscores
+      .replace(/\s+/g, '_')        // Replace spaces with underscores
+      .replace(/[&+]/g, 'and')     // Replace & or + with "and"
+      .replace(/[^\w_]/g, '');     // Remove other special chars
+    
+    // Special case mappings for tags that might have variations
+    const specialCaseMappings = {
+      'online': 'online_fun',
+      'camera': 'camera_chat',
+      'public': 'in_a_public_place',
+      'leather': 'leather_latex_clothing',
+      'latex': 'leather_latex_clothing',
+      'power': 'power_play',
+      'massage': 'sensual_massage',
+      'sensual': 'sensual_massage',
+      'risk': 'risktaking',
+      'taking risks': 'risktaking',
+      'talk': 'dirty_talk',
+      'dirty': 'dirty_talk',
+      'במקום ציבורי': 'in_a_public_place',
+      'דיבור מלוכלך': 'dirty_talk',
+      'מוזיקה': 'music',
+      'תחומי עניין': 'interests',
+      'אני אוהב/ת': 'imInto',
+      'מחפש/ת': 'lookingFor',
+      'מדליק אותי': 'itTurnsMeOn'
+    };
+    
+    // Check if it's a special case partial match
+    for (const [partial, fullKey] of Object.entries(specialCaseMappings)) {
+      if (normalizedTag.includes(partial)) {
+        lookupKey = fullKey;
+        break;
+      }
+    }
+    
+    // Handle special section headers that are tags themselves
+    if (lookupKey === 'interests' || lookupKey === 'imInto' || lookupKey === 'lookingFor' || lookupKey === 'itTurnsMeOn') {
+      return translations[lookupKey] || tag;
+    }
+    
+    // Try to find a translation using the normalized tag as a key
+    const translationKey = `userProfile.tags.${lookupKey}`;
+    const translated = t(translationKey);
+    
+    // If the translation key doesn't exist, it will return the key itself
+    // In that case, fall back to the original tag with proper capitalization
+    if (translationKey === translated) {
+      // Preserve original capitalization
+      return tag;
+    }
+    
+    return translated;
+  }, [t]);
 
   // Function to validate MongoDB ObjectId format
   const isValidObjectId = (id) => {
@@ -975,7 +853,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="large">
         <div className={styles.loadingContainer}>
-          <LoadingSpinner text={safeTranslate(t, 'common.loadingProfile', 'Loading profile...')} size="large" centered />
+          <LoadingSpinner text={t('userProfile.loadingProfile')} size="large" centered />
         </div>
       </Modal>
     );
@@ -985,10 +863,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="small">
         <div className={styles.errorContainer}>
-          <h3 className={styles.errorTitle}>{safeTranslate(t, 'common.errorLoadingProfile', 'Error Loading Profile')}</h3>
+          <h3 className={styles.errorTitle}>{t('userProfile.errorTitle')}</h3>
           <p className={styles.errorText}>{error}</p>
           <Button variant="primary" onClick={onClose}>
-            {safeTranslate(t, 'common.close', 'Close')}
+            {t('userProfile.close')}
           </Button>
         </div>
       </Modal>
@@ -999,10 +877,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="small">
         <div className={styles.notFoundContainer}>
-          <h3 className={styles.notFoundTitle}>{safeTranslate(t, 'common.userNotFound', 'User Not Found')}</h3>
-          <p className={styles.notFoundText}>{safeTranslate(t, 'common.userNotFoundDesc', 'This user profile could not be found or has been removed.')}</p>
+          <h3 className={styles.notFoundTitle}>{t('userProfile.notFoundTitle')}</h3>
+          <p className={styles.notFoundText}>{t('userProfile.notFoundText')}</p>
           <Button variant="primary" onClick={onClose}>
-            {safeTranslate(t, 'common.close', 'Close')}
+            {t('userProfile.close')}
           </Button>
         </div>
       </Modal>
@@ -1015,22 +893,20 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       isOpen={isOpen}
       onClose={onClose}
       size="xlarge"
-      className={`${styles.modalContainer} ${isRTL ? 'rtl-layout' : ''}`}
+      className={styles.modalContainer}
       showCloseButton={true}
-      headerClassName={`${styles.modalHeader} ${isRTL ? 'rtl-layout' : ''}`}
-      bodyClassName={`modern-user-profile ${isRTL ? 'rtl-layout' : ''}`}
+      headerClassName={styles.modalHeader}
+      bodyClassName="modern-user-profile"
       closeOnClickOutside={true}
-      data-force-rtl={isRTL ? 'true' : undefined}
-      data-language={language || 'en'}
     >
-      <div className={`${styles.profileContent} ${isRTL ? 'rtl-layout' : ''}`} ref={profileRef} data-force-rtl={isRTL ? 'true' : undefined} data-language={language || 'en'}>
+      <div className={styles.profileContent} ref={profileRef}>
         {/* Pending requests notification */}
         {!isOwnProfile && hasPendingRequestFromUser && currentUserRequests && (
           <div className={styles.requestNotification}>
             <div className={styles.notificationContent}>
               <FaEye className={styles.notificationIcon} />
               <p className={styles.notificationText}>
-                <strong>{profileUser.nickname}</strong> {safeTranslate(t, 'profile.requestedPhotoAccess', 'requested access to your photos')}
+                <strong>{profileUser.nickname}</strong> {t('userProfile.requestPhotoMessage')}
               </p>
             </div>
             <div className={styles.notificationActions}>
@@ -1040,7 +916,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 disabled={isProcessingApproval}
               >
                 {isProcessingApproval ? <FaSpinner className={styles.spinner} /> : <FaCheck />}
-                {safeTranslate(t, 'common.approve', 'Approve')}
+                {t('userProfile.approve')}
               </button>
               <button
                 className={styles.rejectBtn}
@@ -1048,7 +924,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 disabled={isProcessingApproval}
               >
                 {isProcessingApproval ? <FaSpinner className={styles.spinner} /> : <FaBan />}
-                {safeTranslate(t, 'common.reject', 'Reject')}
+                {t('userProfile.reject')}
               </button>
             </div>
           </div>
@@ -1077,14 +953,14 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   !canViewPrivatePhotos ? (
                     <div className={styles.privatePhoto}>
                       <FaLock className={styles.lockIcon} />
-                      <p>{safeTranslate(t, 'profile.privatePhoto', 'This photo is private')}</p>
+                      <p>{t('userProfile.privatePhoto')}</p>
 
                       {userPhotoAccess.status === "pending" && (
-                        <p className={`${styles.permissionStatus} ${styles.pending}`}>{safeTranslate(t, 'profile.accessRequestPending', 'Access request pending')}</p>
+                        <p className={`${styles.permissionStatus} ${styles.pending}`}>{t('userProfile.requestAccessPending')}</p>
                       )}
 
                       {userPhotoAccess.status === "rejected" && (
-                        <p className={`${styles.permissionStatus} ${styles.rejected}`}>{safeTranslate(t, 'profile.accessDenied', 'Access request denied')}</p>
+                        <p className={`${styles.permissionStatus} ${styles.rejected}`}>{t('userProfile.accessDenied')}</p>
                       )}
 
                       {(!userPhotoAccess.status || userPhotoAccess.status === "none") && (
@@ -1094,7 +970,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                           disabled={userPhotoAccess.isLoading}
                         >
                           {userPhotoAccess.isLoading ? <FaSpinner className={styles.spinner} /> : null}
-                          {safeTranslate(t, 'profile.requestPhotoAccess', 'Request Access')}
+                          {t('userProfile.requestPhotoAccess')}
                         </button>
                       )}
                     </div>
@@ -1115,7 +991,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   {profileUser.isOnline && (
                     <div className={styles.onlineBadge}>
                       <span className={styles.pulse}></span>
-                      {safeTranslate(t, 'common.onlineNow', 'Online Now')}
+                      {t('userProfile.onlineNow')}
                     </div>
                   )}
 
@@ -1123,20 +999,20 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   {profileUser.photos.length > 1 && (
                     <>
                       <button
-                        className={`${styles.nav} ${styles.navPrev} ${isRTL ? 'rtl-nav' : ''}`}
+                        className={`${styles.nav} ${styles.navPrev}`}
                         onClick={prevPhoto}
                         disabled={activePhotoIndex === 0}
-                        aria-label={safeTranslate(t, 'profile.previousPhoto', 'Previous photo')}
+                        aria-label={t('userProfile.previous')}
                       >
-                        {isRTL ? <FaChevronRight /> : <FaChevronLeft />}
+                        <FaChevronLeft />
                       </button>
                       <button
-                        className={`${styles.nav} ${styles.navNext} ${isRTL ? 'rtl-nav' : ''}`}
+                        className={`${styles.nav} ${styles.navNext}`}
                         onClick={nextPhoto}
                         disabled={activePhotoIndex === profileUser.photos.length - 1}
-                        aria-label={safeTranslate(t, 'profile.nextPhoto', 'Next photo')}
+                        aria-label={t('userProfile.next')}
                       >
-                        {isRTL ? <FaChevronLeft /> : <FaChevronRight />}
+                        <FaChevronRight />
                       </button>
                     </>
                   )}
@@ -1156,9 +1032,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                             <FaLock />
                             {userPhotoAccess.status && (
                               <div className={`${styles.permissionStatus} ${styles[userPhotoAccess.status]}`}>
-                                {userPhotoAccess.status === "pending" && safeTranslate(t, 'common.pending', 'Pending')}
-                                {userPhotoAccess.status === "approved" && safeTranslate(t, 'common.granted', 'Granted')}
-                                {userPhotoAccess.status === "rejected" && safeTranslate(t, 'common.denied', 'Denied')}
+                                {userPhotoAccess.status === "pending" && t('userProfile.requestAccessPending')}
+                                {userPhotoAccess.status === "approved" && t('userProfile.approve')}
+                                {userPhotoAccess.status === "rejected" && t('userProfile.reject')}
                               </div>
                             )}
                           </div>
@@ -1183,7 +1059,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   alt={profileUser.nickname}
                   status={profileUser.isOnline ? "online" : null}
                 />
-                <p>{safeTranslate(t, 'profile.noPhotosAvailable', 'No photos available')}</p>
+                <p>{t('userProfile.noPhotosAvailable')}</p>
               </div>
             )}
 
@@ -1197,9 +1073,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     disabled={isLiking}
                   >
                     {isLiking ? <FaSpinner className={styles.spinner} /> : <FaHeart />}
-                    {isUserLiked && isUserLiked(profileUser._id)
-                      ? safeTranslate(t, 'common.liked', 'Liked')
-                      : safeTranslate(t, 'common.like', 'Like')}
+                    {isUserLiked && isUserLiked(profileUser._id) ? t('userProfile.liked') : t('userProfile.like')}
                   </button>
                   <button
                     className={`${styles.actionBtn} ${styles.messageBtn}`}
@@ -1207,33 +1081,33 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     disabled={isChatInitiating}
                   >
                     {isChatInitiating ? <FaSpinner className={styles.spinner} /> : <FaComment />}
-                    {safeTranslate(t, 'common.message', 'Message')}
+                    {t('userProfile.message')}
                   </button>
                 </>
               )}
               <div className={styles.moreActions}>
                 <button
-                  className={styles.toggleBtn}
+                  className={`${styles.toggleBtn} ${theme === 'dark' ? styles.darkToggleBtn : ''}`}
                   onClick={() => setShowActions(!showActions)}
-                  aria-label="More actions"
+                  aria-label={t('userProfile.moreActions')}
                 >
                   <FaEllipsisH />
                 </button>
                 {showActions && (
-                  <div className={styles.dropdown}>
+                  <div className={`${styles.dropdown} ${theme === 'dark' ? styles.darkDropdown : ''}`}>
                     <button
-                      className={styles.dropdownItem}
+                      className={`${styles.dropdownItem} ${theme === 'dark' ? styles.darkDropdownItem : ''}`}
                       onClick={handleReport}
                     >
-                      <FaFlag />
-                      {safeTranslate(t, 'profile.reportUser', 'Report User')}
+                      <FaFlag className={theme === 'dark' ? styles.darkDropdownIcon : ''} />
+                      {t('userProfile.reportUser')}
                     </button>
                     <button
-                      className={styles.dropdownItem}
+                      className={`${styles.dropdownItem} ${theme === 'dark' ? styles.darkDropdownItem : ''}`}
                       onClick={handleBlock}
                     >
-                      <FaBan />
-                      {safeTranslate(t, 'profile.blockUser', 'Block User')}
+                      <FaBan className={theme === 'dark' ? styles.darkDropdownIcon : ''} />
+                      {t('userProfile.blockUser')}
                     </button>
                   </div>
                 )}
@@ -1250,7 +1124,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               </h1>
               {profileUser.role === "premium" && (
                 <div className={styles.premiumBadge}>
-                  <FaTrophy /> {safeTranslate(t, 'common.premium', 'Premium')}
+                  <FaTrophy /> {t('userProfile.premium', 'Premium')}
                 </div>
               )}
             </div>
@@ -1258,11 +1132,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             {/* User location */}
             <div className={styles.location}>
               <FaMapMarkerAlt className={styles.icon} />
-              <span>{profileUser.details?.location || safeTranslate(t, 'profile.unknownLocation', 'Unknown location')}</span>
-              <div className={`${styles.onlineStatus} ${profileUser.isOnline ? styles.isOnline : ""}`}>
-                {profileUser.isOnline
-                  ? safeTranslate(t, 'common.onlineNow', 'Online Now')
-                  : safeTranslate(t, 'common.offline', 'Offline')}
+              <span>{profileUser.details?.location || t('userProfile.unknownLocation')}</span>
+              <div className={`${styles.onlineStatus} ${profileUser.isOnline ? styles.isOnline : ""} ${theme === 'dark' ? styles.darkOnlineStatus : ''}`}>
+                {profileUser.isOnline ? translations.onlineNow : translations.offline}
               </div>
             </div>
 
@@ -1272,86 +1144,93 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 <FaRegClock className={styles.icon} />
                 <span>
                   {profileUser.isOnline
-                    ? safeTranslate(t, 'common.activeNow', 'Active now')
-                    : safeTranslate(t, 'profile.lastActive', 'פעילות אחרונה: {{date}}', {
-                        date: profileUser.lastActive
-                          ? formatDate(profileUser.lastActive, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' })
-                          : 'N/A'
-                      })}
+                    ? translations.onlineNow
+                    : `${translations.lastActive} ${formatDate(profileUser.lastActive, { showTime: false })}`}
                 </span>
               </div>
               <div className={styles.activityItem}>
                 <FaCalendarAlt className={styles.icon} />
-                <span>{safeTranslate(t, 'profile.memberSince', 'חבר מאז: {{date}}', {
-                  date: profileUser.createdAt
-                    ? formatDate(profileUser.createdAt, { showTime: false, locale: language === 'he' ? 'he-IL' : 'en-US' })
-                    : 'N/A'
-                })}</span>
+                <span>{translations.memberSince} {formatDate(profileUser.createdAt, { showTime: false })}</span>
               </div>
             </div>
 
             {/* Compatibility section */}
             {!isOwnProfile && (
-              <div className={styles.compatibilitySection}>
-                <h2 className={styles.sectionTitle}>{t('profile.compatibility', 'Compatibility')}</h2>
+              <div className={`${styles.compatibilitySection} ${theme === 'dark' ? styles.darkCompatibilitySection : ''}`}>
+                <h2 className={styles.sectionTitle}>{translations.compatibilityTitle}</h2>
                 <div className={styles.compatibilityScore}>
                   <div className={styles.scoreCircle}>
                     <svg viewBox="0 0 100 100">
                       <defs>
-                        <linearGradient id="compatibility-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" stopColor="#ff3366" />
-                          <stop offset="100%" stopColor="#ff6b98" />
+                        {/* Use a unique ID to avoid potential conflicts if this component is used multiple times */}
+                        <linearGradient id={`compatibility-gradient-${userId || 'default'}`} x1="0%" y1="0%" x2="100%"
+                                        y2="100%">
+                          {/* Apply CSS variables via inline style */}
+                          <stop
+                              offset="0%"
+                              style={{stopColor: 'var(--compat-gradient-start, var(--primary-400))'}}
+                          />
+                          <stop
+                              offset="100%"
+                              style={{stopColor: 'var(--compat-gradient-end, var(--primary-500))'}}
+                          />
                         </linearGradient>
                       </defs>
-                      <circle className={styles.scoreBg} cx="50" cy="50" r="45" />
+                      <circle 
+                        className={`${styles.scoreBg} ${theme === 'dark' ? styles.darkScoreBg : ''}`}
+                        cx="50" 
+                        cy="50" 
+                        r="45" 
+                      />
                       <circle
-                        className={styles.scoreFill}
-                        cx="50"
-                        cy="50"
-                        r="45"
-                        strokeDasharray="283"
-                        strokeDashoffset={283 - (283 * compatibility) / 100}
+                          className={styles.scoreFill}
+                          cx="50"
+                          cy="50"
+                          r="45"
+                          strokeDasharray="283"
+                          strokeDashoffset={283 - (283 * compatibility) / 100}
+                          // Reference the unique gradient ID here
+                          style={{stroke: `url(#compatibility-gradient-${userId || 'default'})`}}
                       />
                     </svg>
-                    <div className={styles.scoreValue}>{compatibility}%</div>
+                    <div className={`${styles.scoreValue} ${theme === 'dark' ? styles.darkScoreValue : ''}`}>{compatibility}%</div>
                   </div>
                   <div className={styles.compatibilityDetails}>
                     <div className={styles.compatibilityFactor}>
-                      <span className={styles.factorLabel}>{safeTranslate(t, 'profile.location', 'Location')}</span>
-                      <div className={styles.factorBar}>
+                      <span className={`${styles.factorLabel} ${theme === 'dark' ? styles.darkFactorLabel : ''}`}>{t('userProfile.location')}</span>
+                      <div className={`${styles.factorBar} ${theme === 'dark' ? styles.darkFactorBar : ''}`}>
                         <div
-                          className={styles.factorFill}
-                          style={{
-                            width:
-                              profileUser.details?.location === currentUser?.details?.location ? "100%" : "30%",
-                          }}
+                            className={`${styles.factorFill} ${theme === 'dark' ? styles.darkFactorFill : ''}`}
+                            style={{
+                              width: profileUser.details?.location === currentUser?.details?.location ? "100%" : "30%"
+                            }}
                         ></div>
                       </div>
                     </div>
                     <div className={styles.compatibilityFactor}>
-                      <span className={styles.factorLabel}>{safeTranslate(t, 'profile.age', 'Age')}</span>
-                      <div className={styles.factorBar}>
+                      <span className={`${styles.factorLabel} ${theme === 'dark' ? styles.darkFactorLabel : ''}`}>{t('userProfile.age')}</span>
+                      <div className={`${styles.factorBar} ${theme === 'dark' ? styles.darkFactorBar : ''}`}>
                         <div
-                          className={styles.factorFill}
-                          style={{
-                            width:
-                              Math.abs((profileUser.details?.age || 0) - (currentUser?.details?.age || 0)) <= 5
-                                ? "90%"
-                                : Math.abs((profileUser.details?.age || 0) - (currentUser?.details?.age || 0)) <= 10
-                                  ? "60%"
-                                  : "30%",
-                          }}
+                            className={`${styles.factorFill} ${theme === 'dark' ? styles.darkFactorFill : ''}`}
+                            style={{
+                              width:
+                                  Math.abs((profileUser.details?.age || 0) - (currentUser?.details?.age || 0)) <= 5
+                                      ? "90%"
+                                      : Math.abs((profileUser.details?.age || 0) - (currentUser?.details?.age || 0)) <= 10
+                                          ? "60%"
+                                          : "30%"
+                            }}
                         ></div>
                       </div>
                     </div>
                     <div className={styles.compatibilityFactor}>
-                      <span className={styles.factorLabel}>{safeTranslate(t, 'profile.interests', 'Interests')}</span>
-                      <div className={styles.factorBar}>
+                      <span className={`${styles.factorLabel} ${theme === 'dark' ? styles.darkFactorLabel : ''}`}>{t('userProfile.interests')}</span>
+                      <div className={`${styles.factorBar} ${theme === 'dark' ? styles.darkFactorBar : ''}`}>
                         <div
-                          className={styles.factorFill}
-                          style={{
-                            width: `${Math.min(100, commonInterests.length * 20)}%`,
-                          }}
+                            className={`${styles.factorFill} ${theme === 'dark' ? styles.darkFactorFill : ''}`}
+                            style={{
+                              width: `${Math.min(100, commonInterests.length * 20)}%`
+                            }}
                         ></div>
                       </div>
                     </div>
@@ -1362,41 +1241,41 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {/* User details sections */}
             {profileUser.details?.bio && (
-              <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{t('profile.aboutMe', 'About Me')}</h2>
-                <p className={styles.aboutText}>{profileUser.details.bio}</p>
-              </div>
+                <div className={styles.section}>
+                  <h2 className={styles.sectionTitle}>{translations.aboutMe}</h2>
+                  <p className={styles.aboutText}>{profileUser.details.bio}</p>
+                </div>
             )}
 
             {profileUser.details?.iAm && (
-              <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{t('profile.iAm', 'I am')}</h2>
-                <div className={styles.tagsContainer}>
-                  <span className={`${styles.tag} ${styles.identityTag}`}>
-                    {getTranslatedTag('profile.identity', profileUser.details.iAm)}
+                <div className={styles.section}>
+                  <h2 className={styles.sectionTitle}>{translations.iAm}</h2>
+                  <div className={styles.tagsContainer}>
+                  <span className={`${styles.tag} ${styles.identityTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkIdentityTag : ''}`}>
+                    {capitalize(translateTag(profileUser.details.iAm))}
                   </span>
+                  </div>
                 </div>
-              </div>
             )}
 
             {profileUser.details?.maritalStatus && (
-              <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{t('profile.maritalStatusLabel', 'Marital Status')}</h2>
-                <div className={styles.tagsContainer}>
-                  <span className={`${styles.tag} ${styles.statusTag}`}>
-                    {getTranslatedTag('profile.maritalStatus', profileUser.details.maritalStatus)}
+                <div className={styles.section}>
+                  <h2 className={styles.sectionTitle}>{translations.maritalStatus}</h2>
+                  <div className={styles.tagsContainer}>
+                  <span className={`${styles.tag} ${styles.statusTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkStatusTag : ''}`}>
+                    {translateTag(profileUser.details.maritalStatus)}
                   </span>
+                  </div>
                 </div>
-              </div>
             )}
 
             {profileUser.details?.lookingFor && profileUser.details.lookingFor.length > 0 && (
-              <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{t('profile.lookingForLabel', 'Looking For')}</h2>
-                <div className={styles.tagsContainer}>
-                  {profileUser.details.lookingFor.map((item, index) => (
-                    <span key={index} className={`${styles.tag} ${styles.lookingForTag}`}>
-                      {getTranslatedTag('profile.lookingFor', item)}
+                <div className={styles.section}>
+                  <h2 className={styles.sectionTitle}>{translations.lookingFor}</h2>
+                  <div className={styles.tagsContainer}>
+                    {profileUser.details.lookingFor.map((item, index) => (
+                        <span key={index} className={`${styles.tag} ${styles.lookingForTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkLookingForTag : ''}`}>
+                      {translateTag(item)}
                     </span>
                   ))}
                 </div>
@@ -1405,11 +1284,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {profileUser.details?.intoTags && profileUser.details.intoTags.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{t('profile.imIntoLabel', "I'm Into")}</h2>
+                <h2 className={styles.sectionTitle}>{translations.imInto}</h2>
                 <div className={styles.tagsContainer}>
                   {profileUser.details.intoTags.map((item, index) => (
-                    <span key={index} className={`${styles.tag} ${styles.intoTag}`}>
-                      {getTranslatedTag('profile.intoTags', item)}
+                    <span key={index} className={`${styles.tag} ${styles.intoTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkIntoTag : ''}`}>
+                      {translateTag(item)}
                     </span>
                   ))}
                 </div>
@@ -1418,13 +1297,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
             {profileUser.details?.turnOns && profileUser.details.turnOns.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{t('profile.turnOnsLabel', 'Turn Ons')}</h2>
+                <h2 className={styles.sectionTitle}>{translations.itTurnsMeOn}</h2>
                 <div className={styles.tagsContainer}>
                   {profileUser.details.turnOns.map((item, index) => (
-                    <span key={index} className={`${styles.tag} ${styles.turnOnTag}`}>
-                      {item === 'leather_latex_clothing' ?
-                        t('leather_latex_clothing', 'Leather/latex clothing') :
-                        getTranslatedTag('profile.turnOns', item)}
+                    <span key={index} className={`${styles.tag} ${styles.turnOnTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkTurnOnTag : ''}`}>
+                      {translateTag(item)}
                     </span>
                   ))}
                 </div>
@@ -1434,7 +1311,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             {/* Interests section */}
             {profileUser.details?.interests?.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>{t('profile.interests', 'Interests')}</h2>
+                <h2 className={styles.sectionTitle}>{translations.interests}</h2>
                 <div className={styles.interestsTags}>
                   {(showAllInterests
                     ? profileUser.details.interests
@@ -1442,18 +1319,23 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   ).map((interest) => (
                     <span
                       key={interest}
-                      className={`${styles.interestTag} ${commonInterests.includes(interest) ? styles.commonTag : ""}`}
+                      className={`
+                        ${styles.interestTag} 
+                        ${commonInterests.includes(interest) ? styles.commonTag : ""} 
+                        ${theme === 'dark' ? styles.darkInterestTag : ''}
+                        ${theme === 'dark' && commonInterests.includes(interest) ? styles.darkCommonTag : ''}
+                      `}
                     >
-                      {getTranslatedTag('profile.interests', interest)}
-                      {commonInterests.includes(interest) && <FaCheck className={styles.commonIcon} />}
+                      {translateTag(interest)}
+                      {commonInterests.includes(interest) && <FaCheck className={`${styles.commonIcon} ${theme === 'dark' ? styles.darkCommonIcon : ''}`} />}
                     </span>
                   ))}
                   {!showAllInterests && profileUser.details.interests.length > 8 && (
                     <button
-                      className={styles.showMoreBtn}
+                      className={`${styles.showMoreBtn} ${theme === 'dark' ? styles.darkShowMoreBtn : ''}`}
                       onClick={() => setShowAllInterests(true)}
                     >
-                      +{profileUser.details.interests.length - 8} {safeTranslate(t, 'common.more', 'more')}
+                      +{profileUser.details.interests.length - 8} {t('userProfile.showMore')}
                     </button>
                   )}
                 </div>

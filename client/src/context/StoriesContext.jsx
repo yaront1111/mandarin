@@ -161,9 +161,19 @@ export function StoriesProvider({ children }) {
         dispatch({ type: "ADD_STORY", payload: newStory })
         return res
       } catch (err) {
-        toast.error(err.message)
-        log.error("createStory", err)
-        return { success: false, message: err.message }
+        // Handle rate limiting error specially
+        if (err.status === 429 || (err && err.data && err.data.status === 429)) {
+          // Use server message if available, otherwise show a default message
+          const serverMsg = err.data?.message || err.data?.error;
+          const cooldownMessage = serverMsg || "Please wait before posting another story";
+          toast.error(cooldownMessage);
+          log.error("createStory rate limited", err);
+          return { success: false, message: cooldownMessage };
+        } else {
+          toast.error(err.message);
+          log.error("createStory", err);
+          return { success: false, message: err.message };
+        }
       } finally {
         dispatch({ type: "CREATE_END" })
       }

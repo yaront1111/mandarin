@@ -340,7 +340,7 @@ class ApiService {
       case 401: /* skip */ break;
       case 403: toast.error(`Forbidden: ${msg}`); break;
       case 404: toast.error(`Not found: ${msg}`); break;
-      case 429: toast.error("Too many requests"); break;
+      case 429: toast.error(msg || "Please wait before posting again"); break;
       default: if (status >= 500) toast.error(`Server error (${status})`);
     }
   }

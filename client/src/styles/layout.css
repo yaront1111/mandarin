@@ -417,6 +417,12 @@
   z-index: 102;
 }
 
+/* RTL-specific positioning for notification badge */
+[dir="rtl"] .notification-badge {
+  right: auto;
+  left: -5px;
+}
+
 .notification-dropdown {
   z-index: var(--z-dropdown);
   display: block;
@@ -436,6 +442,12 @@
   margin-top: 5px;
 }
 
+/* RTL-specific positioning - adjust for Hebrew */
+[dir="rtl"] .notification-dropdown {
+  right: auto; /* Reset right positioning */
+  left: 0; /* Position from the left instead */
+}
+
 .dark .notification-dropdown {
   background-color: var(--medium);
   border-color: rgba(255, 255, 255, 0.1);
@@ -453,6 +465,12 @@
   border-top: 1px solid var(--border-color);
   transform: rotate(45deg);
   box-shadow: -2px -2px 5px rgba(0,0,0,0.02);
+}
+
+/* RTL positioning for notification dropdown arrow */
+[dir="rtl"] .notification-dropdown::before {
+  right: auto;
+  left: 16px;
 }
 
 .dark .notification-dropdown::before {

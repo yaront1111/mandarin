@@ -46,11 +46,24 @@ const validateRequest = (req, res, next) => {
 async function hasRecentStory(userId) {
   try {
     const cutoff = new Date(Date.now() - STORY_COOLDOWN_MS)
-    const count  = await Story.countDocuments({ user: userId, createdAt: { $gt: cutoff } })
+    
+    // Check the user's lastStoryCreated field first (more efficient)
+    const user = await User.findById(userId).select('lastStoryCreated').lean()
+    if (user && user.lastStoryCreated && user.lastStoryCreated > cutoff) {
+      return true
+    }
+    
+    // As a fallback, check for any stories in the database
+    // But exclude any stories created in the last 2 seconds (to avoid counting the story being created now)
+    const justNowBuffer = new Date(Date.now() - 2000) // 2 second buffer
+    const count = await Story.countDocuments({ 
+      user: userId, 
+      createdAt: { $gt: cutoff, $lt: justNowBuffer } 
+    })
     return count > 0
   } catch (err) {
     logger.error(`hasRecentStory(${userId}) failed: ${err.message}`)
-    // fail‑open so we don’t block legit posts if something’s wrong
+    // fail‑open so we don't block legit posts if something's wrong
     return false
   }
 }
@@ -169,7 +182,8 @@ router.post(
     if (await hasRecentStory(userId)) {
       return res.status(429).json({
         success: false,
-        error: `Please wait ${STORY_COOLDOWN_MS/1000}s before posting again`,
+        error: `Please wait ${STORY_COOLDOWN_MS/1000} seconds before posting another story`,
+        message: `Please wait ${STORY_COOLDOWN_MS/1000} seconds before posting another story`,
       })
     }
 
