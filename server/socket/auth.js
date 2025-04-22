@@ -4,6 +4,14 @@ import { User } from '../models/index.js';
 import logger from '../logger.js';
 import config from '../config.js';
 
+// Simple logger fallback if logger doesn't have create method
+const log = {
+  info: (...args) => console.log("[socket:auth]", ...args),
+  error: (...args) => console.error("[socket:auth]", ...args),
+  warn: (...args) => console.warn("[socket:auth]", ...args),
+  debug: (...args) => console.debug("[socket:auth]", ...args)
+};
+
 const {
   JWT_SECRET,
   SOCKET_RATE_LIMIT_MAX = 100,
@@ -61,7 +69,7 @@ class RateLimiter {
       }
     }
     if (removed) {
-      logger.debug(`RateLimiter: cleaned ${removed} entries`);
+      log.debug(`RateLimiter: cleaned ${removed} entries`);
     }
   }
 }
@@ -99,18 +107,18 @@ async function socketAuthMiddleware(socket, next) {
 
     // Rate-limit by IP
     if (ipLimiter.isLimited(ip)) {
-      logger.warn(`Rate limit exceeded for IP ${ip}`);
+      log.warn(`Rate limit exceeded for IP ${ip}`);
       return next(new Error('Too many connection attempts; please try later'));
     }
 
     const token = extractToken(socket);
     if (!token) {
-      logger.warn(`Socket ${socket.id} missing auth token`);
+      log.warn(`Socket ${socket.id} missing auth token`);
       return next(new Error('Authentication token required'));
     }
 
     if (!JWT_SECRET) {
-      logger.error('JWT_SECRET not configured');
+      log.error('JWT_SECRET not configured');
       return next(new Error('Server configuration error'));
     }
 
@@ -118,7 +126,7 @@ async function socketAuthMiddleware(socket, next) {
     try {
       payload = jwt.verify(token, JWT_SECRET);
     } catch (err) {
-      logger.error(`JWT verify failed for socket ${socket.id}: ${err.name}: ${err.message}`);
+      log.error(`JWT verify failed for socket ${socket.id}: ${err.name}: ${err.message}`);
       if (err.name === 'TokenExpiredError') {
         return next(new Error(`Token expired at ${err.expiredAt}`));
       }
@@ -126,20 +134,20 @@ async function socketAuthMiddleware(socket, next) {
     }
 
     if (!payload.id) {
-      logger.warn(`Socket ${socket.id} JWT missing user ID`);
+      log.warn(`Socket ${socket.id} JWT missing user ID`);
       return next(new Error('Invalid token payload'));
     }
 
     // Load user
     const user = await User.findById(payload.id).select('-password').exec();
     if (!user) {
-      logger.warn(`Socket ${socket.id} no user found for ID ${payload.id}`);
+      log.warn(`Socket ${socket.id} no user found for ID ${payload.id}`);
       return next(new Error('User not found'));
     }
 
     // Token version check
     if (payload.version && user.version && payload.version !== user.version) {
-      logger.warn(`Socket ${socket.id} token version mismatch`);
+      log.warn(`Socket ${socket.id} token version mismatch`);
       return next(new Error('Token has been revoked; please reauthenticate'));
     }
 
@@ -151,11 +159,11 @@ async function socketAuthMiddleware(socket, next) {
     user.lastLoginIp = ip;
     await user.save();
 
-    logger.info(`Socket ${socket.id} authenticated as user ${user._id}`);
+    log.info(`Socket ${socket.id} authenticated as user ${user._id}`);
     next();
   } catch (err) {
     // Enhanced error logging with detailed context
-    logger.error(`Socket auth error: ${err.message}`, {
+    log.error(`Socket auth error: ${err.message}`, {
       error: {
         name: err.name,
         message: err.message,
@@ -169,7 +177,7 @@ async function socketAuthMiddleware(socket, next) {
         time: new Date().toISOString()
       }
     });
-    
+
     // More descriptive error for client debugging
     next(new Error(`Authentication error: ${err.message}`));
   }
@@ -212,7 +220,7 @@ function setupSocketMonitoring(io) {
         socket.lastActivity &&
         now - socket.lastActivity > INACTIVITY_THRESHOLD_MS
       ) {
-        logger.warn(`Disconnecting inactive socket ${socket.id}`);
+        log.warn(`Disconnecting inactive socket ${socket.id}`);
         socket.disconnect(true);
       }
     }

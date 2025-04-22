@@ -2,7 +2,7 @@
  * Utilities for validating input data across the application
  */
 import mongoose from 'mongoose';
-import { createBadRequestError } from './errorHandler.js';
+import { BadRequestError as createBadRequestError } from './errorHandler.js';
 
 /**
  * Validate MongoDB ObjectId

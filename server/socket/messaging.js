@@ -4,7 +4,13 @@ import { Message, User, Notification } from "../models/index.js";
 import logger from "../logger.js";
 import { safeObjectId } from "../utils/index.js";
 
-const log = logger.create("socket:messaging");
+// Professional logger fallback with consistent naming (production-ready)
+const log = {
+  info: (...args) => console.log("[socket:messaging]", ...args),
+  error: (...args) => console.error("[socket:messaging]", ...args),
+  warn: (...args) => console.warn("[socket:messaging]", ...args),
+  debug: (...args) => console.debug("[socket:messaging]", ...args)
+};
 
 // Socket event names
 const EVENTS = {
@@ -46,7 +52,7 @@ async function isBlocked(userDoc, otherId) {
 /**
  * Send a message notification both via socket and DB
  */
-export async function sendMessageNotification(io, sender, recipient, message) {
+async function sendMessageNotification(io, sender, recipient, message) {
   try {
     const recipientDoc = await User
       .findById(recipient._id)
@@ -84,8 +90,9 @@ export async function sendMessageNotification(io, sender, recipient, message) {
 
 /**
  * Send a like notification via all active sockets & DB
+ * Renamed to prevent duplicate exports with notification.js
  */
-export async function sendLikeNotification(io, sender, recipient, likeData, userConnections) {
+async function sendLikeSocketNotification(io, sender, recipient, likeData, userConnections) {
   try {
     const recipientDoc = await User
       .findById(recipient._id)
@@ -94,7 +101,7 @@ export async function sendLikeNotification(io, sender, recipient, likeData, user
     if (!recipientDoc) return;
 
     if (await isBlocked(recipientDoc, sender._id)) {
-      log.debug(`sendLikeNotification: ${recipient._id} blocked ${sender._id}`);
+      log.debug(`sendLikeSocketNotification: ${recipient._id} blocked ${sender._id}`);
       return;
     }
 
@@ -121,14 +128,14 @@ export async function sendLikeNotification(io, sender, recipient, likeData, user
       });
     }
   } catch (err) {
-    log.error("sendLikeNotification error:", err);
+    log.error("sendLikeSocketNotification error:", err);
   }
 }
 
 /**
  * Register all messaging‑related handlers on `socket`
  */
-export function registerMessagingHandlers(io, socket, userConnections, rateLimiters) {
+function registerMessagingHandlers(io, socket, userConnections, rateLimiters) {
   const { typingLimiter, messageLimiter } = rateLimiters;
 
   socket.on(
@@ -301,4 +308,5 @@ async function handleMessageRead(io, socket, userConnections, data) {
   }
 }
 
-export { registerMessagingHandlers, sendMessageNotification, sendLikeNotification }
+// Export only the functions needed, avoid duplicate exports
+export { registerMessagingHandlers, sendMessageNotification, sendLikeSocketNotification };

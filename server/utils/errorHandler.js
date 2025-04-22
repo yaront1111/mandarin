@@ -36,6 +36,12 @@ export const ForbiddenError = (message = 'Forbidden') =>
 export const NotFoundError = (resource = 'Resource') =>
   new HTTPError(`${resource} not found`, 404)
 
+// Add alias exports to maintain backward compatibility
+export const createBadRequestError = BadRequestError;
+export const createNotFoundError = NotFoundError;
+export const createUnauthorizedError = UnauthorizedError;
+export const createForbiddenError = ForbiddenError;
+
 /**
  * Wrap async route handlers to forward errors to Express.
  * @param {Function} fn Async route handler

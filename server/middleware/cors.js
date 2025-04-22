@@ -22,8 +22,12 @@ export const configureCors = () => {
     ? process.env.ALLOWED_ORIGINS.split(",")
     : [process.env.FRONTEND_URL || "https://flirtss.com"];
 
-  const allowedOrigins =
-    process.env.NODE_ENV === "production" ? prodOrigins : devOrigins;
+  // Always include main domains
+  prodOrigins.push("https://flirtss.com");
+  prodOrigins.push("https://www.flirtss.com");
+
+  const isDev = process.env.NODE_ENV !== "production";
+  const allowedOrigins = isDev ? [...devOrigins, ...prodOrigins] : prodOrigins;
 
   logger.info(`CORS allowed origins: ${JSON.stringify(allowedOrigins)}`);
 
@@ -39,7 +43,7 @@ export const configureCors = () => {
         logger.debug(`CORS: allowing origin ${origin}`);
         return callback(null, true);
       }
-      
+
       // Special case: If using the main domain but with varying protocols/subdomains
       const mainDomain = 'flirtss.com';
       if (origin && origin.includes(mainDomain)) {
@@ -48,7 +52,7 @@ export const configureCors = () => {
       }
 
       // In development, allow all origins for easier debugging
-      if (process.env.NODE_ENV !== "production") {
+      if (isDev) {
         logger.debug(`CORS: allowing all origins in development mode: ${origin}`);
         return callback(null, true);
       }
@@ -71,6 +75,8 @@ export const configureCors = () => {
       "Cache-Control",
       "x-no-cache",
       "x-auth-token",
+      "x-connection-type",
+
     ],
     exposedHeaders: [
       "Content-Length",

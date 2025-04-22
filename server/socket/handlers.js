@@ -1,4 +1,4 @@
-// server/src/sockets/index.js
+// server/socket/handlers.js
 
 import { User } from "../models/index.js";
 import logger from "../logger.js";
@@ -7,14 +7,19 @@ import {
   registerPermissionHandlers,
   sendPhotoPermissionRequestNotification,
 } from "./permissions.js";
-import { registerMessagingHandlers } from "./messaging.js";
+import {
+  registerMessagingHandlers,
+  sendMessageNotification,
+  sendLikeSocketNotification
+} from "./messaging.js";
+import { registerNotificationHandlers } from "./notification.js";
 
-// Simple logger fallback
+// Simple logger fallback with consistent naming
 const log = {
-  info: (...args) => console.log("[socket]", ...args),
-  error: (...args) => console.error("[socket]", ...args),
-  warn: (...args) => console.warn("[socket]", ...args),
-  debug: (...args) => console.debug("[socket]", ...args)
+  info: (...args) => console.log("[socket:handlers]", ...args),
+  error: (...args) => console.error("[socket:handlers]", ...args),
+  warn: (...args) => console.warn("[socket:handlers]", ...args),
+  debug: (...args) => console.debug("[socket:handlers]", ...args)
 };
 
 // --- Socket event constants ---
@@ -164,6 +169,7 @@ export const registerSocketHandlers = (io, socket, userConnections, rateLimiters
   registerMessagingHandlers(io, socket, userConnections, rateLimiters);
   registerCallHandlers(io, socket, userConnections, rateLimiters);
   registerPermissionHandlers(io, socket, userConnections);
+  registerNotificationHandlers(io, socket, userConnections, rateLimiters);
 
   // On initial connect, broadcast userOnline if allowed
   const userId = socket.user?._id?.toString();
@@ -174,4 +180,4 @@ export const registerSocketHandlers = (io, socket, userConnections, rateLimiters
   }
 };
 
-// No re-exports at the bottom to avoid duplicate exports
+// No re-exports to avoid duplicate export errors
