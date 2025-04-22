@@ -1,28 +1,43 @@
-// client/src/services/storiesService.jsx - Production-ready implementation
+// client/src/services/storiesService.jsx - Production-ready implementation with caching
 import apiService from "./apiService.jsx"
 
 const BASE_URL = "/stories"
+
+// Cache management
+let cachedStories = null;
+let lastFetchTime = 0;
+const CACHE_DURATION = 60000; // 1 minute cache
 
 // Track in-progress requests to prevent duplicates
 const pendingRequests = new Map()
 
 /**
- * Get all stories
+ * Get all stories with caching to prevent excessive API calls
  * @returns {Promise<Object>} Response with stories data
  */
 export const getAllStories = async () => {
   try {
+    const now = Date.now();
+
+    // Return cached stories if available and not expired
+    if (cachedStories && now - lastFetchTime < CACHE_DURATION) {
+      return cachedStories;
+    }
+
     const response = await apiService.get(BASE_URL)
+    lastFetchTime = now;
 
     // Handle old API format (raw array) for backwards compatibility
     if (Array.isArray(response)) {
-      return {
+      cachedStories = {
         success: true,
         data: response,
-      }
+      };
+      return cachedStories;
     }
 
-    return response
+    cachedStories = response;
+    return response;
   } catch (error) {
     console.error("Error fetching stories:", error)
     return {
@@ -97,13 +112,17 @@ export const createStory = async (formData, onProgress) => {
     // This is a media upload
     const response = await apiService.upload(BASE_URL, formData, onProgress)
 
-
     // Handle new and old API response formats
-    return {
+    const result = {
       success: true,
       data: response.data || response,
       message: "Story created successfully",
-    }
+    };
+
+    // Invalidate stories cache after creating a new story
+    cachedStories = null;
+
+    return result;
   } catch (error) {
     console.error("Error creating story:", error)
     return {
@@ -165,39 +184,42 @@ export const createTextStory = async (storyData, onProgress) => {
     }
 
     // For backwards compatibility, handle different response formats
+    let result;
+
     if (response && response.success) {
-      return {
+      result = {
         success: true,
         data: response.data || response.story,
         message: "Story created successfully",
       }
-    }
-
-    // Handle old API that might return the story directly
-    if (response && response._id) {
-      return {
+    } else if (response && response._id) {
+      // Handle old API that might return the story directly
+      result = {
         success: true,
         data: response,
         message: "Story created successfully",
       }
-    }
-    
-    // If we get an undefined or null response but no error was thrown,
-    // assume success but wrap it in our standard format
-    if (response === undefined || response === null) {
-      return {
+    } else if (response === undefined || response === null) {
+      // If we get an undefined or null response but no error was thrown,
+      // assume success but wrap it in our standard format
+      result = {
         success: true,
         message: "Story created successfully",
         data: { created: true, timestamp: Date.now() }
       }
+    } else {
+      // Wrap any other response format in a success object
+      result = {
+        success: true,
+        data: response,
+        message: "Story created successfully"
+      }
     }
 
-    // Wrap any other response format in a success object
-    return {
-      success: true,
-      data: response,
-      message: "Story created successfully"
-    }
+    // Invalidate stories cache after creating a new story
+    cachedStories = null;
+
+    return result;
   } catch (error) {
     console.error("Error creating text story:", error)
     return {
@@ -222,14 +244,15 @@ export const deleteStory = async (storyId) => {
     const response = await apiService.delete(`${BASE_URL}/${storyId}`)
 
     // Handle old API format for backwards compatibility
-    if (response && !response.success && response.msg) {
-      return {
-        success: true,
-        message: response.msg,
-      }
-    }
+    const result = response && !response.success && response.msg ? {
+      success: true,
+      message: response.msg,
+    } : response;
 
-    return response
+    // Invalidate stories cache after deleting a story
+    cachedStories = null;
+
+    return result;
   } catch (error) {
     console.error(`Error deleting story ${storyId}:`, error)
     return {

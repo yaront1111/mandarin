@@ -38,6 +38,10 @@ class SocketService {
     this.reconnectAttempts = 0
 
     try {
+      // Pass environment-specific server URL based on environment
+      const isDev = process.env.NODE_ENV === 'development'
+      options.serverUrl = isDev ? 'http://localhost:5000' : 'https://flirtss.com'
+
       this.socket.init(userId, token, options)
       this.initialized = true
       this.connectionState = "connecting"

@@ -48,21 +48,15 @@ class SocketClient {
     // Save user ID for reconnection
     this.userId = userId
 
-    // IMPORTANT: Always connect to the backend server, not the frontend
-    // Just use the main domain with socket.io path for now
-    const serverUrl = options.serverUrl || process.env.REACT_APP_SOCKET_URL || window.location.origin
+    // Determine correct server URL based on environment
+    const isDev = process.env.NODE_ENV === 'development'
+    // Use localhost in development, production server in production
+    const serverUrl = isDev ? 'http://localhost:5000' : 'https://flirtss.com'
     console.log(`Connecting to socket server at ${serverUrl}`)
 
     try {
       // Initialize socket with improved auth and reconnection options
-      // Note: Changed transports order to try polling first for better reliability
-      // Let's connect through the standard route via Nginx
-      // Instead of bypassing Nginx, let it handle the Socket.IO proxying
-      // This avoids mixed content warnings and simplifies deployment
-      const mainServerUrl = 'https://flirtss.com';
-      console.log(`Connecting to socket server through main URL: ${mainServerUrl}`);
-      
-      this.socket = io(mainServerUrl, {
+      this.socket = io(serverUrl, {
         query: { token },
         auth: { token, userId },
         reconnection: true,
@@ -70,13 +64,12 @@ class SocketClient {
         reconnectionDelay: this.reconnectDelay,
         reconnectionDelayMax: 30000,
         timeout: 30000, // Increased timeout
-        transports: ["polling", "websocket"], // Try polling first for more reliability
+        transports: ["websocket", "polling"], // Prioritize websocket over polling for better cross-origin performance
         autoConnect: true,
         forceNew: true, // Force new connection attempt
-        //path: '/socket.io/', // Explicitly set the socket.io path
-        extraHeaders: {  // Add extra headers that might help with CORS
-          "X-Client-Version": "1.0.0",
-          "X-Connection-Type": "mandarin-app"
+        extraHeaders: {
+          // Remove problematic headers to avoid CORS issues
+          "X-Client-Version": "1.0.0"
         }
       })
 
@@ -577,7 +570,7 @@ class SocketClient {
         // Add a small random delay to prevent simultaneous reconnection attempts
         const reconnectDelay = 1000 + Math.random() * 2000;
         console.log(`Scheduling reconnection in ${Math.round(reconnectDelay)}ms`);
-        
+
         setTimeout(() => {
           try {
             // Re-fetch a fresh token directly from storage in case it changed
@@ -585,51 +578,59 @@ class SocketClient {
             if (freshToken !== token) {
               console.log("Token changed since reconnection attempt started, using fresh token");
             }
-            
+
             // Check network status - if browser is offline, wait for online event
             if (!navigator.onLine) {
               console.log("Browser is offline, waiting for connection to return");
-              
+
               // Set up one-time event listener for reconnection when back online
               const onlineHandler = () => {
                 console.log("Browser back online, attempting reconnection");
                 window.removeEventListener('online', onlineHandler);
-                
+
                 // Wait a moment for network to stabilize
                 setTimeout(() => {
                   this.reconnecting = false;
                   this.enhancedReconnect();
                 }, 2000);
               };
-              
+
               window.addEventListener('online', onlineHandler, { once: true });
               this.reconnecting = false;
               return;
             }
-            
+
+            // Use environment-aware server URL
+            const isDev = process.env.NODE_ENV === 'development';
+            const serverUrl = isDev ? 'http://localhost:5000' : 'https://flirtss.com';
+
             // Always use the most recent token available
             console.log("Initializing socket with fresh token");
             this.init(this.userId, freshToken || token, {
-              // Explicitly try polling first on reconnect for better reliability
+              // Explicitly try websocket first on reconnect for better reliability
               transportOptions: {
-                polling: {
+                websocket: {
                   extraHeaders: {
-                    "X-Reconnect-Attempt": "true"
+                    "X-Client-Version": "1.0.0"
                   }
                 }
               }
             });
-            
+
             // Dispatch reconnection success event specifically for notifications
             window.dispatchEvent(new CustomEvent("notificationSocketReconnected"));
             console.log("Socket reconnected with notification support");
           } catch (err) {
             console.error("Socket reconnection failed:", err);
-            
+
             // Attempt fallback to polling-only if WebSocket is the issue
             if (err.message && (err.message.includes("websocket") || err.message.includes("WebSocket"))) {
               console.log("WebSocket error detected, trying fallback to polling transport only");
               try {
+                // Use environment-aware server URL
+                const isDev = process.env.NODE_ENV === 'development';
+                const serverUrl = isDev ? 'http://localhost:5000' : 'https://flirtss.com';
+
                 this.init(this.userId, token, {
                   transports: ["polling"],
                   autoConnect: true
@@ -639,11 +640,11 @@ class SocketClient {
                 console.error("Polling fallback also failed:", fallbackErr);
               }
             }
-            
+
             // If reconnection failed due to token issues, try one more time with a clean token
             if (err.message && (err.message.includes("auth") || err.message.includes("token"))) {
               console.log("Authentication error detected, trying emergency session reset");
-              
+
               // Wait 2 seconds before trying the emergency recovery
               setTimeout(() => {
                 try {
@@ -680,7 +681,7 @@ class SocketClient {
       this.reconnecting = false;
     }
   }
-  
+
   /**
    * Attempt to refresh auth token
    * @private
@@ -689,7 +690,7 @@ class SocketClient {
   _attemptTokenRefresh() {
     return new Promise((resolve, reject) => {
       console.log("Attempting to refresh authentication token");
-      
+
       // First try a token refresh API if available
       fetch('/api/auth/refresh-token', {
         method: 'POST',
