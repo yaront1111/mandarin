@@ -124,16 +124,89 @@ const Messages = () => {
   useEffect(() => {
     if (!chatInitializedRef.current || !currentUser?._id) return;
     const handleMessageReceived = (newMessage) => {
+      console.log("Message received:", newMessage);
+      
+      // IMPORTANT: Enhanced duplicate detection with file awareness
+      // Check if this is a message with the same file we just uploaded
+      if (newMessage.type === 'file' && window.__lastUploadedFile) {
+        const lastFile = window.__lastUploadedFile;
+        const msgUrl = newMessage.metadata?.url || newMessage.metadata?.fileUrl;
+        
+        // If this is the same file we just uploaded, mark it as processed
+        if (msgUrl && msgUrl === lastFile.url) {
+          console.log("Identified message for the file we just uploaded", lastFile.id);
+          window.__lastUploadedFile = null; // Clear it so we don't check again
+        }
+      }
+      
       const partnerId = newMessage.sender === currentUser._id ? newMessage.recipient : newMessage.sender;
+      
       if (activeConversation && activeConversation.user._id === partnerId) {
         setMessages((prev) => {
-          if (prev.some((msg) => msg._id === newMessage._id)) return prev;
+          // Enhanced duplicate detection with special handling for file messages
+          let isDuplicate = false;
+          
+          // First, check for standard duplicates by ID
+          isDuplicate = prev.some(msg => 
+            msg._id === newMessage._id || 
+            (newMessage.tempId && msg.tempId === newMessage.tempId)
+          );
+          
+          // For file messages, do special deduplication
+          if (!isDuplicate && newMessage.type === 'file' && newMessage.metadata?.url) {
+            // Check if we have any message with this same file URL
+            isDuplicate = prev.some(msg => 
+              msg.type === 'file' && 
+              msg.metadata?.url === newMessage.metadata.url &&
+              // Only consider it a duplicate if from same sender and approximately same time
+              msg.sender === newMessage.sender &&
+              Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 10000
+            );
+            
+            // If we found a duplicate and it's a placeholder, replace it with the real message
+            if (isDuplicate) {
+              const placeholderIndex = prev.findIndex(msg => 
+                msg.type === 'file' && 
+                msg.metadata?.url === newMessage.metadata.url &&
+                msg.metadata?.__localPlaceholder === true
+              );
+              
+              if (placeholderIndex >= 0) {
+                console.log("Replacing placeholder with real message:", newMessage._id);
+                const updatedMessages = [...prev];
+                updatedMessages[placeholderIndex] = {
+                  ...newMessage,
+                  metadata: {
+                    ...newMessage.metadata,
+                    // Keep any client-side enhancements from our placeholder
+                    fileUrl: newMessage.metadata.url || newMessage.metadata.fileUrl,
+                    // Ensure the URL is always set for both client and server use
+                    url: newMessage.metadata.url || newMessage.metadata.fileUrl
+                  }
+                };
+                return updatedMessages;
+              }
+            }
+          }
+          
+          // Skip if it's a true duplicate
+          if (isDuplicate) {
+            console.log("Skipping duplicate message:", newMessage._id);
+            return prev;
+          }
+          
+          // Add new message with proper sorting
+          console.log("Adding new message to chat:", newMessage._id);
           return [...prev, newMessage].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         });
+        
+        // Mark as read since we're looking at the conversation
         chatService.markConversationRead(activeConversation.user._id);
       } else {
         toast.info(`New message from ${newMessage.senderName || "a user"}`);
       }
+      
+      // Update conversation list regardless
       updateConversationList(newMessage);
     };
 
@@ -534,44 +607,130 @@ const Messages = () => {
       toast.error("Free accounts cannot send files. Upgrade to send files.");
       return;
     }
+    
     setIsUploading(true);
+    setUploadProgress(10); // Start progress at 10%
+    
     try {
+      // Direct approach with manual XHR for better control
+      const xhr = new XMLHttpRequest();
       const formData = new FormData();
       formData.append("file", attachment);
-      formData.append("recipient", activeConversation.user._id);
-      formData.append("messageType", "file");
-      const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => {
-          const newProgress = prev + Math.floor(Math.random() * 15);
-          return newProgress > 95 ? 95 : newProgress;
+      formData.append("recipient", partnerId);
+      
+      // Set up upload progress tracking
+      xhr.upload.addEventListener("progress", event => {
+        if (event.lengthComputable) {
+          const percentComplete = Math.round((event.loaded / event.total) * 90) + 10;
+          setUploadProgress(percentComplete);
+        }
+      });
+      
+      // Promise-based XHR
+      const uploadFile = () => {
+        return new Promise((resolve, reject) => {
+          xhr.open("POST", "/api/messages/attachments");
+          
+          // Add auth token - ensure it's defined in this scope
+          const authToken = localStorage.getItem("token") || 
+                           sessionStorage.getItem("token") || 
+                           localStorage.getItem("authToken") || 
+                           sessionStorage.getItem("authToken");
+                           
+          if (authToken) {
+            xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
+          }
+          
+          xhr.onload = function() {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const result = JSON.parse(xhr.responseText);
+                resolve(result);
+              } catch (e) {
+                reject(new Error("Invalid response format"));
+              }
+            } else {
+              reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+            }
+          };
+          
+          xhr.onerror = () => reject(new Error("Network error during upload"));
+          xhr.send(formData);
         });
-      }, 300);
-      try {
-        const fileMetadata = {
-          fileName: attachment.name,
-          fileSize: attachment.size,
-          fileType: attachment.type,
-          fileUrl: URL.createObjectURL(attachment),
-        };
-        const sentMessage = await chatService.sendMessage(
-          activeConversation.user._id,
-          "File attachment",
-          "file",
-          fileMetadata
-        );
-        clearInterval(progressInterval);
-        setUploadProgress(100);
-        setMessages((prev) =>
-          [...prev, sentMessage].sort(
-            (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
-          )
-        );
-        updateConversationList(sentMessage);
-        toast.success("File sent successfully");
-      } catch (uploadError) {
-        clearInterval(progressInterval);
-        throw uploadError;
+      };
+      
+      // Upload the file
+      const uploadResult = await uploadFile();
+      
+      // Set upload complete
+      setUploadProgress(100);
+      
+      if (!uploadResult.success || !uploadResult.data) {
+        throw new Error(uploadResult.error || "File upload failed");
       }
+      
+      // Create message metadata with URLs
+      const fileData = uploadResult.data;
+      const messageData = {
+        recipient: partnerId,
+        type: "file",
+        content: fileData.fileName || "File attachment",
+        metadata: {
+          url: fileData.url,
+          fileUrl: fileData.url,
+          fileName: fileData.fileName,
+          fileType: fileData.mimeType,
+          mimeType: fileData.mimeType,
+          fileSize: fileData.fileSize,
+          thumbnail: fileData.metadata?.thumbnail
+        }
+      };
+      
+      // Use the same authToken approach consistently for all requests
+      const messageAuthToken = localStorage.getItem("token") || 
+                              sessionStorage.getItem("token") || 
+                              localStorage.getItem("authToken") || 
+                              sessionStorage.getItem("authToken");
+      
+      // Log the token presence for debugging (not the actual token for security)
+      console.log("Message send auth token available:", !!messageAuthToken);
+      
+      // Use direct API call to avoid any event issues
+      const messageResponse = await fetch("/api/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": messageAuthToken ? `Bearer ${messageAuthToken}` : ""
+        },
+        body: JSON.stringify(messageData)
+      });
+      
+      if (!messageResponse.ok) {
+        throw new Error(`Message send failed: ${messageResponse.status}`);
+      }
+      
+      const messageResult = await messageResponse.json();
+      
+      if (!messageResult.success) {
+        throw new Error(messageResult.error || "Failed to send message");
+      }
+      
+      // Add the message directly to our UI
+      const finalMessage = messageResult.data;
+      finalMessage.metadata = {
+        ...finalMessage.metadata,
+        url: fileData.url,
+        fileUrl: fileData.url,
+        fileType: fileData.mimeType || "image/jpeg",
+        mimeType: fileData.mimeType || "image/jpeg"
+      };
+      
+      // Manually load the latest messages
+      await loadMessages(partnerId);
+      
+      toast.success("File sent successfully");
+      
+      // Reset state
       setAttachment(null);
       setUploadProgress(0);
       if (fileInputRef.current) {
@@ -1118,15 +1277,47 @@ const Messages = () => {
                             ) : msg.type === "file" && msg.metadata ? (
                               <div className={styles.fileMessage}>
                                 {msg.metadata.fileType?.startsWith("image/") ? (
-                                  <img
-                                    src={msg.metadata.fileUrl || "/placeholder.svg"}
-                                    alt={msg.metadata.fileName || "Image"}
-                                    className={styles.imageAttachment}
-                                    onError={(e) => {
-                                      e.target.onerror = null;
-                                      e.target.src = "/placeholder.svg";
-                                    }}
-                                  />
+                                  <div className={styles.imageContainer}>
+                                    <a 
+                                      href={msg.metadata.fileUrl || msg.metadata.url || "/placeholder.svg"} 
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className={styles.imageLink}
+                                      onClick={(e) => {
+                                        // Prevent the message bubble click event
+                                        e.stopPropagation();
+                                      }}
+                                    >
+                                      <img
+                                        src={msg.metadata.fileUrl || msg.metadata.url || "/placeholder.svg"}
+                                        alt={msg.metadata.fileName || "Image"}
+                                        className={`${styles.imageAttachment} ${styles.loading}`}
+                                        loading="lazy" /* Add lazy loading for better performance */
+                                        onLoad={(e) => {
+                                          console.log("Image loaded successfully:", msg.metadata.fileName || "image");
+                                          // Remove loading class once image is loaded
+                                          e.target.classList.remove(styles.loading);
+                                        }}
+                                        onError={(e) => {
+                                          console.error("Image failed to load:", msg.metadata);
+                                          e.target.onerror = null;
+                                          e.target.src = "/placeholder.svg";
+                                          e.target.classList.remove(styles.loading);
+                                        }}
+                                      />
+                                    </a>
+                                    <div className={styles.imgCaption}>
+                                      <a 
+                                        href={msg.metadata.fileUrl || msg.metadata.url || "/placeholder.svg"} 
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        title={`Open ${msg.metadata.fileName || "image"} in new tab`}
+                                      >
+                                        {msg.metadata.fileName || "Image"}
+                                      </a>
+                                    </div>
+                                  </div>
                                 ) : (
                                   <div className={styles.fileAttachment}>
                                     {getFileIcon(msg.metadata.fileType)}
@@ -1134,9 +1325,9 @@ const Messages = () => {
                                     <span className={styles.fileSize}>
                                       {msg.metadata.fileSize ? `(${Math.round(msg.metadata.fileSize / 1024)} KB)` : ""}
                                     </span>
-                                    {msg.metadata.fileUrl && (
+                                    {(msg.metadata.fileUrl || msg.metadata.url) && (
                                       <a
-                                        href={msg.metadata.fileUrl}
+                                        href={msg.metadata.fileUrl || msg.metadata.url}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className={styles.downloadLink}

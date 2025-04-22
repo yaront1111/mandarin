@@ -51,9 +51,26 @@ export const formatMessagePreview = (message, userId) => {
 export const groupMessagesByDate = (messages) => {
   const groups = {}
   if (!Array.isArray(messages)) return groups
+  
+  // Create a Set to track seen message IDs
+  const seenMessageIds = new Set()
 
   messages.forEach((message) => {
     if (message && message.createdAt) {
+      // Skip duplicates by checking unique ID
+      const messageId = message._id || message.tempId
+      
+      // Skip if we've already seen this ID
+      if (messageId && seenMessageIds.has(messageId)) {
+        return
+      }
+      
+      // Add to seen IDs if it has a valid ID
+      if (messageId) {
+        seenMessageIds.add(messageId)
+      }
+      
+      // Group by date
       const date = new Date(message.createdAt).toDateString()
       groups[date] = groups[date] || []
       groups[date].push(message)
