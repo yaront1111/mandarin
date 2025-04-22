@@ -1,0 +1,163 @@
+/* src/styles/footer.module.css */
+
+/* Based on styles from home.css */
+.modernFooter {
+  padding-top: 3rem;
+  border-top: 1px solid var(--border-color-light, rgba(0, 0, 0, 0.1));
+  margin-top: 4rem; /* Keep margin if footer is outside main content flow */
+  background-color: var(--background, var(--white));
+  color: var(--text-medium);
+  width: 100%; /* Ensure it takes full width */
+}
+
+:global(.dark) .modernFooter {
+  background-color: var(--background-dark, var(--neutral-900)); /* Use dark bg var */
+  border-top: 1px solid var(--neutral-700, rgba(255, 255, 255, 0.05));
+  color: var(--text-medium-dark);
+}
+
+.footerContent {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+  margin-bottom: 2rem;
+  max-width: var(--container-max-width, 1200px); /* Ensure container width */
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--container-padding, 15px);
+  padding-right: var(--container-padding, 15px);
+}
+
+@media (min-width: 768px) {
+  .footerContent {
+    flex-direction: row;
+    gap: 1rem; /* Adjust gap for row layout */
+  }
+}
+
+.footerLogo {
+  font-size: 1.75rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--primary, #ff3366) 0%, var(--primary-light, #ff6b98) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.01em;
+  text-decoration: none; /* Remove underline from logo link */
+}
+
+.footerLinks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem 1.5rem; /* Row and column gap */
+  flex-grow: 1; /* Allow links to take space */
+  justify-content: center; /* Center links when wrapped */
+}
+
+@media (min-width: 768px) {
+   .footerLinks {
+       justify-content: flex-start; /* Align left on larger screens */
+   }
+}
+
+
+.footerLinks a {
+  color: var(--text-medium);
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+  position: relative;
+  text-decoration: none; /* Remove underline */
+  padding-bottom: 4px; /* Space for underline effect */
+}
+
+.footerLinks a::after {
+  content: '';
+  position: absolute;
+  bottom: 0px; /* Position underline closer */
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: var(--primary, #ff3366);
+  transition: width 0.3s ease;
+}
+
+:global([dir="rtl"]) .footerLinks a::after {
+  left: auto;
+  right: 0;
+}
+
+.footerLinks a:hover::after {
+  width: 100%;
+}
+
+.footerLinks a:hover {
+  color: var(--primary);
+}
+
+:global(.dark) .footerLinks a {
+  color: var(--text-medium-dark);
+}
+
+:global(.dark) .footerLinks a:hover {
+  color: var(--primary-light);
+}
+
+.footerSocial {
+  display: flex;
+  gap: 0.75rem;
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+.socialIcon {
+  width: 36px; /* Slightly smaller */
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  background: var(--neutral-100, #f3f4f6); /* Use neutral color */
+  color: var(--text-medium);
+  text-decoration: none;
+}
+
+:global(.dark) .socialIcon {
+  background: var(--neutral-800);
+  color: var(--neutral-400);
+}
+
+.socialIcon:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-sm);
+  background: var(--primary);
+  color: var(--white);
+}
+:global(.dark) .socialIcon:hover {
+   background: var(--primary);
+   color: var(--white);
+}
+
+
+.footerBottom {
+  padding: 1.25rem 0; /* Increased padding */
+  border-top: 1px solid var(--border-color-light, rgba(0, 0, 0, 0.05));
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+:global(.dark) .footerBottom {
+  border-top: 1px solid var(--neutral-700, rgba(255, 255, 255, 0.05));
+  color: var(--neutral-500);
+}
+
+/* RTL styles */
+:global([dir="rtl"]) .footerLinks a::after {
+  right: 0;
+  left: auto;
+}
