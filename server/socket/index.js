@@ -195,7 +195,21 @@ const initSocketServer = async (server) => {
   }
 
   log.info(`Creating Socket.IO server with transports: ${ioOptions.transports.join(", ")}`);
+  log.info(`Socket.IO will be accessible at ${process.env.NODE_ENV === 'production' ? 'https://flirtss.com' : 'http://localhost:5000'}/socket.io/`);
   const io = new Server(server, ioOptions);
+  
+  // Log initialization status
+  log.info(`Socket.IO initialized with path: ${ioOptions.path || '/socket.io/'}`);
+  log.info(`CORS configuration: ${JSON.stringify(ioOptions.cors || 'No CORS config')}`);
+  log.info(`Available transports: ${ioOptions.transports?.join(', ') || 'Default transports'}`);
+  
+  // Set up a simple health check for Socket.IO
+  io.on("connection", (socket) => {
+    // Add a simple health check ping/pong
+    socket.on("ping", () => {
+      socket.emit("pong", { time: Date.now() });
+    });
+  });
 
   // Enhanced connection logging with detailed error tracking
   io.engine.on("initial_headers", (headers, req) => {

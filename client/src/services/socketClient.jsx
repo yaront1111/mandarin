@@ -48,10 +48,41 @@ class SocketClient {
     // Save user ID for reconnection
     this.userId = userId
 
+    // TEMPORARY SOLUTION: Detect connection issues and provide graceful fallback
+    // Look for a URL parameter or localStorage flag to enable/disable sockets
+    const socketDisabled = localStorage.getItem('socket_disabled') === 'true' ||
+                          new URLSearchParams(window.location.search).get('disable_socket') === 'true';
+    
+    if (socketDisabled) {
+      console.log("Socket.IO connections are temporarily disabled - using fallback mode");
+      this.socket = {
+        // Create a mock socket object with dummy methods
+        on: (event, callback) => {},
+        off: (event, callback) => {},
+        emit: (event, data) => { 
+          console.log(`[Socket Mock] Would emit ${event}`, data);
+          return true; 
+        },
+        io: { engine: { transport: { name: 'none' } } },
+        connected: false
+      };
+      
+      // Set connection state
+      this.connected = false;
+      
+      // Skip the rest of initialization
+      return this.socket;
+    }
+    
     // Determine correct server URL based on environment
     const isDev = process.env.NODE_ENV === 'development'
     // Use localhost in development, production server in production
-    const serverUrl = isDev ? 'http://localhost:5000' : 'https://flirtss.com'
+    // Connect directly to the current domain instead of hardcoded domain
+    // This helps with cross-domain issues and makes deployment more flexible
+    const serverUrl = isDev 
+      ? 'http://localhost:5000' 
+      : window.location.origin // Use current origin instead of hardcoded domain
+    
     console.log(`Connecting to socket server at ${serverUrl}`)
 
     try {
@@ -64,6 +95,7 @@ class SocketClient {
         reconnectionDelay: this.reconnectDelay,
         reconnectionDelayMax: 30000,
         timeout: 30000, // Increased timeout
+        path: "/socket.io/", // Explicitly specify path for more reliability
         transports: ["polling", "websocket"], // Try polling first for better reliability, then upgrade to websocket
         autoConnect: true,
         forceNew: true, // Force new connection attempt
