@@ -139,9 +139,15 @@ deploy_server() {
     mkdir -p "$SERVER_DIR/uploads/temp"
     mkdir -p "$SERVER_DIR/uploads/deleted"
     
+    # Create logs directory for PM2
+    log "Creating logs directory for PM2..."
+    mkdir -p "$SERVER_DIR/logs"
+    
     # Set appropriate permissions
     chown -R www-data:www-data "$SERVER_DIR/uploads"
     chmod -R 755 "$SERVER_DIR/uploads"
+    chown -R www-data:www-data "$SERVER_DIR/logs"
+    chmod -R 755 "$SERVER_DIR/logs"
     
     log "Server deployed successfully"
 }
