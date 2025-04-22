@@ -2,9 +2,10 @@
 
 // client/src/App.jsx
 import { useEffect, useState } from "react"
-import { Routes, Route } from "react-router-dom"
+import { Routes, Route, useLocation } from "react-router-dom" // Import useLocation
 import { ToastContainer } from "react-toastify"
 import { HelmetProvider } from 'react-helmet-async'
+import ReactGA from 'react-ga4'; // Import ReactGA
 import "react-toastify/dist/ReactToastify.css"
 
 // --- Base Styles ---
@@ -22,176 +23,210 @@ import {
   ThemeProvider,
   NotificationProvider,
   LanguageProvider
-} from "./context"
-import { ChatConnectionProvider } from "./context/ChatConnectionContext"
-import { useNotificationNavigation } from "./services/notificationService"
-import ErrorBoundary from "./components/ErrorBoundary.jsx"
-import PrivateRoute from "./components/PrivateRoute.jsx"
-import VerificationBanner from "./components/VerificationBanner.jsx"
-import Login from "./pages/Login"
-import Register from "./pages/Register"
-import Dashboard from "./pages/Dashboard"
-import Profile from "./pages/Profile"
-import Settings from "./pages/Settings.jsx"
-import NotFound from "./pages/NotFound"
-import Home from "./pages/Home"
-import Messages from "./pages/Messages.jsx"
-import Subscription from "./pages/Subscription"
-import VerifyEmail from "./pages/VerifyEmail.jsx"
-import About from "./pages/About"
-import Safety from "./pages/Safety"
-import Support from "./pages/Support"
-import Terms from "./pages/Terms"
-import Privacy from "./pages/Privacy"
-import { EmbeddedChat, UserProfileModal } from "./components"
+} from "./context" //
+import { ChatConnectionProvider } from "./context/ChatConnectionContext" //
+import { useNotificationNavigation } from "./services/notificationService" //
+import ErrorBoundary from "./components/ErrorBoundary.jsx" //
+import PrivateRoute from "./components/PrivateRoute.jsx" //
+import VerificationBanner from "./components/VerificationBanner.jsx" //
+import Login from "./pages/Login" //
+import Register from "./pages/Register" //
+import Dashboard from "./pages/Dashboard" //
+import Profile from "./pages/Profile" //
+import Settings from "./pages/Settings.jsx" //
+import NotFound from "./pages/NotFound" //
+import Home from "./pages/Home" //
+import Messages from "./pages/Messages.jsx" //
+import Subscription from "./pages/Subscription" //
+import VerifyEmail from "./pages/VerifyEmail.jsx" //
+import About from "./pages/About" //
+import Safety from "./pages/Safety" //
+import Support from "./pages/Support" //
+import Terms from "./pages/Terms" //
+import Privacy from "./pages/Privacy" //
+import { Navbar } from "./components/LayoutComponents"; // Import Navbar
+import Footer from "./components/Footer"; // Import Footer
+import { EmbeddedChat, UserProfileModal } from "./components" //
+
+// --- Initialize GA4 ---
+// IMPORTANT: Replace 'G-Y9EQ02574T' with your actual ID
+const GA4_MEASUREMENT_ID = "G-Y9EQ02574T"; // Replace!
+if (GA4_MEASUREMENT_ID && GA4_MEASUREMENT_ID !== "G-Y9EQ02574T") {
+  ReactGA.initialize(GA4_MEASUREMENT_ID);
+  console.log("GA4 Initialized");
+} else {
+  console.warn("GA4 Measurement ID not set. Analytics will not be sent.");
+}
+
+// --- Component to Track Page Views ---
+function TrackPageViews() {
+  const location = useLocation();
+  useEffect(() => {
+    // Only send pageview if GA4 is initialized
+    if (GA4_MEASUREMENT_ID && GA4_MEASUREMENT_ID !== "G-Y9EQ02574T") {
+      ReactGA.send({ hitType: "pageview", page: location.pathname + location.search });
+      // console.log(`GA Pageview: ${location.pathname + location.search}`); // For debugging
+    }
+  }, [location]);
+  return null; // This component doesn't render anything visible
+}
+
 
 function App() {
   // initialize notification navigation hook
-  useNotificationNavigation()
+  useNotificationNavigation() //
 
-  const [chatRecipient, setChatRecipient] = useState(null)
-  const [isChatOpen, setIsChatOpen] = useState(false)
-  const [profileModalUserId, setProfileModalUserId] = useState(null)
-  const isProfileModalOpen = Boolean(profileModalUserId)
+  const [chatRecipient, setChatRecipient] = useState(null) //
+  const [isChatOpen, setIsChatOpen] = useState(false) //
+  const [profileModalUserId, setProfileModalUserId] = useState(null) //
+  const isProfileModalOpen = Boolean(profileModalUserId) //
 
-  const openProfileModal = (userId) => {
-    setProfileModalUserId(userId)
+  const openProfileModal = (userId) => { //
+    setProfileModalUserId(userId) //
   }
 
-  const closeProfileModal = () => {
-    setProfileModalUserId(null)
+  const closeProfileModal = () => { //
+    setProfileModalUserId(null) //
   }
 
-  useEffect(() => {
-    const handleOpenChat = (event) => {
-      const { recipient } = event.detail
-      if (recipient && recipient._id) {
-        setChatRecipient(recipient)
-        setIsChatOpen(true)
-        setTimeout(() => setIsChatOpen(true), 50)
+  useEffect(() => { //
+    const handleOpenChat = (event) => { //
+      const { recipient } = event.detail //
+      if (recipient && recipient._id) { //
+        setChatRecipient(recipient) //
+        setIsChatOpen(true) //
+        setTimeout(() => setIsChatOpen(true), 50) //
       }
     }
 
-    const handleLanguageDirectionChange = (event) => {
-      document.body.classList.add('direction-changing')
+    const handleLanguageDirectionChange = (event) => { //
+      document.body.classList.add('direction-changing') //
       document.body.offsetHeight // force reflow
-      setTimeout(() => document.body.classList.remove('direction-changing'), 50)
+      setTimeout(() => document.body.classList.remove('direction-changing'), 50) //
 
-      const toastContainer = document.querySelector('.Toastify')
-      if (toastContainer) {
-        if (event.detail.isRTL) {
-          toastContainer.classList.add('Toastify__toast--rtl')
-        } else {
-          toastContainer.classList.remove('Toastify__toast--rtl')
+      const toastContainer = document.querySelector('.Toastify') //
+      if (toastContainer) { //
+        if (event.detail.isRTL) { //
+          toastContainer.classList.add('Toastify__toast--rtl') //
+        } else { //
+          toastContainer.classList.remove('Toastify__toast--rtl') //
         }
       }
     }
 
-    window.addEventListener("openChat", handleOpenChat)
-    window.addEventListener("languageDirectionChanged", handleLanguageDirectionChange)
-    return () => {
-      window.removeEventListener("openChat", handleOpenChat)
-      window.removeEventListener("languageDirectionChanged", handleLanguageDirectionChange)
+    window.addEventListener("openChat", handleOpenChat) //
+    window.addEventListener("languageDirectionChanged", handleLanguageDirectionChange) //
+    return () => { //
+      window.removeEventListener("openChat", handleOpenChat) //
+      window.removeEventListener("languageDirectionChanged", handleLanguageDirectionChange) //
     }
-  }, [])
+  }, []) //
 
-  const handleCloseChat = () => {
-    setIsChatOpen(false)
+  const handleCloseChat = () => { //
+    setIsChatOpen(false) //
   }
 
   return (
-    <ErrorBoundary>
-      <HelmetProvider>
-        <ThemeProvider>
-          <LanguageProvider>
-            <AuthProvider>
-              <UserProvider>
-                <ChatConnectionProvider>
-                  <StoriesProvider>
+    <ErrorBoundary> {/* */}
+      <HelmetProvider> {/* */}
+        <ThemeProvider> {/* */}
+          <LanguageProvider> {/* */}
+            <AuthProvider> {/* */}
+              <UserProvider> {/* */}
+                <ChatConnectionProvider> {/* */}
+                  <StoriesProvider> {/* */}
                     <NotificationProvider
-                      openProfileModal={openProfileModal}
-                      closeProfileModal={closeProfileModal}
-                    >
-                      <div className="app-wrapper">
-                        {/* Uses class from base.css */}
-                        <VerificationBanner />
+                      openProfileModal={openProfileModal} //
+                      closeProfileModal={closeProfileModal} //
+                    > {/* */}
+                      {/* Use a flex container to push footer down */}
+                      <div className="app-container" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+                        <Navbar /> {/* Navbar appears on all pages */}
+                        <TrackPageViews /> {/* GA Pageview Tracker (doesn't render anything) */}
+                        <VerificationBanner /> {/* */}
 
-                        <Routes>
-                          <Route path="/" element={<Home />} />
-                          <Route path="/login" element={<Login />} />
-                          <Route path="/register" element={<Register />} />
-                          <Route path="/verify-email" element={<VerifyEmail />} />
-                          <Route path="/about" element={<About />} />
-                          <Route path="/safety" element={<Safety />} />
-                          <Route path="/support" element={<Support />} />
-                          <Route path="/terms" element={<Terms />} />
-                          <Route path="/privacy" element={<Privacy />} />
-                          <Route
-                            path="/dashboard"
-                            element={<PrivateRoute><Dashboard /></PrivateRoute>}
-                          />
-                          <Route
-                            path="/profile"
-                            element={<PrivateRoute><Profile /></PrivateRoute>}
-                          />
-                          <Route
-                            path="/messages"
-                            element={<PrivateRoute><Messages /></PrivateRoute>}
-                          />
-                          <Route
-                            path="/messages/:userId"
-                            element={<PrivateRoute><Messages /></PrivateRoute>}
-                          />
-                          <Route
-                            path="/settings"
-                            element={<PrivateRoute><Settings /></PrivateRoute>}
-                          />
-                          <Route
-                            path="/subscription"
-                            element={<PrivateRoute><Subscription /></PrivateRoute>}
-                          />
-                          <Route path="*" element={<NotFound />} />
-                        </Routes>
+                        {/* Main content area takes remaining space */}
+                        <main className="main-content" style={{ flexGrow: 1 }}>
+                          <Routes> {/* */}
+                            <Route path="/" element={<Home />} /> {/* */}
+                            <Route path="/login" element={<Login />} /> {/* */}
+                            <Route path="/register" element={<Register />} /> {/* */}
+                            <Route path="/verify-email" element={<VerifyEmail />} /> {/* */}
+                            <Route path="/about" element={<About />} /> {/* */}
+                            <Route path="/safety" element={<Safety />} /> {/* */}
+                            <Route path="/support" element={<Support />} /> {/* */}
+                            <Route path="/terms" element={<Terms />} /> {/* */}
+                            <Route path="/privacy" element={<Privacy />} /> {/* */}
+                            <Route
+                              path="/dashboard"
+                              element={<PrivateRoute><Dashboard /></PrivateRoute>}
+                            /> {/* */}
+                            <Route
+                              path="/profile"
+                              element={<PrivateRoute><Profile /></PrivateRoute>}
+                            /> {/* */}
+                            <Route
+                              path="/messages"
+                              element={<PrivateRoute><Messages /></PrivateRoute>}
+                            /> {/* */}
+                            <Route
+                              path="/messages/:userId"
+                              element={<PrivateRoute><Messages /></PrivateRoute>}
+                            /> {/* */}
+                            <Route
+                              path="/settings"
+                              element={<PrivateRoute><Settings /></PrivateRoute>}
+                            /> {/* */}
+                            <Route
+                              path="/subscription"
+                              element={<PrivateRoute><Subscription /></PrivateRoute>}
+                            /> {/* */}
+                            <Route path="*" element={<NotFound />} /> {/* */}
+                          </Routes> {/* */}
+                        </main>
 
-                        {isChatOpen && chatRecipient && (
+                        {/* Modals and chat overlay */}
+                        {isChatOpen && chatRecipient && ( //
                           <EmbeddedChat
-                            recipient={chatRecipient}
-                            isOpen={isChatOpen}
-                            onClose={handleCloseChat}
-                          />
+                            recipient={chatRecipient} //
+                            isOpen={isChatOpen} //
+                            onClose={handleCloseChat} //
+                          /> //
                         )}
 
                         <UserProfileModal
-                          userId={profileModalUserId}
-                          isOpen={isProfileModalOpen}
-                          onClose={closeProfileModal}
-                        />
+                          userId={profileModalUserId} //
+                          isOpen={isProfileModalOpen} //
+                          onClose={closeProfileModal} //
+                        /> {/* */}
+
+                        <Footer /> {/* Footer appears on all pages */}
 
                         <ToastContainer
-                          position="top-right"
-                          autoClose={3000}
-                          hideProgressBar={false}
-                          newestOnTop={false}
-                          closeOnClick
-                          rtl={document.documentElement.dir === 'rtl'}
-                          pauseOnFocusLoss
-                          draggable
-                          pauseOnHover
-                          limit={5}
-                          theme="colored"
-                          className={document.documentElement.dir === 'rtl' ? 'rtl-layout Toastify__toast--rtl' : ''}
-                        />
+                          position="top-right" //
+                          autoClose={3000} //
+                          hideProgressBar={false} //
+                          newestOnTop={false} //
+                          closeOnClick //
+                          rtl={document.documentElement.dir === 'rtl'} //
+                          pauseOnFocusLoss //
+                          draggable //
+                          pauseOnHover //
+                          limit={5} //
+                          theme="colored" //
+                          className={document.documentElement.dir === 'rtl' ? 'rtl-layout Toastify__toast--rtl' : ''} //
+                        /> {/* */}
                       </div>
-                    </NotificationProvider>
-                  </StoriesProvider>
-                </ChatConnectionProvider>
-              </UserProvider>
-            </AuthProvider>
-          </LanguageProvider>
-        </ThemeProvider>
-      </HelmetProvider>
-    </ErrorBoundary>
+                    </NotificationProvider> {/* */}
+                  </StoriesProvider> {/* */}
+                </ChatConnectionProvider> {/* */}
+              </UserProvider> {/* */}
+            </AuthProvider> {/* */}
+          </LanguageProvider> {/* */}
+        </ThemeProvider> {/* */}
+      </HelmetProvider> {/* */}
+    </ErrorBoundary> /* */
   )
 }
 
-export default App
+export default App; //
