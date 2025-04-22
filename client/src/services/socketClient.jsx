@@ -70,6 +70,23 @@ class SocketClient {
       // Set connection state
       this.connected = false;
       
+      // Add method to re-enable sockets
+      this.enableSockets = function() {
+        localStorage.removeItem('socket_disabled');
+        toast.success("Real-time features enabled. Refresh the page to apply changes.", 
+          { autoClose: 5000 });
+        console.log("Socket.IO has been re-enabled. Refresh to apply.");
+      };
+      
+      // Add method to get current socket status
+      this.getStatus = function() {
+        return {
+          enabled: false,
+          connectionAttempts: this.connectionAttempts,
+          lastError: "Socket disabled by user or due to persistent connection issues"
+        };
+      };
+      
       // Skip the rest of initialization
       return this.socket;
     }
@@ -193,7 +210,27 @@ class SocketClient {
 
         // Show error toast only after multiple failed attempts
         if (this.connectionAttempts === this.maxReconnectAttempts) {
-          toast.error("Failed to connect to the chat server. Please check your internet connection.")
+          toast.error(
+            "Failed to connect to the chat server. Switching to offline mode.",
+            { autoClose: 5000 }
+          );
+          
+          // Auto-disable socket connections after persistent failures
+          try {
+            // Store a flag in localStorage to disable sockets
+            localStorage.setItem('socket_disabled', 'true');
+            console.log("Socket connections have been temporarily disabled due to connection issues");
+            
+            // Notify user that a refresh is needed with the new setting
+            setTimeout(() => {
+              toast.info(
+                "Please refresh the page to apply offline mode settings",
+                { autoClose: false }
+              );
+            }, 2000);
+          } catch (err) {
+            console.error("Failed to set socket disabled flag:", err);
+          }
         }
       }
 
