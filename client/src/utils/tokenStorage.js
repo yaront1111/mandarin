@@ -122,9 +122,9 @@ export const getUserIdFromToken = (token) => {
     else if (payload.sub) {
       userId = payload.sub;
     }
-    // Option 3: User object with _id or id
+    // Option 3: User object with id or id
     else if (payload.user) {
-      userId = payload.user._id || payload.user._id;
+      userId = payload.user.id || payload.user.id;
     }
     
     // Validate and clean the user ID format (must be a valid MongoDB ObjectId)

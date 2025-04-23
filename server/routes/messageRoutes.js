@@ -62,7 +62,7 @@ router.post(
   protect,
   messageRateLimit,
   asyncHandler(async (req, res) => {
-    const senderId = safeObjectId(req.user._id);
+    const senderId = safeObjectId(req.user.id);
     const recipientId = safeObjectId(req.body.toUserId);
 
     if (!senderId) {
@@ -99,12 +99,12 @@ router.post(
         participants: [senderId, recipientId],
         createdAt: new Date()
       });
-      logger.info(`New conversation ${conversation._id} created between ${senderId} and ${recipientId}`);
+      logger.info(`New conversation ${conversation.id} created between ${senderId} and ${recipientId}`);
     }
 
     // 3️⃣ Create the first message
     const message = await Message.create({
-      conversation: conversation._id,
+      conversation: conversation.id,
       sender: senderId,
       recipient: recipientId,
       type: 'text',
@@ -115,10 +115,10 @@ router.post(
 
     // Optionally, you can push the message into a messages[] array on Conversation:
     // conversation.messages = conversation.messages || [];
-    // conversation.messages.push(message._id);
+    // conversation.messages.push(message.id);
     // await conversation.save();
 
-    logger.info(`Message ${message._id} sent in conversation ${conversation._id}`);
+    logger.info(`Message ${message.id} sent in conversation ${conversation.id}`);
 
     return res.status(201).json({
       success: true,
@@ -245,7 +245,7 @@ router.post(
   protect,
   upload.single("file"), // Use multer middleware
   asyncHandler(async (req, res) => {
-    logger.debug(`Processing message attachment upload for user ${req.user._id}`);
+    logger.debug(`Processing message attachment upload for user ${req.user.id}`);
     let filePath = null; // Define filePath outside try block for access in finally
     let processingSuccessful = false;
 
@@ -317,7 +317,7 @@ router.post(
       });
 
       logger.info(
-        `Message attachment uploaded: ${fileUrl} (${detectedMimeType}) by user ${req.user._id}`
+        `Message attachment uploaded: ${fileUrl} (${detectedMimeType}) by user ${req.user.id}`
       );
     } catch (err) {
       if (err instanceof multer.MulterError) {
@@ -361,11 +361,11 @@ router.get(
     logger.debug(
       `[CONVERSATIONS ROUTE] Entering GET /conversations handler. req.user: ${JSON.stringify(req.user)}`
     );
-    const userId = req.user._id;
+    const userId = req.user.id;
     const userObjectId = safeObjectId(userId);
     if (!userObjectId) {
       logger.error(
-        `CRITICAL: Failed to convert req.user._id to ObjectId in /conversations handler. User ID: ${userId}`
+        `CRITICAL: Failed to convert req.user.id to ObjectId in /conversations handler. User ID: ${userId}`
       );
       return res.status(500).json({ success: false, error: "Internal server error processing user ID." });
     }
@@ -388,7 +388,7 @@ router.get(
       { $sort: { createdAt: -1 } },
       {
         $group: {
-          _id: {
+          id: {
             $cond: [{ $eq: ["$sender", userObjectId] }, "$recipient", "$sender"],
           },
           lastMessage: { $first: "$$ROOT" },
@@ -412,10 +412,10 @@ router.get(
       {
         $lookup: {
           from: "users",
-          localField: "_id",
-          foreignField: "_id",
+          localField: "id",
+          foreignField: "id",
           pipeline: [
-            { $project: { _id: 1, nickname: 1, photos: { $slice: ["$photos", 1] }, isOnline: 1, lastActive: 1 } },
+            { $project: { id: 1, nickname: 1, photos: { $slice: ["$photos", 1] }, isOnline: 1, lastActive: 1 } },
           ],
           as: "partnerInfo",
         },
@@ -424,9 +424,9 @@ router.get(
       { $match: { partnerInfo: { $ne: null } } },
       {
         $project: {
-          _id: 0,
+          id: 0,
           user: {
-            _id: "$partnerInfo._id",
+            id: "$partnerInfo.id",
             nickname: "$partnerInfo.nickname",
             photo: { $ifNull: [{ $arrayElemAt: ["$partnerInfo.photos.url", 0] }, null] },
             isOnline: "$partnerInfo.isOnline",
@@ -455,12 +455,12 @@ router.get(
   "/unread/count",
   protect,
   asyncHandler(async (req, res) => {
-    const userId = req.user._id;
+    const userId = req.user.id;
     logger.debug(`Getting unread message count for user ${userId}`);
 
     const recipientObjectId = safeObjectId(userId);
     if (!recipientObjectId) {
-      logger.error(`CRITICAL: Failed to convert req.user._id to ObjectId in /unread/count.`);
+      logger.error(`CRITICAL: Failed to convert req.user.id to ObjectId in /unread/count.`);
       return res.status(500).json({ success: false, error: "Internal server error processing user ID." });
     }
 
@@ -469,7 +469,7 @@ router.get(
       { $match: { recipient: recipientObjectId, read: false } },
       {
         $group: {
-          _id: "$sender",
+          id: "$sender",
           count: { $sum: 1 },
           lastMessageTimestamp: { $max: "$createdAt" },
         },
@@ -478,16 +478,16 @@ router.get(
       {
         $lookup: {
           from: "users",
-          localField: "_id",
-          foreignField: "_id",
+          localField: "id",
+          foreignField: "id",
           as: "senderInfo",
         },
       },
       { $unwind: { path: "$senderInfo", preserveNullAndEmptyArrays: true } },
       {
         $project: {
-          _id: 0,
-          senderId: "$_id",
+          id: 0,
+          senderId: "$id",
           senderNickname: { $ifNull: ["$senderInfo.nickname", "Unknown User"] },
           senderPhoto: { $ifNull: [{ $arrayElemAt: ["$senderInfo.photos.url", 0] }, null] },
           count: "$count",
@@ -514,7 +514,7 @@ router.get(
   protect,
   asyncHandler(async (req, res) => {
     const { query: searchTerm, with: partnerIdParam } = req.query;
-    const userId = req.user._id;
+    const userId = req.user.id;
     logger.debug(
       `Searching messages with query "${searchTerm}" for user ${userId}${partnerIdParam ? ` with partner ${partnerIdParam}` : ""}`
     );
@@ -527,7 +527,7 @@ router.get(
 
     const userObjectId = safeObjectId(userId);
     if (!userObjectId) {
-      logger.error(`CRITICAL: Failed to convert req.user._id to ObjectId in /search.`);
+      logger.error(`CRITICAL: Failed to convert req.user.id to ObjectId in /search.`);
       return res.status(500).json({ success: false, error: "Internal server error processing user ID." });
     }
 
@@ -574,10 +574,10 @@ router.get(
           messages.map((msg) => (msg.sender.equals(userObjectId) ? msg.recipient : msg.sender))
         ),
       ];
-      const partners = await User.find({ _id: { $in: partnerIdsInResults } })
+      const partners = await User.find({ id: { $in: partnerIdsInResults } })
         .select("nickname")
         .lean();
-      const partnerMap = new Map(partners.map((p) => [p._id.toString(), p.nickname]));
+      const partnerMap = new Map(partners.map((p) => [p.id.toString(), p.nickname]));
 
       enhancedMessages = messages.map((msg) => {
         const partnerId = msg.sender.equals(userObjectId)
@@ -586,7 +586,7 @@ router.get(
         return {
           ...msg,
           conversationPartner: {
-            _id: partnerId,
+            id: partnerId,
             nickname: partnerMap.get(partnerId) || "Unknown User",
           },
         };
@@ -618,13 +618,13 @@ router.get(
   asyncHandler(async (req, res) => {
     const partnerIdParam = req.params.userId;
     logger.debug(
-      `Attempting to get message history with user: ${partnerIdParam} for user: ${req.user?._id}`
+      `Attempting to get message history with user: ${partnerIdParam} for user: ${req.user?.id}`
     );
 
-    const senderObjectId = safeObjectId(req.user._id);
+    const senderObjectId = safeObjectId(req.user.id);
     if (!senderObjectId) {
       logger.error(
-        `CRITICAL: Missing or invalid req.user._id in GET /messages/:userId after protect middleware.`
+        `CRITICAL: Missing or invalid req.user.id in GET /messages/:userId after protect middleware.`
       );
       return res.status(401).json({ success: false, error: "Authentication invalid. Please log in again." });
     }
@@ -642,7 +642,7 @@ router.get(
         .json({ success: false, error: "Cannot fetch message history with yourself." });
     }
 
-    const partnerExists = await User.exists({ _id: partnerObjectId });
+    const partnerExists = await User.exists({ id: partnerObjectId });
     if (!partnerExists) {
       logger.warn(`Attempted to fetch messages with non-existent user: ${partnerObjectId}`);
       return res.status(404).json({ success: false, error: "The specified user does not exist." });
@@ -657,10 +657,10 @@ router.get(
         { sender: senderObjectId, recipient: partnerObjectId },
         { sender: partnerObjectId, recipient: senderObjectId },
       ],
-      ...(senderObjectId.equals(req.user._id)
+      ...(senderObjectId.equals(req.user.id)
         ? { deletedBySender: { $ne: true } }
         : {}),
-      ...(partnerObjectId.equals(req.user._id)
+      ...(partnerObjectId.equals(req.user.id)
         ? { deletedByRecipient: { $ne: true } }
         : {}),
     };
@@ -694,7 +694,7 @@ router.get(
         sender: partnerObjectId,
         recipient: senderObjectId,
         read: false,
-        _id: { $in: messages.map((m) => m._id) },
+        id: { $in: messages.map((m) => m.id) },
       },
       { $set: { read: true, readAt: new Date() } }
     )
@@ -735,10 +735,10 @@ router.post(
   messageRateLimit,
   asyncHandler(async (req, res) => {
     const { recipient, type, content, metadata } = req.body;
-    const senderObjectId = safeObjectId(req.user._id);
+    const senderObjectId = safeObjectId(req.user.id);
     if (!senderObjectId) {
       logger.error(
-        `CRITICAL: Missing or invalid req.user._id in POST /messages after protect middleware.`
+        `CRITICAL: Missing or invalid req.user.id in POST /messages after protect middleware.`
       );
       return res.status(401).json({ success: false, error: "Authentication invalid. Please log in again." });
     }
@@ -793,7 +793,7 @@ router.post(
       return res.status(400).json({ success: false, error: "Cannot send message to yourself." });
     }
 
-    const recipientUser = await User.exists({ _id: recipientObjectId });
+    const recipientUser = await User.exists({ id: recipientObjectId });
     if (!recipientUser) {
       return res.status(404).json({ success: false, error: "Recipient user not found." });
     }
@@ -816,7 +816,7 @@ router.post(
     };
 
     logger.info(
-      `Message sent: ${message._id} (Type: ${type}) from ${senderObjectId} to ${recipientObjectId}`
+      `Message sent: ${message.id} (Type: ${type}) from ${senderObjectId} to ${recipientObjectId}`
     );
     res.status(201).json({ success: true, data: responseMessage });
   })
@@ -832,7 +832,7 @@ router.put(
   protect,
   asyncHandler(async (req, res) => {
     const messageId = req.params.id;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     logger.debug(`Attempting to mark message ${messageId} as read for user ${userId}`);
 
@@ -840,7 +840,7 @@ router.put(
       return res.status(400).json({ success: false, error: "Invalid message ID format." });
     }
 
-    const message = await Message.findOne({ _id: messageId, recipient: userId });
+    const message = await Message.findOne({ id: messageId, recipient: userId });
 
     if (!message) {
       logger.warn(`Message ${messageId} not found for recipient ${userId} or already marked/doesn't exist.`);
@@ -872,7 +872,7 @@ router.post(
   protect,
   asyncHandler(async (req, res) => {
     const { messageIds } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     logger.debug(`Attempting to mark multiple messages as read for user ${userId}`);
 
@@ -897,7 +897,7 @@ router.post(
     }
 
     const result = await Message.updateMany(
-      { _id: { $in: validMessageIds }, recipient: userId, read: false },
+      { id: { $in: validMessageIds }, recipient: userId, read: false },
       { $set: { read: true, readAt: new Date() } }
     );
 
@@ -919,7 +919,7 @@ router.put(
   protect,
   asyncHandler(async (req, res) => {
     const senderIdParam = req.params.userId;
-    const recipientId = req.user._id;
+    const recipientId = req.user.id;
 
     logger.debug(`Attempting to mark conversation from ${senderIdParam} as read for user ${recipientId}`);
 
@@ -953,7 +953,7 @@ router.delete(
   protect,
   asyncHandler(async (req, res) => {
     const messageId = req.params.id;
-    const userId = req.user._id;
+    const userId = req.user.id;
     const deleteMode = req.query.mode || "self";
 
     logger.debug(`Attempting to delete message ${messageId} with mode '${deleteMode}' for user ${userId}`);
@@ -966,7 +966,7 @@ router.delete(
     const userObjectId = safeObjectId(userId);
 
     const message = await Message.findOne({
-      _id: messageObjectId,
+      id: messageObjectId,
       $or: [{ sender: userObjectId }, { recipient: userObjectId }],
     });
 
@@ -992,7 +992,7 @@ router.delete(
       }
 
       if (message.deletedBySender && message.deletedByRecipient) {
-        await Message.deleteOne({ _id: message._id });
+        await Message.deleteOne({ id: message.id });
         deleteAction = "deleted_permanently_both_marked";
         logger.info(`Message ${messageId} permanently deleted as both users marked it.`);
       } else if (deleteAction) {
@@ -1003,7 +1003,7 @@ router.delete(
         deleteAction = "already_marked";
       }
     } else if (deleteMode === "both" && isSender) {
-      await Message.deleteOne({ _id: message._id });
+      await Message.deleteOne({ id: message.id });
       deleteAction = "deleted_permanently_by_sender";
       logger.info(`Message ${messageId} permanently deleted by sender ${userId} for both users.`);
     } else if (deleteMode === "both" && !isSender) {
@@ -1066,7 +1066,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const messageId = req.params.id;
     const { emoji } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     logger.debug(`Attempting to add reaction '${emoji}' to message ${messageId} by user ${userId}`);
 
@@ -1081,7 +1081,7 @@ router.post(
     const userObjectId = safeObjectId(userId);
 
     const message = await Message.findOne({
-      _id: messageObjectId,
+      id: messageObjectId,
       $or: [{ sender: userObjectId }, { recipient: userObjectId }],
     });
 
@@ -1109,7 +1109,7 @@ router.delete(
   protect,
   asyncHandler(async (req, res) => {
     const messageId = req.params.id;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     logger.debug(`Attempting to remove reaction from message ${messageId} by user ${userId}`);
 
@@ -1121,7 +1121,7 @@ router.delete(
     const userObjectId = safeObjectId(userId);
 
     const message = await Message.findOne({
-      _id: messageObjectId,
+      id: messageObjectId,
       $or: [{ sender: userObjectId }, { recipient: userObjectId }],
     });
 

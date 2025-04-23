@@ -90,7 +90,7 @@ router.get(
   protect,
   asyncHandler(async (req, res) => {
     const { page, limit, skip } = paginate(req);
-    const userId = safeId(req.user._id);
+    const userId = safeId(req.user.id);
     if (!userId) return respondError(res, 400, "User ID missing");
     const { data: likes, pagination } = await Like.getLikesBySender(userId, {
       page,
@@ -117,7 +117,7 @@ router.get(
   protect,
   asyncHandler(async (req, res) => {
     const { page, limit, skip } = paginate(req);
-    const q = { _id: { $ne: req.user._id } };
+    const q = { id: { $ne: req.user.id } };
     if (req.query.online === "true") q.isOnline = true;
     if (req.query.gender) q["details.gender"] = req.query.gender;
     if (req.query.minAge) q["details.age"] = { ...q["details.age"], $gte: +req.query.minAge };
@@ -170,15 +170,15 @@ router.get(
     const { page, limit, skip } = paginate(req);
     const mQuery = {
       $or: [
-        { sender: req.user._id, recipient: id },
-        { sender: id, recipient: req.user._id },
+        { sender: req.user.id, recipient: id },
+        { sender: id, recipient: req.user.id },
       ],
     };
     const messages = await Message.find(mQuery).sort({ createdAt: -1 }).skip(skip).limit(limit);
     const totalMessages = await Message.countDocuments(mQuery);
 
-    const liked = await Like.exists({ sender: req.user._id, recipient: id });
-    const mutual = await Like.exists({ sender: id, recipient: req.user._id });
+    const liked = await Like.exists({ sender: req.user.id, recipient: id });
+    const mutual = await Like.exists({ sender: id, recipient: req.user.id });
 
     res.json({
       success: true,
@@ -206,12 +206,12 @@ router.get(
     const target = await User.findById(id).select("photos");
     if (!target) return respondError(res, 404, "User not found");
 
-    const privateIds = target.photos.filter((p) => p.isPrivate).map((p) => p._id);
+    const privateIds = target.photos.filter((p) => p.isPrivate).map((p) => p.id);
     if (privateIds.length === 0) return res.json({ success: true, data: [] });
 
     const permissions = await PhotoPermission.find({
       photo: { $in: privateIds },
-      requestedBy: req.user._id,
+      requestedBy: req.user.id,
     });
 
     res.json({
@@ -268,12 +268,12 @@ router.put(
       });
     }
     if (settings) {
-      const existing = (await User.findById(req.user._id)).settings || {};
+      const existing = (await User.findById(req.user.id)).settings || {};
       updates.settings = { ...existing, ...settings };
     }
 
     try {
-      const user = await User.findByIdAndUpdate(req.user._id, updates, {
+      const user = await User.findByIdAndUpdate(req.user.id, updates, {
         new: true,
         runValidators: true,
       });
@@ -336,7 +336,7 @@ router.put(
     if (typeof req.body.isPrivate !== "boolean")
       return respondError(res, 400, "isPrivate must be boolean");
 
-    const user = await User.findOne({ _id: req.user._id, "photos._id": id });
+    const user = await User.findOne({ id: req.user.id, "photos.id": id });
     if (!user) return respondError(res, 404, "Photo not found");
 
     const p = user.photos.id(id);
@@ -357,7 +357,7 @@ router.put(
     const { id } = req.params;
     if (!isValidId(id)) return respondError(res, 400, "Invalid photo ID");
 
-    const user = await User.findOne({ _id: req.user._id, "photos._id": id });
+    const user = await User.findOne({ id: req.user.id, "photos.id": id });
     if (!user) return respondError(res, 404, "Photo not found");
 
     const p = user.photos.id(id);
@@ -379,12 +379,12 @@ router.delete(
     const { id } = req.params;
     if (!isValidId(id)) return respondError(res, 400, "Invalid photo ID");
 
-    const user = await User.findOne({ _id: req.user._id, "photos._id": id });
+    const user = await User.findOne({ id: req.user.id, "photos.id": id });
     if (!user) return respondError(res, 404, "Photo not found");
     if (user.photos.length === 1) return respondError(res, 400, "Cannot delete only photo");
 
     const p = user.photos.id(id);
-    if (user.photos[0]._id.toString() === id)
+    if (user.photos[0].id.toString() === id)
       return respondError(res, 400, "Cannot delete profile photo");
 
     user.photos.pull(id);
@@ -409,7 +409,7 @@ router.get(
   "/photos/permissions",
   protect,
   asyncHandler(async (req, res) => {
-    const photoIds = (req.user.photos || []).map((p) => p._id);
+    const photoIds = (req.user.photos || []).map((p) => p.id);
     const { page, limit, skip } = paginate(req);
     const q = { photo: { $in: photoIds } };
     if (["pending", "approved", "rejected"].includes(req.query.status)) q.status = req.query.status;
@@ -441,7 +441,7 @@ router.get(
   protect,
   asyncHandler(async (req, res) => {
     const { page, limit, skip } = paginate(req);
-    const q = { _id: { $ne: req.user._id } };
+    const q = { id: { $ne: req.user.id } };
     if (req.query.nickname) q.nickname = { $regex: req.query.nickname, $options: "i" };
     if (req.query.gender) q["details.gender"] = req.query.gender;
     if (req.query.minAge) q["details.age"] = { ...q["details.age"], $gte: +req.query.minAge };
@@ -487,9 +487,9 @@ router.get(
   protect,
   asyncHandler(async (req, res) => {
     const { page, limit, skip } = paginate(req);
-    const liked = await Like.find({ sender: req.user._id }).select("recipient");
+    const liked = await Like.find({ sender: req.user.id }).select("recipient");
     const likedIds = liked.map((l) => l.recipient);
-    const q = { sender: { $in: likedIds }, recipient: req.user._id };
+    const q = { sender: { $in: likedIds }, recipient: req.user.id };
 
     const matches = await Like.find(q)
       .populate("sender", "nickname photos isOnline lastActive details")
@@ -523,10 +523,10 @@ router.post(
     const target = await User.findById(id);
     if (!target) return respondError(res, 404, "User not found");
 
-    const exists = await Like.findOne({ sender: req.user._id, recipient: id });
+    const exists = await Like.findOne({ sender: req.user.id, recipient: id });
     if (exists) return res.json({ success: false, error: "Already liked" });
 
-    const like = new Like({ sender: req.user._id, recipient: id });
+    const like = new Like({ sender: req.user.id, recipient: id });
     await like.save();
 
     // If FREE tier, decrement
@@ -535,7 +535,7 @@ router.post(
       await req.user.save();
     }
 
-    const mutual = await Like.exists({ sender: id, recipient: req.user._id });
+    const mutual = await Like.exists({ sender: id, recipient: req.user.id });
 
     // Notify via socket (omitted for brevity)...
 
@@ -561,7 +561,7 @@ router.delete(
     const target = await User.findById(id);
     if (!target) return respondError(res, 404, "User not found");
 
-    const deleted = await Like.findOneAndDelete({ sender: req.user._id, recipient: id });
+    const deleted = await Like.findOneAndDelete({ sender: req.user.id, recipient: id });
     if (!deleted) return respondError(res, 404, `You haven't liked ${target.nickname}`);
 
     res.json({ success: true, message: `You unliked ${target.nickname}` });
@@ -573,7 +573,7 @@ router.delete(
  * Fetch your settings
  */
 router.get("/settings", protect, async (req, res) => {
-  const user = await User.findById(req.user._id).select("settings");
+  const user = await User.findById(req.user.id).select("settings");
   if (!user) return respondError(res, 404, "User not found");
   res.json({ success: true, data: user.settings || {} });
 });
@@ -583,7 +583,7 @@ router.get("/settings", protect, async (req, res) => {
  * Save your settings
  */
 router.put("/settings", protect, async (req, res) => {
-  const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user.id);
   if (!user) return respondError(res, 404, "User not found");
   user.settings = req.body;
   await user.save();
@@ -595,7 +595,7 @@ router.put("/settings", protect, async (req, res) => {
  * Update only notification settings
  */
 router.put("/settings/notifications", protect, async (req, res) => {
-  const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user.id);
   if (!user) return respondError(res, 404, "User not found");
   user.settings = user.settings || {};
   user.settings.notifications = req.body.notifications;
@@ -608,7 +608,7 @@ router.put("/settings/notifications", protect, async (req, res) => {
  * Update privacy settings
  */
 router.put("/settings/privacy", protect, async (req, res) => {
-  const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user.id);
   if (!user) return respondError(res, 404, "User not found");
   user.settings = user.settings || {};
   user.settings.privacy = req.body.privacy;
@@ -634,13 +634,13 @@ router.get(
     if (!privatePhotos.length) {
       return res.json({ success: true, status: "approved", message: "No private photos" });
     }
-    if (req.user._id.toString() === id) {
+    if (req.user.id.toString() === id) {
       return res.json({ success: true, status: "approved", message: "Owner" });
     }
 
     const requests = await PhotoPermission.find({
-      photo: { $in: privatePhotos.map((p) => p._id) },
-      requestedBy: req.user._id,
+      photo: { $in: privatePhotos.map((p) => p.id) },
+      requestedBy: req.user.id,
     });
 
     if (!requests.length) {
@@ -670,9 +670,9 @@ router.post(
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     if (!isValidId(id)) return respondError(res, 400, "Invalid user ID");
-    if (req.user._id.toString() === id) return respondError(res, 400, "Cannot block yourself");
+    if (req.user.id.toString() === id) return respondError(res, 400, "Cannot block yourself");
 
-    await User.findByIdAndUpdate(req.user._id, { $addToSet: { blockedUsers: id } });
+    await User.findByIdAndUpdate(req.user.id, { $addToSet: { blockedUsers: id } });
     res.json({ success: true, message: "User blocked" });
   })
 );
@@ -688,7 +688,7 @@ router.delete(
     const { id } = req.params;
     if (!isValidId(id)) return respondError(res, 400, "Invalid user ID");
 
-    await User.findByIdAndUpdate(req.user._id, { $pull: { blockedUsers: id } });
+    await User.findByIdAndUpdate(req.user.id, { $pull: { blockedUsers: id } });
     res.json({ success: true, message: "User unblocked" });
   })
 );
@@ -701,7 +701,7 @@ router.get(
   "/blocked",
   protect,
   asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id)
+    const user = await User.findById(req.user.id)
       .select("blockedUsers")
       .populate("blockedUsers", "nickname photos isOnline lastActive");
     if (!user) return respondError(res, 404, "User not found");
@@ -720,9 +720,9 @@ router.post(
     const { id } = req.params;
     const { reason } = req.body;
     if (!isValidId(id)) return respondError(res, 400, "Invalid user ID");
-    if (req.user._id.toString() === id) return respondError(res, 400, "Cannot report yourself");
+    if (req.user.id.toString() === id) return respondError(res, 400, "Cannot report yourself");
 
-    logger.warn(`REPORT by ${req.user._id} on ${id}: ${reason || "no reason"}`);
+    logger.warn(`REPORT by ${req.user.id} on ${id}: ${reason || "no reason"}`);
     res.json({ success: true, message: "Report received" });
   })
 );
@@ -736,14 +736,14 @@ router.delete(
   protect,
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    if (req.user._id.toString() !== id && req.user.role !== "admin")
+    if (req.user.id.toString() !== id && req.user.role !== "admin")
       return respondError(res, 403, "Not authorized");
     const user = await User.findById(id);
     if (!user) return respondError(res, 404, "User not found");
 
     user.active = false;
     user.deletedAt = new Date();
-    user.deletedBy = req.user._id;
+    user.deletedBy = req.user.id;
     await user.save();
     res.json({ success: true, message: "Account deleted" });
   })
@@ -758,7 +758,7 @@ router.post(
   protect,
   asyncHandler(async (req, res) => {
     const pending = await PhotoPermission.find({
-      photoOwnerId: req.user._id,
+      photoOwnerId: req.user.id,
       status: "pending",
     });
     if (!pending.length)
@@ -789,7 +789,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     if (!isValidId(id)) return respondError(res, 400, "Invalid user ID");
-    if (req.user._id.toString() === id)
+    if (req.user.id.toString() === id)
       return respondError(res, 400, "Cannot request your own photos");
 
     const owner = await User.findById(id).select("photos");
@@ -806,13 +806,13 @@ router.post(
     const results = [];
     for (const p of privatePhotos) {
       let reqDoc = await PhotoPermission.findOne({
-        photo: p._id,
-        requestedBy: req.user._id,
+        photo: p.id,
+        requestedBy: req.user.id,
       });
       if (!reqDoc) {
         reqDoc = new PhotoPermission({
-          photo: p._id,
-          requestedBy: req.user._id,
+          photo: p.id,
+          requestedBy: req.user.id,
           photoOwnerId: id,
           status: "pending",
           createdAt: new Date(),
@@ -847,7 +847,7 @@ router.put(
 
     const pending = await PhotoPermission.find({
       requestedBy: id,
-      photoOwnerId: req.user._id,
+      photoOwnerId: req.user.id,
       status: "pending",
     });
     if (!pending.length)
@@ -881,7 +881,7 @@ router.put(
 
     const pending = await PhotoPermission.find({
       requestedBy: id,
-      photoOwnerId: req.user._id,
+      photoOwnerId: req.user.id,
       status: "pending",
     });
     if (!pending.length)
@@ -921,13 +921,13 @@ router.post(
     const photo = owner.photos.id(id);
     if (!photo) return respondError(res, 404, "Photo not found");
     if (!photo.isPrivate) return respondError(res, 400, "Photo not private");
-    if (owner._id.toString() === req.user._id.toString())
+    if (owner.id.toString() === req.user.id.toString())
       return respondError(res, 400, "Cannot request own photo");
 
-    let perm = await PhotoPermission.findOne({ photo: id, requestedBy: req.user._id });
+    let perm = await PhotoPermission.findOne({ photo: id, requestedBy: req.user.id });
     if (perm) return res.json({ success: true, data: perm, message: "Already requested" });
 
-    perm = new PhotoPermission({ photo: id, requestedBy: req.user._id, status: "pending" });
+    perm = new PhotoPermission({ photo: id, requestedBy: req.user.id, status: "pending" });
     await perm.save();
 
     // socket notification omitted...
@@ -954,7 +954,7 @@ router.put(
     if (!perm) return respondError(res, 404, "Permission not found");
 
     // Only photo owner may respond
-    const owner = await User.findOne({ _id: req.user._id, "photos._id": perm.photo });
+    const owner = await User.findOne({ id: req.user.id, "photos.id": perm.photo });
     if (!owner) return respondError(res, 403, "Not authorized");
 
     perm.status = status;

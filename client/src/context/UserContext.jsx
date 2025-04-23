@@ -59,13 +59,13 @@ function userReducer(state, action) {
       return {
         ...state,
         photoPermissions: state.photoPermissions.map(p =>
-          p._id === action.payload._id ? action.payload : p
+          p.id === action.payload.id ? action.payload : p
         ),
       }
     case "SET_LIKED_USERS":
       return { ...state, likedUsers: action.payload, likesLoading: false }
     case "ADD_LIKED_USER":
-      if (state.likedUsers.some(l => String(l.recipient?._id || l.recipient) === String(action.payload.recipient))) {
+      if (state.likedUsers.some(l => String(l.recipient?.id || l.recipient) === String(action.payload.recipient))) {
         return state
       }
       return { ...state, likedUsers: [...state.likedUsers, action.payload] }
@@ -73,7 +73,7 @@ function userReducer(state, action) {
       return {
         ...state,
         likedUsers: state.likedUsers.filter(
-          l => String(l.recipient?._id || l.recipient) !== String(action.payload)
+          l => String(l.recipient?.id || l.recipient) !== String(action.payload)
         ),
       }
     case "SET_LIKES_LOADING":
@@ -148,7 +148,7 @@ export function UserProvider({ children }) {
     async (force = false) => {
       if (!likesLoadedRef.current || force) {
         dispatch({ type: "SET_LIKES_LOADING", payload: true })
-        if (!user?._id || !isMongoId(user._id)) {
+        if (!user?.id || !isMongoId(user.id)) {
           dispatch({ type: "SET_LIKED_USERS", payload: [] })
           return
         }
@@ -170,7 +170,7 @@ export function UserProvider({ children }) {
 
   // Periodic refresh of likes
   useEffect(() => {
-    if (isAuthenticated && user?._id) {
+    if (isAuthenticated && user?.id) {
       getLikedUsers(true)
       const interval = setInterval(() => {
         if (document.visibilityState === "visible") getLikedUsers(true)
@@ -219,7 +219,7 @@ export function UserProvider({ children }) {
       try {
         const res = await apiService.put("/users/profile", data)
         if (!res.success) throw new Error(res.error)
-        const updated = { ...state.currentUser, ...res.data, _id: state.currentUser._id }
+        const updated = { ...state.currentUser, ...res.data, id: state.currentUser.id }
         dispatch({ type: "UPDATE_PROFILE", payload: updated })
         toast.success("Profile updated")
         return updated
@@ -283,7 +283,7 @@ export function UserProvider({ children }) {
 
   // Likes
   const isUserLiked = useCallback(
-    id => state.likedUsers.some(l => String(l.recipient?._id || l.recipient) === String(id)),
+    id => state.likedUsers.some(l => String(l.recipient?.id || l.recipient) === String(id)),
     [state.likedUsers]
   )
 

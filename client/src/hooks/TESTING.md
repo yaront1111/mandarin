@@ -20,9 +20,9 @@ import { useChatMessages } from './useChatMessages';
 jest.mock('./useApi', () => ({
   useApi: () => ({
     get: jest.fn().mockResolvedValue([
-      { _id: 'msg1', content: 'Test message', sender: 'user1', recipient: 'user2' }
+      { id: 'msg1', content: 'Test message', sender: 'user1', recipient: 'user2' }
     ]),
-    post: jest.fn().mockResolvedValue({ _id: 'msg2', content: 'New message' })
+    post: jest.fn().mockResolvedValue({ id: 'msg2', content: 'New message' })
   })
 }));
 
@@ -35,7 +35,7 @@ jest.mock('./useSocketConnection', () => ({
       return jest.fn(); // Return unregister function
     }),
     emit: jest.fn((event, data, callback) => {
-      if (callback) callback({ success: true, data: { _id: 'msg3' } });
+      if (callback) callback({ success: true, data: { id: 'msg3' } });
     })
   })
 }));
@@ -43,7 +43,7 @@ jest.mock('./useSocketConnection', () => ({
 // Mock AuthContext
 jest.mock('../context/AuthContext', () => ({
   useAuth: () => ({
-    user: { _id: 'user1' }
+    user: { id: 'user1' }
   })
 }));
 
@@ -66,7 +66,7 @@ test('should load messages on initialization', async () => {
   // After loading
   expect(result.current.loading).toBe(false);
   expect(result.current.messages).toHaveLength(1);
-  expect(result.current.messages[0]._id).toBe('msg1');
+  expect(result.current.messages[0].id).toBe('msg1');
 });
 ```
 
@@ -99,7 +99,7 @@ test('should handle incoming messages', async () => {
   // Simulate incoming message
   act(() => {
     mockSocketCallbacks.messageReceived({
-      _id: 'incoming1',
+      id: 'incoming1',
       content: 'Incoming message',
       sender: 'user2',
       recipient: 'user1',

@@ -35,7 +35,7 @@
   <script>
     // Sample user data that would come from a UserCard
     const sampleUser = {
-      _id: "12345",
+      id: "12345",
       nickname: "TestUser",
       isOnline: true,
       details: {
@@ -72,7 +72,7 @@
     // Set up a listener to verify the event is being dispatched correctly
     window.addEventListener('openChat', function(event) {
       log('Event received by window listener:');
-      log('Recipient ID: ' + event.detail.recipient._id);
+      log('Recipient ID: ' + event.detail.recipient.id);
       log('Recipient name: ' + event.detail.recipient.nickname);
     });
 

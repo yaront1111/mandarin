@@ -325,14 +325,14 @@ const Settings = () => {
 
     const loadUserAndSettings = async () => {
       // Part 1: Try to load the user if needed
-      if (user && !currentUser && user._id) {
+      if (user && !currentUser && user.id) {
         console.log('User exists but currentUser is not available yet - fetching user profile');
 
         try {
           // Method 1: Try to fetch from UserContext first
           if (typeof getUser === 'function') {
             console.log('Using getUser from UserContext to fetch profile');
-            await getUser(user._id);
+            await getUser(user.id);
           }
 
           // Method 2: Try to fetch from AuthContext if still needed
@@ -391,7 +391,7 @@ const Settings = () => {
       const success = await unblockUser(userId, nickname);
       if (success) {
         // Remove from local state for immediate UI update
-        setBlockedUsers(prevUsers => prevUsers.filter(user => user._id !== userId));
+        setBlockedUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
       }
     } catch (error) {
       console.error("Error unblocking user:", error);
@@ -407,7 +407,7 @@ const Settings = () => {
 
     // Only update if the user ID has changed or if this is the first update for this user
     const isNewUser = !previousUserRef.current ||
-                      previousUserRef.current._id !== currentUser._id;
+                      previousUserRef.current.id !== currentUser.id;
 
     // Use JSON.stringify for deep comparison of settings objects
     const previousSettings = previousUserRef.current?.settings;
@@ -650,7 +650,7 @@ const Settings = () => {
               ) : (
                 <div className={styles.blockedUsersList}>
                   {blockedUsers.map(user => (
-                    <div key={user._id} className={styles.blockedUserItem}>
+                    <div key={user.id} className={styles.blockedUserItem}>
                       <div className={styles.blockedUserInfo}>
                         <img 
                           src={user.photos && user.photos[0] ? user.photos[0].url : "/default-avatar.png"} 
@@ -663,7 +663,7 @@ const Settings = () => {
                       </div>
                       <button 
                         className={styles.unblockButton}
-                        onClick={() => handleUnblock(user._id, user.nickname)}
+                        onClick={() => handleUnblock(user.id, user.nickname)}
                       >
                         <FaUnlock /> {t('settings.unblock', 'Unblock')}
                       </button>

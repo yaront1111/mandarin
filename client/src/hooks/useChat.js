@@ -56,15 +56,15 @@ export const useChat = (recipientId = null) => {
     let retryTimeoutId = null;
     
     const initChat = async () => {
-      if (isAuthenticated && user?._id) {
+      if (isAuthenticated && user?.id) {
         try {
           console.log(`Initializing chat service (attempt ${retryCount + 1})...`, {
-            userId: user._id,
+            userId: user.id,
             isAuthenticated
           });
           
           // Check if already initialized
-          if (chatService.isReady() && chatService.user?._id === user._id) {
+          if (chatService.isReady() && chatService.user?.id === user.id) {
             console.log("Chat service already initialized with correct user!");
             if (mountedRef.current) {
               setInitialized(true);
@@ -106,7 +106,7 @@ export const useChat = (recipientId = null) => {
         }
       } else {
         console.warn("Cannot initialize chat: missing user ID or not authenticated", {
-          userId: user?._id,
+          userId: user?.id,
           isAuthenticated,
         });
       }
@@ -158,7 +158,7 @@ export const useChat = (recipientId = null) => {
   // Setup event listeners for the current conversation
   useEffect(() => {
     // Skip setup if missing required data or not initialized
-    if (!normalizedRecipientId || !isAuthenticated || !user?._id || !initialized) {
+    if (!normalizedRecipientId || !isAuthenticated || !user?.id || !initialized) {
       return;
     }
     
@@ -182,7 +182,7 @@ export const useChat = (recipientId = null) => {
       setMessages(prev => {
         // Find the message to update (by ID or tempId)
         return prev.map(m => {
-          if (m._id === message._id || 
+          if (m.id === message.id || 
               (message.tempId && m.tempId === message.tempId) ||
               (message.tempMessageId && m.tempId === message.tempMessageId)) {
             return { ...m, ...message, updated: true };
@@ -201,7 +201,7 @@ export const useChat = (recipientId = null) => {
       if (
         // Only handle INCOMING messages from the recipient
         // This prevents duplications with messageSent events
-        message.sender === normalizedRecipientId && message.recipient === user._id
+        message.sender === normalizedRecipientId && message.recipient === user.id
       ) {
         log.debug(`Received message from ${normalizedRecipientId}`);
         
@@ -210,13 +210,13 @@ export const useChat = (recipientId = null) => {
           // IMPORTANT: Skip duplicate messages by ID to prevent triple display
           // Check if message already exists by ID or tempID
           const exists = prev.some(m => 
-            m._id === message._id || 
+            m.id === message.id || 
             (message.tempMessageId && m.tempId === message.tempMessageId)
           );
           
           // If the message already exists in our state, don't add it again
           if (exists) {
-            log.debug(`Skipping duplicate message ${message._id} - already exists in state`);
+            log.debug(`Skipping duplicate message ${message.id} - already exists in state`);
             return prev;
           }
           
@@ -242,7 +242,7 @@ export const useChat = (recipientId = null) => {
         setMessages(prev => {
           // Find temp message by ID or tempId
           const messageIndex = prev.findIndex(m => 
-            m._id === message._id || 
+            m.id === message.id || 
             m.tempId === message.tempMessageId
           );
           
@@ -358,7 +358,7 @@ export const useChat = (recipientId = null) => {
    */
   const loadMessages = useCallback(async (forceRefresh = false) => {
     // Check for required data
-    if (!normalizedRecipientId || !isAuthenticated || !user?._id || !initialized) {
+    if (!normalizedRecipientId || !isAuthenticated || !user?.id || !initialized) {
       log.warn('Cannot load messages: Missing required data');
       return [];
     }
@@ -426,9 +426,9 @@ export const useChat = (recipientId = null) => {
       // Process messages to deduplicate
       [...messages].reverse().forEach(msg => {
         // Only add if we haven't seen this ID before
-        if (msg._id && !seenIds.has(msg._id)) {
+        if (msg.id && !seenIds.has(msg.id)) {
           uniqueMessages.push(msg);
-          seenIds.add(msg._id);
+          seenIds.add(msg.id);
         }
       });
       
@@ -494,7 +494,7 @@ export const useChat = (recipientId = null) => {
           
           reversedMessages.forEach(newMsg => {
             // Skip if already exists
-            if (!combined.some(m => m._id === newMsg._id)) {
+            if (!combined.some(m => m.id === newMsg.id)) {
               combined.push(newMsg);
             }
           });
@@ -534,7 +534,7 @@ export const useChat = (recipientId = null) => {
    */
   const sendMessage = useCallback(async (content, type = 'text', metadata = null) => {
     // Validate prerequisites
-    if (!normalizedRecipientId || !isAuthenticated || !user?._id || !initialized) {
+    if (!normalizedRecipientId || !isAuthenticated || !user?.id || !initialized) {
       const errMsg = 'Cannot send message: Missing required data';
       log.error(errMsg);
       throw new Error(errMsg);
@@ -551,9 +551,9 @@ export const useChat = (recipientId = null) => {
       
       // Create a temporary message for optimistic UI update
       const tempMessage = {
-        _id: tempId,
+        id: tempId,
         tempId,
-        sender: user._id,
+        sender: user.id,
         recipient: normalizedRecipientId,
         content,
         type,
@@ -600,7 +600,7 @@ export const useChat = (recipientId = null) => {
       setMessages(prev => {
         // Find the temp message
         const index = prev.findIndex(m => 
-          m.tempId === tempId || m._id === message._id
+          m.tempId === tempId || m.id === message.id
         );
         
         if (index >= 0) {

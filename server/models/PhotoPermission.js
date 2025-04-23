@@ -165,12 +165,12 @@ PhotoPermissionSchema.statics.getPendingForUser = async function(userId, options
   const User    = mongoose.model('User');
 
   // Fetch only private photos
-  const user = await User.findById(ownerId).select('photos.isPrivate photos._id');
+  const user = await User.findById(ownerId).select('photos.isPrivate photos.id');
   if (!user) throw new Error('User not found');
 
   const privateIds = user.photos
     .filter(p => p.isPrivate)
-    .map(p => p._id);
+    .map(p => p.id);
 
   if (privateIds.length === 0) {
     return { data: [], pagination: { total: 0, page, pages: 0, limit } };

@@ -245,7 +245,7 @@ MessageSchema.statics.getUnreadCountBySender = async function(recipientId) {
   const r = safeObjectId(recipientId, 'recipientId');
   return this.aggregate([
     { $match: { recipient: r, read: false, deletedByRecipient: false } },
-    { $group: { _id: '$sender', count: { $sum: 1 }, lastMessage: { $max: '$createdAt' } } },
+    { $group: { id: '$sender', count: { $sum: 1 }, lastMessage: { $max: '$createdAt' } } },
     { $sort: { lastMessage: -1 } },
   ]);
 };
@@ -313,7 +313,7 @@ MessageSchema.methods.markAsDeletedFor = async function(userId, mode = 'self') {
 
   // If both parties have deleted, remove from DB
   if (this.deletedBySender && this.deletedByRecipient) {
-    return this.constructor.deleteOne({ _id: this._id });
+    return this.constructor.deleteOne({ id: this.id });
   }
   return this.save();
 };

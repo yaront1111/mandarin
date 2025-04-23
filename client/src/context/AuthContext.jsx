@@ -53,27 +53,27 @@ export function AuthProvider({ children }) {
     if (!raw) return null
 
     let u = { ...raw }
-    // ensure _id/id
-    if (!u._id && u.id) u._id = u.id
-    if (!u.id && u._id) u.id = u._id
+    // ensure id/id
+    if (!u.id && u.id) u.id = u.id
+    if (!u.id && u.id) u.id = u.id
 
     // validate or fix via token
     const valid = id => typeof id==="string" && isMongoId(id)
-    if (!valid(u._id)) {
+    if (!valid(u.id)) {
       try {
         const token = getToken()
         if (token) {
           const tid = getUserIdFromToken(token)
-          if (valid(tid)) u._id = u.id = tid
+          if (valid(tid)) u.id = u.id = tid
         }
       } catch(e){ log.error("normalizeUser.token", e) }
-      if (!valid(u._id) && process.env.NODE_ENV==="development") {
-        u._id = u.id = "5f50c31f72c5e315b4b3e1c5"
+      if (!valid(u.id) && process.env.NODE_ENV==="development") {
+        u.id = u.id = "5f50c31f72c5e315b4b3e1c5"
       }
     }
 
-    if (!valid(u._id)) {
-      log.error("Invalid user ID:", u._id)
+    if (!valid(u.id)) {
+      log.error("Invalid user ID:", u.id)
       if (process.env.NODE_ENV==="production") {
         toast.error("Auth error: invalid profile, please log in again.")
         removeToken()
@@ -125,8 +125,8 @@ export function AuthProvider({ children }) {
 
         // maybe update user ID
         const tid = getUserIdFromToken(res.token)
-        if (user && tid && tid!==user._id) {
-          setUser(prev => ({ ...prev, _id: tid, id: tid }))
+        if (user && tid && tid!==user.id) {
+          setUser(prev => ({ ...prev, id: tid, id: tid }))
         }
         log.info("Token refreshed")
         return res.token

@@ -176,7 +176,7 @@ router.post(
   ],
   validateRequest,
   asyncHandler(async (req, res) => {
-    const userId = req.user._id
+    const userId = req.user.id
 
     // enforce cooldown
     if (await hasRecentStory(userId)) {
@@ -196,7 +196,7 @@ router.post(
     await User.findByIdAndUpdate(userId, { lastStoryCreated: new Date() })
 
     // re-fetch fully populated
-    const story = await Story.findById(newStory._id)
+    const story = await Story.findById(newStory.id)
       .populate('user', `${PUBLIC_USER_FIELDS} email`)
       .lean()
 
@@ -277,7 +277,7 @@ router.delete(
     if (!story) {
       return res.status(404).json({ success: false, error: 'Story not found' })
     }
-    if (story.user.toString() !== req.user._id.toString()) {
+    if (story.user.toString() !== req.user.id.toString()) {
       return res.status(403).json({ success: false, error: 'Not authorized' })
     }
     await story.remove()
@@ -299,9 +299,9 @@ router.post(
     if (!story) {
       return res.status(404).json({ success: false, error: 'Story not found' })
     }
-    const already = story.viewers.some(v => v.user.equals(req.user._id))
+    const already = story.viewers.some(v => v.user.equals(req.user.id))
     if (!already) {
-      story.viewers.push({ user: req.user._id, viewedAt: new Date() })
+      story.viewers.push({ user: req.user.id, viewedAt: new Date() })
       await story.save()
     }
     res.json({ success: true, message: already ? 'Already viewed' : 'Marked as viewed' })
@@ -328,7 +328,7 @@ router.post(
     if (!story) {
       return res.status(404).json({ success: false, error: 'Story not found' })
     }
-    await story.addReaction(req.user._id, req.body.reactionType)
+    await story.addReaction(req.user.id, req.body.reactionType)
     res.json({ success: true, data: story.reactions })
   })
 )
@@ -347,7 +347,7 @@ router.delete(
     if (!story) {
       return res.status(404).json({ success: false, error: 'Story not found' })
     }
-    await story.removeReaction(req.user._id)
+    await story.removeReaction(req.user.id)
     res.json({ success: true, data: story.reactions })
   })
 )
@@ -368,7 +368,7 @@ router.get(
     if (!story) {
       return res.status(404).json({ success: false, error: 'Story not found' })
     }
-    if (story.user.toString() !== req.user._id.toString()) {
+    if (story.user.toString() !== req.user.id.toString()) {
       return res.status(403).json({ success: false, error: 'Not authorized' })
     }
     res.json({ success: true, data: story.viewers })

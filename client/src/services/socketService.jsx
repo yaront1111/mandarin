@@ -348,7 +348,7 @@ class SocketService {
       if (!this.isConnected()) {
         this._log(`Socket not connected, returning pending message with id ${tempMessageId}`)
         const tempMessage = {
-          _id: tempMessageId,
+          id: tempMessageId,
           sender: this.userId,
           recipient: recipientId,
           type,
@@ -440,7 +440,7 @@ class SocketService {
 
         // Return a pending message so UI can show something
         resolve({
-          _id: tempMessageId,
+          id: tempMessageId,
           sender: this.userId,
           recipient: recipientId,
           content,
@@ -464,7 +464,7 @@ class SocketService {
 
         // If timed out, return a temporary message with pending status
         resolve({
-          _id: tempMessageId,
+          id: tempMessageId,
           sender: this.userId,
           recipient: recipientId,
           content,

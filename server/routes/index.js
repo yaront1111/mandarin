@@ -49,7 +49,7 @@ router.get("/debug-auth", protect, (req, res) => {
   }
 
   // Extract user details for debugging
-  const userIdRaw = req.user._id;
+  const userIdRaw = req.user.id;
   const userIdStr = String(userIdRaw);
   
   // Check if ID is a valid MongoDB ObjectID

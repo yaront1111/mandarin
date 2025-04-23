@@ -24,7 +24,7 @@ export const useChatConnection = () => {
 
   // Initialize connection when user is authenticated
   useEffect(() => {
-    if (isAuthenticated && user?._id && token) {
+    if (isAuthenticated && user?.id && token) {
       // Only initialize if not already connected
       if (!socketService.isConnected() && !connecting) {
         log.debug('Initializing socket connection');
@@ -85,13 +85,13 @@ export const useChatConnection = () => {
    * Connect to socket server
    */
   const connectSocket = useCallback(() => {
-    if (isAuthenticated && user?._id && token) {
+    if (isAuthenticated && user?.id && token) {
       setConnecting(true);
       setError(null);
       
       try {
-        log.info(`Connecting socket for user ${user._id}`);
-        socketService.init(user._id, token);
+        log.info(`Connecting socket for user ${user.id}`);
+        socketService.init(user.id, token);
       } catch (err) {
         log.error('Error connecting socket:', err);
         setError(err.message || 'Failed to connect');

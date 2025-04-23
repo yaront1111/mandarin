@@ -11,10 +11,10 @@ import logger from "../logger.js";
  */
 const generateToken = (payload, expiresIn = config.JWT_EXPIRE) => {
   const tokenPayload = {
-    id: payload.id || payload._id,
+    id: payload.id || payload.id,
     ...payload,
   };
-  if (tokenPayload.id && tokenPayload._id) delete tokenPayload._id;
+  if (tokenPayload.id && tokenPayload.id) delete tokenPayload.id;
   return jwt.sign(tokenPayload, config.JWT_SECRET, { expiresIn });
 };
 
@@ -23,12 +23,12 @@ const generateToken = (payload, expiresIn = config.JWT_EXPIRE) => {
  */
 const generateSocketToken = (payload) => {
   const socketPayload = {
-    id: payload.id || payload._id,
+    id: payload.id || payload.id,
     ...payload,
     purpose: "socket",
     iat: Math.floor(Date.now() / 1000),
   };
-  if (socketPayload.id && socketPayload._id) delete socketPayload._id;
+  if (socketPayload.id && socketPayload.id) delete socketPayload.id;
   return jwt.sign(socketPayload, config.JWT_SECRET, {
     expiresIn: config.SOCKET_TOKEN_EXPIRE || "24h",
   });
@@ -92,7 +92,7 @@ const authenticateSocket = async (socket, data) => {
   if (!verification.success) return verification;
 
   const decoded = verification.data;
-  let userId = decoded.id || decoded.userId || (decoded.user && decoded.user._id);
+  let userId = decoded.id || decoded.userId || (decoded.user && decoded.user.id);
   if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
     logger.debug(`Socket auth invalid ID: ${userId}`);
     return { success: false, error: "Invalid token format", code: "INVALID_TOKEN_FORMAT" };
@@ -111,8 +111,8 @@ const authenticateSocket = async (socket, data) => {
   return {
     success: true,
     user: {
-      _id: user._id.toString(),
-      id: user._id.toString(),
+      id: user.id.toString(),
+      id: user.id.toString(),
       email: user.email,
       nickname: user.nickname || user.name,
       role: user.role,
@@ -155,7 +155,7 @@ const protect = async (req, res, next) => {
     return res.status(401).json({ success: false, error: "Invalid token", code: "INVALID_TOKEN" });
   }
 
-  let userId = decoded.id || decoded.userId || (decoded.user && decoded.user._id);
+  let userId = decoded.id || decoded.userId || (decoded.user && decoded.user.id);
   if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
     logger.debug(`Token missing or invalid user ID`);
     return res.status(401).json({ success: false, error: "Invalid token format", code: "INVALID_TOKEN_FORMAT" });
@@ -172,15 +172,15 @@ const protect = async (req, res, next) => {
   }
 
   req.user = {
-    _id: user._id.toString(),
-    id: user._id.toString(),
+    id: user.id.toString(),
+    id: user.id.toString(),
     email: user.email,
     nickname: user.nickname,
     role: user.role,
     settings: user.settings,
   };
 
-  logger.debug(`[AUTH] Authenticated user ${req.user._id} for ${req.method} ${req.originalUrl}`);
+  logger.debug(`[AUTH] Authenticated user ${req.user.id} for ${req.method} ${req.originalUrl}`);
   next();
 };
 
@@ -192,8 +192,8 @@ const enhancedProtect = async (req, res, next) => {
     await new Promise((resolve, reject) =>
       protect(req, res, (err) => (err ? reject(err) : resolve()))
     );
-    if (req.user && req.user._id) {
-      req.user._id = req.user._id.toString();
+    if (req.user && req.user.id) {
+      req.user.id = req.user.id.toString();
     }
     next();
   } catch (err) {
@@ -215,7 +215,7 @@ const restrictTo = (...roles) => (req, res, next) => {
     return res.status(401).json({ success: false, error: "Authentication required" });
   }
   if (!roles.includes(req.user.role)) {
-    logger.debug(`User ${req.user._id} role ${req.user.role} not in ${roles}`);
+    logger.debug(`User ${req.user.id} role ${req.user.role} not in ${roles}`);
     return res.status(403).json({ success: false, error: "Access denied" });
   }
   next();
@@ -260,12 +260,12 @@ const optionalAuth = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, config.JWT_SECRET);
-    let userId = decoded.id || decoded.userId || (decoded.user && decoded.user._id);
+    let userId = decoded.id || decoded.userId || (decoded.user && decoded.user.id);
     if (userId && mongoose.Types.ObjectId.isValid(userId)) {
       const user = await User.findById(userId).select("+version");
       if (user && (!user.version || user.version === decoded.version)) {
-        req.user = { _id: user._id.toString(), id: user._id.toString(), role: user.role };
-        logger.debug(`[OptionalAuth] Set user ${req.user._id}`);
+        req.user = { id: user.id.toString(), id: user.id.toString(), role: user.role };
+        logger.debug(`[OptionalAuth] Set user ${req.user.id}`);
       }
     }
   } catch (err) {

@@ -36,14 +36,14 @@ if (process.env.REDIS_URL) {
 const validateOnlineUsers = async (io, userConnections) => {
   try {
     // Find all users currently marked as online in database
-    const onlineUsers = await User.find({ isOnline: true }).select('_id lastActive');
+    const onlineUsers = await User.find({ isOnline: true }).select('id lastActive');
 
     let updatedCount = 0;
     const now = Date.now();
 
     // Check each online user
     for (const user of onlineUsers) {
-      const userId = user._id.toString();
+      const userId = user.id.toString();
 
       // If user has no socket connections OR hasn't been active recently
       if (!userConnections.has(userId) || (now - user.lastActive > 10 * 60 * 1000)) {
@@ -267,10 +267,10 @@ const initSocketServer = async (server) => {
 
   // Socket connection handler
   io.on("connection", (socket) => {
-    log.info(`Socket connected: ${socket.id} (User: ${socket.user?._id || "unknown"})`);
+    log.info(`Socket connected: ${socket.id} (User: ${socket.user?.id || "unknown"})`);
 
-    if (socket.user && socket.user._id) {
-      const userIdStr = socket.user._id.toString();
+    if (socket.user && socket.user.id) {
+      const userIdStr = socket.user.id.toString();
       if (!userConnections.has(userIdStr)) {
         userConnections.set(userIdStr, new Set());
       }
@@ -282,7 +282,7 @@ const initSocketServer = async (server) => {
 
       // Send a welcome event
       socket.emit("welcome", {
-        userId: socket.user._id.toString(),
+        userId: socket.user.id.toString(),
         timestamp: Date.now(),
         message: "Socket connection established successfully",
       });

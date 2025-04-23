@@ -34,13 +34,13 @@ const photoSchema = new Schema({
       height: Number,
     },
   },
-}, { timestamps: true, _id: false });
+}, { timestamps: true, id: false });
 
 const partnerInfoSchema = new Schema({
   nickname: String,
   gender:   { type: String, enum: ['male','female','non-binary','other'] },
   age:      { type: Number, min: [18, 'Partner must be at least 18 years old'] },
-}, { _id: false });
+}, { id: false });
 
 // -------------------------
 // Main User Schema
@@ -242,7 +242,7 @@ userSchema.pre('save', function(next) {
     if (!this.username) {
       this.username = this.email
         ? this.email.split('@')[0]
-        : (this.nickname?.toLowerCase().replace(/\s+/g,'_') || `user_${this._id.toString().slice(-6)}`);
+        : (this.nickname?.toLowerCase().replace(/\s+/g,'_') || `user_${this.id.toString().slice(-6)}`);
     }
 
     // Name default

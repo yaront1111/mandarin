@@ -37,14 +37,14 @@ function reducer(state, action) {
     case "ADD_STORY":
       return {
         ...state,
-        stories: state.stories.some(s => s._id === action.payload._id)
+        stories: state.stories.some(s => s.id === action.payload.id)
           ? state.stories
           : [action.payload, ...state.stories],
       }
     case "REMOVE_STORY":
       return {
         ...state,
-        stories: state.stories.filter(s => s._id !== action.payload),
+        stories: state.stories.filter(s => s.id !== action.payload),
       }
     case "CREATE_START":
       return { ...state, isCreating: true }
@@ -86,9 +86,9 @@ export function StoriesProvider({ children }) {
         try {
           const res = await storiesService.getAllStories()
           if (!res.success) throw new Error(res.message || "Failed to load stories")
-          // dedupe by _id
+          // dedupe by id
           const unique = Array.from(
-            new Map(res.data.map(s => [s._id, s])).values()
+            new Map(res.data.map(s => [s.id, s])).values()
           )
           lastFetchRef.current = Date.now()
           dispatch({ type: "LOAD_SUCCESS", payload: unique })
@@ -291,8 +291,8 @@ export function StoriesProvider({ children }) {
       if (!userId) return false
       return state.stories.some(
         s =>
-          String(s.user?._id || s.user) === String(userId) &&
-          !state.viewedStories[s._id]
+          String(s.user?.id || s.user) === String(userId) &&
+          !state.viewedStories[s.id]
       )
     },
     [state.stories, state.viewedStories]
@@ -304,9 +304,9 @@ export function StoriesProvider({ children }) {
 
   // Load & save viewedStories from localStorage
   useEffect(() => {
-    if (!user?._id) return
+    if (!user?.id) return
     try {
-      const key = `viewedStories:${user._id}`
+      const key = `viewedStories:${user.id}`
       const stored = JSON.parse(localStorage.getItem(key) || "{}")
       dispatch({ type: "VIEW_STORY", payload: null }) // no-op to ensure state exists
       if (stored && typeof stored === "object") {
@@ -320,11 +320,11 @@ export function StoriesProvider({ children }) {
   }, [user])
 
   useEffect(() => {
-    if (!user?._id) return
+    if (!user?.id) return
     const save = () => {
       try {
         localStorage.setItem(
-          `viewedStories:${user._id}`,
+          `viewedStories:${user.id}`,
           JSON.stringify(state.viewedStories)
         )
       } catch (err) {

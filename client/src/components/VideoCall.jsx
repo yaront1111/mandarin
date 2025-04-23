@@ -306,9 +306,9 @@ const VideoCall = ({
   // recipientName is derived below now
 }) => {
   // --- Derived values ---
-  const recipientId = recipient?._id;
+  const recipientId = recipient?.id;
   const recipientName = recipient?.nickname || "User";
-  const userId = user?._id;
+  const userId = user?.id;
   // --- Refs ---
   const refs = {
     // Video elements
@@ -1994,10 +1994,10 @@ const VideoCall = ({
 VideoCall.propTypes = {
   isOpen: PropTypes.bool.isRequired, // Renamed from isActive
   user: PropTypes.shape({
-    _id: PropTypes.string.isRequired,
+    id: PropTypes.string.isRequired,
   }),
   recipient: PropTypes.shape({
-    _id: PropTypes.string.isRequired,
+    id: PropTypes.string.isRequired,
     nickname: PropTypes.string,
   }),
   onEndCall: PropTypes.func.isRequired,

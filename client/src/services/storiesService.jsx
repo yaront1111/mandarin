@@ -207,7 +207,7 @@ export const createTextStory = async (storyData, onProgress) => {
         data: response.data || response.story,
         message: "Story created successfully",
       }
-    } else if (response && response._id) {
+    } else if (response && response.id) {
       // Handle old API that might return the story directly
       result = {
         success: true,

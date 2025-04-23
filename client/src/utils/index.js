@@ -78,9 +78,9 @@ export const ensureValidObjectId = (id) => {
     }
   }
   
-  // For object with _id property
-  if (typeof id === 'object' && id !== null && id._id) {
-    return ensureValidObjectId(id._id);
+  // For object with id property
+  if (typeof id === 'object' && id !== null && id.id) {
+    return ensureValidObjectId(id.id);
   }
   
   // For object with id property

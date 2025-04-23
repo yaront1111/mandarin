@@ -58,7 +58,7 @@ export const groupMessagesByDate = (messages) => {
   messages.forEach((message) => {
     if (message && message.createdAt) {
       // Skip duplicates by checking unique ID
-      const messageId = message._id || message.tempId
+      const messageId = message.id || message.tempId
       
       // Skip if we've already seen this ID
       if (messageId && seenMessageIds.has(messageId)) {
@@ -113,14 +113,14 @@ export const normalizeMessage = (message, options = {}) => {
   // Ensure required properties
   return {
     ...message,
-    _id: message._id || `temp-${Date.now()}`,
+    id: message.id || `temp-${Date.now()}`,
     content: message.content || "",
     createdAt: message.createdAt || new Date().toISOString(),
     type: message.type || "text",
     metadata: message.metadata || {},
     // Determine if message is from current user
     isFromMe: currentUserId
-      ? message.sender === currentUserId || (typeof message.sender === "object" && message.sender._id === currentUserId)
+      ? message.sender === currentUserId || (typeof message.sender === "object" && message.sender.id === currentUserId)
       : false,
   }
 }

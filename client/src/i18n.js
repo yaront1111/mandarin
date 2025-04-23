@@ -463,9 +463,9 @@ const enTranslations = {
   profile_cooking: "Cooking",
 
   // Additional flattened keys for problematic nested paths
-  profile_identity_man: "Man",
-  profile_identity_woman: "Woman",
-  profile_identity_couple: "Couple",
+  profileidentity_man: "Man",
+  profileidentity_woman: "Woman",
+  profileidentity_couple: "Couple",
   profile_maritalStatus_married: "Married",
   profile_maritalStatus_divorced: "Divorced",
   profile_lookingFor_men: "Men",
@@ -1574,9 +1574,9 @@ const heTranslations = {
   profile_ambition: "שאפתנות",
 
   // Additional flattened keys for problematic nested paths
-  profile_identity_man: "גבר",
-  profile_identity_woman: "אישה",
-  profile_identity_couple: "זוג",
+  profileidentity_man: "גבר",
+  profileidentity_woman: "אישה",
+  profileidentity_couple: "זוג",
   profile_maritalStatus_married: "נשוי/אה",
   profile_maritalStatus_divorced: "גרוש/ה",
   profile_lookingFor_men: "גברים",

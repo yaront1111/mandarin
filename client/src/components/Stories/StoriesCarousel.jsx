@@ -42,18 +42,18 @@ const StoriesCarousel = ({ onStoryClick }) => {
   // Add some mock "coming soon" stories
   const comingSoonStories = [
     {
-      _id: "coming-soon-video",
+      id: "coming-soon-video",
       mediaType: "video",
       user: {
-        _id: "video-user",
+        id: "video-user",
         nickname: "Video Stories"
       }
     },
     {
-      _id: "coming-soon-image",
+      id: "coming-soon-image",
       mediaType: "image",
       user: {
-        _id: "image-user",
+        id: "image-user",
         nickname: "Image Stories"
       }
     }
@@ -68,8 +68,8 @@ const StoriesCarousel = ({ onStoryClick }) => {
 
       // First, collect unique stories by ID
       stories.forEach((story) => {
-        if (story && story._id && !storyIds.has(story._id)) {
-          storyIds.add(story._id)
+        if (story && story.id && !storyIds.has(story.id)) {
+          storyIds.add(story.id)
           uniqueStories.push(story)
         }
       })
@@ -87,9 +87,9 @@ const StoriesCarousel = ({ onStoryClick }) => {
         const userId = story.user
           ? typeof story.user === "string"
             ? story.user
-            : story.user._id
+            : story.user.id
           : story.userData
-            ? story.userData._id
+            ? story.userData.id
             : null
 
         if (userId && !userIds.has(userId)) {
@@ -217,12 +217,12 @@ const StoriesCarousel = ({ onStoryClick }) => {
   const storyThumbnails = useMemo(() => {
     return processedStories.map((story) => (
       <StoryThumbnail
-        key={story._id || `story-${Math.random()}`}
+        key={story.id || `story-${Math.random()}`}
         story={story}
-        onClick={() => handleStoryClick(story._id)}
+        onClick={() => handleStoryClick(story.id)}
         hasUnviewedStories={
           typeof hasUnviewedStories === "function" && story.user
-            ? hasUnviewedStories(typeof story.user === "string" ? story.user : story.user._id)
+            ? hasUnviewedStories(typeof story.user === "string" ? story.user : story.user.id)
             : false
         }
         mediaType={story.mediaType}

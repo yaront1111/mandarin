@@ -112,14 +112,14 @@ const NotificationItem = React.memo(({ notification, onClick }) => {
   const onClickHandler = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
-    log.debug("Notification item clicked:", notification._id);
+    log.debug("Notification item clicked:", notification.id);
     if (onClick) {
       onClick(notification);
     }
   }, [notification, onClick]);
 
 
-  if (!notification._id || !notification.type || !notification.createdAt) {
+  if (!notification.id || !notification.type || !notification.createdAt) {
       log.error("Rendering NotificationItem with invalid data:", notification);
       return <div className="notification-item error">Invalid notification data</div>;
   }
@@ -129,20 +129,20 @@ const NotificationItem = React.memo(({ notification, onClick }) => {
       className={`notification-item ${!notification.read ? "unread" : ""}`}
       onClick={onClickHandler}
       role="listitem"
-      aria-labelledby={`notification-title-${notification._id}`}
-      aria-describedby={`notification-desc-${notification._id}`}
+      aria-labelledby={`notification-title-${notification.id}`}
+      aria-describedby={`notification-desc-${notification.id}`}
     >
       <div className="notification-icon" aria-hidden="true">
         <NotificationIcon />
       </div>
 
       <div className="notification-content">
-        <div className="notification-title" id={`notification-title-${notification._id}`}>
+        <div className="notification-title" id={`notification-title-${notification.id}`}>
           <span className="notification-sender">{senderNickname}</span> {actionText}
           {count && <span className="notification-count"> ({count})</span>}
         </div>
 
-        <div className="notification-message" id={`notification-desc-${notification._id}`}>
+        <div className="notification-message" id={`notification-desc-${notification.id}`}>
           {notification.message || notification.content || notification.title || ""}
         </div>
 
@@ -403,7 +403,7 @@ const NotificationsComponent = ({
     const notificationGroups = {};
 
     filtered.forEach((notification) => {
-        const senderId = notification.sender?._id || notification.data?.sender?._id || notification.data?.requester?._id || "unknown_sender";
+        const senderId = notification.sender?.id || notification.data?.sender?.id || notification.data?.requester?.id || "unknown_sender";
         // Use a more specific group key if needed, e.g., include date range
         const groupKey = `${senderId}_${notification.type}`;
 
@@ -497,12 +497,12 @@ const NotificationsComponent = ({
   // Handle notification click
   const handleNotificationClick = useCallback((notification) => {
     // ... (handler remains the same) ...
-     log.debug("Handling click for notification:", notification._id);
+     log.debug("Handling click for notification:", notification.id);
     contextHandleClick(notification); // Delegate to context/service logic
 
     // Broadcast read status change to other tabs if it was unread
     if (!notification.read && notificationChannel) {
-      notificationChannel.postMessage({ type: "NOTIFICATION_READ", data: { id: notification._id } });
+      notificationChannel.postMessage({ type: "NOTIFICATION_READ", data: { id: notification.id } });
     }
 
     // Close dropdown/modal if applicable
@@ -718,8 +718,8 @@ const NotificationsComponent = ({
       >
         {filteredNotifications.map((notification) => (
           <NotificationItem
-            // Use a stable key, preferably notification._id
-            key={notification._id || `notification-${Math.random()}`}
+            // Use a stable key, preferably notification.id
+            key={notification.id || `notification-${Math.random()}`}
             notification={notification}
             onClick={handleNotificationClick}
           />

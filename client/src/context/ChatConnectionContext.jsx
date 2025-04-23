@@ -58,7 +58,7 @@ function reducer(state, { type, payload }) {
 // Helper: extract valid ObjectId string
 function extractUserId(user, token) {
   const isValid = id => typeof id === "string" && /^[0-9a-fA-F]{24}$/.test(id)
-  let id = user?._id
+  let id = user?.id
 
   if (isValid(id)) return id
   if (typeof id === "object" && id?.toString) {
@@ -71,7 +71,7 @@ function extractUserId(user, token) {
     const tk = token || sessionStorage.token || localStorage.token
     if (tk) {
       const pl = JSON.parse(atob(tk.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")))
-      const candidate = pl.id || pl.sub || pl.user?._id
+      const candidate = pl.id || pl.sub || pl.user?.id
       if (isValid(candidate)) return candidate
     }
   } catch {}

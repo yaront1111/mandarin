@@ -23,56 +23,56 @@ import "../styles/home.css";
 // Fallback data if API fails or returns no users
 const getMockUsers = () => [
   {
-    _id: "mock1",
+    id: "mock1",
     nickname: "Emma",
     details: { age: 28, location: "New York" },
     photos: [{ url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
     isOnline: true,
   },
   {
-    _id: "mock2",
+    id: "mock2",
     nickname: "Michael",
     details: { age: 32, location: "Los Angeles" },
     photos: [{ url: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
     isOnline: true,
   },
   {
-    _id: "mock3",
+    id: "mock3",
     nickname: "Sophia",
     details: { age: 26, location: "Chicago" },
     photos: [{ url: "https://images.unsplash.com/photo-1517841905240-472988babdf9?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
     isOnline: true,
   },
   {
-    _id: "mock4",
+    id: "mock4",
     nickname: "James",
     details: { age: 30, location: "Miami" },
     photos: [{ url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
     isOnline: true,
   },
   {
-    _id: "mock5",
+    id: "mock5",
     nickname: "Olivia",
     details: { age: 27, location: "Tel Aviv" },
     photos: [{ url: "https://images.unsplash.com/photo-1524502397800-2eeaad7c3fe5?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
     isOnline: true,
   },
   {
-    _id: "mock6",
+    id: "mock6",
     nickname: "Daniel",
     details: { age: 33, location: "London" },
     photos: [{ url: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
     isOnline: true,
   },
   {
-    _id: "mock7",
+    id: "mock7",
     nickname: "Ava",
     details: { age: 24, location: "Paris" },
     photos: [{ url: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
     isOnline: true,
   },
   {
-    _id: "mock8",
+    id: "mock8",
     nickname: "Noah",
     details: { age: 29, location: "Berlin" },
     photos: [{ url: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80"}],
@@ -295,7 +295,7 @@ const Home = () => {
             <div className="online-users-grid">
               {onlineUsers.map((user, index) => (
                 <div
-                  key={user._id}
+                  key={user.id}
                   className="online-user-card staggered-item shadow-sm rounded-lg overflow-hidden cursor-pointer transform-gpu hover-scale animated"
                   onClick={handleStartNow}
                   style={{ animationDelay: `${index * 0.1}s` }}

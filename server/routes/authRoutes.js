@@ -79,13 +79,13 @@ router.post(
       .then(() => log.info(`Verification email sent to ${email}`))
       .catch(err => log.error(`Email send failure: ${err.message}`))
 
-    const token = generateToken({ id: user._id, role: user.role, version: user.version })
+    const token = generateToken({ id: user.id, role: user.role, version: user.version })
     res.status(201).json({
       success: true,
       message: "Registered—please check your inbox to verify.",
       token,
       user: {
-        id: user._id,
+        id: user.id,
         email: user.email,
         nickname: user.nickname,
         role: user.role,
@@ -138,10 +138,10 @@ router.post(
     user.loginAttempts = 0
     user.lockUntil = undefined
     await user.save()
-    await User.findByIdAndUpdate(user._id, { lastActive: Date.now(), isOnline: true })
+    await User.findByIdAndUpdate(user.id, { lastActive: Date.now(), isOnline: true })
 
     // Issue tokens
-    const payload = { id: user._id, role: user.role, version: user.version }
+    const payload = { id: user.id, role: user.role, version: user.version }
     const token = generateToken(payload)
     user.createRefreshToken()
     await user.save()
@@ -150,7 +150,7 @@ router.post(
       success: true,
       token,
       user: {
-        id: user._id,
+        id: user.id,
         email: user.email,
         nickname: user.nickname,
         role: user.role,
@@ -220,7 +220,7 @@ router.post(
       return res.status(401).json({ success: false, error: "Token too old" })
     }
 
-    const newToken = generateToken({ id: user._id, role: user.role, version: user.version })
+    const newToken = generateToken({ id: user.id, role: user.role, version: user.version })
     res.json({ success: true, token: newToken })
   })
 )
@@ -418,7 +418,7 @@ router.post(
     user.version += 1
     await user.save()
 
-    const token = generateToken({ id: user._id, role: user.role, version: user.version })
+    const token = generateToken({ id: user.id, role: user.role, version: user.version })
     res.json({ success: true, message: "Password changed", token })
   })
 )

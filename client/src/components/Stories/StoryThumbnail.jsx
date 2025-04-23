@@ -19,11 +19,11 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser, me
     if (!story) return {};
     if (typeof story.user === "object") return story.user;
     if (story.userData && typeof story.userData === "object") return story.userData;
-    if (typeof story.user === "string") return { _id: story.user };
+    if (typeof story.user === "string") return { id: story.user };
     return {};
   }, [story, propUser]);
 
-  const userId = storyUser._id;
+  const userId = storyUser.id;
   const userName = storyUser.nickname || storyUser.username || storyUser.name || "User";
   const explicitAvatarSrc = storyUser.profilePicture || storyUser.avatar || null;
 
@@ -53,9 +53,9 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser, me
     if (typeof hasUnviewedStories !== "undefined") {
       return !hasUnviewedStories;
     }
-    if (!contextUser || !contextUser._id || !story?.viewers) return false;
+    if (!contextUser || !contextUser.id || !story?.viewers) return false;
     if (!Array.isArray(story.viewers)) return false;
-    return story.viewers.includes(contextUser._id);
+    return story.viewers.includes(contextUser.id);
   }, [hasUnviewedStories, contextUser, story]);
 
   // Determine if this is a "coming soon" story type
