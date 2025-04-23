@@ -7,6 +7,7 @@ import chatService from "../services/ChatService";
 import { formatMessagePreview, groupMessagesByDate, formatDate, classNames } from "../utils";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import Avatar from "../components/common/Avatar";
+import MessagesWrapper from '../components/MessagesWrapper';
 import AuthContext from "../context/AuthContext";
 import {
   FaEnvelope,

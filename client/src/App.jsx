@@ -1,17 +1,13 @@
-"use client"
-
 // client/src/App.jsx
 import { useEffect, useState } from "react";
-import { Routes, Route, useLocation } from "react-router-dom"; // Import useLocation
+import { Routes, Route, useLocation } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import { HelmetProvider } from 'react-helmet-async';
-import ReactGA from 'react-ga4'; // Import ReactGA
+import ReactGA from 'react-ga4';
 import "react-toastify/dist/ReactToastify.css";
 
 // --- Base Styles ---
-import "./styles/base.css"; // Base is usually imported in main.jsx, but keep if needed here too
-
-// --- Styles to be addressed in later steps ---
+import "./styles/base.css";
 import "./styles/pages.css";
 import "./styles/notifications.css";
 
@@ -33,8 +29,8 @@ import { useNotificationNavigation } from "./services/notificationService";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import PrivateRoute from "./components/PrivateRoute.jsx";
 import VerificationBanner from "./components/VerificationBanner.jsx";
-import { Navbar } from "./components/LayoutComponents"; // Import Navbar
-import Footer from "./components/Footer"; // Import Footer
+import { Navbar } from "./components/LayoutComponents";
+import Footer from "./components/Footer";
 import { EmbeddedChat, UserProfileModal } from "./components";
 
 // --- Page Components ---
@@ -55,28 +51,24 @@ import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 
 // --- Initialize GA4 ---
-// Using your provided Measurement ID
-const GA4_MEASUREMENT_ID = "G-Y9EQ02574T"; // Your specific ID
-if (GA4_MEASUREMENT_ID && GA4_MEASUREMENT_ID !== "YOUR_GA4_MEASUREMENT_ID") { // Keep check just in case
+const GA4_MEASUREMENT_ID = "G-Y9EQ02574T";
+if (GA4_MEASUREMENT_ID && GA4_MEASUREMENT_ID !== "YOUR_GA4_MEASUREMENT_ID") {
   ReactGA.initialize(GA4_MEASUREMENT_ID);
-  console.log("GA4 Initialized with ID:", GA4_MEASUREMENT_ID); // Check console for this message
+  console.log("GA4 Initialized with ID:", GA4_MEASUREMENT_ID);
 } else {
-  console.warn("GA4 Measurement ID is invalid or missing. Analytics will not be sent."); // Or this one
+  console.warn("GA4 Measurement ID is invalid or missing. Analytics will not be sent.");
 }
 
 // --- Component to Track Page Views ---
 function TrackPageViews() {
   const location = useLocation();
   useEffect(() => {
-    // Only send pageview if GA4 is initialized correctly
     if (GA4_MEASUREMENT_ID && GA4_MEASUREMENT_ID !== "YOUR_GA4_MEASUREMENT_ID") {
       ReactGA.send({ hitType: "pageview", page: location.pathname + location.search });
-      // console.log(`GA Pageview: ${location.pathname + location.search}`); // Uncomment for debugging
     }
   }, [location]);
-  return null; // This component doesn't render anything visible
+  return null;
 }
-
 
 // --- Main App Component ---
 function App() {
@@ -87,6 +79,10 @@ function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [profileModalUserId, setProfileModalUserId] = useState(null);
   const isProfileModalOpen = Boolean(profileModalUserId);
+  const location = useLocation(); // Get current location
+
+  // Check if current page is Messages to hide footer
+  const isMessagesPage = location.pathname.includes('/messages');
 
   const openProfileModal = (userId) => {
     setProfileModalUserId(userId);
@@ -148,9 +144,9 @@ function App() {
                     >
                       {/* Main application container with flex layout */}
                       <div className="app-container" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-                        <Navbar />              {/* Navbar at the top */}
-                        <TrackPageViews />      {/* GA Pageview Tracker */}
-                        <VerificationBanner />  {/* Verification Banner below Navbar */}
+                        <Navbar />
+                        <TrackPageViews />
+                        <VerificationBanner />
 
                         {/* Main content area that grows */}
                         <main className="main-content" style={{ flexGrow: 1 }}>
@@ -208,7 +204,8 @@ function App() {
                           onClose={closeProfileModal}
                         />
 
-                        <Footer /> {/* Footer at the bottom */}
+                        {/* Only render Footer when not on Messages page */}
+                        {!isMessagesPage && <Footer />}
 
                         <ToastContainer
                           position="top-right"
