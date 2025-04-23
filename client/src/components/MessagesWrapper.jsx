@@ -171,16 +171,19 @@ const MessagesWrapper = ({ children }) => {
     <div className={styles.appWrapper} ref={containerRef}>
       {/* Clone child components and pass registerRefs function */}
       {React.Children.map(children, child => {
-         // --- FIX STARTS HERE ---
-         // Check if the child is a valid React element before cloning
-         if (React.isValidElement(child)) {
-           // If it's valid, clone it and pass the registerRefs prop
-           return React.cloneElement(child, { registerRefs });
-         }
-         // If it's not valid (e.g., null, undefined, string, number), return it as is
-         return child;
-         // --- FIX ENDS HERE ---
-       })}
+               if (React.isValidElement(child)) {
+                 // Check if the element's type is a string (e.g., 'div', 'span') which indicates a DOM element
+                 if (typeof child.type === 'string') {
+                   // It's a DOM element, return it without the custom prop
+                   return child;
+                 } else {
+                   // It's likely a custom React component (function or class), so pass the prop
+                   return React.cloneElement(child, { registerRefs });
+                 }
+               }
+               // Return non-element children (null, undefined, strings, etc.) as is
+               return child;
+             })}
     </div>
   );
 };
