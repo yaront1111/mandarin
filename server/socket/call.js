@@ -104,7 +104,7 @@ export const registerCallHandlers = (io, socket, userConnections, rateLimiters) 
         return socket.emit("videoError", { error: "Invalid video signal", recipientId });
       }
 
-      log.debug(`videoSignal from ${socket.user._id} → ${recipientId}`);
+      log.debug(`videoSignal from ${socket.user.id} → ${recipientId}`);
       await deliverEventToUser(
         io,
         userConnections,
@@ -112,9 +112,9 @@ export const registerCallHandlers = (io, socket, userConnections, rateLimiters) 
         "videoSignal",
         () => ({
           signal,
-          userId: socket.user._id,
+          userId: socket.user.id,
           from: from || {
-            userId: socket.user._id,
+            userId: socket.user.id,
             name: socket.user.nickname || "User",
           },
           timestamp: Date.now(),
@@ -141,7 +141,7 @@ export const registerCallHandlers = (io, socket, userConnections, rateLimiters) 
         return socket.emit("videoError", { error: "Invalid peer ID exchange", recipientId });
       }
 
-      log.debug(`peerIdExchange ${peerId} from ${socket.user._id} → ${recipientId}`);
+      log.debug(`peerIdExchange ${peerId} from ${socket.user.id} → ${recipientId}`);
       await deliverEventToUser(
         io,
         userConnections,
@@ -149,8 +149,8 @@ export const registerCallHandlers = (io, socket, userConnections, rateLimiters) 
         "peerIdExchange",
         () => ({
           peerId,
-          userId: socket.user._id,
-          from: from || { userId: socket.user._id, name: socket.user.nickname || "User" },
+          userId: socket.user.id,
+          from: from || { userId: socket.user.id, name: socket.user.nickname || "User" },
           isFallback: Boolean(isFallback),
           timestamp: Date.now(),
         }),
@@ -174,13 +174,13 @@ export const registerCallHandlers = (io, socket, userConnections, rateLimiters) 
         log.error(`Invalid videoHangup recipientId: ${recipientId}`);
         return;
       }
-      log.debug(`videoHangup from ${socket.user._id} → ${recipientId}`);
+      log.debug(`videoHangup from ${socket.user.id} → ${recipientId}`);
       await deliverEventToUser(
         io,
         userConnections,
         recipientId,
         "videoHangup",
-        () => ({ userId: socket.user._id, timestamp: Date.now() }),
+        () => ({ userId: socket.user.id, timestamp: Date.now() }),
         { maxAttempts: 3, delayMs: 1000 }
       );
     } catch (err) {
@@ -194,11 +194,11 @@ export const registerCallHandlers = (io, socket, userConnections, rateLimiters) 
         log.error("Invalid videoMediaControl payload", { recipientId, type });
         return;
       }
-      log.debug(`videoMediaControl (${type}:${muted}) from ${socket.user._id} → ${recipientId}`);
+      log.debug(`videoMediaControl (${type}:${muted}) from ${socket.user.id} → ${recipientId}`);
       const sockets = userConnections.get(recipientId) || [];
       for (const sid of sockets) {
         io.to(sid).emit("videoMediaControl", {
-          userId: socket.user._id,
+          userId: socket.user.id,
           type,
           muted,
           timestamp: Date.now(),
@@ -214,9 +214,9 @@ export const registerCallHandlers = (io, socket, userConnections, rateLimiters) 
       const { recipientId, callType, callId } = data;
       // rate limit
       try {
-        await callLimiter.consume(socket.user._id.toString());
+        await callLimiter.consume(socket.user.id.toString());
       } catch {
-        log.warn(`Rate limit exceeded for ${socket.user._id}`);
+        log.warn(`Rate limit exceeded for ${socket.user.id}`);
         return socket.emit("callError", { error: "Rate limit exceeded" });
       }
 
@@ -227,18 +227,18 @@ export const registerCallHandlers = (io, socket, userConnections, rateLimiters) 
       if (!recipient) {
         return socket.emit("callError", { error: "Recipient not found" });
       }
-      const caller = await User.findById(socket.user._id);
+      const caller = await User.findById(socket.user.id);
       if (callType === "video" && caller.accountTier === "FREE") {
         return socket.emit("callError", { error: "Upgrade required for video calls" });
       }
 
-      log.info(`initiateCall from ${socket.user._id} → ${recipientId}`);
+      log.info(`initiateCall from ${socket.user.id} → ${recipientId}`);
       const payload = {
         callId: callId || `call-${Date.now()}`,
         callType,
-        userId: socket.user._id.toString(),
+        userId: socket.user.id.toString(),
         caller: {
-          userId: caller._id.toString(),
+          userId: caller.id.toString(),
           name: caller.nickname || "User",
           photo: caller.photos?.[0]?.url || null,
         },
@@ -276,14 +276,14 @@ export const registerCallHandlers = (io, socket, userConnections, rateLimiters) 
         log.error(`Invalid answerCall callerId: ${callerId}`);
         return;
       }
-      log.info(`${accept ? "accepted" : "rejected"} call ${callId} by ${socket.user._id}`);
+      log.info(`${accept ? "accepted" : "rejected"} call ${callId} by ${socket.user.id}`);
 
       await deliverEventToUser(
         io,
         userConnections,
         callerId,
         "callAnswered",
-        () => ({ userId: socket.user._id.toString(), accept, callId, timestamp: Date.now() }),
+        () => ({ userId: socket.user.id.toString(), accept, callId, timestamp: Date.now() }),
         {
           maxAttempts: 5,
           delayMs: 800,

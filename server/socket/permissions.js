@@ -60,7 +60,7 @@ const safeEmit = (socket, event, data) => {
  */
 export async function sendPhotoPermissionRequestNotification(io, socket, data) {
   const { photoId, ownerId, permissionId } = data;
-  const requestId = `req-${photoId}-${socket.user._id}`;
+  const requestId = `req-${photoId}-${socket.user.id}`;
 
   // Validate IDs
   if (
@@ -84,7 +84,7 @@ export async function sendPhotoPermissionRequestNotification(io, socket, data) {
   // Send an actual notification to owner
   await sendNotification(io, {
     recipient: ownerId,
-    sender:    socket.user._id,
+    sender:    socket.user.id,
     type:      "photoRequest",
     title:     `${socket.user.nickname || "Someone"} requested access to your private photo`,
     content:   "Click to review the request",
@@ -105,7 +105,7 @@ export async function sendPhotoPermissionRequestNotification(io, socket, data) {
  */
 export async function sendPhotoPermissionResponseNotification(io, socket, data) {
   const { permissionId, status, requesterId } = data;
-  const requestId = `res-${permissionId}-${socket.user._id}`;
+  const requestId = `res-${permissionId}-${socket.user.id}`;
 
   // Validate inputs
   if (
@@ -128,7 +128,7 @@ export async function sendPhotoPermissionResponseNotification(io, socket, data) 
   // Send an actual notification to the original requester
   await sendNotification(io, {
     recipient: requesterId,
-    sender:    socket.user._id,
+    sender:    socket.user.id,
     type:      "photoResponse",
     title:     `${socket.user.nickname || "Someone"} ${status} your photo request`,
     content:   status === "approved"

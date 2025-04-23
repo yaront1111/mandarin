@@ -38,12 +38,12 @@ const ReactionSchema = new Schema({
   type:    { type: String, enum: ['like','love','laugh','wow','sad','angry'], default: 'like' },
   createdAt:{ type: Date, default: Date.now },
   updatedAt:{ type: Date, default: Date.now },
-}, { _id: false });
+}, { id: false });
 
 const ViewerSchema = new Schema({
   user:     { type: ObjectId, ref: 'User', required: true, index: true },
   viewedAt: { type: Date, default: Date.now },
-}, { _id: false });
+}, { id: false });
 
 // -------------------------
 // Main Story Schema

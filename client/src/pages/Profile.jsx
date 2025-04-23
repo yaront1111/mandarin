@@ -420,7 +420,7 @@ const Profile = () => {
         console.log("Profile updated successfully, refreshing user data...");
         
         // After successful update, force a refresh of user data and wait for it to complete
-        const refreshResult = await refreshUserData(updatedUser._id);
+        const refreshResult = await refreshUserData(updatedUser.id);
         
         if (refreshResult) {
           console.log("User data refresh successful");
@@ -465,7 +465,7 @@ const Profile = () => {
     setLocalPhotos((prev) => [
       ...prev,
       {
-        _id: tempId,
+        id: tempId,
         url: URL.createObjectURL(file),
         isPrivate: false,
         isProfile: false,
@@ -482,7 +482,7 @@ const Profile = () => {
         toast.success(t('profile.photoUploadSuccess'))
 
         // Clean up temporary photo before refreshing data
-        setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
+        setLocalPhotos((prev) => prev.filter((photo) => photo.id !== tempId))
 
         // Refresh user data to get the updated photos
         await refreshUserData()
@@ -500,7 +500,7 @@ const Profile = () => {
       toast.error(error.message || t('errors.photoUploadFailed'))
 
       // Remove the temporary photo on error
-      setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
+      setLocalPhotos((prev) => prev.filter((photo) => photo.id !== tempId))
     } finally {
       setIsUploading(false)
     }
@@ -519,11 +519,11 @@ const Profile = () => {
       return
     }
 
-    const photoIndex = localPhotos.findIndex((p) => p._id === photoId)
+    const photoIndex = localPhotos.findIndex((p) => p.id === photoId)
     if (photoIndex === -1) return
     const newPrivacyValue = !localPhotos[photoIndex].isPrivate
     setLocalPhotos((prev) =>
-      prev.map((photo) => (photo._id === photoId ? { ...photo, isPrivate: newPrivacyValue } : photo)),
+      prev.map((photo) => (photo.id === photoId ? { ...photo, isPrivate: newPrivacyValue } : photo)),
     )
     setIsProcessingPhoto(true)
     try {
@@ -545,7 +545,7 @@ const Profile = () => {
       console.error("Failed to update photo privacy:", error)
       toast.error(error.message || t('errors.photoPrivacyUpdateFailed'))
       setLocalPhotos((prev) =>
-        prev.map((photo) => (photo._id === photoId ? { ...photo, isPrivate: !newPrivacyValue } : photo)),
+        prev.map((photo) => (photo.id === photoId ? { ...photo, isPrivate: !newPrivacyValue } : photo)),
       )
     } finally {
       setIsProcessingPhoto(false)
@@ -561,7 +561,7 @@ const Profile = () => {
       return
     }
 
-    const photoIndex = localPhotos.findIndex((p) => p._id === photoId)
+    const photoIndex = localPhotos.findIndex((p) => p.id === photoId)
     if (photoIndex === -1) return
     if (profilePhotoIndex === photoIndex) return
 
@@ -612,12 +612,12 @@ const Profile = () => {
     // Check if this is a temporary photo
     if (photoId.toString().startsWith("temp-")) {
       // For temporary photos, just remove them from the local state
-      setLocalPhotos((prev) => prev.filter((photo) => photo._id !== photoId))
+      setLocalPhotos((prev) => prev.filter((photo) => photo.id !== photoId))
       return
     }
 
     if (!window.confirm(t('profile.confirmDeletePhoto'))) return
-    const photoIndex = localPhotos.findIndex((p) => p._id === photoId)
+    const photoIndex = localPhotos.findIndex((p) => p.id === photoId)
     if (photoIndex === -1) return
     if (localPhotos.length === 1) {
       toast.error(t('profile.cannotDeleteOnlyPhoto'))
@@ -627,7 +627,7 @@ const Profile = () => {
       toast.error(t('profile.cannotDeleteProfilePhoto'))
       return
     }
-    const updatedPhotos = localPhotos.filter((photo) => photo._id !== photoId)
+    const updatedPhotos = localPhotos.filter((photo) => photo.id !== photoId)
     setLocalPhotos(updatedPhotos)
     if (photoIndex < profilePhotoIndex) {
       setProfilePhotoIndex(profilePhotoIndex - 1)
@@ -857,12 +857,12 @@ const Profile = () => {
                 <div className={styles.photoGallery}>
                   {localPhotos.map((photo) => (
                     <div
-                      key={photo._id}
+                      key={photo.id}
                       className={`${styles.galleryItem} ${photo.isProfile ? styles.profileGalleryItem : ''}`}
                       style={{
-                        cursor: photo._id.toString().startsWith("temp-") ? "not-allowed" : "pointer",
+                        cursor: photo.id.toString().startsWith("temp-") ? "not-allowed" : "pointer",
                       }}
-                      onClick={() => handleSetProfilePhoto(photo._id)}
+                      onClick={() => handleSetProfilePhoto(photo.id)}
                     >
                       <img
                         src={photo.url || "/placeholder.svg?height=100&width=100"}
@@ -874,17 +874,17 @@ const Profile = () => {
                           <div className={`${styles.spinner} ${styles.spinnerSmall}`}></div>
                         </div>
                       )}
-                      {photo._id.toString().startsWith("temp-") && (
+                      {photo.id.toString().startsWith("temp-") && (
                         <div className={styles.galleryItemUploading}>
                           {t('profile.uploading')}
                         </div>
                       )}
                       <div className={styles.photoControls}>
                         <button
-                          onClick={(e) => handleTogglePhotoPrivacy(photo._id, e)}
+                          onClick={(e) => handleTogglePhotoPrivacy(photo.id, e)}
                           className={styles.photoControlBtn}
                           title={photo.isPrivate ? t('profile.makePublic') : t('profile.makePrivate')}
-                          disabled={isProcessingPhoto || photo.isLoading || photo._id.toString().startsWith("temp-")}
+                          disabled={isProcessingPhoto || photo.isLoading || photo.id.toString().startsWith("temp-")}
                           aria-label={photo.isPrivate ? t('profile.makePublic') : t('profile.makePrivate')}
                         >
                           {photo.isPrivate ? (
@@ -897,11 +897,11 @@ const Profile = () => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleSetProfilePhoto(photo._id)
+                              handleSetProfilePhoto(photo.id)
                             }}
                             className={styles.photoControlBtn}
                             title={t('profile.setAsProfilePhoto')}
-                            disabled={isProcessingPhoto || photo.isLoading || photo._id.toString().startsWith("temp-")}
+                            disabled={isProcessingPhoto || photo.isLoading || photo.id.toString().startsWith("temp-")}
                             aria-label={t('profile.setAsProfilePhoto')}
                           >
                             <FaStar style={{ fontSize: "14px" }} />
@@ -909,7 +909,7 @@ const Profile = () => {
                         )}
                         {!photo.isProfile && (
                           <button
-                            onClick={(e) => handleDeletePhoto(photo._id, e)}
+                            onClick={(e) => handleDeletePhoto(photo.id, e)}
                             className={styles.photoControlBtn}
                             title={t('profile.deletePhoto')}
                             disabled={isProcessingPhoto || photo.isLoading}

@@ -77,10 +77,10 @@ export function registerNotificationHandlers(io, socket, userConnections, rateLi
   socket.on(
     EVENTS.GET_SETTINGS,
     safeListener(async () => {
-      if (!socket.user?._id) {
+      if (!socket.user?.id) {
         return safeEmit(socket, EVENTS.SETTINGS_ERROR, { error: "Authentication required" });
       }
-      const settings = await loadSettings(socket.user._id);
+      const settings = await loadSettings(socket.user.id);
       safeEmit(socket, EVENTS.SETTINGS, { settings });
     })
   );
@@ -89,13 +89,13 @@ export function registerNotificationHandlers(io, socket, userConnections, rateLi
   socket.on(
     EVENTS.UPDATE_SETTINGS,
     safeListener(async (newSettings) => {
-      if (!socket.user?._id) {
+      if (!socket.user?.id) {
         return safeEmit(socket, EVENTS.SETTINGS_ERROR, { error: "Authentication required" });
       }
       if (typeof newSettings !== "object") {
         return safeEmit(socket, EVENTS.SETTINGS_ERROR, { error: "Invalid format" });
       }
-      const user = await User.findById(socket.user._id);
+      const user = await User.findById(socket.user.id);
       if (!user) {
         return safeEmit(socket, EVENTS.SETTINGS_ERROR, { error: "User not found" });
       }
@@ -105,7 +105,7 @@ export function registerNotificationHandlers(io, socket, userConnections, rateLi
         ...newSettings
       };
       await user.save();
-      log.info(`Notification settings updated for ${socket.user._id}`);
+      log.info(`Notification settings updated for ${socket.user.id}`);
       safeEmit(socket, EVENTS.SETTINGS, { settings: user.settings.notifications });
     })
   );
@@ -114,12 +114,12 @@ export function registerNotificationHandlers(io, socket, userConnections, rateLi
   socket.on(
     EVENTS.MARK_READ,
     safeListener(async (notificationId) => {
-      if (!socket.user?._id) {
+      if (!socket.user?.id) {
         return safeEmit(socket, EVENTS.NOTIFICATION_ERROR, { error: "Authentication required" });
       }
       const notif = await Notification.findOne({
-        _id: notificationId,
-        recipient: socket.user._id
+        id: notificationId,
+        recipient: socket.user.id
       });
       if (!notif) {
         return safeEmit(socket, EVENTS.NOTIFICATION_ERROR, { error: "Notification not found", notificationId });
@@ -128,7 +128,7 @@ export function registerNotificationHandlers(io, socket, userConnections, rateLi
         notif.read = true;
         notif.readAt = new Date();
         await notif.save();
-        log.debug(`Notification ${notificationId} marked read by ${socket.user._id}`);
+        log.debug(`Notification ${notificationId} marked read by ${socket.user.id}`);
       }
       safeEmit(socket, EVENTS.NOTIFICATION_READ, { notificationId });
     })
@@ -138,14 +138,14 @@ export function registerNotificationHandlers(io, socket, userConnections, rateLi
   socket.on(
     EVENTS.MARK_ALL_READ,
     safeListener(async () => {
-      if (!socket.user?._id) {
+      if (!socket.user?.id) {
         return safeEmit(socket, EVENTS.NOTIFICATION_ERROR, { error: "Authentication required" });
       }
       const result = await Notification.updateMany(
-        { recipient: socket.user._id, read: false },
+        { recipient: socket.user.id, read: false },
         { read: true, readAt: new Date() }
       );
-      log.debug(`User ${socket.user._id} marked ${result.modifiedCount} notifications as read`);
+      log.debug(`User ${socket.user.id} marked ${result.modifiedCount} notifications as read`);
       safeEmit(socket, EVENTS.ALL_NOTIFICATIONS_READ, { count: result.modifiedCount });
     })
   );
@@ -179,7 +179,7 @@ export async function sendNotification(io, notification, saveToDB = true) {
       let payload = saved ?? notification;
       if (notification.sender && typeof notification.sender !== "object") {
         try {
-          const populated = await Notification.findById(saved?._id)
+          const populated = await Notification.findById(saved?.id)
             .populate("sender", "nickname username photos avatar")
             .lean();
           payload = populated ?? payload;
@@ -224,17 +224,17 @@ export async function sendNotification(io, notification, saveToDB = true) {
  * Shortcut: send a message notification
  */
 export async function sendMessageNotification(io, sender, recipient, message) {
-  if (!sender?._id || !recipient?._id || !message) {
+  if (!sender?.id || !recipient?.id || !message) {
     log.error("sendMessageNotification: missing params");
     return null;
   }
   return sendNotification(io, {
-    recipient: recipient._id,
-    sender:    sender._id,
+    recipient: recipient.id,
+    sender:    sender.id,
     type:      "message",
     title:     `New message from ${sender.nickname || "Someone"}`,
     content:   message.content,
-    reference: message._id,
+    reference: message.id,
     data:      { message }
   });
 }
@@ -243,14 +243,14 @@ export async function sendMessageNotification(io, sender, recipient, message) {
  * Shortcut: send a like or match notification
  */
 export async function sendLikeNotification(io, sender, recipient, likeData) {
-  if (!sender?._id || !recipient?._id) {
+  if (!sender?.id || !recipient?.id) {
     log.error("sendLikeNotification: missing params");
     return null;
   }
   const isMatch = Boolean(likeData.isMatch);
   return sendNotification(io, {
-    recipient: recipient._id,
-    sender:    sender._id,
+    recipient: recipient.id,
+    sender:    sender.id,
     type:      isMatch ? "match" : "like",
     title:     isMatch
                  ? `You matched with ${sender.nickname || "Someone"}!`
@@ -258,7 +258,7 @@ export async function sendLikeNotification(io, sender, recipient, likeData) {
     content:   isMatch
                  ? "You both liked each other. Start chatting!"
                  : "Someone just liked your profile",
-    reference: likeData._id,
+    reference: likeData.id,
     data:      likeData
   });
 }
@@ -267,18 +267,18 @@ export async function sendLikeNotification(io, sender, recipient, likeData) {
  * Shortcut: send a photo permission request notification
  */
 export async function sendPhotoPermissionRequestNotification(io, requester, owner, permission) {
-  if (!requester?._id || !owner?._id || !permission?._id) {
+  if (!requester?.id || !owner?.id || !permission?.id) {
     log.error("sendPhotoPermissionRequestNotification: missing params");
     return null;
   }
   return sendNotification(io, {
-    recipient: owner._id,
-    sender:    requester._id,
+    recipient: owner.id,
+    sender:    requester.id,
     type:      "photoRequest",
     title:     `${requester.nickname || "Someone"} requested access to your photo`,
     content:   "Review their request",
-    reference: permission._id,
-    data:      { permissionId: permission._id, photoId: permission.photo }
+    reference: permission.id,
+    data:      { permissionId: permission.id, photoId: permission.photo }
   });
 }
 
@@ -286,14 +286,14 @@ export async function sendPhotoPermissionRequestNotification(io, requester, owne
  * Shortcut: send a photo permission response notification
  */
 export async function sendPhotoPermissionResponseNotification(io, owner, requester, permission) {
-  if (!owner?._id || !requester?._id || !permission?._id) {
+  if (!owner?.id || !requester?.id || !permission?.id) {
     log.error("sendPhotoPermissionResponseNotification: missing params");
     return null;
   }
   const approved = permission.status === "approved";
   return sendNotification(io, {
-    recipient: requester._id,
-    sender:    owner._id,
+    recipient: requester.id,
+    sender:    owner.id,
     type:      "photoResponse",
     title:     approved
                  ? `${owner.nickname || "Someone"} approved your photo request`
@@ -301,8 +301,8 @@ export async function sendPhotoPermissionResponseNotification(io, owner, request
     content:   approved
                  ? "You can now view their private photo"
                  : "Your request was declined",
-    reference: permission._id,
-    data:      { permissionId: permission._id, status: permission.status }
+    reference: permission.id,
+    data:      { permissionId: permission.id, status: permission.status }
   });
 }
 
@@ -310,18 +310,18 @@ export async function sendPhotoPermissionResponseNotification(io, owner, request
  * Shortcut: send a comment notification
  */
 export async function sendCommentNotification(io, commenter, owner, commentData) {
-  if (!commenter?._id || !owner?._id || !commentData?._id) {
+  if (!commenter?.id || !owner?.id || !commentData?.id) {
     log.error("sendCommentNotification: missing params");
     return null;
   }
   return sendNotification(io, {
-    recipient: owner._id,
-    sender:    commenter._id,
+    recipient: owner.id,
+    sender:    commenter.id,
     type:      "comment",
     title:     `${commenter.nickname || "Someone"} commented on your post`,
     content:   commentData.content,
-    reference: commentData._id,
-    data:      { commentId: commentData._id, postId: commentData.postId }
+    reference: commentData.id,
+    data:      { commentId: commentData.id, postId: commentData.postId }
   });
 }
 

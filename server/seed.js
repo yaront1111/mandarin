@@ -348,7 +348,7 @@ const seedDatabase = async () => {
       try {
         const newUser = new User(userData);
         const savedUser = await newUser.save();
-        createdUserIds.push(savedUser._id.toString());
+        createdUserIds.push(savedUser.id.toString());
         createdUsers.push(savedUser);
 
         if ((i + 1) % 50 === 0) {
@@ -427,7 +427,7 @@ const seedDatabase = async () => {
         try {
           // Update user directly
           const updatedUser = await User.findByIdAndUpdate(
-            user._id,
+            user.id,
             { $set: { photos: photosToAdd } },
             { new: true }
           );
@@ -435,10 +435,10 @@ const seedDatabase = async () => {
           if (updatedUser) {
             // Record private photo IDs from the updated user document
             updatedUser.photos.forEach((photo) => {
-              if (photo.isPrivate && photo._id) {
+              if (photo.isPrivate && photo.id) {
                 allPrivatePhotoIdsWithOwner.push({
-                  photoId: photo._id.toString(),
-                  ownerId: updatedUser._id.toString()
+                  photoId: photo.id.toString(),
+                  ownerId: updatedUser.id.toString()
                 });
               }
             });
@@ -459,9 +459,9 @@ const seedDatabase = async () => {
 
     // Create a map of users by type for more realistic matching
     const usersByType = {
-      woman: createdUsers.filter(u => u.details?.iAm === 'woman').map(u => u._id.toString()),
-      man: createdUsers.filter(u => u.details?.iAm === 'man').map(u => u._id.toString()),
-      couple: createdUsers.filter(u => u.details?.iAm === 'couple').map(u => u._id.toString())
+      woman: createdUsers.filter(u => u.details?.iAm === 'woman').map(u => u.id.toString()),
+      man: createdUsers.filter(u => u.details?.iAm === 'man').map(u => u.id.toString()),
+      couple: createdUsers.filter(u => u.details?.iAm === 'couple').map(u => u.id.toString())
     };
 
     for (let i = 0; i < NUM_LIKES_TO_SEED; i++) {
@@ -469,7 +469,7 @@ const seedDatabase = async () => {
 
       // Select a random sender
       const senderId = getRandomElement(createdUserIds);
-      const sender = createdUsers.find(u => u._id.toString() === senderId);
+      const sender = createdUsers.find(u => u.id.toString() === senderId);
 
       if (!sender || !sender.details || !sender.details.iAm || !sender.details.lookingFor) {
         continue; // Skip if sender details are missing
@@ -534,7 +534,7 @@ const seedDatabase = async () => {
         const { photoId, ownerId } = allPrivatePhotoIdsWithOwner[randomPhotoIndex];
 
         // Get the owner details to match appropriate requesters
-        const owner = createdUsers.find(u => u._id.toString() === ownerId);
+        const owner = createdUsers.find(u => u.id.toString() === ownerId);
 
         if (!owner || !owner.details || !owner.details.iAm) {
           continue; // Skip if owner details missing

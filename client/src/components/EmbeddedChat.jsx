@@ -301,7 +301,7 @@ const MessageList = React.memo(({ messages, currentUserId, typingStatus, hasMore
                     <div className={styles.messageDate}>{date}</div>
                     {msgs.map((message) => (
                         <MessageItem
-                            key={message._id || message.tempId}
+                            key={message.id || message.tempId}
                             message={message}
                             currentUserId={currentUserId}
                             isSent={message.sender === currentUserId}
@@ -558,7 +558,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
     // --- Hooks ---
     const { user, isAuthenticated } = useAuth();
     const navigate = useNavigate();
-    const recipientId = recipient?._id;
+    const recipientId = recipient?.id;
 
     // Use the custom chat hook for core logic
     const {
@@ -622,11 +622,11 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
     useEffect(() => {
         // Combine messages from the hook with locally generated system messages
         const combined = [...(hookMessages || [])];
-        const localSystemMessages = localMessages.filter(msg => msg.type === 'system' && msg._id?.startsWith('local-'));
+        const localSystemMessages = localMessages.filter(msg => msg.type === 'system' && msg.id?.startsWith('local-'));
 
         // Add local messages if they aren't already present (by ID)
         localSystemMessages.forEach(localMsg => {
-            if (!combined.some(msg => msg._id === localMsg._id)) {
+            if (!combined.some(msg => msg.id === localMsg.id)) {
                 combined.push(localMsg);
             }
         });
@@ -639,12 +639,12 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
         const seenIds = new Set();
         for (let i = combined.length - 1; i >= 0; i--) {
             const msg = combined[i];
-            const id = msg._id || msg.tempId;
+            const id = msg.id || msg.tempId;
             if (id && !seenIds.has(id)) {
                  // Basic validation and normalization
                 const normalizedMsg = {
                     ...msg,
-                    _id: id,
+                    id: id,
                     sender: msg.sender || "unknown",
                     content: msg.content ?? "", // Ensure content is not null/undefined
                     createdAt: msg.createdAt || new Date().toISOString(),
@@ -722,7 +722,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
 
     // Check Pending Photo Requests from this recipient
     const checkPendingPhotoRequests = useCallback(async () => {
-        if (!recipientId || !user?._id) return;
+        if (!recipientId || !user?.id) return;
         try {
             const response = await authAxios.get(`/api/users/photos/permissions`, {
                 params: { requestedBy: recipientId, status: "pending" },
@@ -740,14 +740,14 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
             setPendingPhotoRequests(0);
             setRequestsData([]);
         }
-    }, [authAxios, recipientId, user?._id]);
+    }, [authAxios, recipientId, user?.id]);
 
     // Run photo request check when chat opens or recipient changes
     useEffect(() => {
-        if (isOpen && recipientId && user?._id) {
+        if (isOpen && recipientId && user?.id) {
             checkPendingPhotoRequests();
         }
-    }, [isOpen, recipientId, user?._id, checkPendingPhotoRequests]);
+    }, [isOpen, recipientId, user?.id, checkPendingPhotoRequests]);
 
     // Focus Input on Open
     useEffect(() => {
@@ -760,12 +760,12 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
 
     // Socket Event Listeners (Video Calls)
     useEffect(() => {
-        if (!isOpen || !recipientId || !user?._id || !socketService) return;
+        if (!isOpen || !recipientId || !user?.id || !socketService) return;
 
         // Helper to add system messages to the local state
         const addSystemMessage = (content, error = false) => {
             const newMessage = {
-                _id: generateLocalUniqueId('system'),
+                id: generateLocalUniqueId('system'),
                 sender: "system",
                 content,
                 createdAt: new Date().toISOString(),
@@ -773,7 +773,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
                 error: error,
             };
              setLocalMessages((prev) => {
-                if (prev.some(msg => msg._id === newMessage._id)) return prev;
+                if (prev.some(msg => msg.id === newMessage.id)) return prev;
                 const updated = [...prev, newMessage];
                 updated.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
                 return updated;
@@ -812,7 +812,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
 
         // Handler for when either user hangs up
         const handleCallHangup = (data) => {
-             if (data.userId === recipientId || data.userId === user._id) {
+             if (data.userId === recipientId || data.userId === user.id) {
                 if (isCallActive) {
                     addSystemMessage(`Video call with ${recipient?.nickname} ended.`);
                     setIsCallActive(false);
@@ -838,14 +838,14 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
         return () => {
             listeners.forEach(unsubscribe => unsubscribe && unsubscribe());
         };
-    }, [isOpen, recipientId, recipient?.nickname, user?._id, isCallActive, incomingCall]);
+    }, [isOpen, recipientId, recipient?.nickname, user?.id, isCallActive, incomingCall]);
 
     // --- Event Handlers ---
 
     // Adds a system message locally
     const addLocalSystemMessage = useCallback((content, error = false) => {
         const newMessage = {
-            _id: generateLocalUniqueId('system'),
+            id: generateLocalUniqueId('system'),
             sender: "system",
             content,
             createdAt: new Date().toISOString(),
@@ -853,7 +853,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
             error: error,
         };
         setLocalMessages(prev => {
-            if (prev.some(msg => msg._id === newMessage._id)) return prev;
+            if (prev.some(msg => msg.id === newMessage.id)) return prev;
              const updated = [...prev, newMessage];
              updated.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
              return updated;
@@ -1246,7 +1246,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
                 ) : (
                     <MessageList
                         messages={localMessages}
-                        currentUserId={user?._id}
+                        currentUserId={user?.id}
                         typingStatus={typingStatus}
                         hasMore={hasMore}
                         loadMoreMessages={loadMoreMessages}
@@ -1297,11 +1297,11 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
                 accept={ALLOWED_FILE_TYPES.join(",")}
             />
 
-            {isCallActive && recipientId && user?._id && (
+            {isCallActive && recipientId && user?.id && (
                 <div className={`${styles.videoCallOverlay} ${styles.active}`}>
                     <VideoCall
                         isActive={isCallActive}
-                        userId={user._id}
+                        userId={user.id}
                         recipientId={recipientId}
                         onEndCall={handleEndCall}
                         isIncoming={!!incomingCall && !isCallActive}
@@ -1316,7 +1316,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
 // Prop Types
 EmbeddedChat.propTypes = {
     recipient: PropTypes.shape({
-        _id: PropTypes.string.isRequired,
+        id: PropTypes.string.isRequired,
         nickname: PropTypes.string.isRequired,
         isOnline: PropTypes.bool,
         photos: PropTypes.arrayOf(PropTypes.shape({ url: PropTypes.string }))

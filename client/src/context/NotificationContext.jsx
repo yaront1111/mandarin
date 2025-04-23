@@ -40,7 +40,7 @@ function reducer(state, { type, payload }) {
         unreadCount: payload.filter(n => !n.read).length,
       }
     case "ADD_NOTIFICATION":
-      if (state.notifications.some(n => (n._id || n.id) === (payload._id || payload.id))) {
+      if (state.notifications.some(n => (n.id || n.id) === (payload.id || payload.id))) {
         return state
       }
       return {
@@ -52,12 +52,12 @@ function reducer(state, { type, payload }) {
       return {
         ...state,
         notifications: state.notifications.map(n =>
-          (n._id || n.id) === payload ? { ...n, read: true } : n
+          (n.id || n.id) === payload ? { ...n, read: true } : n
         ),
         unreadCount: Math.max(
           0,
           state.unreadCount -
-            (state.notifications.find(n => (n._id || n.id) === payload && !n.read)
+            (state.notifications.find(n => (n.id || n.id) === payload && !n.read)
               ? 1
               : 0)
         ),
@@ -208,19 +208,19 @@ export function NotificationProvider({ children, openProfileModal }) {
   const handleNotificationClick = useCallback(
     notification => {
       if (!notification) return
-      const id = notification._id || notification.id
+      const id = notification.id || notification.id
       if (!notification.read) markAsRead(id)
 
       const type = notification.type
       const data = notification.data || {}
       const senderId =
-        notification.sender?._id ||
-        data.sender?._id ||
-        data.requester?._id ||
-        data.user?._id ||
-        data.owner?._id ||
-        (type === "match" && data.matchedUser?._id) ||
-        (type === "comment" && data.commenter?._id)
+        notification.sender?.id ||
+        data.sender?.id ||
+        data.requester?.id ||
+        data.user?.id ||
+        data.owner?.id ||
+        (type === "match" && data.matchedUser?.id) ||
+        (type === "comment" && data.commenter?.id)
 
       if ((type === "message" || type === "newMessage") && senderId) {
         navigate(`/messages/${senderId}`)

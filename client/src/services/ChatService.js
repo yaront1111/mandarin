@@ -19,7 +19,7 @@ function extractIdFromToken() {
     const token = localStorage.token || sessionStorage.token;
     if (!token) return null;
     const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return payload.id || payload.sub || (payload.user && (payload.user._id || payload.user.id));
+    return payload.id || payload.sub || (payload.user && (payload.user.id || payload.user.id));
   } catch {
     return null;
   }
@@ -53,16 +53,16 @@ class ChatService {
   }
 
   async initialize(user) {
-    if (this.initialized && this.user?._id === user?._id) return true;
+    if (this.initialized && this.user?.id === user?.id) return true;
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = new Promise(async (resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Init timeout')), INIT_TIMEOUT);
       try {
-        let uid = user?._id;
+        let uid = user?.id;
         if (!isValidObjectId(uid)) uid = extractIdFromToken();
         if (!isValidObjectId(uid)) throw new Error('Invalid user ID');
-        this.user = { ...user, _id: uid, id: uid };
+        this.user = { ...user, id: uid, id: uid };
         log.info(`Initializing ChatService for ${uid}`);
 
         const token = localStorage.token || sessionStorage.token;
@@ -105,7 +105,7 @@ class ChatService {
   }
 
   _onSocketMessage(message, sent) {
-    const id = sent ? message._id : message.sender;
+    const id = sent ? message.id : message.sender;
     const convo = sent ? message.recipient : message.sender;
     this._cacheMessage(convo, message);
     this._notify(sent ? 'messageUpdated' : 'messageReceived', message);
@@ -113,13 +113,13 @@ class ChatService {
 
   _cacheMessage(convoId, message) {
     if (!convoId || !message) return;
-    const key = `${message._id || message.tempId}-${convoId}`;
+    const key = `${message.id || message.tempId}-${convoId}`;
     if (this.processed.has(key)) return;
     this.processed.add(key);
     setTimeout(() => this.processed.delete(key), 1500);
 
     let arr = this.messageCache.get(convoId) || [];
-    const idx = arr.findIndex(m => m._id === message._id || m.tempId === message.tempId);
+    const idx = arr.findIndex(m => m.id === message.id || m.tempId === message.tempId);
     if (idx >= 0) arr[idx] = { ...arr[idx], ...message };
     else arr.push(message);
 
@@ -174,8 +174,8 @@ class ChatService {
 
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;
     const tempMsg = {
-      tempId, _id: tempId,
-      sender: this.user._id, recipient: recipientId,
+      tempId, id: tempId,
+      sender: this.user.id, recipient: recipientId,
       content, type, metadata,
       createdAt: new Date().toISOString(),
       status: 'sending', pending: true
@@ -331,7 +331,7 @@ class ChatService {
   }
 
   isReady() {
-    return this.initialized && !!this.user?._id;
+    return this.initialized && !!this.user?.id;
   }
 
   isConnected() {

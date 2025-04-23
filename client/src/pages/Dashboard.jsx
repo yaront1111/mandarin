@@ -171,7 +171,7 @@ const Dashboard = () => {
   // Filter and sort users efficiently.
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
-      if (u._id === user?._id) return false
+      if (u.id === user?.id) return false
       const userAge = u.details?.age || 25
       if (userAge < filterValues.ageMin || userAge > filterValues.ageMax) return false
       if (filterValues.online && !u.isOnline) return false
@@ -190,10 +190,10 @@ const Dashboard = () => {
     // First create a map to deduplicate users by ID
     const uniqueUsersMap = new Map()
 
-    // Add each user to the map with _id as key (overwrites duplicates)
+    // Add each user to the map with id as key (overwrites duplicates)
     filteredUsers.forEach((user) => {
-      if (user && user._id) {
-        uniqueUsersMap.set(user._id, user)
+      if (user && user.id) {
+        uniqueUsersMap.set(user.id, user)
       }
     })
 
@@ -261,7 +261,7 @@ const Dashboard = () => {
     createStory(storyData)
       .then((response) => {
         // Check for different valid response formats
-        if (response && (response.success === true || response._id || (response.data && response.data._id))) {
+        if (response && (response.success === true || response.id || (response.data && response.data.id))) {
           toast.success("Your story has been created!")
           setShowStoryCreator(false)
         } else {
@@ -590,20 +590,20 @@ const Dashboard = () => {
 
                   return (
                     <div
-                      key={matchedUser._id}
+                      key={matchedUser.id}
                       className={styles.userCardWrapper}
                       ref={isLastElement ? lastUserElementRef : null}
                     >
                       <UserCard
                         user={matchedUser}
-                        isLiked={isUserLiked(matchedUser._id)}
+                        isLiked={isUserLiked(matchedUser.id)}
                         onLike={handleLikeUser}
                         viewMode={viewMode}
                         onMessage={(e) => handleMessageUser(e, matchedUser)}
-                        onClick={() => handleUserCardClick(matchedUser._id)}
+                        onClick={() => handleUserCardClick(matchedUser.id)}
                         showExtendedDetails={true}
-                        hasUnreadMessages={hasUnreadMessagesFrom(matchedUser._id)}
-                        unreadMessageCount={countUnreadMessages(matchedUser._id)}
+                        hasUnreadMessages={hasUnreadMessagesFrom(matchedUser.id)}
+                        unreadMessageCount={countUnreadMessages(matchedUser.id)}
                       />
                     </div>
                   )

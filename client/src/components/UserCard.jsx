@@ -234,20 +234,20 @@ const UserCard = ({
 
     if (onClick) {
       onClick();
-    } else if (user?._id) {
-      navigate(`/user/${user._id}`);
+    } else if (user?.id) {
+      navigate(`/user/${user.id}`);
     }
-  }, [onClick, navigate, user?._id]);
+  }, [onClick, navigate, user?.id]);
 
   const handleLikeClick = useCallback((e) => {
     e.stopPropagation();
     e.preventDefault();
 
-    if (onLike && user?._id) {
-      log.debug(`Like button clicked for user ${user._id}, current isLiked: ${isLiked}`);
-      onLike(user._id, user.nickname);
+    if (onLike && user?.id) {
+      log.debug(`Like button clicked for user ${user.id}, current isLiked: ${isLiked}`);
+      onLike(user.id, user.nickname);
     }
-  }, [onLike, user?._id, user?.nickname, isLiked]);
+  }, [onLike, user?.id, user?.nickname, isLiked]);
 
   const handleMessageClick = useCallback((e) => {
     e.stopPropagation();
@@ -474,7 +474,7 @@ const UserCard = ({
       <div
         className={styles.userCard}
         onClick={handleCardClick}
-        data-userid={user._id}
+        data-userid={user.id}
       >
         {/* User Photo */}
         <div className={styles.cardPhoto}>
@@ -529,7 +529,7 @@ const UserCard = ({
 
   // List View Rendering
   return (
-    <div className={styles.listItem} onClick={handleCardClick} data-userid={user._id}>
+    <div className={styles.listItem} onClick={handleCardClick} data-userid={user.id}>
       {/* User Photo - List View */}
       <div className={styles.listPhotoContainer}>
         <img
@@ -585,7 +585,7 @@ const UserCard = ({
 // PropTypes for type checking
 UserCard.propTypes = {
   user: PropTypes.shape({
-    _id: PropTypes.string.isRequired,
+    id: PropTypes.string.isRequired,
     nickname: PropTypes.string.isRequired,
     isOnline: PropTypes.bool,
     lastActive: PropTypes.string,
@@ -631,7 +631,7 @@ TagGroup.propTypes = {
 export default withMemo(UserCard, (prevProps, nextProps) => {
   // Custom comparison function for UserCard
   return (
-    prevProps.user._id === nextProps.user._id &&
+    prevProps.user.id === nextProps.user.id &&
     prevProps.isLiked === nextProps.isLiked &&
     prevProps.viewMode === nextProps.viewMode &&
     prevProps.hasUnreadMessages === nextProps.hasUnreadMessages &&

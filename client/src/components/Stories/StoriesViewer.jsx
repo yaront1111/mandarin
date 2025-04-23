@@ -64,13 +64,13 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
         const filtered = Array.isArray(result)
           ? result
           : stories.filter((st) => {
-              const stUserId = typeof st.user === "string" ? st.user : st.user?._id
+              const stUserId = typeof st.user === "string" ? st.user : st.user?.id
               return stUserId === userId
             })
 
         filtered.forEach((st) => {
-          if (st._id && !storyIds.has(st._id)) {
-            storyIds.add(st._id)
+          if (st.id && !storyIds.has(st.id)) {
+            storyIds.add(st.id)
             uniqueStories.push(st)
           }
         })
@@ -97,7 +97,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       // Check if user has already reacted to this story
       if (current && current.reactions && Array.isArray(current.reactions) && user) {
         const hasReacted = current.reactions.some(
-          (reaction) => reaction.user === user._id || (reaction.user && reaction.user._id === user._id),
+          (reaction) => reaction.user === user.id || (reaction.user && reaction.user.id === user.id),
         )
         setReacted(hasReacted)
       } else {
@@ -110,7 +110,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   useEffect(() => {
     if (storyId && (userId ? userStories : stories).length) {
       const currentArray = userId ? userStories : stories
-      const idx = currentArray.findIndex((st) => st._id === storyId)
+      const idx = currentArray.findIndex((st) => st.id === storyId)
       if (idx !== -1) {
         setCurrentStoryIndex(idx)
       }
@@ -121,8 +121,8 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   useEffect(() => {
     if (!viewStory || !currentStories.length) return
     const currentStory = currentStories[currentStoryIndex]
-    if (currentStory && user && currentStory._id) {
-      viewStory(currentStory._id).catch((err) => {
+    if (currentStory && user && currentStory.id) {
+      viewStory(currentStory.id).catch((err) => {
         console.error("Error marking story as viewed:", err)
       })
     }
@@ -338,12 +338,12 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
       }
 
       const currentStory = currentStories[currentStoryIndex]
-      if (!currentStory || !currentStory._id) {
+      if (!currentStory || !currentStory.id) {
         setTimeout(() => setActionClicked(false), 300)
         return
       }
 
-      const storyId = currentStory._id
+      const storyId = currentStory.id
       if (storyId && reactToStory) {
         // Set immediately to prevent double-clicks
         setReacted(true)
@@ -575,7 +575,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     if (!storyUser || typeof storyUser === "string") {
       return `/api/avatars/default`;
     }
-    return storyUser.profilePicture || storyUser.avatar || `/api/avatars/${storyUser._id || "default"}`;
+    return storyUser.profilePicture || storyUser.avatar || `/api/avatars/${storyUser.id || "default"}`;
   }, [currentStories, currentStoryIndex]);
 
   // Format timestamp

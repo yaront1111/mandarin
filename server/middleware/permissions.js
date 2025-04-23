@@ -7,19 +7,19 @@ import logger from "../logger.js";
  */
 export const canSendMessages = async (req, res, next) => {
   try {
-    if (!req.user?._id) {
+    if (!req.user?.id) {
       logger.error("canSendMessages called without authenticated user");
       return res.status(401).json({ success: false, error: "Authentication required" });
     }
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user.id);
     if (!user) {
-      logger.warn(`canSendMessages: user not found (${req.user._id})`);
+      logger.warn(`canSendMessages: user not found (${req.user.id})`);
       return res.status(404).json({ success: false, error: "User not found" });
     }
 
     if (!user.canSendMessages()) {
-      logger.debug(`canSendMessages denied for ${user._id} (tier: ${user.accountTier})`);
+      logger.debug(`canSendMessages denied for ${user.id} (tier: ${user.accountTier})`);
       return res.status(403).json({
         success: false,
         error: "Free accounts can only send winks. Upgrade to send messages.",
@@ -43,14 +43,14 @@ export const canSendMessages = async (req, res, next) => {
  */
 export const canCreateStory = async (req, res, next) => {
   try {
-    if (!req.user?._id) {
+    if (!req.user?.id) {
       logger.error("canCreateStory called without authenticated user");
       return res.status(401).json({ success: false, error: "Authentication required" });
     }
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user.id);
     if (!user) {
-      logger.warn(`canCreateStory: user not found (${req.user._id})`);
+      logger.warn(`canCreateStory: user not found (${req.user.id})`);
       return res.status(404).json({ success: false, error: "User not found" });
     }
 
@@ -61,7 +61,7 @@ export const canCreateStory = async (req, res, next) => {
       const remainingMs = Math.max(0, COOLDOWN_MS - elapsed);
       const hoursRemaining = Math.ceil(remainingMs / (1000 * 60 * 60));
 
-      logger.debug(`canCreateStory denied for ${user._id}: ${hoursRemaining}h remaining`);
+      logger.debug(`canCreateStory denied for ${user.id}: ${hoursRemaining}h remaining`);
       return res.status(403).json({
         success: false,
         error: `Free accounts can only create one story every 72 hours. Try again in ${hoursRemaining} hours.`,
@@ -88,14 +88,14 @@ export const canCreateStory = async (req, res, next) => {
  */
 export const canLikeUser = async (req, res, next) => {
   try {
-    if (!req.user?._id) {
+    if (!req.user?.id) {
       logger.error("canLikeUser called without authenticated user");
       return res.status(401).json({ success: false, error: "Authentication required" });
     }
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user.id);
     if (!user) {
-      logger.warn(`canLikeUser: user not found (${req.user._id})`);
+      logger.warn(`canLikeUser: user not found (${req.user.id})`);
       return res.status(404).json({ success: false, error: "User not found" });
     }
 
@@ -113,7 +113,7 @@ export const canLikeUser = async (req, res, next) => {
       const hoursToReset = Math.max(0, Math.ceil((resetTime - now) / (1000 * 60 * 60)));
 
       logger.debug(
-        `canLikeUser denied for ${user._id} (no likes left, resets in ${hoursToReset}h)`
+        `canLikeUser denied for ${user.id} (no likes left, resets in ${hoursToReset}h)`
       );
       return res.status(403).json({
         success: false,
@@ -141,7 +141,7 @@ export const canLikeUser = async (req, res, next) => {
 export const checkBlockStatus = async (req, res, next) => {
   try {
     const targetId = req.params.id || req.body.userId || req.body.recipientId;
-    const meId = req.user?._id;
+    const meId = req.user?.id;
     if (!meId || !targetId) return next();
 
     const me = await User.findById(meId);

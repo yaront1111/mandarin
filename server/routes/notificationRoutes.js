@@ -68,7 +68,7 @@ router.get(
     const limit = parseInt(req.query.limit, 10) || DEFAULT_PAGE_SIZE
     const skip  = (page - 1) * limit
 
-    const filter = buildFilter(req.user._id, req.query)
+    const filter = buildFilter(req.user.id, req.query)
 
     const [ total, notifications, unreadCount ] = await Promise.all([
       Notification.countDocuments(filter),
@@ -78,7 +78,7 @@ router.get(
         .limit(limit)
         .populate('sender', 'nickname username photos avatar')
         .lean(),
-      Notification.countDocuments({ recipient: req.user._id, read: false })
+      Notification.countDocuments({ recipient: req.user.id, read: false })
     ])
 
     res.json({
@@ -109,7 +109,7 @@ router.put(
     }
 
     const result = await Notification.updateMany(
-      { _id: { $in: validIds }, recipient: req.user._id, read: false },
+      { id: { $in: validIds }, recipient: req.user.id, read: false },
       { $set: { read: true, readAt: new Date(), updatedAt: new Date() } }
     )
 
@@ -127,8 +127,8 @@ router.put(
   validateObjectId('id'),
   asyncHandler(async (req, res) => {
     const notif = await Notification.findOne({
-      _id: req.params.id,
-      recipient: req.user._id
+      id: req.params.id,
+      recipient: req.user.id
     })
 
     if (!notif) {
@@ -155,7 +155,7 @@ router.put(
   protect,
   asyncHandler(async (req, res) => {
     const result = await Notification.updateMany(
-      { recipient: req.user._id, read: false },
+      { recipient: req.user.id, read: false },
       { $set: { read: true, readAt: new Date(), updatedAt: new Date() } }
     )
     res.json({ success: true, count: result.modifiedCount })
@@ -185,14 +185,14 @@ router.post(
     const { recipientId, type, title, content, data = {} } = req.body
 
     // ensure recipient exists
-    if (!await User.exists({ _id: recipientId })) {
+    if (!await User.exists({ id: recipientId })) {
       return res.status(404).json({ success: false, error: 'Recipient not found' })
     }
 
     const now = new Date()
     const notification = new Notification({
       recipient:  recipientId,
-      sender:     req.user._id,
+      sender:     req.user.id,
       type,
       title:      title || '',
       content:    content || '',
@@ -256,8 +256,8 @@ router.post(
 
     const now = new Date()
     const notification = new Notification({
-      recipient:  req.user._id,
-      sender:     req.user._id,
+      recipient:  req.user.id,
+      sender:     req.user.id,
       type,
       title,
       content,
@@ -268,7 +268,7 @@ router.post(
     })
     await notification.save()
 
-    emitNotification(req.app.io, req.user._id, notification)
+    emitNotification(req.app.io, req.user.id, notification)
 
     res.status(201).json({ success: true, data: notification })
   })
@@ -282,29 +282,29 @@ router.get(
   '/count',
   protect,
   asyncHandler(async (req, res) => {
-    const userId = req.user._id
+    const userId = req.user.id
 
     // by‑type + read/unread
     const byType = await Notification.aggregate([
       { $match: { recipient: userId } },
-      { $group: { _id: { type: '$type', read: '$read' }, count: { $sum: 1 } } },
+      { $group: { id: { type: '$type', read: '$read' }, count: { $sum: 1 } } },
       { $group: {
-          _id: '$_id.type',
-          read:   { $sum: { $cond: [ { $eq: ['$_id.read', true] }, '$count', 0 ] } },
-          unread: { $sum: { $cond: [ { $eq: ['$_id.read', false] }, '$count', 0 ] } },
+          id: '$id.type',
+          read:   { $sum: { $cond: [ { $eq: ['$id.read', true] }, '$count', 0 ] } },
+          unread: { $sum: { $cond: [ { $eq: ['$id.read', false] }, '$count', 0 ] } },
           total:  { $sum: '$count' }
       }},
-      { $sort: { _id: 1 } }
+      { $sort: { id: 1 } }
     ])
 
     // overall totals
     const totalsAgg = await Notification.aggregate([
       { $match: { recipient: userId } },
-      { $group: { _id: '$read', count: { $sum: 1 } } }
+      { $group: { id: '$read', count: { $sum: 1 } } }
     ])
     const totals = { read: 0, unread: 0, total: 0 }
     totalsAgg.forEach(item => {
-      if (item._id) totals.read = item.count
+      if (item.id) totals.read = item.count
       else totals.unread = item.count
       totals.total += item.count
     })
@@ -323,8 +323,8 @@ router.delete(
   validateObjectId('id'),
   asyncHandler(async (req, res) => {
     const notif = await Notification.findOne({
-      _id: req.params.id,
-      recipient: req.user._id
+      id: req.params.id,
+      recipient: req.user.id
     })
     if (!notif) {
       return res.status(404).json({ success: false, error: 'Not found or not yours' })
@@ -342,7 +342,7 @@ router.delete(
   '/clear-all',
   protect,
   asyncHandler(async (req, res) => {
-    const filter = { recipient: req.user._id }
+    const filter = { recipient: req.user.id }
     if (req.query.readOnly === 'true') filter.read = true
 
     const result = await Notification.deleteMany(filter)

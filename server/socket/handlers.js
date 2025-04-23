@@ -80,7 +80,7 @@ async function emitPresence(io, eventName, userId) {
  */
 export const handleUserDisconnect = async (io, socket, userConnections) => {
   log.info(`Socket ${socket.id} disconnected`);
-  const userId = socket.user?._id?.toString();
+  const userId = socket.user?.id?.toString();
   if (!userId || !userConnections.has(userId)) return;
 
   // Remove this socket from the user's connection set
@@ -135,7 +135,7 @@ export const registerSocketHandlers = (io, socket, userConnections, rateLimiters
 
   // Update privacy settings
   socket.on(EVENTS.UPDATE_PRIVACY, safeListener(async data => {
-    const userId = socket.user?._id;
+    const userId = socket.user?.id;
     if (!userId) {
       log.warn(`Unauthenticated socket ${socket.id} tried to update privacy`);
       return;
@@ -172,7 +172,7 @@ export const registerSocketHandlers = (io, socket, userConnections, rateLimiters
   registerNotificationHandlers(io, socket, userConnections, rateLimiters);
 
   // On initial connect, broadcast userOnline if allowed
-  const userId = socket.user?._id?.toString();
+  const userId = socket.user?.id?.toString();
   if (userId) {
     emitPresence(io, EVENTS.USER_ONLINE, userId);
   } else {

@@ -16,7 +16,7 @@ const log = logger.create("NotificationService");
 
 /**
  * @typedef {object} Notification
- * @property {string} _id
+ * @property {string} id
  * @property {string} type
  * @property {string} title
  * @property {string} message
@@ -202,7 +202,7 @@ class NotificationService {
     this._byId.clear();
     rawList.forEach(raw => {
       const note = this._sanitize(raw);
-      if (note) this._byId.set(note._id, note);
+      if (note) this._byId.set(note.id, note);
     });
 
     // Sort descending
@@ -217,12 +217,12 @@ class NotificationService {
    * @returns {Notification|null}
    */
   _sanitize(raw) {
-    if (!raw || !raw._id) return null;
+    if (!raw || !raw.id) return null;
     const createdAt = raw.createdAt || new Date().toISOString();
     const createdAtTime = Date.parse(createdAt) || Date.now();
 
     return {
-      _id: String(raw._id),
+      id: String(raw.id),
       type: raw.type || "generic",
       title: raw.title || "",
       message: raw.message || "",
@@ -243,7 +243,7 @@ class NotificationService {
   _onSocket(type, data) {
     if (!this.settings[type]) return;
     const raw = {
-      _id: data._id || `bc-${Date.now()}`,
+      id: data.id || `bc-${Date.now()}`,
       type,
       title: data.title,
       message: data.message,
@@ -264,13 +264,13 @@ class NotificationService {
   _add(note, broadcast = true) {
     const now = Date.now();
     // bundling key: `${type}|${senderId}`
-    const senderId = note.sender?._id || "";
+    const senderId = note.sender?.id || "";
     const key = `${note.type}|${senderId}`;
 
     // find bundle candidate
     const existing = this._sorted.find(n =>
       n.type === note.type &&
-      (n.sender?._id || "") === senderId &&
+      (n.sender?.id || "") === senderId &&
       now - n.createdAtTime < BUNDLE_WINDOW_MS
     );
 
@@ -280,9 +280,9 @@ class NotificationService {
       existing.createdAtTime = note.createdAtTime;
       existing.message = `${existing.count} new ${existing.type}${existing.count > 1 ? "s" : ""}`;
       existing.read = false;
-    } else if (!this._byId.has(note._id)) {
+    } else if (!this._byId.has(note.id)) {
       this._sorted.unshift(note);
-      this._byId.set(note._id, note);
+      this._byId.set(note.id, note);
     }
 
     this._recount();
@@ -373,18 +373,18 @@ class NotificationService {
    */
   handleClick(note) {
     if (!this.navigate) return;
-    this.markAsRead(note._id);
+    this.markAsRead(note.id);
     let path = "/dashboard";
     switch (note.type) {
       case "message":
-        path = `/messages/${note.sender?._id || ""}`; break;
+        path = `/messages/${note.sender?.id || ""}`; break;
       case "like":
       case "match":
-        path = `/user/${note.sender?._id || ""}`; break;
+        path = `/user/${note.sender?.id || ""}`; break;
       case "photoRequest":
         path = "/settings?tab=privacy"; break;
       case "photoResponse":
-        path = `/user/${note.sender?._id || ""}`; break;
+        path = `/user/${note.sender?.id || ""}`; break;
       case "comment":
         path = `/post/${note.data.postId || note.data.referenceId || ""}`; break;
       case "story":

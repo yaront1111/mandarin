@@ -66,11 +66,11 @@ const likeSchema = new Schema({
 // ---------------------
 likeSchema.index(
   { sender: 1, recipient: 1 },
-  { unique: true, name: 'unique_sender_recipient_idx' }
+  { unique: true, name: 'unique_sender_recipientidx' }
 );
 likeSchema.index(
   { recipient: 1, createdAt: -1 },
-  { name: 'recent_likes_by_recipient_idx' }
+  { name: 'recent_likes_by_recipientidx' }
 );
 
 // -----------------------------------------
@@ -178,17 +178,17 @@ likeSchema.statics.getMatches = async function(userId, options = {}) {
       $lookup: {
         from: 'users',
         localField: 'sender',
-        foreignField: '_id',
+        foreignField: 'id',
         as: 'senderUser'
       }
     },
     { $unwind: '$senderUser' },
     {
       $project: {
-        _id: 1,
+        id: 1,
         sender: 1,
         createdAt: 1,
-        'senderUser._id': 1,
+        'senderUser.id': 1,
         'senderUser.nickname': 1,
         'senderUser.username': 1,
         'senderUser.photos': 1,

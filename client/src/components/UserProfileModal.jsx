@@ -124,7 +124,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
   // Memoized values
   const isOwnProfile = useMemo(() => {
-    return currentUser && profileUser && currentUser._id === profileUser._id;
+    return currentUser && profileUser && currentUser.id === profileUser.id;
   }, [currentUser, profileUser]);
 
   const compatibility = useMemo(() => {
@@ -141,13 +141,13 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
   const hasPendingRequestFromUser = useMemo(() => {
     return pendingRequests.some(
-      (item) => item.user && profileUser && item.user._id === profileUser._id
+      (item) => item.user && profileUser && item.user.id === profileUser.id
     );
   }, [pendingRequests, profileUser]);
 
   const currentUserRequests = useMemo(() => {
     return pendingRequests.find(
-      (item) => item.user && profileUser && item.user._id === profileUser._id
+      (item) => item.user && profileUser && item.user.id === profileUser.id
     );
   }, [pendingRequests, profileUser]);
 
@@ -242,8 +242,8 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
           const requestsByUser = {};
 
           requestsData.forEach((request) => {
-            if (request && request.requestedBy && request.requestedBy._id) {
-              const userId = request.requestedBy._id;
+            if (request && request.requestedBy && request.requestedBy.id) {
+              const userId = request.requestedBy.id;
 
               if (!requestsByUser[userId]) {
                 requestsByUser[userId] = {
@@ -474,7 +474,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
     // If viewing own profile, fetch pending requests once
     if (currentUser &&
-        currentUser._id === userId &&
+        currentUser.id === userId &&
         !requestsLoadingRef.current &&
         !dataLoadedRef.current) {
       fetchPendingRequests();
@@ -489,7 +489,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   // Request access to all photos
   const handleRequestAccessToAllPhotos = async () => {
     // Prevent multiple requests
-    if (!profileUser || !profileUser._id || userPhotoAccess.isLoading) {
+    if (!profileUser || !profileUser.id || userPhotoAccess.isLoading) {
       log.warn("Cannot request photo access: missing user ID or already loading");
       return;
     }
@@ -505,7 +505,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     }));
 
     try {
-      log.debug(`Requesting photo access for user ${profileUser._id}`);
+      log.debug(`Requesting photo access for user ${profileUser.id}`);
 
       // ALWAYS set UI to pending state for better UX
       setUserPhotoAccess({
@@ -516,7 +516,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
       try {
         // Make a single API call to request access to all photos (but don't block UI)
-        const response = await api.post(`/users/${profileUser._id}/request-photo-access`);
+        const response = await api.post(`/users/${profileUser.id}/request-photo-access`);
 
         if (!isMounted()) return;
 
@@ -575,7 +575,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
         // Remove this user from pending requests without refetching
         setPendingRequests(prev => prev.filter(item =>
-          !item.user || item.user._id !== userId
+          !item.user || item.user.id !== userId
         ));
       } else {
         log.warn("Failed to approve photo requests:", response);
@@ -621,7 +621,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
         // Remove this user from pending requests without refetching
         setPendingRequests(prev => prev.filter(item =>
-          !item.user || item.user._id !== userId
+          !item.user || item.user.id !== userId
         ));
       } else {
         log.warn("Failed to reject photo requests:", response);
@@ -648,7 +648,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     }));
 
     // Mark any unsplash URLs as failed to prevent retries
-    const failedImage = profileUser?.photos?.find(p => p._id === photoId);
+    const failedImage = profileUser?.photos?.find(p => p.id === photoId);
     if (failedImage && failedImage.url && (
       failedImage.url.includes('unsplash.com') ||
       !failedImage.url.startsWith(window.location.origin)
@@ -664,10 +664,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     setIsLiking(true);
 
     try {
-      if (isUserLiked && isUserLiked(profileUser._id)) {
-        await unlikeUser(profileUser._id, profileUser.nickname);
+      if (isUserLiked && isUserLiked(profileUser.id)) {
+        await unlikeUser(profileUser.id, profileUser.nickname);
       } else {
-        await likeUser(profileUser._id, profileUser.nickname);
+        await likeUser(profileUser.id, profileUser.nickname);
       }
     } catch (error) {
       log.error("Error toggling like:", error);
@@ -912,7 +912,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             <div className={styles.notificationActions}>
               <button
                 className={styles.approveBtn}
-                onClick={() => handleApproveAllRequests(profileUser._id, currentUserRequests.requests)}
+                onClick={() => handleApproveAllRequests(profileUser.id, currentUserRequests.requests)}
                 disabled={isProcessingApproval}
               >
                 {isProcessingApproval ? <FaSpinner className={styles.spinner} /> : <FaCheck />}
@@ -920,7 +920,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               </button>
               <button
                 className={styles.rejectBtn}
-                onClick={() => handleRejectAllRequests(profileUser._id, currentUserRequests.requests)}
+                onClick={() => handleRejectAllRequests(profileUser.id, currentUserRequests.requests)}
                 disabled={isProcessingApproval}
               >
                 {isProcessingApproval ? <FaSpinner className={styles.spinner} /> : <FaBan />}
@@ -938,7 +938,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               <div className={styles.storiesThumbnail}>
                 <StoryThumbnail
                   user={profileUser}
-                  hasUnviewedStories={hasUnviewedStories && hasUnviewedStories(profileUser._id)}
+                  hasUnviewedStories={hasUnviewedStories && hasUnviewedStories(profileUser.id)}
                   onClick={handleViewStories}
                 />
               </div>
@@ -981,7 +981,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                           src={normalizePhotoUrl(profileUser.photos[activePhotoIndex].url)}
                           alt={`${profileUser.nickname}'s photo`}
                           className={styles.galleryImage}
-                          onError={() => handleImageError(profileUser.photos[activePhotoIndex]._id)}
+                          onError={() => handleImageError(profileUser.photos[activePhotoIndex].id)}
                         />
                       </div>
                     )
@@ -1023,7 +1023,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   <div className={styles.thumbnails}>
                     {profileUser.photos.map((photo, index) => (
                       <div
-                        key={photo._id || index}
+                        key={photo.id || index}
                         className={`${styles.thumbnail} ${index === activePhotoIndex ? styles.thumbnailActive : ""}`}
                         onClick={() => setActivePhotoIndex(index)}
                       >
@@ -1043,7 +1043,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                             src={normalizePhotoUrl(photo.url)}
                             alt={`${profileUser.nickname} ${index + 1}`}
                             className={styles.thumbnailImg}
-                            onError={() => handleImageError(photo._id)}
+                            onError={() => handleImageError(photo.id)}
                           />
                         )}
                       </div>
@@ -1068,12 +1068,12 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               {!isOwnProfile && (
                 <>
                   <button
-                    className={`${styles.actionBtn} ${isUserLiked && isUserLiked(profileUser._id) ? styles.likedBtn : styles.likeBtn}`}
+                    className={`${styles.actionBtn} ${isUserLiked && isUserLiked(profileUser.id) ? styles.likedBtn : styles.likeBtn}`}
                     onClick={handleLike}
                     disabled={isLiking}
                   >
                     {isLiking ? <FaSpinner className={styles.spinner} /> : <FaHeart />}
-                    {isUserLiked && isUserLiked(profileUser._id) ? t('userProfile.liked') : t('userProfile.like')}
+                    {isUserLiked && isUserLiked(profileUser.id) ? t('userProfile.liked') : t('userProfile.like')}
                   </button>
                   <button
                     className={`${styles.actionBtn} ${styles.messageBtn}`}
@@ -1353,7 +1353,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         )}
 
         {/* Stories Viewer */}
-        {showStories && <StoriesViewer userId={profileUser._id} onClose={handleCloseStories} />}
+        {showStories && <StoriesViewer userId={profileUser.id} onClose={handleCloseStories} />}
       </div>
     </Modal>
   );

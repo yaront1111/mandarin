@@ -55,14 +55,14 @@ async function isBlocked(userDoc, otherId) {
 async function sendMessageNotification(io, sender, recipient, message) {
   try {
     const recipientDoc = await User
-      .findById(recipient._id)
+      .findById(recipient.id)
       .select("settings socketId")
       .lean();
 
     if (!recipientDoc) return;
 
-    if (await isBlocked(recipientDoc, sender._id)) {
-      log.debug(`sendMessageNotification: ${recipient._id} blocked ${sender._id}`);
+    if (await isBlocked(recipientDoc, sender.id)) {
+      log.debug(`sendMessageNotification: ${recipient.id} blocked ${sender.id}`);
       return;
     }
 
@@ -76,11 +76,11 @@ async function sendMessageNotification(io, sender, recipient, message) {
       }
       // DB persist
       await Notification.create({
-        recipient: recipient._id,
+        recipient: recipient.id,
         type:      "message",
-        sender:    sender._id,
+        sender:    sender.id,
         content:   message.content,
-        reference: message._id
+        reference: message.id
       });
     }
   } catch (err) {
@@ -95,23 +95,23 @@ async function sendMessageNotification(io, sender, recipient, message) {
 async function sendLikeSocketNotification(io, sender, recipient, likeData, userConnections) {
   try {
     const recipientDoc = await User
-      .findById(recipient._id)
+      .findById(recipient.id)
       .select("settings")
       .lean();
     if (!recipientDoc) return;
 
-    if (await isBlocked(recipientDoc, sender._id)) {
-      log.debug(`sendLikeSocketNotification: ${recipient._id} blocked ${sender._id}`);
+    if (await isBlocked(recipientDoc, sender.id)) {
+      log.debug(`sendLikeSocketNotification: ${recipient.id} blocked ${sender.id}`);
       return;
     }
 
     if (recipientDoc.settings?.notifications?.likes !== false) {
-      const recId = recipient._id.toString();
+      const recId = recipient.id.toString();
       const sockets = userConnections.get(recId) || new Set();
       for (const sockId of sockets) {
         io.to(sockId).emit("newLike", {
           sender: {
-            _id:      sender._id,
+            id:      sender.id,
             nickname: sender.nickname,
             photos:   sender.photos
           },
@@ -120,11 +120,11 @@ async function sendLikeSocketNotification(io, sender, recipient, likeData, userC
         });
       }
       await Notification.create({
-        recipient: recipient._id,
+        recipient: recipient.id,
         type:      "like",
-        sender:    sender._id,
+        sender:    sender.id,
         content:   `${sender.nickname} liked your profile`,
-        reference: likeData._id
+        reference: likeData.id
       });
     }
   } catch (err) {
@@ -159,7 +159,7 @@ function registerMessagingHandlers(io, socket, userConnections, rateLimiters) {
  */
 async function handleSendMessage(io, socket, userConnections, messageLimiter, data) {
   const { recipientId, type, content, metadata, tempMessageId } = data;
-  const senderId = socket.user?._id?.toString();
+  const senderId = socket.user?.id?.toString();
 
   if (!senderId) {
     socket.emit(EVENTS.MESSAGE_ERROR, { error: "Not authenticated", tempMessageId });
@@ -226,7 +226,7 @@ async function handleSendMessage(io, socket, userConnections, messageLimiter, da
   }).save();
 
   const response = {
-    _id:      msg._id.toString(),
+    id:      msg.id.toString(),
     sender:   senderId,
     recipient: recOid.toString(),
     type,
@@ -238,7 +238,7 @@ async function handleSendMessage(io, socket, userConnections, messageLimiter, da
   };
 
   socket.emit(EVENTS.MESSAGE_SENT, response);
-  log.info(`Message ${msg._id} sent`);
+  log.info(`Message ${msg.id} sent`);
 
   // forward to recipient sockets
   const recSet = userConnections.get(recOid.toString()) || new Set();
@@ -254,7 +254,7 @@ async function handleSendMessage(io, socket, userConnections, messageLimiter, da
  * Handle a client "typing" event
  */
 async function handleTyping(io, socket, userConnections, typingLimiter, data) {
-  const senderId = socket.user?._id?.toString();
+  const senderId = socket.user?.id?.toString();
   if (!senderId) return;
 
   try {
@@ -283,7 +283,7 @@ async function handleMessageRead(io, socket, userConnections, data) {
   if (!Array.isArray(messageIds) || messageIds.length === 0) return;
 
   const senderOid = safeObjectId(sender);
-  const readerOid = safeObjectId(socket.user?._id);
+  const readerOid = safeObjectId(socket.user?.id);
   if (!senderOid || !readerOid) return;
 
   const validIds = messageIds
@@ -293,7 +293,7 @@ async function handleMessageRead(io, socket, userConnections, data) {
   if (validIds.length === 0) return;
 
   await Message.updateMany(
-    { _id: { $in: validIds }, sender: senderOid, recipient: readerOid },
+    { id: { $in: validIds }, sender: senderOid, recipient: readerOid },
     { $set: { read: true, readAt: new Date() } }
   );
 

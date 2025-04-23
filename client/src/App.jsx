@@ -51,10 +51,10 @@ import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 
 // --- Initialize GA4 ---
-const GA4_MEASUREMENT_ID = "G-Y9EQ02574T";
-if (GA4_MEASUREMENT_ID && GA4_MEASUREMENT_ID !== "YOUR_GA4_MEASUREMENT_ID") {
-  ReactGA.initialize(GA4_MEASUREMENT_ID);
-  console.log("GA4 Initialized with ID:", GA4_MEASUREMENT_ID);
+const GA4_MEASUREMENTid = "G-Y9EQ02574T";
+if (GA4_MEASUREMENTid && GA4_MEASUREMENTid !== "YOUR_GA4_MEASUREMENTid") {
+  ReactGA.initialize(GA4_MEASUREMENTid);
+  console.log("GA4 Initialized with ID:", GA4_MEASUREMENTid);
 } else {
   console.warn("GA4 Measurement ID is invalid or missing. Analytics will not be sent.");
 }
@@ -63,7 +63,7 @@ if (GA4_MEASUREMENT_ID && GA4_MEASUREMENT_ID !== "YOUR_GA4_MEASUREMENT_ID") {
 function TrackPageViews() {
   const location = useLocation();
   useEffect(() => {
-    if (GA4_MEASUREMENT_ID && GA4_MEASUREMENT_ID !== "YOUR_GA4_MEASUREMENT_ID") {
+    if (GA4_MEASUREMENTid && GA4_MEASUREMENTid !== "YOUR_GA4_MEASUREMENTid") {
       ReactGA.send({ hitType: "pageview", page: location.pathname + location.search });
     }
   }, [location]);
@@ -95,7 +95,7 @@ function App() {
   useEffect(() => {
     const handleOpenChat = (event) => {
       const { recipient } = event.detail;
-      if (recipient && recipient._id) {
+      if (recipient && recipient.id) {
         setChatRecipient(recipient);
         setIsChatOpen(true);
         setTimeout(() => setIsChatOpen(true), 50);

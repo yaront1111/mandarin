@@ -69,7 +69,7 @@ router.get(
       storyCreationHours = hoursUntil(next)
     }
 
-    log.debug(`Status for ${user._id}: tier=${user.accountTier}, paid=${user.isPaid}`)
+    log.debug(`Status for ${user.id}: tier=${user.accountTier}, paid=${user.isPaid}`)
 
     return res.json({
       success: true,
@@ -102,7 +102,7 @@ router.post(
 
     // already active?
     if (user.isPaid && user.subscriptionExpiry > Date.now()) {
-      log.info(`Already subscribed: ${user._id}`)
+      log.info(`Already subscribed: ${user.id}`)
       return res.status(400).json({
         success: false,
         error: "You already have an active subscription",
@@ -124,7 +124,7 @@ router.post(
     user.accountTier = user.accountTier === "FREE" ? "PAID" : user.accountTier
 
     await user.save()
-    log.info(`Upgraded ${user._id} until ${expiry.toISOString()}`)
+    log.info(`Upgraded ${user.id} until ${expiry.toISOString()}`)
 
     return res.json({
       success: true,
@@ -150,7 +150,7 @@ router.post(
 
     // must have a live subscription
     if (!user.isPaid || user.subscriptionExpiry <= Date.now()) {
-      log.info(`No active subscription to cancel: ${user._id}`)
+      log.info(`No active subscription to cancel: ${user.id}`)
       return res.status(400).json({
         success: false,
         error: "You don't have an active subscription to cancel",
@@ -159,7 +159,7 @@ router.post(
     }
 
     // we simply let it expire at its current date
-    log.info(`Canceled subscription for ${user._id}, expires at ${user.subscriptionExpiry}`)
+    log.info(`Canceled subscription for ${user.id}, expires at ${user.subscriptionExpiry}`)
 
     return res.json({
       success: true,

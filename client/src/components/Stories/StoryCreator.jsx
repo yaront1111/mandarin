@@ -82,14 +82,14 @@ const StoryCreator = ({ onClose, onSubmit }) => {
       const response = await createStory(storyData, updateProgress)
 
       // Handle different response formats for compatibility
-      if (response && (response.success === true || response._id || (response.data && response.data._id))) {
+      if (response && (response.success === true || response.id || (response.data && response.data.id))) {
         toast.success(t('stories.createStorySuccess'))
 
         // Determine what to pass to onSubmit based on response format
         if (onSubmit) {
           if (response.data) {
             onSubmit(response.data)
-          } else if (response._id) {
+          } else if (response.id) {
             onSubmit(response)
           } else {
             onSubmit(response)

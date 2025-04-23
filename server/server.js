@@ -314,7 +314,7 @@ app.get("/api/image-access/:filename", (req, res) => {
 
 // Special diagnostic endpoint for conversations (returns mock data)
 app.get("/api/diagnostic/conversations", protect, (req, res) => { // Added protect
-  logger.info(`Diagnostic conversations endpoint called by user ${req.user?._id}`);
+  logger.info(`Diagnostic conversations endpoint called by user ${req.user?.id}`);
   return res.status(200).json({
     success: true,
     message: "This is a diagnostic endpoint returning mock data.",
@@ -364,7 +364,7 @@ app.use((err, req, res, next) => {
         method: req.method,
         url: req.originalUrl,
         ip: req.ip,
-        userId: req.user?._id || 'anonymous',
+        userId: req.user?.id || 'anonymous',
     }
   });
 

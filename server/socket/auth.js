@@ -159,7 +159,7 @@ async function socketAuthMiddleware(socket, next) {
     user.lastLoginIp = ip;
     await user.save();
 
-    log.info(`Socket ${socket.id} authenticated as user ${user._id}`);
+    log.info(`Socket ${socket.id} authenticated as user ${user.id}`);
     next();
   } catch (err) {
     // Enhanced error logging with detailed context
