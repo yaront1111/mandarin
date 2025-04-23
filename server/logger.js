@@ -83,7 +83,7 @@ export const requestLogger = (req, res, next) => {
   res.on('finish', () => {
     const duration = Date.now() - start
     const meta = { ip: req.ip, method: req.method, url: req.originalUrl, duration }
-    if (req.user?.id) meta.userId = req.user.id
+    if (req.user?.id) meta.userId = req.user._id
 
     if (res.statusCode >= 500) child.error(`HTTP ${res.statusCode}`, meta)
     else if (res.statusCode >= 400) child.warn(`HTTP ${res.statusCode}`, meta)

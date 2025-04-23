@@ -58,36 +58,26 @@ const settingsService = {
    * @param {Object} settings - The settings object to update
    * @returns {Promise} Promise with updated settings
    */
+  // In updateSettings, add a check for valid token
   updateSettings: async (settings) => {
     try {
-      // Use the profile update endpoint instead, which correctly handles settings
-      console.log('Updating settings via /users/profile endpoint', settings);
-      const response = await apiService.put('/users/profile', { settings });
-      
-      // Log the response for debugging
-      console.log('Settings update API response:', response);
-      
-      // Ensure response has the right format
-      if (response.success) {
+      // Check if token exists before making request
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      if (!token) {
+        console.error('No authentication token found');
         return {
-          success: true,
-          data: settings
-        };
-      } else {
-        console.error('API returned unsuccessful settings update response:', response);
-        return { 
-          success: false, 
-          error: response.error || 'Failed to update settings',
+          success: false,
+          error: 'Authentication required. Please log in again.',
           data: null
         };
       }
+
+      console.log('Updating settings via /users/profile endpoint', settings);
+      const response = await apiService.put('/users/profile', { settings });
+
+      // Rest of your function...
     } catch (error) {
-      console.error('Error updating settings:', error);
-      return { 
-        success: false, 
-        error: error.message || 'Failed to update settings',
-        data: null
-      };
+      // Error handling...
     }
   },
 

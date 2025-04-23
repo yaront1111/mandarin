@@ -517,7 +517,7 @@ const enTranslations = {
 
   common: {
     login: "Login",
-    Safety: "Safety",
+    safety: "Safety",
     register: "Register",
     profile: "Profile",
     settings: "Settings",
@@ -1634,7 +1634,7 @@ const heTranslations = {
 
   common: {
     login: "התחברות",
-    Safety: "בטיחות",
+    safety: "בטיחות",
     register: "הרשמה",
     profile: "פרופיל",
     settings: "הגדרות",

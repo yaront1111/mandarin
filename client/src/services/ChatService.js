@@ -19,7 +19,7 @@ function extractIdFromToken() {
     const token = localStorage.token || sessionStorage.token;
     if (!token) return null;
     const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return payload.id || payload.sub || (payload.user && (payload.user._id || payload.user.id));
+    return payload.id || payload.sub || (payload.user && (payload.user._id || payload.user._id));
   } catch {
     return null;
   }

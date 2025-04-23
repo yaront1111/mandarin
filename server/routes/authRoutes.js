@@ -183,9 +183,9 @@ router.get(
   "/me",
   protect,
   asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user.id).select("-password")
+    const user = await User.findById(req.user._id).select("-password")
     if (!user) {
-      log.warn(`User not found: ${req.user.id}`)
+      log.warn(`User not found: ${req.user._id}`)
       return res.status(404).json({ success: false, error: "User not found" })
     }
     res.json({ success: true, data: user })
@@ -234,7 +234,7 @@ router.post(
   "/logout",
   protect,
   asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user.id)
+    const user = await User.findById(req.user._id)
     if (!user) return res.status(404).json({ success: false, error: "User not found" })
 
     user.refreshToken = undefined
@@ -286,7 +286,7 @@ router.post(
   "/resend-verification",
   protect,
   asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user.id)
+    const user = await User.findById(req.user._id)
     if (!user) return res.status(404).json({ success: false, error: "User not found" })
     if (user.isVerified) return res.status(400).json({ success: false, error: "Already verified" })
 
@@ -406,7 +406,7 @@ router.post(
     const errors = validationResult(req)
     if (!errors.isEmpty()) return validationError(res, errors)
 
-    const user = await User.findById(req.user.id).select("+password")
+    const user = await User.findById(req.user._id).select("+password")
     if (!user) return res.status(404).json({ success: false, error: "User not found" })
 
     const ok = await user.correctPassword(req.body.currentPassword, user.password)

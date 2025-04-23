@@ -47,7 +47,7 @@ router.get(
   "/status",
   protect,
   asyncHandler(async (req, res) => {
-    const user = await getUserOr404(req.user.id, res)
+    const user = await getUserOr404(req.user._id, res)
     if (!user) return
 
     // subscription expiry
@@ -97,7 +97,7 @@ router.post(
   "/upgrade",
   protect,
   asyncHandler(async (req, res) => {
-    const user = await getUserOr404(req.user.id, res)
+    const user = await getUserOr404(req.user._id, res)
     if (!user) return
 
     // already active?
@@ -145,7 +145,7 @@ router.post(
   "/cancel",
   protect,
   asyncHandler(async (req, res) => {
-    const user = await getUserOr404(req.user.id, res)
+    const user = await getUserOr404(req.user._id, res)
     if (!user) return
 
     // must have a live subscription
