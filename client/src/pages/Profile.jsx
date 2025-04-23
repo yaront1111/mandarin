@@ -419,17 +419,25 @@ const Profile = () => {
       if (updatedUser) {
         console.log("Profile updated successfully, refreshing user data...");
         
-        // After successful update, force a refresh of user data and wait for it to complete
-        const refreshResult = await refreshUserData(updatedUser._id);
-        
-        if (refreshResult) {
-          console.log("User data refresh successful");
-        } else {
-          console.warn("User data refresh may not have been complete, but continuing");
+        try {
+          // After successful update, force a refresh of user data
+          const refreshResult = await refreshUserData(updatedUser._id);
+          
+          if (refreshResult) {
+            console.log("User data refresh successful");
+          } else {
+            console.warn("User data refresh may not have been complete, but continuing");
+          }
+          
+          toast.success(t('profile.profileUpdated'))
+          setIsEditing(false)
+        } catch (refreshError) {
+          // Even if refresh fails, the profile was updated successfully
+          console.warn("Failed to refresh user data, but profile was updated:", refreshError);
+          toast.success(t('profile.profileUpdated'))
+          toast.info(t('profile.refreshFailed'))
+          setIsEditing(false)
         }
-
-        toast.success(t('profile.profileUpdated'))
-        setIsEditing(false)
       } else {
         throw new Error(t('profile.updateFailed'))
       }
@@ -485,7 +493,7 @@ const Profile = () => {
         setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
 
         // Refresh user data to get the updated photos
-        await refreshUserData()
+        await refreshUserData(user?._id)
 
         // Reset upload progress and file input
         setUploadProgress(0)
@@ -540,7 +548,7 @@ const Profile = () => {
         throw new Error(data.error || t('errors.photoPrivacyUpdateFailed'))
       }
       toast.success(t('profile.photoPrivacySuccess', { status: newPrivacyValue ? t('common.private') : t('common.public') }))
-      await refreshUserData()
+      await refreshUserData(user?._id)
     } catch (error) {
       console.error("Failed to update photo privacy:", error)
       toast.error(error.message || t('errors.photoPrivacyUpdateFailed'))
@@ -586,7 +594,7 @@ const Profile = () => {
         throw new Error(data.error || t('errors.profilePhotoUpdateFailed'))
       }
       toast.success(t('profile.profilePhotoUpdated'))
-      await refreshUserData()
+      await refreshUserData(user?._id)
     } catch (error) {
       console.error("Failed to set profile photo:", error)
       toast.error(error.message || t('errors.profilePhotoUpdateFailed'))
@@ -645,11 +653,11 @@ const Profile = () => {
         throw new Error(data.error || t('errors.photoDeleteFailed'))
       }
       toast.success(t('profile.photoDeleteSuccess'))
-      await refreshUserData()
+      await refreshUserData(user?._id)
     } catch (error) {
       console.error("Failed to delete photo:", error)
       toast.error(error.message || t('errors.photoDeleteFailed'))
-      await refreshUserData()
+      await refreshUserData(user?._id)
     } finally {
       setIsProcessingPhoto(false)
     }

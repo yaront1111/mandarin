@@ -358,19 +358,28 @@ const Settings = () => {
   // FIXED VERSION: Only update settings when currentUser changes in a meaningful way
   // Load blocked users
   const loadBlockedUsers = useCallback(async () => {
-    if (!currentUser) return;
+    if (!currentUser || !currentUser._id) {
+      console.warn("Cannot load blocked users: no current user");
+      return;
+    }
     
     setLoadingBlockedUsers(true);
     try {
+      console.log("Loading blocked users from Settings component");
       const blockedData = await getBlockedUsers();
+      console.log("Blocked users data:", blockedData);
+      
       if (blockedData && Array.isArray(blockedData)) {
         setBlockedUsers(blockedData);
       } else {
+        console.warn("Blocked users data is not an array:", blockedData);
         setBlockedUsers([]);
       }
     } catch (error) {
       console.error("Error loading blocked users:", error);
       setBlockedUsers([]);
+      // Don't show toast for this non-critical feature
+      // toast.error("Unable to load blocked users");
     } finally {
       setLoadingBlockedUsers(false);
     }
@@ -642,33 +651,41 @@ const Settings = () => {
                   <div className={styles.spinner}></div>
                   <p>{t('settings.loadingBlockedUsers', 'Loading blocked users...')}</p>
                 </div>
-              ) : blockedUsers.length === 0 ? (
+              ) : blockedUsers && blockedUsers.length > 0 ? (
+                <div className={styles.blockedUsersList}>
+                  {blockedUsers.map(user => {
+                    // Skip render if user is invalid
+                    if (!user || typeof user !== 'object' || !user._id) {
+                      return null;
+                    }
+                    
+                    return (
+                      <div key={user._id} className={styles.blockedUserItem}>
+                        <div className={styles.blockedUserInfo}>
+                          <img 
+                            src={user.photos && user.photos[0] ? user.photos[0].url : "/default-avatar.png"} 
+                            alt={user.nickname || t('settings.defaultUser', 'User')} 
+                            className={styles.blockedUserAvatar}
+                            onError={(e) => { e.target.src = "/default-avatar.png"; }}
+                          />
+                          <span className={styles.blockedUserName}>
+                            {user.nickname || t('settings.defaultUser', 'User')}
+                          </span>
+                        </div>
+                        <button 
+                          className={styles.unblockButton}
+                          onClick={() => handleUnblock(user._id, user.nickname)}
+                        >
+                          <FaUnlock /> {t('settings.unblock', 'Unblock')}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
                 <div className={styles.emptyState}>
                   <FaUserSlash className={styles.emptyStateIcon} />
                   <p>{t('settings.noBlockedUsers', 'You haven\'t blocked any users')}</p>
-                </div>
-              ) : (
-                <div className={styles.blockedUsersList}>
-                  {blockedUsers.map(user => (
-                    <div key={user._id} className={styles.blockedUserItem}>
-                      <div className={styles.blockedUserInfo}>
-                        <img 
-                          src={user.photos && user.photos[0] ? user.photos[0].url : "/default-avatar.png"} 
-                          alt={user.nickname} 
-                          className={styles.blockedUserAvatar}
-                        />
-                        <span className={styles.blockedUserName}>
-                          {user.nickname || t('settings.defaultUser', 'User')}
-                        </span>
-                      </div>
-                      <button 
-                        className={styles.unblockButton}
-                        onClick={() => handleUnblock(user._id, user.nickname)}
-                      >
-                        <FaUnlock /> {t('settings.unblock', 'Unblock')}
-                      </button>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>

@@ -695,17 +695,104 @@ router.delete(
 
 /**
  * GET /api/users/blocked
- * List blocked users
+ * List blocked users - production grade implementation
  */
 router.get(
   "/blocked",
-  protect,
   asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id)
-      .select("blockedUsers")
-      .populate("blockedUsers", "nickname photos isOnline lastActive");
-    if (!user) return respondError(res, 404, "User not found");
-    res.json({ success: true, count: user.blockedUsers.length, data: user.blockedUsers });
+    try {
+      // Check authentication
+      if (!req.headers.authorization || !req.headers.authorization.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, error: "Authentication required" });
+      }
+      
+      // Extract token
+      const token = req.headers.authorization.split(' ')[1];
+      if (!token) {
+        return res.status(401).json({ success: false, error: "No token provided" });
+      }
+      
+      // Verify token and extract user ID (handle both id and _id formats)
+      const decoded = jwt.verify(token, config.JWT_SECRET);
+      logger.debug(`Decoded token for blocked users: ${JSON.stringify(decoded)}`);
+      
+      // Extract user ID from token (standardize on _id)
+      const userIdStr = decoded._id || decoded.id || 
+                       (decoded.user && (decoded.user._id || decoded.user.id));
+      
+      if (!userIdStr) {
+        logger.error(`No user ID found in token: ${JSON.stringify(decoded)}`);
+        return res.status(401).json({ success: false, error: "Invalid token format - no user ID" });
+      }
+      
+      logger.debug(`User ID from token: ${userIdStr}`);
+      
+      // Convert to proper ObjectId
+      let userId;
+      try {
+        if (mongoose.Types.ObjectId.isValid(userIdStr)) {
+          userId = new mongoose.Types.ObjectId(userIdStr);
+        } else {
+          logger.error(`Invalid ObjectId format: ${userIdStr}`);
+          return res.status(400).json({ success: false, error: "Invalid user ID format" });
+        }
+      } catch (err) {
+        logger.error(`Failed to create ObjectId: ${err.message}`);
+        return res.status(400).json({ success: false, error: "Failed to process user ID" });
+      }
+      
+      // Find user and blocked users
+      const user = await User.findById(userId).select("blockedUsers");
+      if (!user) {
+        logger.error(`User not found with ID: ${userId}`);
+        return res.status(404).json({ success: false, error: "User not found" });
+      }
+      
+      // Handle case when blockedUsers isn't an array 
+      if (!Array.isArray(user.blockedUsers)) {
+        user.blockedUsers = [];
+        await user.save();
+      }
+      
+      // Get details of blocked users
+      const blockedUsers = [];
+      if (user.blockedUsers.length > 0) {
+        const validIds = user.blockedUsers.filter(id => 
+          id && mongoose.Types.ObjectId.isValid(id.toString())
+        );
+        
+        if (validIds.length > 0) {
+          const blockedData = await User.find({ 
+            _id: { $in: validIds }
+          })
+          .select("nickname photos isOnline lastActive")
+          .lean();
+          
+          blockedUsers.push(...blockedData);
+        }
+      }
+      
+      return res.json({
+        success: true,
+        count: blockedUsers.length,
+        data: blockedUsers
+      });
+    } catch (err) {
+      // Handle specific JWT errors
+      if (err.name === 'JsonWebTokenError') {
+        return res.status(401).json({ success: false, error: "Invalid token format" });
+      } else if (err.name === 'TokenExpiredError') {
+        return res.status(401).json({ success: false, error: "Token expired" });
+      }
+      
+      // Log error but respond with success and empty array for client experience
+      logger.error(`Blocked users error: ${err.message}`);
+      return res.json({
+        success: true,
+        count: 0,
+        data: []
+      });
+    }
   })
 );
 

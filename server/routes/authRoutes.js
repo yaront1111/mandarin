@@ -211,7 +211,9 @@ router.post(
       return res.status(401).json({ success: false, error: "Invalid token" })
     }
 
-    const user = await User.findById(decoded.id).select("-password")
+    // Standardize on _id (use decoded._id or decoded.id)
+    const userId = decoded._id || decoded.id;
+    const user = await User.findById(userId).select("-password")
     if (!user || decoded.version !== user.version) {
       return res.status(401).json({ success: false, error: "Token revoked or user not found" })
     }
@@ -220,7 +222,7 @@ router.post(
       return res.status(401).json({ success: false, error: "Token too old" })
     }
 
-    const newToken = generateToken({ id: user._id, role: user.role, version: user.version })
+    const newToken = generateToken({ _id: user._id, role: user.role, version: user.version })
     res.json({ success: true, token: newToken })
   })
 )

@@ -11,10 +11,10 @@ import logger from "../logger.js";
  */
 const generateToken = (payload, expiresIn = config.JWT_EXPIRE) => {
   const tokenPayload = {
-    id: payload.id || payload._id,
+    _id: payload._id || payload.id,
     ...payload,
   };
-  if (tokenPayload.id && tokenPayload._id) delete tokenPayload._id;
+  if (tokenPayload.id) delete tokenPayload.id; // Remove id, standardize on _id
   return jwt.sign(tokenPayload, config.JWT_SECRET, { expiresIn });
 };
 
@@ -23,12 +23,12 @@ const generateToken = (payload, expiresIn = config.JWT_EXPIRE) => {
  */
 const generateSocketToken = (payload) => {
   const socketPayload = {
-    id: payload.id || payload._id,
+    _id: payload._id || payload.id,
     ...payload,
     purpose: "socket",
     iat: Math.floor(Date.now() / 1000),
   };
-  if (socketPayload.id && socketPayload._id) delete socketPayload._id;
+  if (socketPayload.id) delete socketPayload.id; // Remove id, standardize on _id
   return jwt.sign(socketPayload, config.JWT_SECRET, {
     expiresIn: config.SOCKET_TOKEN_EXPIRE || "24h",
   });
@@ -125,6 +125,14 @@ const authenticateSocket = async (socket, data) => {
  */
 const protect = async (req, res, next) => {
   let token;
+  
+  // Extra debug logging for blocked users endpoint
+  const isBlockedEndpoint = req.originalUrl.includes('/users/blocked');
+  if (isBlockedEndpoint) {
+    logger.debug(`[DEBUG] Blocked users request received`);
+    logger.debug(`[DEBUG] Request headers: ${JSON.stringify(req.headers || {})}`);
+  }
+  
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer")) {
     token = authHeader.split(" ")[1];
@@ -136,16 +144,21 @@ const protect = async (req, res, next) => {
 
   if (!token) {
     logger.debug(`No token provided for ${req.method} ${req.originalUrl}`);
-    
-    // Add debug information to help diagnose the issue
     logger.debug(`Request headers: ${JSON.stringify(req.headers || {})}`);
-    
     return res.status(401).json({ success: false, error: "Authentication required" });
+  }
+
+  if (isBlockedEndpoint) {
+    logger.debug(`[DEBUG] Token found: ${token.substring(0, 10)}...`);
   }
 
   let decoded;
   try {
     decoded = jwt.verify(token, config.JWT_SECRET);
+    
+    if (isBlockedEndpoint) {
+      logger.debug(`[DEBUG] Token verified successfully: ${JSON.stringify(decoded || {})}`);
+    }
   } catch (err) {
     if (err.name === "TokenExpiredError") {
       logger.debug(`Token expired: ${err.message}`);
@@ -155,33 +168,53 @@ const protect = async (req, res, next) => {
     return res.status(401).json({ success: false, error: "Invalid token", code: "INVALID_TOKEN" });
   }
 
-  let userId = decoded.id || decoded.userId || (decoded.user && decoded.user._id);
+  // Standardize on _id
+  let userId = decoded._id || decoded.id || decoded.userId || (decoded.user && (decoded.user._id || decoded.user.id));
   if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
-    logger.debug(`Token missing or invalid user ID`);
+    logger.debug(`Token missing or invalid user ID: ${userId}`);
     return res.status(401).json({ success: false, error: "Invalid token format", code: "INVALID_TOKEN_FORMAT" });
   }
 
-  const user = await User.findById(userId).select("+version");
-  if (!user) {
-    logger.debug(`User not found from token`);
-    return res.status(401).json({ success: false, error: "User not found", code: "USER_NOT_FOUND" });
-  }
-  if (user.version && decoded.version && user.version !== decoded.version) {
-    logger.debug(`Token version mismatch`);
-    return res.status(401).json({ success: false, error: "Session no longer valid", code: "TOKEN_REVOKED" });
-  }
+  try {
+    // Fix proper ObjectId creation - using new keyword
+    const validId = new mongoose.Types.ObjectId(userId);
+    if (isBlockedEndpoint) {
+      logger.debug(`[DEBUG] User ID parsed: ${validId}`);
+    }
+    
+    const user = await User.findById(validId).select("+version");
+    if (!user) {
+      logger.debug(`User not found from token, ID: ${userId}`);
+      return res.status(401).json({ success: false, error: "User not found", code: "USER_NOT_FOUND" });
+    }
+    
+    if (user.version && decoded.version && user.version !== decoded.version) {
+      logger.debug(`Token version mismatch: ${user.version} vs ${decoded.version}`);
+      return res.status(401).json({ success: false, error: "Session no longer valid", code: "TOKEN_REVOKED" });
+    }
 
-  req.user = {
-    _id: user._id.toString(),
-    id: user._id.toString(),
-    email: user.email,
-    nickname: user.nickname,
-    role: user.role,
-    settings: user.settings,
-  };
+    // Make sure _id is properly stringified
+    const userIdStr = user._id.toString();
+    
+    req.user = {
+      _id: userIdStr,
+      // Remove id field, standardize on _id only
+      email: user.email,
+      nickname: user.nickname,
+      role: user.role,
+      settings: user.settings,
+    };
 
-  logger.debug(`[AUTH] Authenticated user ${req.user._id} for ${req.method} ${req.originalUrl}`);
-  next();
+    if (isBlockedEndpoint) {
+      logger.debug(`[DEBUG] User object created: ${JSON.stringify(req.user)}`);
+    }
+
+    logger.debug(`[AUTH] Authenticated user ${req.user._id} for ${req.method} ${req.originalUrl}`);
+    next();
+  } catch (err) {
+    logger.error(`Error in protect middleware: ${err.message}`, err);
+    return res.status(500).json({ success: false, error: "Authentication error", code: "AUTH_ERROR" });
+  }
 };
 
 /**
