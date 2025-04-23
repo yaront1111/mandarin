@@ -8,7 +8,6 @@ import { formatMessagePreview, groupMessagesByDate, formatDate, classNames } fro
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import Avatar from "../components/common/Avatar";
 import AuthContext from "../context/AuthContext";
-import { Navbar } from "../components/LayoutComponents";
 import {
   FaEnvelope,
   FaPaperPlane,
@@ -30,10 +29,15 @@ import {
   FaFilePdf,
   FaFileVideo,
   FaFileAudio,
+  FaArrowLeft,
+  FaPlus
 } from "react-icons/fa";
 import VideoCall from "../components/VideoCall";
 import socketService from "../services/socketService";
 import styles from "../styles/Messages.module.css";
+
+// Add gesture support for mobile
+const SWIPE_THRESHOLD = 50; // Minimum distance to trigger swipe action
 
 // Counter to guarantee unique system message IDs
 let idCounter = 0;
@@ -67,26 +71,87 @@ const Messages = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isSending, setIsSending] = useState(false);
 
+  // Mobile-specific state
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [touchStartY, setTouchStartY] = useState(0);
+  const [touchStartX, setTouchStartX] = useState(0);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [swipeDirection, setSwipeDirection] = useState(null);
+
   // Refs
   const messagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const chatInitializedRef = useRef(false);
   const typingTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
-  // NEW: Ref to store the conversation ID whose messages are currently loaded
+  const conversationsListRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const loadedConversationRef = useRef(null);
+  const refreshIndicatorRef = useRef(null);
 
   // Common emojis for the emoji picker
   const commonEmojis = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"];
 
-  // Responsive sidebar handling
+  // Handle PWA installation
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      // Prevent the mini-infobar from appearing on mobile
+      e.preventDefault();
+      // Store the event so it can be triggered later
+      window.deferredPrompt = e;
+      // Show install banner
+      setShowInstallBanner(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // Check if app is already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setShowInstallBanner(false);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  // Handle app installation
+  const handleInstallClick = async () => {
+    if (!window.deferredPrompt) return;
+
+    const promptEvent = window.deferredPrompt;
+    promptEvent.prompt();
+
+    // Wait for user response
+    const { outcome } = await promptEvent.userChoice;
+    console.log(`User ${outcome === 'accepted' ? 'accepted' : 'declined'} the install prompt`);
+
+    // Clear the saved prompt - it can't be used again
+    window.deferredPrompt = null;
+    setShowInstallBanner(false);
+  };
+
+  // Responsive sidebar handling with improved mobile detection
   useEffect(() => {
     const handleResize = () => {
       const isMobile = window.innerWidth < 768;
       setMobileView(isMobile);
-      if (!isMobile) setShowSidebar(true);
-      else if (activeConversation) setShowSidebar(false);
+
+      if (!isMobile) {
+        setShowSidebar(true);
+      } else if (activeConversation) {
+        setShowSidebar(false);
+      }
+
+      // Reset any touch-related state
+      setPullDistance(0);
+      setSwipeDirection(null);
     };
+
+    // Initial check
+    handleResize();
+
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [activeConversation]);
@@ -100,6 +165,7 @@ const Messages = () => {
       }
       return;
     }
+
     const initChat = async () => {
       try {
         setComponentLoading(true);
@@ -117,60 +183,64 @@ const Messages = () => {
         setComponentLoading(false);
       }
     };
+
     initChat();
   }, [currentUser, isAuthenticated, authLoading]);
 
   // Socket and notification event listeners
   useEffect(() => {
     if (!chatInitializedRef.current || !currentUser?._id) return;
+
     const handleMessageReceived = (newMessage) => {
       console.log("Message received:", newMessage);
-      
-      // IMPORTANT: Enhanced duplicate detection with file awareness
-      // Check if this is a message with the same file we just uploaded
+
+      // Enhanced duplicate detection with file awareness
       if (newMessage.type === 'file' && window.__lastUploadedFile) {
         const lastFile = window.__lastUploadedFile;
         const msgUrl = newMessage.metadata?.url || newMessage.metadata?.fileUrl;
-        
-        // If this is the same file we just uploaded, mark it as processed
+
         if (msgUrl && msgUrl === lastFile.url) {
           console.log("Identified message for the file we just uploaded", lastFile.id);
-          window.__lastUploadedFile = null; // Clear it so we don't check again
+          window.__lastUploadedFile = null; // Clear it
         }
       }
-      
+
+      // Play notification sound for mobile experience
+      if (newMessage.sender !== currentUser._id) {
+        const audio = new Audio('/notification.mp3');
+        audio.volume = 0.5;
+        audio.play().catch(err => console.log("Couldn't play notification sound:", err));
+      }
+
       const partnerId = newMessage.sender === currentUser._id ? newMessage.recipient : newMessage.sender;
-      
+
       if (activeConversation && activeConversation.user._id === partnerId) {
         setMessages((prev) => {
-          // Enhanced duplicate detection with special handling for file messages
+          // Enhanced duplicate detection
           let isDuplicate = false;
-          
-          // First, check for standard duplicates by ID
-          isDuplicate = prev.some(msg => 
-            msg._id === newMessage._id || 
+
+          // Standard duplicates by ID
+          isDuplicate = prev.some(msg =>
+            msg._id === newMessage._id ||
             (newMessage.tempId && msg.tempId === newMessage.tempId)
           );
-          
-          // For file messages, do special deduplication
+
+          // File message deduplication
           if (!isDuplicate && newMessage.type === 'file' && newMessage.metadata?.url) {
-            // Check if we have any message with this same file URL
-            isDuplicate = prev.some(msg => 
-              msg.type === 'file' && 
+            isDuplicate = prev.some(msg =>
+              msg.type === 'file' &&
               msg.metadata?.url === newMessage.metadata.url &&
-              // Only consider it a duplicate if from same sender and approximately same time
               msg.sender === newMessage.sender &&
               Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 10000
             );
-            
-            // If we found a duplicate and it's a placeholder, replace it with the real message
+
             if (isDuplicate) {
-              const placeholderIndex = prev.findIndex(msg => 
-                msg.type === 'file' && 
+              const placeholderIndex = prev.findIndex(msg =>
+                msg.type === 'file' &&
                 msg.metadata?.url === newMessage.metadata.url &&
                 msg.metadata?.__localPlaceholder === true
               );
-              
+
               if (placeholderIndex >= 0) {
                 console.log("Replacing placeholder with real message:", newMessage._id);
                 const updatedMessages = [...prev];
@@ -178,9 +248,7 @@ const Messages = () => {
                   ...newMessage,
                   metadata: {
                     ...newMessage.metadata,
-                    // Keep any client-side enhancements from our placeholder
                     fileUrl: newMessage.metadata.url || newMessage.metadata.fileUrl,
-                    // Ensure the URL is always set for both client and server use
                     url: newMessage.metadata.url || newMessage.metadata.fileUrl
                   }
                 };
@@ -188,25 +256,35 @@ const Messages = () => {
               }
             }
           }
-          
-          // Skip if it's a true duplicate
+
           if (isDuplicate) {
             console.log("Skipping duplicate message:", newMessage._id);
             return prev;
           }
-          
-          // Add new message with proper sorting
-          console.log("Adding new message to chat:", newMessage._id);
+
+          // Use vibration API on mobile for tactile feedback
+          if (mobileView && "vibrate" in navigator) {
+            navigator.vibrate(50);
+          }
+
           return [...prev, newMessage].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         });
-        
+
         // Mark as read since we're looking at the conversation
         chatService.markConversationRead(activeConversation.user._id);
       } else {
-        toast.info(`New message from ${newMessage.senderName || "a user"}`);
+        // Show native notification on mobile
+        if (mobileView && "Notification" in window && Notification.permission === "granted") {
+          new Notification("New message", {
+            body: `New message from ${newMessage.senderName || "a user"}`,
+            icon: "/icon-192x192.png"
+          });
+        } else {
+          toast.info(`New message from ${newMessage.senderName || "a user"}`);
+        }
       }
-      
-      // Update conversation list regardless
+
+      // Update conversation list
       updateConversationList(newMessage);
     };
 
@@ -229,6 +307,7 @@ const Messages = () => {
     // Video call listeners
     const handleIncomingCall = (call) => {
       if (!activeConversation || call.userId !== activeConversation.user._id) return;
+
       console.debug(`Received incoming call from ${call.userId}`);
       setIncomingCall({
         callId: call.callId,
@@ -236,6 +315,12 @@ const Messages = () => {
         callerId: call.userId,
         timestamp: call.timestamp,
       });
+
+      // Vibrate device for incoming call (pattern: ring-pause-ring)
+      if (mobileView && "vibrate" in navigator) {
+        navigator.vibrate([300, 100, 300]);
+      }
+
       const systemMessage = {
         _id: generateUniqueId(),
         sender: "system",
@@ -289,6 +374,11 @@ const Messages = () => {
     const unsubscribeCallDeclined = socketService.on("callDeclined", handleCallDeclined);
     const unsubscribeVideoHangup = socketService.on("videoHangup", handleCallHangup);
 
+    // Request notification permission on mobile
+    if (mobileView && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+
     return () => {
       unsubscribeMessage();
       unsubscribeTyping();
@@ -299,9 +389,9 @@ const Messages = () => {
       unsubscribeVideoHangup();
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
-  }, [activeConversation, currentUser?._id, isCallActive]);
+  }, [activeConversation, currentUser?._id, isCallActive, mobileView]);
 
-  // Load conversation based on URL parameter (if provided)
+  // Load conversation based on URL parameter
   useEffect(() => {
     if (chatInitializedRef.current && targetUserIdParam && conversations.length > 0) {
       const conversation = conversations.find((c) => c.user._id === targetUserIdParam);
@@ -313,17 +403,17 @@ const Messages = () => {
     }
   }, [targetUserIdParam, conversations, currentUser?._id, activeConversation, navigate]);
 
-  // Load messages for the active conversation with a guard
+  // Load messages for the active conversation
   useEffect(() => {
     if (!activeConversation?.user?._id || !currentUser?._id) {
       setMessages([]);
       return;
     }
+
     // Only load messages if the conversation ID has changed
     if (loadedConversationRef.current === activeConversation.user._id) return;
     loadedConversationRef.current = activeConversation.user._id;
 
-    // Do not clear messages immediately—keep old ones visible until new ones arrive
     setMessagesLoading(true);
     (async () => {
       try {
@@ -346,6 +436,134 @@ const Messages = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // --- Touch Gesture Handlers ---
+
+  // Handle touch start for pull-to-refresh
+  const handleTouchStart = (e) => {
+    if (!conversationsListRef.current) return;
+
+    const touchY = e.touches[0].clientY;
+    const touchX = e.touches[0].clientX;
+    setTouchStartY(touchY);
+    setTouchStartX(touchX);
+
+    // Only initialize pull-to-refresh if at the top of the list
+    if (conversationsListRef.current.scrollTop <= 0) {
+      setIsRefreshing(true);
+    }
+  };
+
+  // Handle touch move for pull-to-refresh and swipe gestures
+  const handleTouchMove = (e) => {
+    if (!isRefreshing && !messagesContainerRef.current) return;
+
+    const currentY = e.touches[0].clientY;
+    const currentX = e.touches[0].clientX;
+    const diffY = currentY - touchStartY;
+    const diffX = currentX - touchStartX;
+
+    // Handle pull-to-refresh
+    if (isRefreshing && diffY > 0) {
+      // Calculate pull distance with resistance
+      const newPullDistance = Math.min(diffY * 0.5, 80);
+      setPullDistance(newPullDistance);
+
+      if (refreshIndicatorRef.current) {
+        refreshIndicatorRef.current.style.transform = `translateY(${newPullDistance}px)`;
+      }
+    }
+
+    // Handle horizontal swipe between conversations and chat area
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
+      if (diffX > 0 && !showSidebar) {
+        // Swiping right when in chat view - show sidebar partially
+        const swipeRatio = Math.min(diffX / 200, 1);
+        messagesContainerRef.current.style.transform = `translateX(${diffX * 0.3}px)`;
+        setSwipeDirection('right');
+      } else if (diffX < 0 && showSidebar) {
+        // Swiping left when in sidebar view - hide sidebar partially
+        messagesContainerRef.current.style.transform = `translateX(${diffX * 0.3}px)`;
+        setSwipeDirection('left');
+      }
+
+      e.preventDefault(); // Prevent scrolling during swipe
+    }
+  };
+
+  // Handle touch end for pull-to-refresh and swipe gestures
+  const handleTouchEnd = async (e) => {
+    // Handle pull-to-refresh completion
+    if (isRefreshing && pullDistance > 50) {
+      // Visual indicator for refreshing
+      if (refreshIndicatorRef.current) {
+        refreshIndicatorRef.current.style.transition = 'transform 0.3s ease-out';
+        refreshIndicatorRef.current.style.transform = 'translateY(40px)';
+      }
+
+      // Perform the refresh
+      try {
+        await fetchConversations();
+        // Success animation
+        if (refreshIndicatorRef.current) {
+          refreshIndicatorRef.current.classList.add(styles.refreshSuccess);
+        }
+      } catch (err) {
+        console.error("Error refreshing conversations:", err);
+        // Error animation
+        if (refreshIndicatorRef.current) {
+          refreshIndicatorRef.current.classList.add(styles.refreshError);
+        }
+      } finally {
+        // Reset after animation
+        setTimeout(() => {
+          if (refreshIndicatorRef.current) {
+            refreshIndicatorRef.current.style.transition = 'transform 0.3s ease-out';
+            refreshIndicatorRef.current.style.transform = 'translateY(0)';
+            refreshIndicatorRef.current.classList.remove(styles.refreshSuccess, styles.refreshError);
+          }
+          setIsRefreshing(false);
+          setPullDistance(0);
+        }, 600);
+      }
+    } else if (isRefreshing) {
+      // Reset without refreshing if pull not far enough
+      if (refreshIndicatorRef.current) {
+        refreshIndicatorRef.current.style.transition = 'transform 0.3s ease-out';
+        refreshIndicatorRef.current.style.transform = 'translateY(0)';
+      }
+      setIsRefreshing(false);
+      setPullDistance(0);
+    }
+
+    // Handle swipe gesture completion
+    if (messagesContainerRef.current) {
+      if (swipeDirection === 'right' && !showSidebar) {
+        // Completed right swipe - show sidebar
+        messagesContainerRef.current.style.transition = 'transform 0.3s ease-out';
+        messagesContainerRef.current.style.transform = 'translateX(0)';
+        setShowSidebar(true);
+      } else if (swipeDirection === 'left' && showSidebar) {
+        // Completed left swipe - hide sidebar
+        messagesContainerRef.current.style.transition = 'transform 0.3s ease-out';
+        messagesContainerRef.current.style.transform = 'translateX(0)';
+        setShowSidebar(false);
+      } else {
+        // Canceled swipe - reset
+        messagesContainerRef.current.style.transition = 'transform 0.3s ease-out';
+        messagesContainerRef.current.style.transform = 'translateX(0)';
+      }
+
+      // Clear transition after animation completes
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.style.transition = '';
+        }
+      }, 300);
+    }
+
+    setSwipeDirection(null);
+  };
 
   // --- Helper Functions ---
 
@@ -497,6 +715,12 @@ const Messages = () => {
     }
     setMessageInput("");
     setIsSending(true);
+
+    // Provide haptic feedback on mobile
+    if (mobileView && "vibrate" in navigator) {
+      navigator.vibrate(20);
+    }
+
     try {
       const sentMessage = await chatService.sendMessage(partnerId, trimmedMessage);
       setMessages((prev) =>
@@ -526,6 +750,12 @@ const Messages = () => {
       return;
     }
     setIsSending(true);
+
+    // Provide haptic feedback on mobile
+    if (mobileView && "vibrate" in navigator) {
+      navigator.vibrate([20, 30, 20]);
+    }
+
     try {
       const sentMessage = await chatService.sendMessage(partnerId, "😉", "wink");
       setMessages((prev) =>
@@ -581,6 +811,11 @@ const Messages = () => {
     setAttachment(file);
     toast.info(`Selected file: ${file.name}`);
     e.target.value = null;
+
+    // Provide haptic feedback on mobile
+    if (mobileView && "vibrate" in navigator) {
+      navigator.vibrate(30);
+    }
   };
 
   const handleRemoveAttachment = () => {
@@ -607,17 +842,22 @@ const Messages = () => {
       toast.error("Free accounts cannot send files. Upgrade to send files.");
       return;
     }
-    
+
     setIsUploading(true);
     setUploadProgress(10); // Start progress at 10%
-    
+
+    // Provide haptic feedback on mobile
+    if (mobileView && "vibrate" in navigator) {
+      navigator.vibrate(40);
+    }
+
     try {
       // Direct approach with manual XHR for better control
       const xhr = new XMLHttpRequest();
       const formData = new FormData();
       formData.append("file", attachment);
       formData.append("recipient", partnerId);
-      
+
       // Set up upload progress tracking
       xhr.upload.addEventListener("progress", event => {
         if (event.lengthComputable) {
@@ -625,22 +865,22 @@ const Messages = () => {
           setUploadProgress(percentComplete);
         }
       });
-      
+
       // Promise-based XHR
       const uploadFile = () => {
         return new Promise((resolve, reject) => {
           xhr.open("POST", "/api/messages/attachments");
-          
+
           // Add auth token - ensure it's defined in this scope
-          const authToken = localStorage.getItem("token") || 
-                           sessionStorage.getItem("token") || 
-                           localStorage.getItem("authToken") || 
+          const authToken = localStorage.getItem("token") ||
+                           sessionStorage.getItem("token") ||
+                           localStorage.getItem("authToken") ||
                            sessionStorage.getItem("authToken");
-                           
+
           if (authToken) {
             xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
           }
-          
+
           xhr.onload = function() {
             if (xhr.status >= 200 && xhr.status < 300) {
               try {
@@ -653,22 +893,22 @@ const Messages = () => {
               reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
             }
           };
-          
+
           xhr.onerror = () => reject(new Error("Network error during upload"));
           xhr.send(formData);
         });
       };
-      
+
       // Upload the file
       const uploadResult = await uploadFile();
-      
+
       // Set upload complete
       setUploadProgress(100);
-      
+
       if (!uploadResult.success || !uploadResult.data) {
         throw new Error(uploadResult.error || "File upload failed");
       }
-      
+
       // Create message metadata with URLs
       const fileData = uploadResult.data;
       const messageData = {
@@ -685,16 +925,16 @@ const Messages = () => {
           thumbnail: fileData.metadata?.thumbnail
         }
       };
-      
+
       // Use the same authToken approach consistently for all requests
-      const messageAuthToken = localStorage.getItem("token") || 
-                              sessionStorage.getItem("token") || 
-                              localStorage.getItem("authToken") || 
+      const messageAuthToken = localStorage.getItem("token") ||
+                              sessionStorage.getItem("token") ||
+                              localStorage.getItem("authToken") ||
                               sessionStorage.getItem("authToken");
-      
+
       // Log the token presence for debugging (not the actual token for security)
       console.log("Message send auth token available:", !!messageAuthToken);
-      
+
       // Use direct API call to avoid any event issues
       const messageResponse = await fetch("/api/messages", {
         method: "POST",
@@ -704,17 +944,22 @@ const Messages = () => {
         },
         body: JSON.stringify(messageData)
       });
-      
+
       if (!messageResponse.ok) {
         throw new Error(`Message send failed: ${messageResponse.status}`);
       }
-      
+
       const messageResult = await messageResponse.json();
-      
+
       if (!messageResult.success) {
         throw new Error(messageResult.error || "Failed to send message");
       }
-      
+
+      // Success vibration pattern
+      if (mobileView && "vibrate" in navigator) {
+        navigator.vibrate([30, 50, 30]);
+      }
+
       // Add the message directly to our UI
       const finalMessage = messageResult.data;
       finalMessage.metadata = {
@@ -724,12 +969,12 @@ const Messages = () => {
         fileType: fileData.mimeType || "image/jpeg",
         mimeType: fileData.mimeType || "image/jpeg"
       };
-      
+
       // Manually load the latest messages
       await loadMessages(partnerId);
-      
+
       toast.success("File sent successfully");
-      
+
       // Reset state
       setAttachment(null);
       setUploadProgress(0);
@@ -739,6 +984,11 @@ const Messages = () => {
     } catch (error) {
       console.error("Failed to send file:", error);
       toast.error(error.message || "Failed to send file. Please try again.");
+
+      // Error vibration pattern
+      if (mobileView && "vibrate" in navigator) {
+        navigator.vibrate([100, 50, 100]);
+      }
     } finally {
       setIsUploading(false);
     }
@@ -749,6 +999,11 @@ const Messages = () => {
     setShowEmojis(false);
     if (messageInputRef.current) {
       messageInputRef.current.focus();
+    }
+
+    // Provide haptic feedback on mobile
+    if (mobileView && "vibrate" in navigator) {
+      navigator.vibrate(20);
     }
   };
 
@@ -791,6 +1046,7 @@ const Messages = () => {
       setMessages((prev) => [...prev, errorMessage]);
       return;
     }
+
     const partnerId = activeConversation.user._id;
     if (!/^[0-9a-fA-F]{24}$/.test(partnerId)) {
       const errorMessage = {
@@ -805,6 +1061,7 @@ const Messages = () => {
       console.error("Cannot initiate call - invalid recipient ID:", partnerId);
       return;
     }
+
     try {
       const infoMessage = {
         _id: generateUniqueId(),
@@ -815,6 +1072,12 @@ const Messages = () => {
       };
       setMessages((prev) => [...prev, infoMessage]);
       setIsCallActive(true);
+
+      // Vibrate device when initiating call
+      if (mobileView && "vibrate" in navigator) {
+        navigator.vibrate([50, 100, 50]);
+      }
+
       const systemMessage = {
         _id: generateUniqueId(),
         sender: "system",
@@ -823,6 +1086,7 @@ const Messages = () => {
         type: "system",
       };
       setMessages((prev) => [...prev, systemMessage]);
+
       socketService
         .initiateVideoCall(activeConversation.user._id)
         .then((data) => {
@@ -864,8 +1128,10 @@ const Messages = () => {
         console.warn("Cannot emit hangup for invalid partner ID:", partnerId);
       }
     }
+
     setIsCallActive(false);
     setIncomingCall(null);
+
     if (activeConversation) {
       const systemMessage = {
         _id: generateUniqueId(),
@@ -876,16 +1142,23 @@ const Messages = () => {
       };
       setMessages((prev) => [...prev, systemMessage]);
     }
+
+    // Hangup vibration pattern
+    if (mobileView && "vibrate" in navigator) {
+      navigator.vibrate(100);
+    }
   };
 
   const updateConversationList = (newMessage) => {
     if (!currentUser?._id) return;
+
     const partnerId = newMessage.sender === currentUser._id ? newMessage.recipient : newMessage.sender;
     if (partnerId === currentUser._id) return;
     if (!/^[0-9a-fA-F]{24}$/.test(partnerId)) {
       console.warn("Received message with invalid partner ID format, not updating conversation list:", partnerId);
       return;
     }
+
     setConversations((prev) => {
       let updatedConvo = prev.find((c) => c.user._id === partnerId);
       if (updatedConvo) {
@@ -918,6 +1191,7 @@ const Messages = () => {
       console.warn("Attempted to mark conversation read for invalid ID format:", partnerUserId);
       return;
     }
+
     const convoIndex = conversations.findIndex((c) => c.user._id === partnerUserId);
     if (convoIndex !== -1 && conversations[convoIndex].unreadCount > 0) {
       chatService.markConversationRead(partnerUserId);
@@ -946,6 +1220,8 @@ const Messages = () => {
         typingTimeoutRef.current = setTimeout(() => sendTypingIndicator(), 300);
       }
     }
+
+    // Auto-resize textarea
     e.target.style.height = "auto";
     e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
   };
@@ -974,13 +1250,24 @@ const Messages = () => {
       console.error("Attempted to select conversation with invalid ID:", conversation.user._id);
       return;
     }
+
     setActiveConversation(conversation);
     setError(null);
     markConversationAsRead(conversation.user._id);
+
+    // Provide haptic feedback on mobile
+    if (mobileView && "vibrate" in navigator) {
+      navigator.vibrate(20);
+    }
   };
 
   const toggleSidebar = () => {
     setShowSidebar(!showSidebar);
+
+    // Provide haptic feedback on mobile
+    if (mobileView && "vibrate" in navigator) {
+      navigator.vibrate(15);
+    }
   };
 
   const groupedMessages = groupMessagesByDate(messages);
@@ -995,62 +1282,76 @@ const Messages = () => {
   };
 
   if (componentLoading || authLoading) {
-    return (
-      <div className={styles.appWrapper}>
-        <Navbar />
-        <div className={styles.loadingContainer}>
-          <LoadingSpinner size="large" text={authLoading ? "Authenticating..." : "Loading chats..."} centered />
-        </div>
-      </div>
-    );
+    return
   }
 
   if (!isAuthenticated && !authLoading) {
-    return (
-      <div className={styles.appWrapper}>
-        <Navbar />
-        <div className={styles.errorContainer}>
-          <p>Please log in to view and send messages.</p>
-          <button onClick={() => navigate("/login")} className={styles.btnPrimary}>Login</button>
-        </div>
-      </div>
-    );
+    return
   }
 
   if (error && !activeConversation) {
-    return (
-      <div className={styles.appWrapper}>
-        <Navbar />
-        <div className={styles.errorContainer}>
-          <h3>Error</h3>
-          <p>{error}</p>
-          <button onClick={() => window.location.reload()} className={styles.btnPrimary}>Retry</button>
-        </div>
-      </div>
-    );
+    return
   }
 
   return (
     <div className={styles.appWrapper}>
-      <Navbar />
-      <div className={styles.messagesContainer}>
+      <div
+        className={styles.messagesContainer}
+        ref={messagesContainerRef}
+        onTouchStart={mobileView ? handleTouchStart : undefined}
+        onTouchMove={mobileView ? handleTouchMove : undefined}
+        onTouchEnd={mobileView ? handleTouchEnd : undefined}
+      >
         <div className={`${styles.sidebar} ${showSidebar ? styles.show : styles.hide}`}>
           <div className={styles.sidebarHeader}>
             <h2>Messages</h2>
-            {mobileView && activeConversation && (
-              <button className={styles.backButton} onClick={toggleSidebar}>
-                &times;
-              </button>
-            )}
-          </div>
-          {conversations.length === 0 && !componentLoading ? (
-            <div className={styles.noConversations}>
-              <FaEnvelope size={32} />
-              <p>No conversations yet.</p>
+            <div className={styles.sidebarActions}>
+              {mobileView && (
+                <button
+                  className={styles.newConversationButton}
+                  onClick={() => navigate('/users')}
+                  aria-label="New conversation"
+                >
+                  <FaPlus />
+                </button>
+              )}
+              {mobileView && activeConversation && (
+                <button className={styles.backButton} onClick={toggleSidebar}>
+                  &times;
+                </button>
+              )}
             </div>
-          ) : (
-            <div className={styles.conversationsList}>
-              {conversations.map((convo) => {
+          </div>
+
+          <div
+            className={styles.conversationsList}
+            ref={conversationsListRef}
+          >
+            {/* Pull-to-refresh indicator */}
+            {mobileView && (
+              <div
+                ref={refreshIndicatorRef}
+                className={styles.pullToRefreshIndicator}
+                style={{ transform: 'translateY(0)' }}
+              >
+                {pullDistance > 50 ? 'Release to refresh' : 'Pull down to refresh'}
+                {isRefreshing && pullDistance <= 50 && <LoadingSpinner size="small" />}
+              </div>
+            )}
+
+            {conversations.length === 0 && !componentLoading ? (
+              <div className={styles.noConversations}>
+                <FaEnvelope size={32} />
+                <p>No conversations yet.</p>
+                <button
+                  className={styles.startChatButton}
+                  onClick={() => navigate('/users')}
+                >
+                  Find someone to chat with
+                </button>
+              </div>
+            ) : (
+              conversations.map((convo) => {
                 if (!convo || !convo.user || !convo.user._id) {
                   console.warn("Skipping rendering invalid conversation item:", convo);
                   return null;
@@ -1083,10 +1384,11 @@ const Messages = () => {
                     )}
                   </div>
                 );
-              })}
-            </div>
-          )}
+              })
+            )}
+          </div>
         </div>
+
         <div className={`${styles.chatArea} ${!showSidebar && mobileView ? styles.fullWidth : ""}`}>
           {activeConversation ? (
             <>
@@ -1094,8 +1396,8 @@ const Messages = () => {
                 {activeConversation.user && activeConversation.user._id ? (
                   <div className={styles.chatUser}>
                     {mobileView && (
-                      <button className={styles.backButton} onClick={toggleSidebar}>
-                        &larr;
+                      <button className={styles.backButton} onClick={toggleSidebar} aria-label="Back to conversation list">
+                        <FaArrowLeft />
                       </button>
                     )}
                     <div className={styles.avatarContainer}>
@@ -1136,6 +1438,7 @@ const Messages = () => {
                   <div className={styles.chatUser}>Loading user...</div>
                 )}
               </div>
+
               {currentUser?.accountTier === "FREE" && (
                 <div className={styles.premiumBanner}>
                   <div>
@@ -1147,6 +1450,7 @@ const Messages = () => {
                   </button>
                 </div>
               )}
+
               {isCallActive && (
                 <div className={styles.activeCallBanner}>
                   <div>
@@ -1158,6 +1462,7 @@ const Messages = () => {
                   </button>
                 </div>
               )}
+
               {incomingCall && !isCallActive && (
                 <div className={styles.incomingCallBanner}>
                   <div className={styles.incomingCallInfo}>
@@ -1214,6 +1519,7 @@ const Messages = () => {
                   </div>
                 </div>
               )}
+
               <div className={styles.messagesArea}>
                 {messagesLoading ? (
                   <div className={styles.messagesLoading}>
@@ -1278,8 +1584,8 @@ const Messages = () => {
                               <div className={styles.fileMessage}>
                                 {msg.metadata.fileType?.startsWith("image/") ? (
                                   <div className={styles.imageContainer}>
-                                    <a 
-                                      href={msg.metadata.fileUrl || msg.metadata.url || "/placeholder.svg"} 
+                                    <a
+                                      href={msg.metadata.fileUrl || msg.metadata.url || "/placeholder.svg"}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className={styles.imageLink}
@@ -1292,7 +1598,7 @@ const Messages = () => {
                                         src={msg.metadata.fileUrl || msg.metadata.url || "/placeholder.svg"}
                                         alt={msg.metadata.fileName || "Image"}
                                         className={`${styles.imageAttachment} ${styles.loading}`}
-                                        loading="lazy" /* Add lazy loading for better performance */
+                                        loading="lazy"
                                         onLoad={(e) => {
                                           console.log("Image loaded successfully:", msg.metadata.fileName || "image");
                                           // Remove loading class once image is loaded
@@ -1307,8 +1613,8 @@ const Messages = () => {
                                       />
                                     </a>
                                     <div className={styles.imgCaption}>
-                                      <a 
-                                        href={msg.metadata.fileUrl || msg.metadata.url || "/placeholder.svg"} 
+                                      <a
+                                        href={msg.metadata.fileUrl || msg.metadata.url || "/placeholder.svg"}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         onClick={(e) => e.stopPropagation()}
@@ -1360,6 +1666,7 @@ const Messages = () => {
                     </div>
                   ))
                 )}
+
                 {typingUser && (
                   <div className={styles.typingIndicator}>
                     <div className={styles.dot}></div>
@@ -1367,8 +1674,10 @@ const Messages = () => {
                     <div className={styles.dot}></div>
                   </div>
                 )}
+
                 <div ref={messagesEndRef} />
               </div>
+
               {attachment && (
                 <div className={styles.attachmentPreview}>
                   <div className={styles.attachmentInfo}>
@@ -1395,6 +1704,7 @@ const Messages = () => {
                   )}
                 </div>
               )}
+
               {showEmojis && (
                 <div className={styles.emojiPicker}>
                   <div className={styles.emojiHeader}>
@@ -1412,6 +1722,7 @@ const Messages = () => {
                   </div>
                 </div>
               )}
+
               <div className={styles.inputArea}>
                 <button
                   type="button"
@@ -1447,6 +1758,7 @@ const Messages = () => {
                   style={{ display: "none" }}
                   onChange={handleFileChange}
                   accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,audio/mpeg,audio/wav,video/mp4,video/quicktime"
+                  capture={mobileView ? "environment" : undefined}
                 />
                 <button
                   type="button"
@@ -1473,11 +1785,30 @@ const Messages = () => {
                 <h3>Your Messages</h3>
                 <p>Select a conversation from the list to start chatting.</p>
                 {error && <p className={styles.errorMessage}>{error}</p>}
+                <button
+                  className={styles.startChatButton}
+                  onClick={() => navigate('/users')}
+                >
+                  Find someone to chat with
+                </button>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* PWA Install Banner */}
+      {showInstallBanner && (
+        <div className={`${styles.appInstallBanner} ${showInstallBanner ? styles.show : ''}`}>
+          <span className={styles.appInstallText}>
+            Add to home screen for a better experience
+          </span>
+          <button className={styles.installButton} onClick={handleInstallClick}>
+            Install
+          </button>
+        </div>
+      )}
+
       {isCallActive && activeConversation && activeConversation.user && activeConversation.user._id && /^[0-9a-fA-F]{24}$/.test(activeConversation.user._id) && (
         <div className={styles.videoCallOverlay}>
           <VideoCall

@@ -531,7 +531,6 @@
 [dir="rtl"] .messageBubble.sent {
   align-self: flex-start;
   border-bottom-right-radius: var(--border-radius-lg);
-  border-bottom-left-radius: var(--border-radius-sm);
 }
 
 .messageBubble.received {
@@ -540,12 +539,11 @@
   color: var(--text-dark);
   border: 1px solid var(--neutral-200); /* Add border for contrast */
   box-shadow: none; /* Remove shadow if border is present */
-  border-bottom-left-radius: var(--border-radius-sm); /* Tail */
 }
 [dir="rtl"] .messageBubble.received {
   align-self: flex-end;
   border-bottom-left-radius: var(--border-radius-lg);
-  border-bottom-right-radius: var(--border-radius-sm);
+
 }
 
 .messageContent {
@@ -1119,3 +1117,423 @@
 :global(.dark) .btnPrimary:hover { background: var(--primary-400); box-shadow: var(--shadow-md-dark); }
 :global(.dark) .btnSecondary { background: var(--neutral-750); color: var(--primary-300); border-color: var(--primary-500); box-shadow: none; }
 :global(.dark) .btnSecondary:hover { background: var(--neutral-700); border-color: var(--primary-400); box-shadow: var(--shadow-xs-dark); }
+/* Mobile Optimization for Chat Application */
+
+/* ==== Core Mobile App Experience ==== */
+/* These styles should be added to Messages.module.css */
+
+/* Base mobile viewport optimization */
+:root {
+  --app-header-height: 56px;
+  --app-bottom-nav-height: 60px;
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --swipe-transition-speed: 0.25s;
+  touch-action: manipulation; /* Improve touch responsiveness */
+}
+
+/* Make entire app feel more native */
+.appWrapper {
+  position: fixed; /* Fix position to viewport */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  background-color: var(--bg-light);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100vw;
+  -webkit-tap-highlight-color: transparent; /* Remove tap highlight */
+  -webkit-touch-callout: none; /* Disable callout */
+  -webkit-user-select: none; /* Disable selection */
+  -webkit-overflow-scrolling: touch; /* Enable momentum scrolling */
+}
+
+/* Mobile-specific styling */
+@media (max-width: 768px) {
+  body {
+    position: fixed; /* Prevent scrolling of body */
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* Optimize main container */
+  .messagesContainer {
+    height: calc(100% - var(--app-header-height));
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Optimize sidebar for mobile */
+  .sidebar {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 100;
+    transform: translateX(0); /* Start visible */
+    transition: transform var(--swipe-transition-speed) cubic-bezier(0.19, 1, 0.22, 1);
+    box-shadow: none; /* Remove shadow initially */
+    background-color: var(--bg-light); /* Match app background */
+  }
+
+  .sidebar.hide {
+    transform: translateX(-100%);
+  }
+
+  /* Improved sidebar header */
+  .sidebarHeader {
+    height: var(--app-header-height);
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    background-color: var(--white);
+    border-bottom: 1px solid var(--neutral-200);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  /* Enhance conversation list */
+  .conversationsList {
+    height: calc(100% - var(--app-header-height));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0;
+  }
+
+  /* Conversation items - more touch friendly */
+  .conversationItem {
+    padding: 0.9rem 1rem;
+    margin: 0;
+    border-radius: 0;
+    border-bottom: 1px solid var(--neutral-100);
+    min-height: 72px; /* Minimum touch target */
+  }
+
+  .conversationItem.active {
+    border-left-width: 3px;
+    border-radius: 0;
+    margin: 0;
+  }
+
+  /* Improve avatar display */
+  .avatarContainer {
+    margin-right: 1rem;
+  }
+
+  /* Chat area full screen styling */
+  .chatArea {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    transform: translateX(100%); /* Start off-screen */
+    transition: transform var(--swipe-transition-speed) cubic-bezier(0.19, 1, 0.22, 1);
+    background-color: var(--white);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chatArea.fullWidth {
+    transform: translateX(0); /* Slide in */
+  }
+
+  /* Optimize chat header */
+  .chatHeader {
+    height: var(--app-header-height);
+    padding: 0 0.75rem;
+    display: flex;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 60;
+  }
+
+  .chatHeader .backButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    font-size: 1.4rem;
+    border-radius: 50%;
+    margin-right: 0.5rem;
+  }
+
+  /* Optimize message area */
+  .messagesArea {
+    flex: 1;
+    padding: 0.75rem;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: env(safe-area-inset-bottom); /* For iPhone notch */
+  }
+
+  /* More app-like message bubbles */
+  .messageBubble {
+    max-width: 80%; /* Limit width on mobile */
+    border-radius: 18px;
+    padding: 0.6rem 0.9rem 0.4rem;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.05);
+    animation: bubbleIn 0.3s ease-out;
+  }
+
+  .messageBubble.sent {
+    border-bottom-right-radius: 4px;
+  }
+
+  .messageBubble.received {
+    border-bottom-left-radius: 4px;
+  }
+
+  /* Image attachments */
+  .imageAttachment {
+    max-width: 240px; /* Smaller on mobile */
+    max-height: 200px;
+    transition: transform 0.2s ease;
+  }
+
+  /* System messages */
+  .systemMessage {
+    max-width: 90%;
+  }
+
+  /* Optimize date separators */
+  .dateSeparator {
+    margin: 1rem 0 0.5rem;
+  }
+
+  .dateSeparator span {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.6rem;
+  }
+
+  /* Mobile-optimized input area */
+  .inputArea {
+    padding: 0.6rem 0.8rem;
+    padding-bottom: calc(0.6rem + var(--safe-area-inset-bottom));
+    background-color: var(--white);
+    border-top: 1px solid var(--neutral-200);
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 60;
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+  }
+
+  /* Better input sizing */
+  .messageInput {
+    min-height: 40px;
+    max-height: 100px;
+    padding: 0.6rem 0.8rem;
+    border-radius: 20px;
+    font-size: 1rem;
+  }
+
+  /* Optimize action buttons */
+  .emojiButton,
+  .attachButton,
+  .winkButton {
+    width: 42px;
+    height: 42px;
+  }
+
+  /* Send button */
+  .sendButton {
+    width: 42px;
+    height: 42px;
+  }
+
+  /* Custom animations for mobile */
+  @keyframes bubbleIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Conversation swipe gesture support */
+  .conversationItem {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Add pull-to-refresh styling */
+  .conversationsList::before {
+    content: '';
+    display: block;
+    height: 50px;
+    margin-top: -50px;
+  }
+
+  /* Enhanced emoji picker for mobile */
+  .emojiPicker {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: 40vh;
+    border-radius: 15px 15px 0 0;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+    transform: translateY(100%);
+    animation: slideUp 0.3s forwards;
+    z-index: 200;
+  }
+
+  .emojiHeader {
+    padding: 0.75rem;
+    position: relative;
+  }
+
+  .emojiHeader::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 40px;
+    height: 5px;
+    background-color: var(--neutral-300);
+    border-radius: 3px;
+    transform: translateX(-50%);
+  }
+
+  .emojiList {
+    max-height: 35vh;
+    grid-template-columns: repeat(auto-fill, minmax(45px, 1fr));
+    gap: 0.6rem;
+    padding: 0.5rem 1rem 1.5rem;
+  }
+
+  @keyframes slideUp {
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  /* File attachment styles */
+  .attachmentPreview {
+    padding: 0.6rem 1rem;
+  }
+
+  /* Mobile-optimized loading states */
+  .messagesLoading,
+  .noMessages {
+    flex: 1;
+  }
+
+  /* Typing indicator */
+  .typingIndicator {
+    margin-left: 0.5rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  /* Banners */
+  .premiumBanner,
+  .incomingCallBanner,
+  .activeCallBanner {
+    padding: 0.6rem 1rem;
+  }
+}
+
+/* Dark mode overrides for mobile */
+@media (max-width: 768px) {
+  :global(.dark) .sidebar {
+    background-color: var(--neutral-900);
+  }
+
+  :global(.dark) .chatArea {
+    background-color: var(--neutral-900);
+  }
+
+  :global(.dark) .inputArea {
+    background-color: var(--neutral-850);
+  }
+}
+
+/* Optional: Add "native app" install banner styles */
+.appInstallBanner {
+  display: none;
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.75rem 1rem;
+  background-color: var(--primary-50);
+  border-top: 1px solid var(--primary-100);
+  z-index: 100;
+  animation: slideUp 0.3s forwards;
+}
+
+.appInstallBanner.show {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.appInstallText {
+  font-size: 0.9rem;
+  color: var(--text-dark);
+}
+
+.installButton {
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--border-radius-md);
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+/* Mobile Swipe Gesture Support */
+.swipeableConversation {
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.swipeActions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  display: flex;
+  transform: translateX(100%);
+  transition: transform 0.2s ease-out;
+}
+
+.swipeAction {
+  width: 70px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  color: white;
+}
+
+.swipeActionDelete {
+  background-color: var(--danger-500);
+}
+
+.swipeActionMute {
+  background-color: var(--warning-500);
+}
