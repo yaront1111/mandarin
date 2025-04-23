@@ -334,7 +334,15 @@ class ApiService {
   }
 
   _notifyError(status, msg) {
+    // Don't show errors when page is hidden
     if (document.hidden) return;
+    
+    // Don't show errors for story creation to avoid duplicate messages
+    if (msg && (msg.includes("story") || msg.includes("Story")) && status === 429) {
+      // Skip story rate limiting messages - they're handled by the stories service
+      return;
+    }
+    
     switch (status) {
       case 400: toast.error(`Bad request: ${msg}`); break;
       case 401: /* skip */ break;

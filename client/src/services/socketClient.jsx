@@ -63,6 +63,14 @@ class SocketClient {
           console.log(`[Socket Mock] Would emit ${event}`, data);
           return true; 
         },
+        disconnect: () => {
+          console.log('[Socket Mock] Would disconnect');
+          return true;
+        },
+        close: () => {
+          console.log('[Socket Mock] Would close');
+          return true;
+        },
         io: { engine: { transport: { name: 'none' } } },
         connected: false
       };
@@ -98,7 +106,7 @@ class SocketClient {
     // This helps with cross-domain issues and makes deployment more flexible
     const serverUrl = isDev 
       ? 'http://localhost:5000' 
-      : window.location.origin // Use current origin instead of hardcoded domain
+      : 'https://flirtss.com' // Use explicit prod domain for better reliability
     
     console.log(`Connecting to socket server at ${serverUrl}`)
 
@@ -117,9 +125,8 @@ class SocketClient {
         autoConnect: true,
         forceNew: true, // Force new connection attempt
         withCredentials: true, // Enable sending credentials with cross-origin requests
-        extraHeaders: {
-          "X-Client-Version": "1.0.0"
-        }
+        // Removed extraHeaders causing CORS issues
+        extraHeaders: {}
       })
 
       // Set up core socket event handlers
@@ -143,6 +150,10 @@ class SocketClient {
    * @returns {boolean} - Socket connection status
    */
   isConnected() {
+    // Check if socket is in fallback mode
+    if (this.socket?.io?.engine?.transport?.name === 'none') {
+      return false;
+    }
     return this.socket && this.connected
   }
 
@@ -641,6 +652,12 @@ class SocketClient {
       return;
     }
 
+    // Check if socket is in fallback mode
+    if (this.socket?.io?.engine?.transport?.name === 'none') {
+      console.log("Socket in fallback mode, cannot reconnect");
+      return;
+    }
+
     console.log("Forcing socket reconnection with notification support...");
     this.reconnecting = true;
 
@@ -703,12 +720,9 @@ class SocketClient {
             console.log("Initializing socket with fresh token");
             this.init(this.userId, freshToken || token, {
               // Explicitly try websocket first on reconnect for better reliability
+              // Removed extraHeaders from transportOptions that were causing CORS issues
               transportOptions: {
-                websocket: {
-                  extraHeaders: {
-                    "X-Client-Version": "1.0.0"
-                  }
-                }
+                websocket: {}
               }
             });
 

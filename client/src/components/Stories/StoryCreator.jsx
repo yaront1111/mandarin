@@ -43,24 +43,76 @@ const StoryCreator = ({ onClose, onSubmit }) => {
   const [activeTab, setActiveTab] = useState("text")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Handle text story creation with improved error handling
+  // Create a stable content hash to prevent duplicate submissions
+  const getContentHash = (content) => {
+    return content.trim().toLowerCase().substring(0, 20);
+  }
+  
+  // Create a submission key in localStorage
+  const getStoredSubmission = () => {
+    const key = `story_submission_${getContentHash(text)}`;
+    return localStorage.getItem(key);
+  }
+  
+  // Store submission in localStorage with timestamp
+  const storeSubmission = () => {
+    const key = `story_submission_${getContentHash(text)}`;
+    localStorage.setItem(key, Date.now().toString());
+    
+    // Also set the global cooldown
+    localStorage.setItem('lastStoryCreated', Date.now().toString());
+    
+    // Clean up old submission records after 10 seconds
+    setTimeout(() => {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {
+        console.error("Failed to clean up submission record", e);
+      }
+    }, 10000);
+  }
+
+  // Handle text story creation with improved error handling and debouncing
   const handleCreateStory = async () => {
     // Prevent duplicate submissions
     if (isSubmitting || isUploading) {
-      toast.info(t('stories.waitForStoryCreation'))
+      toast.info(t('stories.waitForStoryCreation') || "Story creation in progress...")
       return
     }
 
     // Validate text content
     if (!text.trim()) {
-      toast.error(t('stories.addTextError'))
+      toast.error(t('stories.addTextError') || "Please add some text to your story")
       return
     }
 
     if (!user) {
-      toast.error(t('stories.loginRequired'))
+      toast.error(t('stories.loginRequired') || "Please log in to create stories")
       return
     }
+    
+    // Check for duplicate submission of this specific content
+    const previousSubmission = getStoredSubmission();
+    if (previousSubmission) {
+      toast.info("This story was already submitted. Please wait or create a different story.");
+      return;
+    }
+    
+    // Check global cooldown
+    if (localStorage.getItem('lastStoryCreated')) {
+      const lastCreated = parseInt(localStorage.getItem('lastStoryCreated'), 10);
+      const now = Date.now();
+      const diff = now - lastCreated;
+      
+      if (diff < 5000) { // 5 seconds cooldown
+        const remainingSeconds = Math.ceil((5000 - diff) / 1000);
+        toast.info(`Please wait ${remainingSeconds} seconds before posting another story`);
+        return;
+      }
+    }
+    
+    // Mark this specific story content as submitted to prevent duplicates
+    storeSubmission();
 
     setError("")
     setIsUploading(true)
@@ -81,9 +133,18 @@ const StoryCreator = ({ onClose, onSubmit }) => {
 
       const response = await createStory(storyData, updateProgress)
 
-      // Handle different response formats for compatibility
+      // First check if this is a rate limit response
+      if (response && response.message && response.message.includes("wait") && !response.success) {
+        // Don't show any additional toast here - the API service will handle it
+        setError(response.message);
+        // Still close the creator after a short delay
+        setTimeout(() => onClose?.(), 1500);
+        return;
+      }
+      
+      // Handle different response formats for compatibility for successful responses
       if (response && (response.success === true || response._id || (response.data && response.data._id))) {
-        toast.success(t('stories.createStorySuccess'))
+        toast.success("Story created successfully!")
 
         // Determine what to pass to onSubmit based on response format
         if (onSubmit) {
@@ -97,7 +158,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
         }
         onClose?.()
       } else {
-        setError(response?.message || response?.error || t('stories.createStoryError'))
+        setError(response?.message || response?.error || "Failed to create story")
       }
     } catch (error) {
       console.error("Error creating story:", error)

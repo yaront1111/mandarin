@@ -99,11 +99,19 @@ class SocketService {
       // 2. Not currently connected
       // 3. Not in cooldown mode (reconnectAttempts >= maxReconnectAttempts)
       // 4. Not currently reconnecting
+      // Check if socket is in fallback mode
+      const isFallbackMode = this.socket && this.socket.socket && 
+                            this.socket.socket.io && 
+                            this.socket.socket.io.engine && 
+                            this.socket.socket.io.engine.transport && 
+                            this.socket.socket.io.engine.transport.name === 'none';
+      
       if (
         this.initialized &&
         this.connectionState !== "connected" &&
         this.reconnectAttempts < this.maxReconnectAttempts &&
-        this.connectionState !== "reconnecting"
+        this.connectionState !== "reconnecting" &&
+        !isFallbackMode
       ) {
         this._log(`Connection monitor: Socket is ${this.connectionState}, attempting reconnect`)
         this.reconnect()
@@ -140,6 +148,18 @@ class SocketService {
       this._log("Socket already connected, no need to reconnect")
       this.reconnectAttempts = 0
       return true
+    }
+
+    // Check if socket is in fallback mode
+    const isFallbackMode = this.socket && this.socket.socket && 
+                          this.socket.socket.io && 
+                          this.socket.socket.io.engine && 
+                          this.socket.socket.io.engine.transport && 
+                          this.socket.socket.io.engine.transport.name === 'none';
+                          
+    if (isFallbackMode) {
+      this._log("Socket in fallback mode, skipping reconnection attempt", "warn")
+      return false;
     }
 
     // Prevent excessive reconnection attempts

@@ -140,26 +140,40 @@ export function StoriesProvider({ children }) {
   // Create a new story
   const createStory = useCallback(
     async (storyData, onProgress) => {
+      log.debug("createStory");
       if (!isAuthenticated) {
-        toast.error("Login required to create stories")
-        return { success: false }
+        toast.error("Login required to create stories");
+        return { success: false };
       }
-      if (state.isCreating) return
-      dispatch({ type: "CREATE_START" })
+      if (state.isCreating) return;
+      dispatch({ type: "CREATE_START" });
       try {
-        const normalize = { ...storyData }
+        const normalize = { ...storyData };
         if (normalize.mediaType === "text" && !normalize.content) {
-          throw new Error("Text stories require content")
+          throw new Error("Text stories require content");
         }
         const res =
           normalize.mediaType === "text"
             ? await storiesService.createTextStory(normalize, onProgress)
-            : await storiesService.createStory(normalize, onProgress)
-        if (!res.success) throw new Error(res.message || "Failed to create story")
-        const newStory = res.data || res.story
-        if (!newStory) throw new Error("No story returned from API")
-        dispatch({ type: "ADD_STORY", payload: newStory })
-        return res
+            : await storiesService.createStory(normalize, onProgress);
+            
+        if (!res) {
+          throw new Error("No response from server");
+        }
+        
+        // If the message indicates a rate limit, handle it specially
+        if (res.message && res.message.includes("wait") && !res.success) {
+          toast.info(res.message);
+          return res;
+        }
+        
+        if (!res.success) throw new Error(res.message || "Failed to create story");
+        
+        const newStory = res.data || res.story;
+        if (!newStory) throw new Error("No story returned from API");
+        
+        dispatch({ type: "ADD_STORY", payload: newStory });
+        return res;
       } catch (err) {
         // Handle rate limiting error specially
         if (err.status === 429 || (err && err.data && err.data.status === 429)) {
@@ -175,7 +189,7 @@ export function StoriesProvider({ children }) {
           return { success: false, message: err.message };
         }
       } finally {
-        dispatch({ type: "CREATE_END" })
+        dispatch({ type: "CREATE_END" });
       }
     },
     [isAuthenticated, state.isCreating]

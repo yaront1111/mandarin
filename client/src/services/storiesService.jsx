@@ -129,9 +129,10 @@ export const createStory = async (formData, onProgress) => {
       success: false,
     }
   } finally {
-    // Remove from pending requests after a short delay
+    // Remove from pending requests after a 5-second cooldown to prevent rapid submissions
     setTimeout(() => {
       pendingRequests.delete(requestId)
+      console.log(`Story request ${requestId} unlocked after cooldown`)
     }, 5000)
   }
 }
@@ -143,16 +144,18 @@ export const createStory = async (formData, onProgress) => {
  * @returns {Promise<Object>} Response with created story
  */
 export const createTextStory = async (storyData, onProgress) => {
-  // Generate a unique request ID based on timestamp and content
-  const contentHash = storyData.content ? storyData.content.substring(0, 10) : ""
-  const requestId = `create-text-story-${contentHash}-${Date.now()}`
+  // Generate a unique request ID based on content only to prevent multiple submissions
+  const contentHash = storyData.content ? storyData.content.trim().substring(0, 20) : ""
+  const requestId = `create-text-story-${contentHash}`
 
-  // Check if a similar request is already in progress
-  if (pendingRequests.has(requestId.substring(0, requestId.length - 3))) {
+  // Check if a similar request is already in progress or was recently submitted
+  if (pendingRequests.has(requestId)) {
     console.warn("Duplicate text story creation request detected")
+    // Don't create a new story - just return the warning message
     return {
       success: false,
-      message: "A similar request is already in progress",
+      error: "Duplicate submission",
+      message: "Please wait 5 seconds before posting another story",
     }
   }
 
@@ -184,10 +187,21 @@ export const createTextStory = async (storyData, onProgress) => {
       }
     }
 
+    // Check if we got a 201 Created response - this is a success
+    const wasSuccess = response?.status === 201 || 
+                      (response && (response.success || response._id));
+    
     // For backwards compatibility, handle different response formats
     let result;
 
-    if (response && response.success) {
+    if (wasSuccess) {
+      // Handle various success response formats
+      result = {
+        success: true,
+        data: response.data || response.story || response,
+        message: "Story created successfully",
+      }
+    } else if (response && response.success) {
       result = {
         success: true,
         data: response.data || response.story,
@@ -228,9 +242,10 @@ export const createTextStory = async (storyData, onProgress) => {
       message: error.message || "Failed to create text story",
     }
   } finally {
-    // Remove from pending requests after a short delay
+    // Remove from pending requests after a 5-second cooldown to prevent rapid submissions
     setTimeout(() => {
       pendingRequests.delete(requestId)
+      console.log(`Story request ${requestId} unlocked after cooldown`)
     }, 5000)
   }
 }

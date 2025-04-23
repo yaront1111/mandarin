@@ -260,11 +260,14 @@ const Dashboard = () => {
     setCreatingStory(true)
     createStory(storyData)
       .then((response) => {
-        // Check for different valid response formats
+        // Don't show any toast message here - StoryCreator already shows one
         if (response && (response.success === true || response._id || (response.data && response.data._id))) {
-          toast.success("Your story has been created!")
+          setShowStoryCreator(false)
+        } else if (response && response.message && response.message.includes("wait")) {
+          // Just close the creator if it was a rate limit
           setShowStoryCreator(false)
         } else {
+          // Only show error for non-rate-limit failures
           toast.error((response && response.error) || "Failed to create story")
         }
       })
