@@ -180,23 +180,113 @@ const Messages = () => {
       return;
     }
     
-    // Initialize file URL cache if it doesn't exist
-    if (typeof window !== 'undefined' && !window.__fileMessages) {
-      console.log("Initializing file URL cache");
-      window.__fileMessages = {};
-      
-      // Check localStorage for persisted file URLs
-      try {
-        const persistedUrls = localStorage.getItem('mandarin_file_urls');
-        if (persistedUrls) {
-          const parsed = JSON.parse(persistedUrls);
-          if (parsed && typeof parsed === 'object') {
-            window.__fileMessages = parsed;
-            console.log(`Restored ${Object.keys(parsed).length} file URLs from localStorage`);
+    // Initialize file URL cache system if it doesn't exist
+    if (typeof window !== 'undefined') {
+      // Initialize ID-based cache
+      if (!window.__fileMessages) {
+        console.log("Initializing file URL caches");
+        window.__fileMessages = {};
+        
+        // Check localStorage for persisted file URLs by ID
+        try {
+          const persistedUrls = localStorage.getItem('mandarin_file_urls');
+          if (persistedUrls) {
+            const parsed = JSON.parse(persistedUrls);
+            if (parsed && typeof parsed === 'object') {
+              window.__fileMessages = parsed;
+              console.log(`Restored ${Object.keys(parsed).length} file URLs from localStorage`);
+            }
           }
+        } catch (e) {
+          console.warn("Failed to load persisted file URLs by ID", e);
         }
-      } catch (e) {
-        console.warn("Failed to load persisted file URLs", e);
+      }
+      
+      // Initialize hash-based cache
+      if (!window.__fileMessagesByHash) {
+        window.__fileMessagesByHash = {};
+        
+        // Check localStorage for persisted file URLs by hash
+        try {
+          const persistedUrlsByHash = localStorage.getItem('mandarin_file_urls_by_hash');
+          if (persistedUrlsByHash) {
+            const parsed = JSON.parse(persistedUrlsByHash);
+            if (parsed && typeof parsed === 'object') {
+              window.__fileMessagesByHash = parsed;
+              console.log(`Restored ${Object.keys(parsed).length} file URLs by hash from localStorage`);
+            }
+          } else {
+            // If no hash cache exists yet, build it from the ID-based cache
+            if (window.__fileMessages && Object.keys(window.__fileMessages).length > 0) {
+              console.log("Building hash-based cache from ID-based cache");
+              
+              // Helper function to generate message hash
+              const getMessageHash = (msgData) => {
+                if (!msgData) return '';
+                const fileName = msgData.fileName || '';
+                const timeStamp = msgData.timestamp ? new Date(msgData.timestamp).toISOString().substring(0, 16) : '';
+                // Use available data to create a semi-unique hash
+                return `${fileName}-${timeStamp}`;
+              };
+              
+              // Build hash-based cache
+              Object.entries(window.__fileMessages).forEach(([msgId, msgData]) => {
+                if (msgData.url) {
+                  // Generate a hash if one doesn't exist
+                  const hash = msgData.hash || getMessageHash(msgData);
+                  if (hash) {
+                    window.__fileMessagesByHash[hash] = {
+                      ...msgData,
+                      id: msgId
+                    };
+                  }
+                }
+              });
+              
+              // Persist the new hash-based cache
+              try {
+                localStorage.setItem('mandarin_file_urls_by_hash', JSON.stringify(window.__fileMessagesByHash));
+                console.log(`Created and persisted ${Object.keys(window.__fileMessagesByHash).length} hash-based URL entries`);
+              } catch (e) {
+                console.warn("Failed to persist hash-based file URLs", e);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to load persisted file URLs by hash", e);
+        }
+      }
+      
+      // Set up periodic cleanup of old entries
+      if (!window.__fileUrlCleanupTimeout) {
+        window.__fileUrlCleanupTimeout = setTimeout(() => {
+          try {
+            // Keep only the 300 most recent entries (generous limit)
+            if (window.__fileMessages && Object.keys(window.__fileMessages).length > 300) {
+              const entries = Object.entries(window.__fileMessages);
+              entries.sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0));
+              window.__fileMessages = Object.fromEntries(entries.slice(0, 300));
+              
+              // Update localStorage
+              localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
+              console.log(`Cleaned up file URL cache, kept ${Object.keys(window.__fileMessages).length} entries`);
+            }
+            
+            // Also clean up hash-based cache
+            if (window.__fileMessagesByHash && Object.keys(window.__fileMessagesByHash).length > 300) {
+              const entries = Object.entries(window.__fileMessagesByHash);
+              entries.sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0));
+              window.__fileMessagesByHash = Object.fromEntries(entries.slice(0, 300));
+              
+              // Update localStorage
+              localStorage.setItem('mandarin_file_urls_by_hash', JSON.stringify(window.__fileMessagesByHash));
+            }
+            
+            window.__fileUrlCleanupTimeout = null;
+          } catch (e) {
+            console.warn("Error during file URL cache cleanup", e);
+          }
+        }, 30000); // Run cleanup after 30 seconds
       }
     }
 
@@ -230,6 +320,111 @@ const Messages = () => {
 
     const handleMessageReceived = (newMessage) => {
       console.log("Message received:", newMessage);
+      
+      // Enhanced message hash function with more factors for better deduplication
+      // This creates a unique signature for messages even if they have different IDs
+      const createMessageHash = (msg) => {
+        const sender = msg.sender || '';
+        const recipient = msg.recipient || '';
+        // Use more content for a better hash - up to 200 chars
+        const contentHash = (msg.content || '').substring(0, 200);
+        // Include more precise timestamp info but still allow for small variations
+        const timestamp = msg.createdAt 
+          ? new Date(msg.createdAt).getTime().toString().substring(0, 11) 
+          : '';
+        const type = msg.type || '';
+        // Add metadata fields for files/media
+        const metadataFields = [];
+        if (msg.metadata) {
+          // Add filename and size for files
+          if (msg.metadata.fileName) metadataFields.push(`file:${msg.metadata.fileName}`);
+          if (msg.metadata.fileSize) metadataFields.push(`size:${msg.metadata.fileSize}`);
+          if (msg.metadata.mimeType) metadataFields.push(`mime:${msg.metadata.mimeType}`);
+          // For images, include dimensions if available
+          if (msg.metadata.width && msg.metadata.height) {
+            metadataFields.push(`dim:${msg.metadata.width}x${msg.metadata.height}`);
+          }
+        }
+        const metadataStr = metadataFields.length ? `:${metadataFields.join(':')}` : '';
+        
+        // Create main fingerprint hash
+        return `${sender}:${recipient}:${type}:${timestamp}:${contentHash}${metadataStr}`;
+      };
+
+      // Secondary fuzzy hash that's more tolerant of small changes
+      const createFuzzyHash = (msg) => {
+        const sender = msg.sender || '';
+        const recipient = msg.recipient || '';
+        // Use less content for fuzzy matching (just first 50 chars)
+        const contentKey = (msg.content || '').substring(0, 50); 
+        // Use truncated timestamp with 10-second precision
+        const roughTimestamp = msg.createdAt 
+          ? Math.floor(new Date(msg.createdAt).getTime() / 10000).toString()
+          : '';
+        const type = msg.type || '';
+        
+        return `${sender}:${recipient}:${type}:${roughTimestamp}:${contentKey}`;
+      };
+
+      // New recovery function: attempts to fix partially corrupted messages
+      const recoverMessageData = (msg) => {
+        // If message looks complete, return as is
+        if (msg._id && msg.sender && msg.recipient && msg.createdAt && 
+            ((msg.content && msg.type === 'text') || 
+             (msg.type === 'file' && msg.metadata && (msg.metadata.url || msg.metadata.fileUrl)))) {
+          return msg;
+        }
+        
+        // Create recovery hashes if we can
+        let messageHash = null;
+        let fuzzyHash = null;
+        try {
+          messageHash = createMessageHash(msg);
+          fuzzyHash = createFuzzyHash(msg);
+        } catch (e) {
+          console.warn("Couldn't create recovery hashes for message:", e);
+        }
+        
+        // Try to recover file URLs for file messages
+        if (msg.type === 'file' && msg._id && typeof window !== 'undefined' && window.__fileMessages) {
+          // Try direct message ID lookup
+          if (window.__fileMessages[msg._id]?.url) {
+            console.log(`Recovered file URL for message ${msg._id} from cache`);
+            if (!msg.metadata) msg.metadata = {};
+            msg.metadata.url = window.__fileMessages[msg._id].url;
+            msg.metadata.fileUrl = window.__fileMessages[msg._id].url;
+          } 
+          // Try hash-based lookups if we have hashes
+          else if (messageHash && window.__fileMessages[`hash:${messageHash}`]?.url) {
+            console.log(`Recovered file URL for message using precise hash ${messageHash}`);
+            if (!msg.metadata) msg.metadata = {};
+            msg.metadata.url = window.__fileMessages[`hash:${messageHash}`].url;
+            msg.metadata.fileUrl = window.__fileMessages[`hash:${messageHash}`].url;
+          }
+          else if (fuzzyHash && window.__fileMessages[`fuzzy:${fuzzyHash}`]?.url) {
+            console.log(`Recovered file URL for message using fuzzy hash ${fuzzyHash}`);
+            if (!msg.metadata) msg.metadata = {};
+            msg.metadata.url = window.__fileMessages[`fuzzy:${fuzzyHash}`].url;
+            msg.metadata.fileUrl = window.__fileMessages[`fuzzy:${fuzzyHash}`].url;
+          }
+        }
+        
+        // If still missing critical fields, use defaults where possible
+        if (!msg.createdAt) msg.createdAt = new Date().toISOString();
+        if (!msg.status) msg.status = 'sent';
+        
+        return msg;
+      };
+
+      // Apply recovery to incoming message
+      const recoveredMessage = recoverMessageData(newMessage);
+      
+      // If the recovered message has significant improvements, use it instead
+      if (recoveredMessage.metadata?.url && !newMessage.metadata?.url || 
+          recoveredMessage.metadata?.fileUrl && !newMessage.metadata?.fileUrl) {
+        console.log("Using recovered version of message with repaired file URLs");
+        newMessage = recoveredMessage;
+      }
 
       if (newMessage.type === 'file' && window.__lastUploadedFile) {
         const lastFile = window.__lastUploadedFile;
@@ -241,42 +436,122 @@ const Messages = () => {
       }
 
       if (newMessage.sender !== currentUser._id) {
-        const audio = new Audio('/notification.mp3');
+        // Try to use sound from the public/sounds directory first
+        const audio = new Audio('/sounds/call-connect.mp3');
         audio.volume = 0.5;
-        audio.play().catch(err => console.log("Couldn't play notification sound:", err));
+        audio.play().catch(err => {
+          console.log("Couldn't play primary notification sound, trying fallback:", err);
+          // Fallback to notification.mp3 if the primary sound fails
+          const fallbackAudio = new Audio('/notification.mp3');
+          fallbackAudio.volume = 0.5;
+          fallbackAudio.play().catch(err2 => console.log("Couldn't play fallback notification sound:", err2));
+        });
       }
 
       const partnerId = newMessage.sender === currentUser._id ? newMessage.recipient : newMessage.sender;
 
       if (activeConversation && activeConversation.user._id === partnerId) {
         setMessages((prev) => {
-          // Enhanced duplicate detection to identify duplicates even with different IDs
+          // Generate both exact and fuzzy hashes for the new message
+          const newMessageHash = createMessageHash(newMessage);
+          const newMessageFuzzyHash = createFuzzyHash(newMessage);
+          
+          // Multi-layer duplicate detection with multiple strategies
           let isDuplicate = prev.some(msg => {
-            // Check for exact ID match first
+            // Strategy 1: Check for exact ID or tempId match (fastest)
             if (msg._id === newMessage._id || (newMessage.tempId && msg.tempId === newMessage.tempId)) {
+              console.log("Exact ID match found, skipping duplicate");
               return true;
             }
             
-            // Enhanced detection: compare sender, timestamp (with tolerance), content and type
-            const timeStr = newMessage.createdAt?.substring(0, 19) || ''; // Ignore milliseconds precision
-            const msgTimeStr = msg.createdAt?.substring(0, 19) || '';
-            const contentKey = (newMessage.content || '').substring(0, 50); // First 50 chars
-            const msgContentKey = (msg.content || '').substring(0, 50);
+            // Strategy 2: Precise hash-based detection
+            const existingHash = createMessageHash(msg);
+            if (existingHash === newMessageHash) {
+              console.log("Precise hash match detected, treating as duplicate", {
+                existing: msg._id,
+                new: newMessage._id,
+                hash: newMessageHash
+              });
+              return true;
+            }
             
-            // Compare core attributes to detect the same message with different IDs
-            return msg.sender === newMessage.sender && 
-                   Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 3000 && // 3 second tolerance
-                   msgContentKey === contentKey &&
-                   msg.type === newMessage.type;
+            // Strategy 3: Fuzzy hash for near-matches with slight variations
+            const existingFuzzyHash = createFuzzyHash(msg);
+            if (existingFuzzyHash === newMessageFuzzyHash) {
+              console.log("Fuzzy hash match detected, likely duplicate", {
+                existing: msg._id,
+                new: newMessage._id,
+                fuzzyHash: newMessageFuzzyHash
+              });
+              return true;
+            }
+            
+            // Strategy 4: Look for messages with identical content but different IDs
+            // that arrived within a short time window (5 seconds)
+            if (msg.sender === newMessage.sender &&
+                msg.content === newMessage.content &&
+                msg.type === newMessage.type &&
+                Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 5000) {
+              console.log("Content+time match detected, treating as duplicate", {
+                existing: msg._id,
+                new: newMessage._id
+              });
+              return true;
+            }
+            
+            // Strategy 5: Attribute-based detection with smart tolerance
+            const contentMatch = msg.content && newMessage.content && 
+                                msg.content.length > 10 && 
+                                msg.content === newMessage.content;
+            
+            const timeMatch = msg.createdAt && newMessage.createdAt && 
+                             Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 10000; // 10s tolerance
+            
+            // Special handling for different message types
+            const typeSpecificMatch = (() => {
+              // For text messages, compare content and length
+              if (msg.type === 'text' && newMessage.type === 'text') {
+                return contentMatch;
+              }
+              
+              // For file messages, compare filenames and size if available
+              if (msg.type === 'file' && newMessage.type === 'file') {
+                const fileNameMatch = msg.metadata?.fileName === newMessage.metadata?.fileName;
+                const fileSizeMatch = msg.metadata?.fileSize === newMessage.metadata?.fileSize;
+                return (fileNameMatch && fileSizeMatch) || 
+                       (msg.metadata?.url === newMessage.metadata?.url);
+              }
+              
+              // For other message types, use basic comparison
+              return msg.type === newMessage.type && contentMatch;
+            })();
+            
+            // For messages with the same sender, same type, and close timestamps
+            const attributeMatch = msg.sender === newMessage.sender && 
+                                  timeMatch &&
+                                  typeSpecificMatch;
+                              
+            if (attributeMatch) {
+              console.log("Attribute match detected, treating as duplicate", {
+                existing: msg._id,
+                new: newMessage._id
+              });
+            }
+            
+            return attributeMatch;
           });
 
           // Handle file messages specially
           if (newMessage.type === 'file' && (newMessage.metadata?.url || newMessage.metadata?.fileUrl)) {
             console.log("Processing file message:", newMessage._id);
             
-            // First check for exact match by ID to avoid duplicates
-            if (prev.some(msg => msg._id === newMessage._id)) {
-              console.log("Exact ID match found, skipping duplicate");
+            // First check for exact match by ID or hash to avoid duplicates
+            if (prev.some(msg => 
+                msg._id === newMessage._id || 
+                createMessageHash(msg) === newMessageHash ||
+                createFuzzyHash(msg) === newMessageFuzzyHash
+            )) {
+              console.log("Match found (ID or hash), skipping duplicate file message");
               return prev;
             }
             
@@ -288,7 +563,9 @@ const Messages = () => {
                 (msg.type === 'file' && 
                  msg.metadata?.__localPlaceholder === true && 
                  msg.sender === currentUser._id &&
-                 Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 60000)
+                 Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 60000 &&
+                 (msg.metadata?.fileName === newMessage.metadata?.fileName || 
+                  msg.content === newMessage.content))
               );
               
               if (placeholderIndex >= 0) {
@@ -308,7 +585,9 @@ const Messages = () => {
                     fileUrl: serverUrl,
                     url: serverUrl,
                     serverUrl: serverUrl, // Store server URL separately for persistence
-                    __localPlaceholder: false // No longer a placeholder
+                    __localPlaceholder: false, // No longer a placeholder
+                    __messageHash: newMessageHash, // Add the hash for future reference
+                    __fuzzyHash: newMessageFuzzyHash // Add fuzzy hash for resilience
                   }
                 };
                 
@@ -323,18 +602,37 @@ const Messages = () => {
                   }
                 }
                 
-                // Save the URL to our persistent cache
-                if (typeof window !== 'undefined' && newMessage._id && serverUrl) {
+                // Save the URL to our persistent cache with multiple keys for redundancy
+                if (typeof window !== 'undefined' && serverUrl) {
                   if (!window.__fileMessages) window.__fileMessages = {};
-                  window.__fileMessages[newMessage._id] = {
+                  
+                  // Store by message ID
+                  if (newMessage._id) {
+                    window.__fileMessages[newMessage._id] = {
+                      url: serverUrl,
+                      timestamp: Date.now(),
+                      messageHash: newMessageHash,
+                      fuzzyHash: newMessageFuzzyHash
+                    };
+                  }
+                  
+                  // Store by both precise and fuzzy hash for maximum recovery options
+                  window.__fileMessages[`hash:${newMessageHash}`] = {
                     url: serverUrl,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
+                    messageId: newMessage._id
+                  };
+                  
+                  window.__fileMessages[`fuzzy:${newMessageFuzzyHash}`] = {
+                    url: serverUrl,
+                    timestamp: Date.now(),
+                    messageId: newMessage._id
                   };
                   
                   // Persist to localStorage
                   try {
                     localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
-                    console.log(`Cached file URL for ${newMessage._id} in localStorage`);
+                    console.log(`Cached file URL for ${newMessage._id} in localStorage with hash backup`);
                   } catch (e) {
                     console.warn("Failed to persist file URL to localStorage", e);
                   }
@@ -357,33 +655,51 @@ const Messages = () => {
                 fileUrl: newMessage.metadata.url || newMessage.metadata.fileUrl,
                 url: newMessage.metadata.url || newMessage.metadata.fileUrl,
                 serverUrl: newMessage.metadata.url || newMessage.metadata.fileUrl, // Add serverUrl for persistence
-                __processed: true // Mark as processed to avoid reprocessing
+                __processed: true, // Mark as processed to avoid reprocessing
+                __messageHash: newMessageHash, // Store the message hash for future reference
+                __fuzzyHash: newMessageFuzzyHash // Store fuzzy hash as well
               }
             };
             
-            // Store in our list of known file messages for recovery purposes
-            if (typeof window !== 'undefined' && !window.__fileMessages) {
-              window.__fileMessages = {};
-            }
-            
+            // Store in our list of known file messages for recovery purposes with hash redundancy
             if (typeof window !== 'undefined') {
-              window.__fileMessages[normalizedNewMessage._id] = {
+              if (!window.__fileMessages) window.__fileMessages = {};
+              
+              // Store by message ID
+              if (normalizedNewMessage._id) {
+                window.__fileMessages[normalizedNewMessage._id] = {
+                  url: normalizedNewMessage.metadata.fileUrl,
+                  timestamp: Date.now(),
+                  messageHash: newMessageHash,
+                  fuzzyHash: newMessageFuzzyHash
+                };
+              }
+              
+              // Store by both hash types for recovery
+              window.__fileMessages[`hash:${newMessageHash}`] = {
                 url: normalizedNewMessage.metadata.fileUrl,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                messageId: normalizedNewMessage._id
+              };
+              
+              window.__fileMessages[`fuzzy:${newMessageFuzzyHash}`] = {
+                url: normalizedNewMessage.metadata.fileUrl,
+                timestamp: Date.now(),
+                messageId: normalizedNewMessage._id
               };
               
               // Cleanup old entries periodically
-              if (Object.keys(window.__fileMessages).length > 100) {
-                // Keep only the 50 most recent entries
+              if (Object.keys(window.__fileMessages).length > 150) {
+                // Keep only the 75 most recent entries
                 const entries = Object.entries(window.__fileMessages);
                 entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
-                window.__fileMessages = Object.fromEntries(entries.slice(0, 50));
+                window.__fileMessages = Object.fromEntries(entries.slice(0, 75));
               }
               
               // Persist file URLs to localStorage
               try {
                 localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
-                console.log(`Persisted ${Object.keys(window.__fileMessages).length} file URLs to localStorage`);
+                console.log(`Persisted ${Object.keys(window.__fileMessages).length} file URLs to localStorage (with hash redundancy)`);
               } catch (e) {
                 console.warn("Failed to persist file URLs to localStorage", e);
               }

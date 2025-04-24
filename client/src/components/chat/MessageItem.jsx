@@ -18,6 +18,20 @@ const MessageItem = React.memo(({
         return null;
     }
 
+    // Generate a consistent hash for message to use as an alternative lookup key
+    const getMessageHash = (msg) => {
+        if (!msg) return '';
+        const contentKey = (msg.content || '').substring(0, 30);
+        const fileName = msg.metadata?.fileName || '';
+        const timeStr = msg.createdAt?.substring(0, 16) || ''; // Less strict time matching
+        return `${msg.sender}-${timeStr}-${fileName}-${contentKey}-${msg.type}`;
+    };
+    
+    // Memoize the message hash to avoid recalculating
+    const messageHash = React.useMemo(() => 
+        message.type === 'file' ? getMessageHash(message) : null,
+    [message]);
+
     const isSentByMe = message.sender === currentUserId;
     const isSystem = message.type === 'system';
     const isPlaceholder = message.metadata?.__localPlaceholder === true;
@@ -71,13 +85,79 @@ const MessageItem = React.memo(({
         
         // Try to use cached URL if available
         let cachedUrl = null;
-        if (typeof window !== 'undefined' && window.__fileMessages && message._id && window.__fileMessages[message._id]) {
-            cachedUrl = window.__fileMessages[message._id].url;
+        if (typeof window !== 'undefined' && window.__fileMessages) {
+            // Try ID-based lookup first
+            if (message._id && window.__fileMessages[message._id]) {
+                cachedUrl = window.__fileMessages[message._id].url;
+            }
+            // Try hash-based lookup if available
+            else if (messageHash && window.__fileMessagesByHash && window.__fileMessagesByHash[messageHash]) {
+                cachedUrl = window.__fileMessagesByHash[messageHash].url;
+            }
         }
         
         // Determine which URL to display in order of priority
         const displayUrl = localPreviewUrl || cachedUrl || fileUrl;
         const isImage = metadata.fileType?.startsWith("image/");
+        
+        // Store the URL for future reference if it's valid and we have an ID
+        const storeFileUrl = (url) => {
+            if (typeof window !== 'undefined' && url && !url.startsWith('blob:')) {
+                // Initialize storage if needed
+                if (!window.__fileMessages) window.__fileMessages = {};
+                if (!window.__fileMessagesByHash) window.__fileMessagesByHash = {};
+                
+                const urlData = {
+                    url: url,
+                    timestamp: Date.now(),
+                    fileName: metadata.fileName
+                };
+                
+                // Store by ID if available
+                if (message._id) {
+                    window.__fileMessages[message._id] = {
+                        ...urlData,
+                        hash: messageHash
+                    };
+                }
+                
+                // Also store by hash for additional lookup capability
+                if (messageHash) {
+                    window.__fileMessagesByHash[messageHash] = {
+                        ...urlData,
+                        id: message._id
+                    };
+                }
+                
+                // Throttle localStorage updates
+                if (!window.__fileUrlPersistTimeout) {
+                    window.__fileUrlPersistTimeout = setTimeout(() => {
+                        try {
+                            localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
+                            localStorage.setItem('mandarin_file_urls_by_hash', JSON.stringify(window.__fileMessagesByHash));
+                            console.log(`Persisted ${Object.keys(window.__fileMessages).length} file URLs to localStorage`);
+                        } catch (e) {
+                            console.warn("Failed to persist file URLs to localStorage", e);
+                        }
+                        window.__fileUrlPersistTimeout = null;
+                    }, 1000);
+                }
+                
+                return true;
+            }
+            return false;
+        };
+        
+        // Update metadata with URL
+        const updateMetadataUrl = (url) => {
+            if (metadata && url) {
+                metadata.url = url;
+                metadata.fileUrl = url;
+                metadata.serverUrl = url;
+                return true;
+            }
+            return false;
+        };
         
         return (
             <div className={styles.fileMessage}>
@@ -97,63 +177,78 @@ const MessageItem = React.memo(({
                                     alt={metadata.fileName || "Image attachment"} 
                                     className={classNames(styles.imageAttachment, isPlaceholder && styles.loading)} 
                                     loading="lazy" 
-                                    style={{ display: 'block', visibility: 'visible' }}
+                                    style={{ display: 'block', visibility: 'visible', minHeight: '100px' }}
                                     onError={(e) => { 
                                         console.error(`Failed to load image: ${displayUrl}`);
                                         e.target.onerror = null; 
                                         e.target.src = "/placeholder-error.svg"; 
                                         e.target.classList.remove(styles.loading);
                                         
-                                        // Try to recover the URL from persistent storage if available
-                                        if (typeof window !== 'undefined' && 
-                                            window.__fileMessages && 
-                                            message._id && 
-                                            window.__fileMessages[message._id]) {
-                                            const cachedUrl = window.__fileMessages[message._id].url;
-                                            console.log(`Attempting to recover image URL for ${message._id} from cache: ${cachedUrl}`);
-                                            if (cachedUrl && cachedUrl !== displayUrl) {
-                                                // Set a small timeout to avoid infinite loop
-                                                setTimeout(() => {
-                                                    // Update the image source
-                                                    e.target.src = cachedUrl;
+                                        // Try to recover using multiple strategies
+                                        if (typeof window !== 'undefined') {
+                                            let recoverySuccessful = false;
+                                            
+                                            // Strategy 1: Check cached URLs by ID
+                                            if (message._id && window.__fileMessages && window.__fileMessages[message._id]) {
+                                                const cachedUrl = window.__fileMessages[message._id].url;
+                                                if (cachedUrl && cachedUrl !== displayUrl) {
+                                                    console.log(`Attempting to recover image URL by ID: ${cachedUrl}`);
+                                                    setTimeout(() => {
+                                                        e.target.src = cachedUrl;
+                                                        updateMetadataUrl(cachedUrl);
+                                                    }, 100);
+                                                    recoverySuccessful = true;
+                                                }
+                                            }
+                                            
+                                            // Strategy 2: Try hash-based lookup
+                                            if (!recoverySuccessful && messageHash && window.__fileMessagesByHash && window.__fileMessagesByHash[messageHash]) {
+                                                const cachedUrl = window.__fileMessagesByHash[messageHash].url;
+                                                if (cachedUrl && cachedUrl !== displayUrl) {
+                                                    console.log(`Attempting to recover image URL by hash: ${cachedUrl}`);
+                                                    setTimeout(() => {
+                                                        e.target.src = cachedUrl;
+                                                        updateMetadataUrl(cachedUrl);
+                                                        if (message._id) {
+                                                            window.__fileMessages[message._id] = {
+                                                                url: cachedUrl,
+                                                                timestamp: Date.now(),
+                                                                hash: messageHash
+                                                            };
+                                                        }
+                                                    }, 150);
+                                                    recoverySuccessful = true;
+                                                }
+                                            }
+                                            
+                                            // Strategy 3: Use URL variations
+                                            if (!recoverySuccessful) {
+                                                // Try changing http to https or vice versa
+                                                if (displayUrl && displayUrl.startsWith('http')) {
+                                                    const altProtocolUrl = displayUrl.startsWith('https') 
+                                                        ? displayUrl.replace('https', 'http')
+                                                        : displayUrl.replace('http', 'https');
                                                     
-                                                    // Update the metadata URLs in the message object
-                                                    // This is important to ensure it's saved when we switch conversations
-                                                    if (message.metadata) {
-                                                        message.metadata.url = cachedUrl;
-                                                        message.metadata.fileUrl = cachedUrl;
-                                                        message.metadata.serverUrl = cachedUrl;
-                                                    }
-                                                }, 100);
+                                                    console.log(`Attempting protocol switch recovery: ${altProtocolUrl}`);
+                                                    setTimeout(() => { 
+                                                        e.target.src = altProtocolUrl;
+                                                        if (e.target.complete && e.target.naturalWidth > 0) {
+                                                            updateMetadataUrl(altProtocolUrl);
+                                                            storeFileUrl(altProtocolUrl);
+                                                        }
+                                                    }, 200);
+                                                }
                                             }
                                         }
                                     }} 
                                     onLoad={(e) => {
                                         e.target.classList.remove(styles.loading);
                                         
-                                        // Store the URL for future reference
-                                        if (typeof window !== 'undefined' && message._id && displayUrl && !displayUrl.startsWith('blob:')) {
-                                            if (!window.__fileMessages) window.__fileMessages = {};
-                                            window.__fileMessages[message._id] = {
-                                                url: displayUrl,
-                                                timestamp: Date.now()
-                                            };
-                                            console.log(`Cached image URL for ${message._id}: ${displayUrl}`);
-                                            
-                                            // Persist to localStorage immediately
-                                            try {
-                                                localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
-                                                console.log(`Persisted file URLs to localStorage (${Object.keys(window.__fileMessages).length} entries)`);
-                                            } catch (e) {
-                                                console.warn("Failed to persist file URLs to localStorage", e);
-                                            }
-                                            
-                                            // Also update the metadata URLs in the message object
-                                            if (message.metadata) {
-                                                message.metadata.url = displayUrl;
-                                                message.metadata.fileUrl = displayUrl;
-                                                message.metadata.serverUrl = displayUrl;
-                                            }
+                                        // Successful load: store and update the URL
+                                        const loadedUrl = e.target.src;
+                                        if (loadedUrl && !loadedUrl.startsWith('blob:') && loadedUrl !== '/placeholder-error.svg') {
+                                            updateMetadataUrl(loadedUrl);
+                                            storeFileUrl(loadedUrl);
                                         }
                                     }} 
                                 />
@@ -260,19 +355,142 @@ const MessageItem = React.memo(({
 
     // Add a React hook to ensure image URLs are always available
     React.useEffect(() => {
-        // For file messages, make sure we prefetch the URL from the cache if available
-        if (message.type === 'file' && message._id && typeof window !== 'undefined' && window.__fileMessages && window.__fileMessages[message._id]) {
-            const cachedUrl = window.__fileMessages[message._id].url;
+        // Only process file messages
+        if (message.type !== 'file' || !message.metadata) return;
+        
+        // Try to recover the file URL
+        const tryRecoverFileUrl = () => {
+            // Preferred lookup order: ID-based, hash-based, filename-based
+            let cachedUrl = null;
             
-            // Update the message metadata with the cached URL
-            if (message.metadata && cachedUrl && (!message.metadata.url || !message.metadata.fileUrl)) {
-                console.log(`Restoring cached URL for message ${message._id} from global cache`);
+            if (typeof window !== 'undefined') {
+                // Initialize the caches if needed
+                if (!window.__fileMessages) {
+                    window.__fileMessages = {};
+                    // Try to load from localStorage
+                    try {
+                        const stored = localStorage.getItem('mandarin_file_urls');
+                        if (stored) {
+                            window.__fileMessages = JSON.parse(stored) || {};
+                            console.log(`Loaded ${Object.keys(window.__fileMessages).length} file URLs from localStorage`);
+                        }
+                    } catch (e) {
+                        console.warn("Error loading file URLs from localStorage", e);
+                    }
+                }
+                
+                if (!window.__fileMessagesByHash) {
+                    window.__fileMessagesByHash = {};
+                    // Try to load from localStorage
+                    try {
+                        const stored = localStorage.getItem('mandarin_file_urls_by_hash');
+                        if (stored) {
+                            window.__fileMessagesByHash = JSON.parse(stored) || {};
+                        }
+                    } catch (e) {
+                        console.warn("Error loading file URL hashes from localStorage", e);
+                    }
+                }
+                
+                // Strategy 1: ID-based lookup
+                if (message._id && window.__fileMessages[message._id]) {
+                    cachedUrl = window.__fileMessages[message._id].url;
+                    console.log(`Found cached URL for ${message._id} via ID lookup`);
+                }
+                // Strategy 2: Hash-based lookup
+                else if (messageHash && window.__fileMessagesByHash[messageHash]) {
+                    cachedUrl = window.__fileMessagesByHash[messageHash].url;
+                    console.log(`Found cached URL for message via hash lookup`);
+                    
+                    // Also store with ID for future direct lookups
+                    if (message._id) {
+                        window.__fileMessages[message._id] = {
+                            url: cachedUrl,
+                            timestamp: Date.now(),
+                            hash: messageHash
+                        };
+                    }
+                }
+                // Strategy 3: Filename-based lookup
+                else if (message.metadata.fileName) {
+                    // Search by filename in both caches
+                    const fileNameMatches = Object.values(window.__fileMessages)
+                        .filter(entry => entry.fileName === message.metadata.fileName);
+                        
+                    if (fileNameMatches.length > 0) {
+                        // Use the most recent match
+                        const latestMatch = fileNameMatches.sort((a, b) => b.timestamp - a.timestamp)[0];
+                        cachedUrl = latestMatch.url;
+                        console.log(`Found cached URL via filename match: ${message.metadata.fileName}`);
+                    }
+                }
+            }
+            
+            // If URL found, update the message metadata
+            if (cachedUrl && message.metadata) {
+                console.log(`Restoring file URL: ${cachedUrl.substring(0, 50)}...`);
+                
+                // Update all URL fields for maximum compatibility
                 message.metadata.url = cachedUrl;
                 message.metadata.fileUrl = cachedUrl;
                 message.metadata.serverUrl = cachedUrl;
+                
+                // Update the caches with this message info
+                if (typeof window !== 'undefined') {
+                    // Store both message ID and hash references for redundancy
+                    if (message._id) {
+                        window.__fileMessages[message._id] = {
+                            url: cachedUrl,
+                            timestamp: Date.now(),
+                            hash: messageHash,
+                            fileName: message.metadata.fileName
+                        };
+                    }
+                    
+                    if (messageHash) {
+                        window.__fileMessagesByHash[messageHash] = {
+                            url: cachedUrl,
+                            timestamp: Date.now(),
+                            id: message._id,
+                            fileName: message.metadata.fileName
+                        };
+                    }
+                    
+                    // Schedule localStorage persistence (debounced)
+                    if (!window.__fileUrlPersistTimeout) {
+                        window.__fileUrlPersistTimeout = setTimeout(() => {
+                            try {
+                                localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
+                                localStorage.setItem('mandarin_file_urls_by_hash', JSON.stringify(window.__fileMessagesByHash));
+                                console.log(`Persisted file URLs to localStorage`);
+                            } catch (e) {
+                                console.warn("Failed to persist file URLs to localStorage", e);
+                            }
+                            window.__fileUrlPersistTimeout = null;
+                        }, 1000);
+                    }
+                }
+                
+                return true;
             }
+            
+            return false;
+        };
+        
+        // Try to recover the URL
+        tryRecoverFileUrl();
+        
+        // If URL recovery fails initially and we have a valid message ID,
+        // try again after a delay (helps with race conditions)
+        if ((!message.metadata.url || !message.metadata.fileUrl) && message._id) {
+            setTimeout(() => {
+                if (!message.metadata.url && !message.metadata.fileUrl) {
+                    console.log(`Retrying URL recovery for message ${message._id}`);
+                    tryRecoverFileUrl();
+                }
+            }, 500);
         }
-    }, [message]);
+    }, [message, messageHash]); // messageHash dependency is important for cache lookups
 
     return (
         <div className={styles.messageWrapper}>

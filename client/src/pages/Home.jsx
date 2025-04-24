@@ -193,41 +193,6 @@ const Home = () => {
         description="Discover genuine connections in a safe, discreet environment designed for adults seeking meaningful relationships."
         schema={websiteSchema}
       />
-      
-      {/* Header */}
-      <header className="modern-header">
-        <div className="container header-container">
-          <div className="logo gradient-text font-weight-bold">Flirtss</div>
-          <nav className="d-none d-md-flex main-tabs">
-            <Link to="/about" className="tab-button">
-              {t("home.aboutUs", "About")}
-            </Link>
-            <Link to="/safety" className="tab-button">
-              {t("home.privacyPolicy", "Safety")}
-            </Link>
-            <Link to="/support" className="tab-button">
-              {t("home.contactSupport", "Support")}
-            </Link>
-          </nav>
-          <div className="header-actions">
-            <button
-              onClick={handleToggleLanguage}
-              className="header-btn lang-btn"
-              aria-label={t("home.language", "Toggle language")}
-            >
-              <FaLanguage style={{ marginRight: '4px' }} />
-              <span>{langLabel}</span>
-            </button>
-            <ThemeToggle />
-            <Link to="/login" className="header-btn-login">
-              {t("auth.signIn", "Login")}
-            </Link>
-            <Link to="/register" className="header-btn-register">
-              {t("register.createAccount", "Register")}
-            </Link>
-          </div>
-        </div>
-      </header>
 
       {/* Hero Section */}
       <section className="hero-section animate-fade-in py-5 position-relative overflow-hidden">
@@ -386,30 +351,6 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="modern-footer mt-5 border-top pt-5">
-        <div className="container footer-content d-flex flex-column flex-md-row justify-content-between align-items-center gap-4 mb-4">
-          <div className="footer-logo gradient-text font-weight-bold text-xl">Flirtss</div>
-          <div className="footer-links d-flex flex-wrap justify-content-center gap-3 gap-md-4">
-            <Link to="/about">{t("home.aboutUs", "About Us")}</Link>
-            <Link to="/safety">{t("home.privacyPolicy", "Safety")}</Link>
-            <Link to="/support">{t("home.contactSupport", "Support")}</Link>
-            <Link to="/terms">{t("common.termsOfService", "Terms")}</Link>
-            <Link to="/privacy">{t("common.privacyPolicy", "Privacy")}</Link>
-          </div>
-          <div className="footer-social d-flex gap-3">
-            {["FB", "IG", "TW"].map((lbl) => (
-              <a key={lbl} href="#" aria-label={lbl} className="social-icon">
-                {lbl}
-              </a>
-            ))}
-          </div>
-        </div>
-        <div className="footer-bottom border-top py-3 text-center">
-          © {new Date().getFullYear()} Flirtss.{" "}
-          {t("common.allRightsReserved", "All rights reserved.")}
-        </div>
-      </footer>
     </div>
   );
 };
