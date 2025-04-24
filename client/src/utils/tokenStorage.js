@@ -112,19 +112,24 @@ export const getUserIdFromToken = (token) => {
     if (!payload) return null;
     
     // Try to get the user ID from the payload using different key options
+    // Standardized on _id
     let userId = null;
     
-    // Option 1: Direct id field
-    if (payload.id) {
+    // Option 1: Direct _id field (preferred)
+    if (payload._id) {
+      userId = payload._id;
+    }
+    // Option 2: Legacy id field (for backward compatibility)
+    else if (payload.id) {
       userId = payload.id;
     }
-    // Option 2: User ID in sub field (common for JWT)
+    // Option 3: User ID in sub field (common for JWT)
     else if (payload.sub) {
       userId = payload.sub;
     }
-    // Option 3: User object with _id or id
+    // Option 4: User object with _id or id
     else if (payload.user) {
-      userId = payload.user._id || payload.user._id;
+      userId = payload.user._id || payload.user.id;
     }
     
     // Validate and clean the user ID format (must be a valid MongoDB ObjectId)

@@ -213,7 +213,7 @@ class ApiDebugger {
 
       return {
         valid: true,
-        userId: payload.id || payload.sub,
+        userId: payload._id || payload.id || payload.sub, // Standardize on _id
         expiry: payload.exp ? new Date(payload.exp * 1000).toLocaleString() : 'No expiry',
         expiresIn: payload.exp ? (payload.exp * 1000) - Date.now() : null,
         roles: payload.roles || [],

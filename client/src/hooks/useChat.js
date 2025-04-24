@@ -661,6 +661,224 @@ export const useChat = (recipientId = null) => {
     setError(null);
   }, []);
 
+  /**
+   * Send a file message to the recipient
+   * @param {File} file - The file to send
+   * @param {string} recipientId - Recipient ID (optional, uses current recipientId if not provided)
+   * @returns {Promise<Object>} - The sent message
+   */
+  const sendFileMessage = useCallback(async (file, recipientId = null) => {
+    // Use the provided recipient ID or fall back to the current one
+    const targetRecipientId = recipientId || normalizedRecipientId;
+    
+    // Validate prerequisites
+    if (!targetRecipientId || !isAuthenticated || !user?._id || !initialized) {
+      const errMsg = 'Cannot send file: Missing required data';
+      log.error(errMsg);
+      throw new Error(errMsg);
+    }
+    
+    if (!file || !(file instanceof File)) {
+      throw new Error('Invalid file object');
+    }
+    
+    // Set sending state
+    setSending(true);
+    
+    try {
+      log.debug(`Sending file "${file.name}" to ${targetRecipientId}`);
+      
+      // Create a temporary ID for optimistic UI
+      const tempId = `temp-file-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+      const uploadId = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+      
+      // Create blob URL for image preview if needed
+      let fileUrl = null;
+      if (file.type.startsWith('image/')) {
+        fileUrl = URL.createObjectURL(file);
+      }
+      
+      // Create metadata for the file
+      const fileMetadata = {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        uploadId: uploadId,
+        // Use both URL fields consistently for temporary blob URL
+        url: fileUrl,
+        fileUrl: fileUrl,
+        // Mark as placeholder to indicate this is a temporary blob URL
+        __localPlaceholder: true,
+        // Store timestamp to help with placeholder replacement
+        __createdAt: Date.now()
+      };
+      
+      // Create a temporary message for optimistic UI update
+      const tempMessage = {
+        _id: tempId,
+        tempId,
+        sender: user._id,
+        recipient: targetRecipientId,
+        content: `File: ${file.name}`,
+        type: 'file',
+        metadata: fileMetadata,
+        createdAt: new Date().toISOString(),
+        status: 'uploading',
+        pending: true
+      };
+      
+      // Update UI optimistically - add to the end for newest last
+      setMessages(prev => [...prev, tempMessage]);
+      
+      // Create FormData for the upload
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("recipient", targetRecipientId);
+      formData.append("uploadId", uploadId);
+      
+      // Keep track of created blob URLs
+      const createdBlobUrls = new Set();
+      if (fileUrl) createdBlobUrls.add(fileUrl);
+      
+      try {
+        // Create an XHR request to track upload progress
+        const xhr = new XMLHttpRequest();
+        
+        // Create a promise to handle the upload
+        const uploadPromise = new Promise((resolve, reject) => {
+          xhr.upload.onprogress = (event) => {
+            // Update progress in metadata if needed
+          };
+          
+          xhr.open("POST", "/api/messages/attachments", true);
+          
+          // Get auth token
+          const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+          if (token) {
+            xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+          }
+          
+          // Handle response
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const result = JSON.parse(xhr.responseText);
+                if(result.success && result.data) {
+                  resolve(result.data);
+                } else {
+                  reject(new Error(result.error || "Upload processing failed"));
+                }
+              } catch (e) {
+                reject(new Error(`Invalid response format: ${e.message}`));
+              }
+            } else {
+              reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+            }
+          };
+          
+          xhr.onerror = () => reject(new Error("Network error during upload"));
+          xhr.ontimeout = () => reject(new Error("Upload timed out"));
+          xhr.timeout = 60000; // 60 second timeout
+          
+          xhr.send(formData);
+        });
+        
+        // Wait for upload to complete
+        const uploadResult = await uploadPromise;
+        
+        // Clear any created blob URLs
+        createdBlobUrls.forEach(url => {
+          try {
+            URL.revokeObjectURL(url);
+          } catch (e) {
+            log.warn("Failed to revoke blob URL:", e);
+          }
+        });
+        
+        // Get real URL from server
+        const serverUrl = uploadResult.fileUrl || uploadResult.url;
+        
+        if (!serverUrl) {
+          throw new Error("Server did not return file URL");
+        }
+        
+        // Update message with real URL
+        if (mountedRef.current) {
+          setMessages(prev => 
+            prev.map((msg) => {
+              if (msg.tempId === tempId) {
+                return {
+                  ...msg,
+                  metadata: {
+                    ...msg.metadata,
+                    // Ensure URLs are saved consistently
+                    fileUrl: serverUrl,
+                    url: serverUrl,
+                    file: null, // Remove file object to avoid serialization issues
+                    // Make sure this is marked as no longer a placeholder
+                    __localPlaceholder: false
+                  },
+                  status: 'sent',
+                  pending: false
+                };
+              }
+              return msg;
+            })
+          );
+        }
+        
+        // Reset sending state
+        setSending(false);
+        
+        // Return success indicator
+        return true;
+      } catch (error) {
+        log.error('File upload error:', error);
+        
+        // Clean up blob URLs
+        createdBlobUrls.forEach(url => {
+          try {
+            URL.revokeObjectURL(url);
+          } catch (e) {
+            log.warn("Failed to revoke blob URL:", e);
+          }
+        });
+        
+        // Update message with error status if component is still mounted
+        if (mountedRef.current) {
+          setMessages(prev => 
+            prev.map((msg) => {
+              if (msg.tempId === tempId) {
+                return {
+                  ...msg,
+                  error: true,
+                  status: 'error',
+                  errorMessage: error.message || 'File upload failed'
+                };
+              }
+              return msg;
+            })
+          );
+          
+          // Set error state
+          setError(error.message || 'Failed to send file');
+        }
+        
+        // Reset sending state
+        setSending(false);
+        
+        // Re-throw error
+        throw error;
+      }
+    } catch (error) {
+      // Reset sending state
+      setSending(false);
+      
+      // Re-throw error
+      throw error;
+    }
+  }, [normalizedRecipientId, isAuthenticated, user, initialized]);
+
   // Return the hook API
   return {
     // State
@@ -677,6 +895,7 @@ export const useChat = (recipientId = null) => {
     loadMessages,
     loadMoreMessages,
     sendMessage,
+    sendFileMessage, // Add the new file sending function
     sendTyping,
     refresh,
     resetError

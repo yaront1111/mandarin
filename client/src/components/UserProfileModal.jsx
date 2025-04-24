@@ -1077,7 +1077,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   </button>
                   <button
                     className={`${styles.actionBtn} ${styles.messageBtn}`}
-                    onClick={handleMessage}
+                    onClick={() => setShowChat(true)}
                     disabled={isChatInitiating}
                   >
                     {isChatInitiating ? <FaSpinner className={styles.spinner} /> : <FaComment />}
