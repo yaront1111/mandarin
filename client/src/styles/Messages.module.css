@@ -458,8 +458,10 @@
   transition: transform 0.2s ease, opacity 0.3s ease;
   max-height: 180px;
   border: 1px solid var(--neutral-200);
-  display: block;
+  display: block !important;
+  visibility: visible !important;
   margin: 0 auto;
+  min-height: 100px;
 }
 
 .imageAttachment.loading {

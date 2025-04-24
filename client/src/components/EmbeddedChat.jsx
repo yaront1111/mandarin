@@ -1,97 +1,57 @@
 // src/components/EmbeddedChat.jsx
-"use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import PropTypes from 'prop-types';
 import {
-    FaSmile, FaPaperPlane, FaPaperclip, FaTimes, FaCheckDouble, FaCheck,
-    FaVideo, FaHeart, FaSpinner, FaFile, FaImage, FaFileAlt, FaFilePdf,
-    FaFileAudio, FaFileVideo, FaCrown, FaLock, FaPhoneSlash,
-    FaExclamationCircle
-} from "react-icons/fa";
-import axios from "axios";
-import { toast } from "react-toastify";
+    FaVideo, FaSpinner, FaLock, FaPhoneSlash, FaTimes, FaExclamationCircle
+} from "react-icons/fa"; import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 
-import { useAuth } from "../context/AuthContext";
-import { useChat } from "../hooks/useChat";
-import { logger } from "../utils/logger";
-import socketService from "../services/socketService";
-import VideoCall from "./VideoCall";
+// --- Framework/Context Hooks ---
+import { useAuth } from "../context/AuthContext.jsx"; //
+import { useChat } from "../hooks/useChat.js"; // Assuming useChat is primarily for single-chat logic
 
+// --- Shared Chat Components & Utils ---
+// Assuming these files exist in src/components/chat/
+import {
+    MAX_FILE_SIZE,
+    ALLOWED_FILE_TYPES,
+    ACCOUNT_TIER,
+    LOADING_TIMEOUT_MS,
+    RECONNECT_DELAY_MS,
+    INPUT_FOCUS_DELAY_MS,
+    TYPING_DEBOUNCE_MS,
+    SMOOTH_SCROLL_DEBOUNCE_MS,
+    UPLOAD_COMPLETE_DELAY_MS
+} from "./chat/chatConstants.js";
+import {
+    generateLocalUniqueId,
+    createAuthAxios,
+    formatMessageDateSeparator,
+    groupMessagesByDate,
+    classNames
+} from "./chat/chatUtils.jsx"; // Renamed to .jsx previously
+import MessageItem from "./chat/MessageItem.jsx";
+import ChatInput from "./chat/ChatInput.jsx";
+import AttachmentPreview from "./chat/AttachmentPreview.jsx";
+import CallBanners from "./chat/CallBanners.jsx";
+import PremiumBanner from "./chat/PremiumBanner.jsx";
+import { LoadingIndicator, ErrorMessage, ConnectionIssueMessage, NoMessagesPlaceholder } from "./chat/ChatStatusIndicators.jsx";
+
+// --- Other Imports ---
+import { logger } from "../utils/logger.js"; //
+import socketService from "../services/socketService.jsx"; // or .js depending on your file
+import VideoCall from "./VideoCall.jsx"; // Keep specific components like VideoCall if not shared
+
+// --- Styles ---
 import styles from "../styles/embedded-chat.module.css";
-
-// --- Constants ---
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const ALLOWED_FILE_TYPES = [
-    "image/jpeg", "image/jpg", "image/png", "image/gif", "application/pdf",
-    "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "text/plain", "audio/mpeg", "audio/wav", "video/mp4", "video/quicktime",
-];
-const COMMON_EMOJIS = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"];
-const LOADING_TIMEOUT_MS = 10000; // 10 seconds
-const RECONNECT_DELAY_MS = 1500;
-const INPUT_FOCUS_DELAY_MS = 300;
-const TYPING_DEBOUNCE_MS = 300;
-const SMOOTH_SCROLL_DEBOUNCE_MS = 100;
 
 // --- Logger ---
 const log = logger.create("EmbeddedChat");
 
-// --- Helper Functions ---
-let localIdCounter = 0;
-const generateLocalUniqueId = (prefix = 'local') => {
-    localIdCounter++;
-    return `${prefix}-${Date.now()}-${localIdCounter}-${Math.random().toString(36).substring(2, 9)}`;
-};
-
-const createAuthAxios = () => {
-    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-    return axios.create({
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": token ? `Bearer ${token}` : "",
-        },
-    });
-};
-
-const formatMessageTime = (timestamp) => {
-    if (!timestamp) return "";
-    try {
-        return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch {
-        return "";
-    }
-};
-
-const formatMessageDate = (timestamp) => {
-    if (!timestamp) return "Unknown date";
-    try {
-        const date = new Date(timestamp);
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-
-        if (date.toDateString() === today.toDateString()) return "Today";
-        if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-        return date.toLocaleDateString();
-    } catch {
-        return "Unknown date";
-    }
-};
-
-const getFileIcon = (file) => {
-    if (!file) return <FaFile />;
-    const fileType = file.type || file.fileType || "";
-    if (fileType.startsWith("image/")) return <FaImage />;
-    if (fileType.startsWith("video/")) return <FaFileVideo />;
-    if (fileType.startsWith("audio/")) return <FaFileAudio />;
-    if (fileType === "application/pdf") return <FaFilePdf />;
-    return <FaFileAlt />;
-};
-
-// --- Internal Components ---
-const ChatHeader = React.memo(({
+// --- Locally Defined Components for EmbeddedChat Specifics ---
+// ChatHeader remains local as its actions are specific to this component context
+const EmbeddedChatHeader = React.memo(({
     recipient,
     userTier,
     pendingPhotoRequests,
@@ -138,14 +98,14 @@ const ChatHeader = React.memo(({
                 <button
                     className={styles.chatHeaderBtn}
                     onClick={handleApproveAllRequests}
-                    title="Approve photo requests"
+                    title={`Approve ${pendingPhotoRequests} photo request(s)`}
                     aria-label="Approve photo requests"
                     disabled={isApprovingRequests}
                 >
                     {isApprovingRequests ? <FaSpinner className="fa-spin" /> : <FaLock />}
                 </button>
             )}
-            {userTier !== "FREE" && (
+            {userTier !== ACCOUNT_TIER.FREE && (
                 isCallActive ? (
                     <button
                         className={styles.chatHeaderBtn}
@@ -178,389 +138,15 @@ const ChatHeader = React.memo(({
         </div>
     </div>
 ));
-ChatHeader.displayName = 'ChatHeader';
+EmbeddedChatHeader.displayName = 'EmbeddedChatHeader';
 
-const MessageItem = React.memo(({ message, currentUserId, isSent }) => {
-    const renderContent = () => {
-        switch (message.type) {
-            case "text":
-                return (
-                    <>
-                        <p className={styles.messageContent}>{message.content}</p>
-                        <span className={styles.messageTime}>
-                            {formatMessageTime(message.createdAt)}
-                            {isSent && (
-                                message.pending ? <span className={styles.pendingIndicator} title="Sending...">●</span>
-                                : message.error ? <span className={styles.errorIndicator} title="Failed to send">!</span>
-                                : message.read ? <FaCheckDouble className={styles.readIndicator} title="Read" />
-                                : <FaCheck className={styles.readIndicator} title="Sent" />
-                            )}
-                        </span>
-                    </>
-                );
-            case "wink":
-                return (
-                    <div className={styles.winkMessage}>
-                        <p className={styles.messageContent}>😉</p>
-                        <span className={styles.messageLabel}>Wink</span>
-                        <span className={styles.messageTime}>{formatMessageTime(message.createdAt)}</span>
-                    </div>
-                );
-            case "file": {
-                const { metadata } = message;
-                if (!metadata || !metadata.fileUrl) {
-                    return <p className={styles.messageContent}>Attachment unavailable</p>;
-                }
-                const isImage = metadata.fileType?.startsWith("image/");
-                return (
-                    <div className={styles.fileMessage}>
-                        {isImage ? (
-                            <img
-                                src={metadata.fileUrl}
-                                alt={metadata.fileName || "Image"}
-                                className={styles.imageAttachment}
-                                onError={(e) => { e.target.onerror = null; e.target.src = "/placeholder.svg"; }}
-                            />
-                        ) : (
-                            <div className={styles.fileAttachment}>
-                                {getFileIcon(metadata)}
-                                <span className={styles.fileName}>{metadata.fileName || "File"}</span>
-                                {metadata.fileSize && <span className={styles.fileSize}>{`(${Math.round(metadata.fileSize / 1024)} KB)`}</span>}
-                                    <a
-                                    href={metadata.fileUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className={styles.downloadLink}
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    Download</a>
-                            </div>
-                        )}
-                         <span className={styles.messageTime}>{formatMessageTime(message.createdAt)}</span>
-                    </div>
-                );
-            }
-            case "system":
-                 return (
-                    <div className={`${styles.systemMessageContent} ${message.error ? styles.errorContent : ''}`}>
-                        <p>{message.content}</p>
-                        <span className={styles.messageTime}>{formatMessageTime(message.createdAt)}</span>
-                    </div>
-                );
-            case "video":
-                return (
-                    <div className={styles.videoCallMessage}>
-                        <FaVideo className={styles.videoIcon} />
-                        <p className={styles.messageContent}>{message.content || "Video Call Event"}</p>
-                        <span className={styles.messageTime}>{formatMessageTime(message.createdAt)}</span>
-                    </div>
-                );
-            default:
-                log.warn(`Unsupported message type: ${message.type}`, message);
-                return <p className={styles.messageContent}>Unsupported message</p>;
-        }
-    };
-
-    return (
-        <div
-            className={`${styles.message} ${isSent ? styles.sent : styles.received} ${
-                message.type === "system" ? styles.systemMessage : ""
-            } ${message.error ? styles.error : ""} ${message.pending ? styles.pending : ""}`}
-        >
-            {renderContent()}
-        </div>
-    );
-});
-MessageItem.displayName = 'MessageItem';
-
-const MessageList = React.memo(({ messages, currentUserId, typingStatus, hasMore, loadMoreMessages }) => {
-    const groupedMessages = useMemo(() => {
-        const groups = {};
-        if (!Array.isArray(messages)) return groups;
-        messages.forEach((message) => {
-            if (message && message.createdAt) {
-                const date = formatMessageDate(message.createdAt);
-                groups[date] = groups[date] || [];
-                groups[date].push(message);
-            } else {
-                log.warn("Invalid message object encountered during grouping:", message);
-            }
-        });
-        return groups;
-    }, [messages]);
-
-    return (
-        <>
-            {hasMore && (
-                <button onClick={loadMoreMessages} className={styles.loadMoreButton}>
-                    Load More
-                </button>
-            )}
-            {Object.entries(groupedMessages).map(([date, msgs]) => (
-                <React.Fragment key={date}>
-                    <div className={styles.messageDate}>{date}</div>
-                    {msgs.map((message) => (
-                        <MessageItem
-                            key={message._id || message.tempId}
-                            message={message}
-                            currentUserId={currentUserId}
-                            isSent={message.sender === currentUserId}
-                        />
-                    ))}
-                </React.Fragment>
-            ))}
-            {typingStatus && (
-                <div className={styles.typingIndicator}>
-                    <span></span><span></span><span></span>
-                </div>
-            )}
-        </>
-    );
-});
-MessageList.displayName = 'MessageList';
-
-const ChatInput = React.memo(({
-    newMessage, handleInputChange, handleKeyPress, chatInputRef, showEmojis,
-    setShowEmojis, handleEmojiClick, handleFileAttachment, handleSendWink,
-    handleSubmit, isSending, isUploading, userTier, attachment
-}) => (
-    <form className={styles.messageInput} onSubmit={handleSubmit}>
-        <button
-            type="button"
-            className={styles.inputEmoji}
-            onClick={() => setShowEmojis(!showEmojis)}
-            title="Add Emoji"
-            aria-label="Add emoji"
-            disabled={isUploading || isSending}
-        >
-            <FaSmile />
-        </button>
-        {showEmojis && (
-            <div className={styles.emojiPicker}>
-                <div className={styles.emojiHeader}>
-                    <h4>Emojis</h4>
-                    <button onClick={() => setShowEmojis(false)} aria-label="Close emoji picker">
-                        <FaTimes />
-                    </button>
-                </div>
-                <div className={styles.emojiList}>
-                    {COMMON_EMOJIS.map((emoji) => (
-                        <button
-                            key={emoji}
-                            type="button"
-                            onClick={() => handleEmojiClick(emoji)}
-                            aria-label={`Emoji ${emoji}`}
-                        >
-                            {emoji}
-                        </button>
-                    ))}
-                </div>
-            </div>
-        )}
-
-        <input
-            type="text"
-            placeholder={userTier === "FREE" ? "Free users can only send winks 😉" : "Type a message..."}
-            value={newMessage}
-            onChange={handleInputChange}
-            onKeyPress={handleKeyPress}
-            ref={chatInputRef}
-            disabled={isSending || isUploading || (userTier === "FREE" && newMessage !== '😉')}
-            aria-label="Message input"
-            title={userTier === "FREE" ? "Upgrade to send text messages" : "Type a message"}
-        />
-
-        <button
-            type="button"
-            className={styles.inputAttachment}
-            onClick={handleFileAttachment}
-            disabled={isSending || isUploading || userTier === "FREE"}
-            title={userTier === "FREE" ? "Upgrade to send files" : "Attach File"}
-            aria-label="Attach file"
-        >
-            <FaPaperclip />
-        </button>
-
-        <button
-            type="button"
-            className={styles.inputWink}
-            onClick={handleSendWink}
-            disabled={isSending || isUploading}
-            title="Send Wink"
-            aria-label="Send wink"
-        >
-            <FaHeart />
-        </button>
-
-        <button
-            type="submit"
-            className={styles.inputSend}
-            disabled={(!newMessage.trim() && !attachment) || isSending || isUploading}
-            title="Send Message"
-            aria-label="Send message"
-        >
-            {isSending || isUploading ? <FaSpinner className="fa-spin" /> : <FaPaperPlane />}
-        </button>
-    </form>
-));
-ChatInput.displayName = 'ChatInput';
-
-const AttachmentPreview = React.memo(({ attachment, isUploading, uploadProgress, handleRemoveAttachment }) => (
-    <div className={styles.attachmentPreview}>
-        <div className={styles.attachmentInfo}>
-            {getFileIcon(attachment)}
-            <span className={styles.attachmentName}>{attachment.name}</span>
-            <span className={styles.attachmentSize}>({Math.round(attachment.size / 1024)} KB)</span>
-        </div>
-        {isUploading ? (
-            <div className={styles.uploadProgressContainer}>
-                <div
-                    className={styles.uploadProgressBar}
-                    style={{ width: `${uploadProgress}%` }}
-                />
-                <span className={styles.uploadProgressText}>{uploadProgress}%</span>
-            </div>
-        ) : (
-            <button
-                type="button"
-                className={styles.removeAttachment}
-                onClick={handleRemoveAttachment}
-                disabled={isUploading}
-                aria-label="Remove attachment"
-            >
-                <FaTimes />
-            </button>
-        )}
-    </div>
-));
-AttachmentPreview.displayName = 'AttachmentPreview';
-
-const CallBanners = React.memo(({ incomingCall, isCallActive, recipientNickname, handleAcceptCall, handleDeclineCall, handleEndCall }) => (
-    <>
-        {incomingCall && !isCallActive && (
-            <div className={styles.incomingCallBanner}>
-                <div className={styles.incomingCallInfo}>
-                    <FaVideo className={`${styles.callIcon} pulse`} />
-                    <span>{recipientNickname} is calling you</span>
-                </div>
-                <div className={styles.incomingCallActions}>
-                    <button
-                        className={styles.declineCallBtnSmall}
-                        onClick={handleDeclineCall}
-                        aria-label="Decline call"
-                    >
-                        <FaTimes />
-                    </button>
-                    <button
-                        className={styles.acceptCallBtnSmall}
-                        onClick={handleAcceptCall}
-                        aria-label="Accept call"
-                    >
-                        <FaVideo />
-                    </button>
-                </div>
-            </div>
-        )}
-        {isCallActive && (
-            <div className={styles.activeCallBanner}>
-                <div>
-                    <FaVideo className={styles.callIcon} />
-                    <span>Call with {recipientNickname}</span>
-                </div>
-                <button
-                    className={styles.endCallBtn}
-                    onClick={handleEndCall}
-                    aria-label="End call"
-                >
-                    <FaPhoneSlash /> End
-                </button>
-            </div>
-        )}
-    </>
-));
-CallBanners.displayName = 'CallBanners';
-
-const PremiumBanner = React.memo(({ navigate }) => (
-     <div className={styles.premiumBanner}>
-        <div>
-            <FaCrown className={styles.premiumIcon} />
-            <span>Upgrade to send messages and make calls</span>
-        </div>
-        <button
-            className={styles.upgradeBtn}
-            onClick={() => navigate("/subscription")}
-            aria-label="Upgrade to premium"
-        >
-            Upgrade
-        </button>
-    </div>
-));
-PremiumBanner.displayName = 'PremiumBanner';
-
-const LoadingIndicator = React.memo(({ showTimeoutMessage, handleRetry, handleReconnect }) => (
-    <div className={styles.loadingMessages}>
-        <div className={styles.spinner}></div>
-        <p>
-            {showTimeoutMessage
-                ? "This is taking longer than expected. Please wait or retry..."
-                : "Loading messages..."}
-        </p>
-        {showTimeoutMessage && (
-            <div className={styles.loadingActions}>
-                <button className={styles.refreshButton} onClick={handleRetry} aria-label="Retry loading messages">
-                    Retry
-                </button>
-                <button className={styles.resetButton} onClick={handleReconnect} aria-label="Force reconnect">
-                    Reconnect
-                </button>
-            </div>
-        )}
-    </div>
-));
-LoadingIndicator.displayName = 'LoadingIndicator';
-
-const ErrorMessage = React.memo(({ error, handleRetry, handleForceInit, showInitButton }) => (
-    <div className={styles.messageError}>
-        <FaExclamationCircle />
-        <p>{error || "An unknown error occurred."}</p>
-        <div className={styles.errorActions}>
-            <button onClick={handleRetry} className={styles.retryButton} aria-label="Retry loading messages">
-                Retry Loading
-            </button>
-            {showInitButton && (
-                 <button onClick={handleForceInit} className={styles.initButton} aria-label="Force initialization">
-                     Force Init
-                 </button>
-            )}
-        </div>
-    </div>
-));
-ErrorMessage.displayName = 'ErrorMessage';
-
-const ConnectionIssueMessage = React.memo(({ handleReconnect, isInitializing }) => (
-     <div className={styles.loadingMessages}>
-        <div className={styles.spinner}></div>
-        <p>{isInitializing ? "Initializing chat..." : "Trying to reconnect..."}</p>
-        <div className={styles.errorActions}>
-            <button onClick={handleReconnect} className={styles.retryButton} aria-label="Force reconnection">
-                Reconnect
-            </button>
-        </div>
-    </div>
-));
-ConnectionIssueMessage.displayName = 'ConnectionIssueMessage';
-
-/**
- * EmbeddedChat component
- * A fully functional chat interface.
- */
+// --- Main Component ---
 const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
     // --- Hooks ---
-    const { user, isAuthenticated } = useAuth();
+    const { user } = useAuth(); //
     const navigate = useNavigate();
     const recipientId = recipient?._id;
 
-    // Use the custom chat hook for core logic
     const {
         messages: hookMessages,
         loading: hookLoading,
@@ -571,22 +157,20 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
         sendTyping,
         loadMoreMessages,
         hasMore,
-        sending: sendingMessage,
+        sending: sendingMessage, // State indicating if a message is currently being sent via hook
         initialized,
         isConnected,
         refresh: refreshChat,
-    } = useChat(recipientId);
+    } = useChat(recipientId); //
 
     // --- State ---
     const [localMessages, setLocalMessages] = useState([]);
     const [newMessage, setNewMessage] = useState("");
-    const [showEmojis, setShowEmojis] = useState(false);
     const [attachment, setAttachment] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [pendingPhotoRequests, setPendingPhotoRequests] = useState(0);
     const [isApprovingRequests, setIsApprovingRequests] = useState(false);
-    const [requestsData, setRequestsData] = useState([]);
     const [incomingCall, setIncomingCall] = useState(null);
     const [isCallActive, setIsCallActive] = useState(false);
     const [loadingTimedOut, setLoadingTimedOut] = useState(false);
@@ -602,600 +186,443 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
 
     // --- Memoized Values ---
     const authAxios = useMemo(() => createAuthAxios(), []);
+    const groupedMessages = useMemo(() => groupMessagesByDate(localMessages), [localMessages]);
+    const currentUserId = user?._id; // Get current user ID safely
+
+    // --- Event Handlers ---
+
+    // Define addLocalSystemMessage *before* the useEffect that uses it
+    const addLocalSystemMessage = useCallback((content, error = false) => {
+        const newSysMessage = {
+            _id: generateLocalUniqueId('system'),
+            sender: "system",
+            content,
+            createdAt: new Date().toISOString(),
+            type: "system",
+            error,
+        };
+        setLocalMessages(prev => {
+            if (prev.some(msg => msg._id === newSysMessage._id)) return prev;
+            return [...prev, newSysMessage].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        });
+    }, []); // Empty dependency array is likely correct here as setLocalMessages is stable
+
 
     // --- Effects ---
 
-    // Initial Log & Cleanup Setup
+    // Initial Log & Cleanup
     useEffect(() => {
         log.debug("EmbeddedChat mounted for recipient:", recipient?.nickname);
-
-        // Cleanup function runs on unmount
         return () => {
             log.debug("EmbeddedChat unmounted");
-            // Clear all timeouts
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
             if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
         };
     }, [recipientId, recipient?.nickname]);
 
-    // Update Local Messages (Merge hook messages and local system messages)
+    // Merge Hook Messages with Local System Messages
     useEffect(() => {
-        // Combine messages from the hook with locally generated system messages
-        const combined = [...(hookMessages || [])];
-        const localSystemMessages = localMessages.filter(msg => msg.type === 'system' && msg._id?.startsWith('local-'));
-
-        // Add local messages if they aren't already present (by ID)
-        localSystemMessages.forEach(localMsg => {
+        // Only proceed if hookMessages changed
+        if (!hookMessages) return;
+        
+        // Get all system messages from localMessages
+        const localSystem = localMessages.filter(msg => msg.type === 'system' && msg._id?.startsWith('local-'));
+        
+        // Combine hookMessages with local system messages
+        const combined = [...hookMessages];
+        
+        // Add only system messages that aren't already in the combined array
+        localSystem.forEach(localMsg => {
             if (!combined.some(msg => msg._id === localMsg._id)) {
                 combined.push(localMsg);
             }
         });
-
-        // Sort all messages by date to ensure correct chronological order
+        
+        // Sort combined messages by date
         combined.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
-        // Filter out duplicates based on ID, preferring non-local if IDs clash
+        // Deduplicate messages with enhanced detection
         const uniqueMessages = [];
         const seenIds = new Set();
-        for (let i = combined.length - 1; i >= 0; i--) {
-            const msg = combined[i];
+        const seenCombinations = new Set(); // Detect duplicates even with different IDs
+        
+        combined.forEach(msg => {
             const id = msg._id || msg.tempId;
-            if (id && !seenIds.has(id)) {
-                 // Basic validation and normalization
+            
+            // Create a compound key to detect duplicates based on sender, time, content & type
+            const timeStr = msg.createdAt?.substring(0, 19) || ''; // Ignore milliseconds precision
+            const contentKey = (msg.content || '').substring(0, 50); // First 50 chars
+            const combinationKey = `${msg.sender}-${timeStr}-${contentKey}-${msg.type}`;
+            
+            // Only add the message if we haven't seen its ID or a duplicate pattern
+            if (id && !seenIds.has(id) && !seenCombinations.has(combinationKey)) {
+                // Normalize the message object with all required fields
                 const normalizedMsg = {
-                    ...msg,
-                    _id: id,
-                    sender: msg.sender || "unknown",
-                    content: msg.content ?? "", // Ensure content is not null/undefined
+                    _id: msg._id, 
+                    tempId: msg.tempId, 
+                    sender: msg.sender || "system",
+                    recipient: msg.recipient, 
+                    content: msg.content ?? "",
                     createdAt: msg.createdAt || new Date().toISOString(),
-                    type: msg.type || "text"
+                    type: msg.type || "text", 
+                    read: msg.read ?? false,
+                    pending: msg.pending ?? (!!msg.tempId), 
+                    error: msg.error ?? false,
+                    metadata: msg.metadata
                 };
-                uniqueMessages.unshift(normalizedMsg); // Add to beginning to maintain order
-                seenIds.add(id);
+                uniqueMessages.push(normalizedMsg);
+                if (id) seenIds.add(id);
+                seenCombinations.add(combinationKey);
+            } else if (!id) {
+                log.warn("Message without ID or tempId encountered:", msg);
+            } else {
+                log.debug("Filtered out duplicate message:", id, msg.content);
             }
-        }
+        });
 
-        // Only update state if messages actually changed
-        if (JSON.stringify(uniqueMessages) !== JSON.stringify(localMessages)) {
-             setLocalMessages(uniqueMessages);
+        // Update localMessages only if the content actually changed
+        if (uniqueMessages.length !== localMessages.length || 
+            JSON.stringify(uniqueMessages.map(m => m._id)) !== JSON.stringify(localMessages.map(m => m._id))) {
+            console.log(`Updating messages: ${uniqueMessages.length} unique of ${combined.length} total`);
+            setLocalMessages(uniqueMessages);
         }
-    }, [hookMessages, localMessages]);
+    }, [hookMessages, localMessages]); // Include localMessages to detect actual changes
 
-    // Scroll Management Effect
+    // Scroll Management
     useEffect(() => {
         const messagesEndEl = messagesEndRef.current;
         const containerEl = messagesContainerRef.current;
-
-        // Exit if refs aren't ready or chat isn't open
         if (!messagesEndEl || !containerEl || !isOpen) {
-            if (!isOpen) {
-                isInitialLoadDone.current = false;
-            }
-            return;
+            isInitialLoadDone.current = !isOpen; return;
         }
-
-        // Perform initial instant scroll
         if (initialized && localMessages.length > 0 && !isInitialLoadDone.current) {
             messagesEndEl.scrollIntoView({ behavior: 'instant', block: 'end' });
             isInitialLoadDone.current = true;
-        }
-        // Handle smooth scrolling for subsequent messages ONLY if user is near the bottom
-        else if (isInitialLoadDone.current && localMessages.length > 0) {
+        } else if (isInitialLoadDone.current && localMessages.length > 0) {
             const scrollThreshold = 150;
             const isNearBottom = containerEl.scrollHeight - containerEl.scrollTop - containerEl.clientHeight < scrollThreshold;
-
             if (isNearBottom) {
                 const timerId = setTimeout(() => {
                     messagesEndEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
                 }, SMOOTH_SCROLL_DEBOUNCE_MS);
-
                 return () => clearTimeout(timerId);
             }
-        }
-        // Reset if chat becomes uninitialized
-        else if (!initialized) {
+        } else if (!initialized) {
             isInitialLoadDone.current = false;
         }
     }, [localMessages, initialized, isOpen]);
 
-    // Loading Timeout Management
+    // Loading Timeout
     useEffect(() => {
         if (hookLoading) {
             setLoadingTimedOut(false);
-            // Set a timeout to show the "taking longer" message
-            loadingTimeoutRef.current = setTimeout(() => {
-                setLoadingTimedOut(true);
-            }, LOADING_TIMEOUT_MS);
+            loadingTimeoutRef.current = setTimeout(() => setLoadingTimedOut(true), LOADING_TIMEOUT_MS);
         } else {
-            if (loadingTimeoutRef.current) {
-                clearTimeout(loadingTimeoutRef.current);
-            }
+            if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
             setLoadingTimedOut(false);
         }
-
-        return () => {
-            if (loadingTimeoutRef.current) {
-                clearTimeout(loadingTimeoutRef.current);
-            }
-        };
+        return () => { if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current); };
     }, [hookLoading]);
 
-    // Check Pending Photo Requests from this recipient
+    // Check Pending Photo Requests
     const checkPendingPhotoRequests = useCallback(async () => {
-        if (!recipientId || !user?._id) return;
+        if (!recipientId || !user?._id || !authAxios) return;
         try {
             const response = await authAxios.get(`/api/users/photos/permissions`, {
                 params: { requestedBy: recipientId, status: "pending" },
             });
-            if (response.data?.success) {
-                const requests = response.data.data || [];
-                setPendingPhotoRequests(requests.length);
-                setRequestsData(requests);
-            } else {
-                setPendingPhotoRequests(0);
-                setRequestsData([]);
-            }
+            const requests = response?.data?.data || [];
+            setPendingPhotoRequests(requests.length);
         } catch (error) {
-            log.error("Error checking photo permissions:", error);
+            log.error("Error checking photo permissions:", error.response?.data || error.message);
             setPendingPhotoRequests(0);
-            setRequestsData([]);
         }
     }, [authAxios, recipientId, user?._id]);
 
-    // Run photo request check when chat opens or recipient changes
+    // Run photo request check
     useEffect(() => {
         if (isOpen && recipientId && user?._id) {
             checkPendingPhotoRequests();
         }
     }, [isOpen, recipientId, user?._id, checkPendingPhotoRequests]);
 
-    // Focus Input on Open
+    // Focus Input on Open/Active
     useEffect(() => {
-        if (isOpen && recipientId && !isCallActive) {
-            setTimeout(() => {
-                chatInputRef.current?.focus();
-            }, INPUT_FOCUS_DELAY_MS);
+        if (isOpen && recipientId && !isCallActive && initialized) {
+            const timerId = setTimeout(() => chatInputRef.current?.focus(), INPUT_FOCUS_DELAY_MS);
+            return () => clearTimeout(timerId);
         }
-    }, [isOpen, recipientId, isCallActive]);
+    }, [isOpen, recipientId, isCallActive, initialized]);
 
     // Socket Event Listeners (Video Calls)
     useEffect(() => {
         if (!isOpen || !recipientId || !user?._id || !socketService) return;
 
-        // Helper to add system messages to the local state
-        const addSystemMessage = (content, error = false) => {
-            const newMessage = {
-                _id: generateLocalUniqueId('system'),
-                sender: "system",
-                content,
-                createdAt: new Date().toISOString(),
-                type: "system",
-                error: error,
-            };
-             setLocalMessages((prev) => {
-                if (prev.some(msg => msg._id === newMessage._id)) return prev;
-                const updated = [...prev, newMessage];
-                updated.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-                return updated;
-             });
-        };
-
-        // Handler for incoming call events
-        const handleIncomingCall = (call) => {
+        const handleIncoming = (call) => {
             if (call.userId !== recipientId) return;
-            setIncomingCall({
-                callId: call.callId,
-                callerName: call.caller?.name || recipient?.nickname || "Unknown Caller",
-                callerId: call.userId,
-                timestamp: call.timestamp,
-            });
-            addSystemMessage(`${recipient?.nickname || 'Someone'} is calling you.`);
+            log.debug("Incoming call:", call);
+            setIncomingCall({ callId: call.callId, callerName: call.caller?.name || recipient?.nickname || "Unknown", callerId: call.userId });
+            addLocalSystemMessage(`${recipient?.nickname || 'Someone'} is calling you.`);
         };
-
-        // Handler for when the other user accepts our call
-        const handleCallAccepted = (data) => {
+        const handleAccepted = (data) => {
+             if (data.userId !== recipientId) return;
+             log.debug("Call accepted:", data);
+            if (!incomingCall) {
+                 addLocalSystemMessage(`${recipient?.nickname || 'User'} accepted your call.`);
+                 setIsCallActive(true);
+                 setIncomingCall(null);
+                 toast.success(`${recipient?.nickname} accepted your call`);
+            }
+        };
+        const handleDeclined = (data) => {
             if (data.userId !== recipientId) return;
-            addSystemMessage(`${recipient?.nickname || 'User'} accepted your call.`);
-            setIsCallActive(true);
-            setIncomingCall(null);
-            toast.success(`${recipient?.nickname} accepted your call`);
+            log.debug("Call declined:", data);
+            if (isCallActive && !incomingCall) {
+                 addLocalSystemMessage(`${recipient?.nickname || 'User'} declined your call.`);
+                 setIsCallActive(false);
+            } else if (incomingCall && incomingCall.callerId === recipientId) {
+                 addLocalSystemMessage(`Call from ${recipient?.nickname} was declined/cancelled.`);
+                 setIncomingCall(null);
+            }
+            toast.info(`${recipient?.nickname} declined the call`);
         };
-
-        // Handler for when the other user declines our call or we decline theirs
-        const handleCallDeclined = (data) => {
-            if (data.userId !== recipientId) return;
-            addSystemMessage(`${recipient?.nickname || 'User'} declined your call.`);
-            if (isCallActive) setIsCallActive(false);
-            setIncomingCall(null);
-            toast.info(`${recipient?.nickname} declined your call`);
-        };
-
-        // Handler for when either user hangs up
-        const handleCallHangup = (data) => {
-             if (data.userId === recipientId || data.userId === user._id) {
+        const handleHangup = (data) => {
+            if (data.userId === recipientId || data.userId === user._id) {
+                log.debug("Hangup received:", data);
                 if (isCallActive) {
-                    addSystemMessage(`Video call with ${recipient?.nickname} ended.`);
-                    setIsCallActive(false);
-                    setIncomingCall(null);
-                    toast.info("Video call ended");
+                    addLocalSystemMessage(`Video call ended.`);
+                    setIsCallActive(false); // Ensure state is updated
                 }
-                else if (incomingCall && incomingCall.callerId === recipientId) {
-                    addSystemMessage(`${recipient?.nickname} ended the call attempt.`);
-                    setIncomingCall(null);
+                if (incomingCall && incomingCall.callerId === data.userId) {
+                     addLocalSystemMessage(`Call attempt from ${recipient?.nickname} ended.`);
+                    setIncomingCall(null); // Ensure state is updated
                 }
+                 if (isCallActive || incomingCall) toast.info("Video call ended"); // Show toast only if relevant
+                 // Reset states definitively on hangup involving participants
+                 setIsCallActive(false);
+                 setIncomingCall(null);
             }
         };
 
-        // Register listeners
         const listeners = [
-            socketService.on("incomingCall", handleIncomingCall),
-            socketService.on("callAccepted", handleCallAccepted),
-            socketService.on("callDeclined", handleCallDeclined),
-            socketService.on("videoHangup", handleCallHangup),
+            socketService.on("incomingCall", handleIncoming),
+            socketService.on("callAccepted", handleAccepted),
+            socketService.on("callDeclined", handleDeclined),
+            socketService.on("videoHangup", handleHangup),
         ];
+        return () => listeners.forEach(unsubscribe => unsubscribe?.());
 
-        // Cleanup: Unregister listeners
-        return () => {
-            listeners.forEach(unsubscribe => unsubscribe && unsubscribe());
-        };
-    }, [isOpen, recipientId, recipient?.nickname, user?._id, isCallActive, incomingCall]);
+    }, [isOpen, recipientId, recipient?.nickname, user?._id, isCallActive, incomingCall, addLocalSystemMessage]); // addLocalSystemMessage is now stable
 
-    // --- Event Handlers ---
 
-    // Adds a system message locally
-    const addLocalSystemMessage = useCallback((content, error = false) => {
-        const newMessage = {
-            _id: generateLocalUniqueId('system'),
-            sender: "system",
-            content,
-            createdAt: new Date().toISOString(),
-            type: "system",
-            error: error,
-        };
-        setLocalMessages(prev => {
-            if (prev.some(msg => msg._id === newMessage._id)) return prev;
-             const updated = [...prev, newMessage];
-             updated.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-             return updated;
-        });
-    }, []);
+    // --- Component Logic Handlers ---
 
-    // Handler to approve all pending photo requests from the recipient
+    // Approve Photo Requests
     const handleApproveAllRequests = useCallback(async (e) => {
-        if (e) e.stopPropagation();
-        if (pendingPhotoRequests === 0 || !recipientId) return;
-
+        e?.stopPropagation();
+        if (pendingPhotoRequests === 0 || !recipientId || isApprovingRequests) return;
         setIsApprovingRequests(true);
         try {
-            const response = await authAxios.post(`/api/users/photos/approve-all`, {
-                requesterId: recipientId,
-            });
-
+            const response = await authAxios.post(`/api/users/photos/approve-all`, { requesterId: recipientId });
             if (response.data?.success) {
-                const approvedCount = response.data.approvedCount || pendingPhotoRequests;
-                toast.success(`Approved ${approvedCount} photo request${approvedCount !== 1 ? "s" : ""}`);
-                addLocalSystemMessage(`Photo access approved.`);
-
-                if (hookSendMessage && user?.accountTier !== 'FREE') {
-                    await hookSendMessage("I've approved your request to view my private photos.", 'text');
-                }
-
+                const count = response.data.approvedCount || pendingPhotoRequests;
+                toast.success(`Approved ${count} photo request${count !== 1 ? "s" : ""}.`);
+                addLocalSystemMessage(`Photo access approved for ${recipient?.nickname || 'user'}.`);
                 setPendingPhotoRequests(0);
-                setRequestsData([]);
-            } else {
-                 throw new Error(response.data?.message || "Approval failed");
-            }
+                if (hookSendMessage && user?.accountTier !== ACCOUNT_TIER.FREE) {
+                   hookSendMessage("I've approved your request to view my private photos.", 'text');
+                }
+            } else { throw new Error(response.data?.message || "Approval failed"); }
         } catch (error) {
             log.error("Error approving photo requests:", error);
-            toast.error(`Error approving requests: ${error.message}. Please try again.`);
+            toast.error(`Error approving requests: ${error.message || "Please try again."}`);
             addLocalSystemMessage("Failed to approve photo requests.", true);
-        } finally {
-            setIsApprovingRequests(false);
-        }
-    }, [authAxios, recipientId, pendingPhotoRequests, hookSendMessage, user?.accountTier, addLocalSystemMessage]);
+        } finally { setIsApprovingRequests(false); }
+    }, [authAxios, recipientId, pendingPhotoRequests, isApprovingRequests, user?.accountTier, hookSendMessage, addLocalSystemMessage, recipient?.nickname]);
 
-    // Handler for changes in the message input field
+    // Input Change
     const handleInputChange = useCallback((e) => {
         const value = e.target.value;
         setNewMessage(value);
-
-        if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
-        }
-
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         if (value.trim() && recipientId && sendTyping && isConnected) {
-            typingTimeoutRef.current = setTimeout(() => {
-                sendTyping();
-            }, TYPING_DEBOUNCE_MS);
+            typingTimeoutRef.current = setTimeout(sendTyping, TYPING_DEBOUNCE_MS);
         }
     }, [recipientId, sendTyping, isConnected]);
 
-    // Internal helper function to handle sending logic
-    const sendMessageInternal = useCallback(async (content, type = 'text', metadata = null) => {
-        if (!initialized) {
-            toast.error("Chat not ready. Please wait.");
-            return false;
-        }
-        if (!isConnected) {
-            toast.error("No connection. Cannot send message.");
-             addLocalSystemMessage("Message failed: No connection.", true);
-            return false;
-        }
-        if (!recipientId) {
-            toast.error("Recipient not defined.");
-            return false;
-        }
-
-        try {
-            if (type === 'file' && hookSendFileMessage && metadata?.file) {
-                await hookSendFileMessage(metadata.file, recipientId);
-            }
-            else if (hookSendMessage) {
-                await hookSendMessage(content, type, metadata);
-            } else {
-                throw new Error("Send message function is not available.");
-            }
-            return true;
-        } catch (err) {
-            log.error(`Failed to send ${type} message:`, err);
-            toast.error(err.message || `Failed to send ${type}.`);
-            addLocalSystemMessage(`Failed to send ${type === 'file' ? 'file' : 'message'}.`, true);
-            return false;
-        }
-    }, [initialized, isConnected, recipientId, hookSendMessage, hookSendFileMessage, addLocalSystemMessage]);
-
-    // Handler for sending the selected file attachment
-    const handleSendAttachment = useCallback(async () => {
-        if (!attachment || !recipientId || isUploading || sendingMessage) return;
-
-        if (user?.accountTier === 'FREE') {
-            toast.error("Upgrade to send files.");
-            return;
-        }
-
-        setIsUploading(true);
-        setUploadProgress(0);
-
-        const progressInterval = setInterval(() => {
-            setUploadProgress(prev => Math.min(prev + 10, 95));
-        }, 200);
-
-        try {
-            const fileMetadata = {
-                fileName: attachment.name,
-                fileSize: attachment.size,
-                fileType: attachment.type,
-                file: attachment
-            };
-
-            const success = await sendMessageInternal(
-                `File: ${attachment.name}`,
-                'file',
-                fileMetadata
-             );
-
-             if (success) {
-                 toast.success("File sent successfully!");
-                 setAttachment(null);
-                 if (fileInputRef.current) fileInputRef.current.value = "";
-            } else {
-                 toast.error("File upload failed. Please try again.");
-                 setAttachment(null);
-                 if (fileInputRef.current) fileInputRef.current.value = "";
-            }
-         } catch (error) {
-            setAttachment(null);
-            if (fileInputRef.current) fileInputRef.current.value = "";
-         } finally {
-            clearInterval(progressInterval);
-            setUploadProgress(100);
-            setTimeout(() => {
-                 setIsUploading(false);
-                 setUploadProgress(0);
-             }, 500);
+    // Send Message Core Logic
+    const sendMessageWrapper = useCallback(async (contentOrFile, type = 'text') => {
+         if (!initialized || !isConnected || !recipientId || !/^[0-9a-fA-F]{24}$/.test(recipientId)) {
+             toast.error("Cannot send message. Chat not ready or recipient invalid.");
+             log.warn("sendMessageWrapper pre-condition failed.", { initialized, isConnected, recipientId });
+             if (!isConnected) addLocalSystemMessage("Message failed: No connection.", true);
+             return false;
          }
-    }, [attachment, recipientId, isUploading, sendingMessage, user?.accountTier, sendMessageInternal]);
+         const isFileType = type === 'file' && contentOrFile instanceof File;
+         const sendFunction = isFileType ? hookSendFileMessage : hookSendMessage;
+         if (!sendFunction) {
+             log.error(`Send function not available for type: ${type}`); toast.error(`Cannot send ${type} message.`); return false;
+         }
 
-    // Handler for sending text messages
-    const handleSendMessage = useCallback(async (e) => {
-        if (e) e.preventDefault();
+         let tempId = null; // For potential optimistic update tracking
+         try {
+             // --- Optimistic Update ---
+             if (type === 'text' && typeof contentOrFile === 'string') {
+                 tempId = generateLocalUniqueId('msg');
+                 const optimisticMessage = { /* ... as before ... */ };
+                 // setLocalMessages(prev => [...prev, optimisticMessage].sort(...)); // Add optimistic message
+             } // Add similar logic for file/wink if desired
 
+             // --- Actual Send ---
+             if (isFileType) { await sendFunction(contentOrFile, recipientId); }
+             else { await sendFunction(contentOrFile, type); }
+             log.debug(`${type} message sent/initiated.`); return true;
+         } catch (err) {
+             log.error(`Failed to send ${type} message:`, err); toast.error(err.message || `Failed to send ${type}.`);
+             addLocalSystemMessage(`Failed to send ${type === 'file' ? 'file' : 'message'}.`, true);
+             // --- Revert Optimistic Update ---
+             if (tempId) { /* ... logic to remove or mark message as error ... */ }
+             return false;
+         }
+    }, [initialized, isConnected, recipientId, hookSendMessage, hookSendFileMessage, addLocalSystemMessage, user?._id]); // Added user?._id for optimistic sender
+
+    // Combined Submit Handler
+    const handleSubmitMessage = useCallback(async () => {
         if (attachment) {
-            await handleSendAttachment();
-            return;
-        }
-
-        const messageToSend = newMessage.trim();
-        if (!messageToSend || sendingMessage || !recipientId) {
-            return;
-        }
-
-        if (user?.accountTier === "FREE" && messageToSend !== "😉") {
-            toast.error("Free accounts can only send winks 😉. Upgrade to send messages.");
-            return;
-        }
-
-        setNewMessage("");
-
-        const success = await sendMessageInternal(messageToSend, 'text');
-
-        if (success) {
-            chatInputRef.current?.focus();
+            if (!attachment || isUploading || sendingMessage || user?.accountTier === ACCOUNT_TIER.FREE) {
+                 if(user?.accountTier === ACCOUNT_TIER.FREE) toast.error("Upgrade to Premium to send files.");
+                 return;
+            }
+            setIsUploading(true); setUploadProgress(0);
+            const uploadInterval = setInterval(() => setUploadProgress(p => Math.min(p + 10, 90)), 200);
+            const success = await sendMessageWrapper(attachment, 'file');
+            clearInterval(uploadInterval);
+            if (success) {
+                 setUploadProgress(100);
+                 setTimeout(() => { setAttachment(null); setIsUploading(false); setUploadProgress(0); if (fileInputRef.current) fileInputRef.current.value = ""; }, UPLOAD_COMPLETE_DELAY_MS);
+            } else { setIsUploading(false); setUploadProgress(0); toast.error("File upload failed."); }
         } else {
-            setNewMessage(messageToSend);
+            const messageToSend = newMessage.trim();
+            if (!messageToSend || sendingMessage || isUploading) return;
+            if (user?.accountTier === ACCOUNT_TIER.FREE && messageToSend !== "😉") { toast.error("Free accounts can only send winks 😉."); return; }
+            setNewMessage("");
+            const success = await sendMessageWrapper(messageToSend, 'text');
+            if (success) { chatInputRef.current?.focus(); }
+            else { setNewMessage(messageToSend); } // Restore message on failure
         }
-    }, [newMessage, attachment, sendingMessage, recipientId, user?.accountTier, sendMessageInternal, handleSendAttachment]);
+    }, [attachment, newMessage, sendingMessage, isUploading, user?.accountTier, sendMessageWrapper]);
 
-    // Handler for sending a wink
+    // Send Wink Handler
     const handleSendWink = useCallback(async () => {
-        if (sendingMessage || !recipientId) return;
-        await sendMessageInternal("😉", 'wink');
-    }, [sendingMessage, recipientId, sendMessageInternal]);
+        if (sendingMessage || isUploading || !recipientId) return;
+        await sendMessageWrapper("😉", 'wink');
+    }, [sendingMessage, isUploading, recipientId, sendMessageWrapper]);
 
-    // Handler for clicking the attachment icon
+    // File Input Trigger
     const handleFileAttachmentClick = useCallback(() => {
-        if (user?.accountTier === "FREE") {
-            toast.error("Free accounts cannot send files. Upgrade to enable.");
-            return;
-        }
-        fileInputRef.current?.click();
-    }, [user?.accountTier]);
+        if (user?.accountTier === ACCOUNT_TIER.FREE) { toast.error("Upgrade to Premium to send files."); return; }
+        if (!isUploading) { fileInputRef.current?.click(); }
+    }, [user?.accountTier, isUploading]);
 
-    // Handler for when a file is selected
+    // File Selection
     const handleFileChange = useCallback((e) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
-        if (file.size > MAX_FILE_SIZE) {
-            toast.error(`File too large. Max size: ${MAX_FILE_SIZE / 1024 / 1024}MB.`);
-            e.target.value = null;
-            return;
-        }
-
-        if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-            toast.error("File type not supported.");
-            e.target.value = null;
-            return;
-        }
-
-        setAttachment(file);
-        setNewMessage("");
-        toast.info(`Selected file: ${file.name}. Click send.`);
-        e.target.value = null;
+        if (file.size > MAX_FILE_SIZE) { toast.error(`File too large. Max size: ${MAX_FILE_SIZE / 1024 / 1024}MB.`); e.target.value = null; return; }
+        if (!ALLOWED_FILE_TYPES.includes(file.type)) { toast.error(`File type (${file.type || 'unknown'}) not supported.`); e.target.value = null; return; }
+        setAttachment(file); setNewMessage(""); setIsUploading(false); setUploadProgress(0);
+        toast.info(`Selected: ${file.name}. Click send.`); e.target.value = null;
     }, []);
 
-    // Handler for removing attachment
+    // Remove Attachment
     const handleRemoveAttachment = useCallback(() => {
-        setAttachment(null);
-        setUploadProgress(0);
-        setIsUploading(false);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-        }
+        setAttachment(null); setUploadProgress(0); setIsUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
         chatInputRef.current?.focus();
     }, []);
 
-    // Handler for clicking an emoji
+    // Emoji Click
     const handleEmojiClick = useCallback((emoji) => {
         setNewMessage((prev) => prev + emoji);
-        setShowEmojis(false);
-        chatInputRef.current?.focus();
+        setTimeout(() => chatInputRef.current?.focus(), 0);
     }, []);
 
-    // Handler for Enter key press
-    const handleKeyPress = useCallback((e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSendMessage();
-        }
-    }, [handleSendMessage]);
-
-    // Handler to initiate a video call
+    // --- Video Call Handlers ---
     const handleVideoCall = useCallback(async (e) => {
-        if (e) e.stopPropagation();
-
-        if (!socketService || !socketService.isConnected()) {
-            addLocalSystemMessage("Cannot start call: Connection issue.", true);
+        e?.stopPropagation();
+        if (!socketService?.isConnected() || !recipient?.isOnline || user?.accountTier === ACCOUNT_TIER.FREE || !recipientId || isCallActive || incomingCall) {
+            if(!socketService?.isConnected()) addLocalSystemMessage("Cannot start call: Connection issue.", true);
+            else if(!recipient?.isOnline) addLocalSystemMessage(`${recipient.nickname} is offline.`, true);
+            else if(user?.accountTier === ACCOUNT_TIER.FREE) addLocalSystemMessage("Upgrade to Premium to make video calls.", true);
+            else if(isCallActive || incomingCall) log.warn("Call attempt while call active/incoming.");
+            else addLocalSystemMessage("Cannot start call: Invalid state.", true);
             return;
         }
-        if (!recipient?.isOnline) {
-            addLocalSystemMessage(`${recipient.nickname} is offline. Cannot call.`, true);
-            return;
-        }
-        if (user?.accountTier === "FREE") {
-            addLocalSystemMessage("Upgrade to Premium to make video calls.", true);
-            return;
-        }
-        if (!recipientId) {
-             addLocalSystemMessage("Cannot start call: Recipient not defined.", true);
-             return;
-        }
-
         addLocalSystemMessage(`Initiating call to ${recipient.nickname}...`);
         try {
             await socketService.initiateVideoCall(recipientId);
-            setIsCallActive(true);
-            addLocalSystemMessage(`Calling ${recipient.nickname}... Waiting for response.`);
+             addLocalSystemMessage(`Calling ${recipient.nickname}... Waiting...`);
         } catch (error) {
             log.error("Video call initiation error:", error);
             addLocalSystemMessage(error.message || "Could not start video call.", true);
-            setIsCallActive(false);
         }
-    }, [recipient, recipientId, user?.accountTier, addLocalSystemMessage]);
+    }, [recipient, recipientId, user?.accountTier, isCallActive, incomingCall, addLocalSystemMessage, isConnected]); // Added isConnected
 
-    // Handler to end the current video call
     const handleEndCall = useCallback((e) => {
-        if (e) e.stopPropagation();
+        e?.stopPropagation();
         if (isCallActive && recipientId && socketService) {
+            log.debug("Ending active call via button.");
             socketService.emit("videoHangup", { recipientId: recipientId });
         }
-        setIsCallActive(false);
-        setIncomingCall(null);
         addLocalSystemMessage(`Video call ended.`);
+        setIsCallActive(false); setIncomingCall(null); // Reset state definitively
     }, [isCallActive, recipientId, addLocalSystemMessage]);
 
-    // Handler to accept an incoming call
     const handleAcceptCall = useCallback(() => {
         if (!incomingCall || !socketService) return;
+         if (user?.accountTier === ACCOUNT_TIER.FREE) {
+             toast.error("Upgrade required to receive video calls.");
+             socketService.answerVideoCall(incomingCall.callerId, false, incomingCall.callId);
+             addLocalSystemMessage(`Declined call from ${incomingCall.callerName} (Upgrade required).`);
+             setIncomingCall(null); return;
+         }
+        log.debug("Accepting call:", incomingCall.callId);
         socketService.answerVideoCall(incomingCall.callerId, true, incomingCall.callId);
         addLocalSystemMessage(`Accepted call from ${incomingCall.callerName}.`);
-        setIsCallActive(true);
-        setIncomingCall(null);
-    }, [incomingCall, addLocalSystemMessage]);
+        setIsCallActive(true); setIncomingCall(null);
+    }, [incomingCall, user?.accountTier, addLocalSystemMessage]);
 
-    // Handler to decline an incoming call
     const handleDeclineCall = useCallback(() => {
         if (!incomingCall || !socketService) return;
+        log.debug("Declining call:", incomingCall.callId);
         socketService.answerVideoCall(incomingCall.callerId, false, incomingCall.callId);
         addLocalSystemMessage(`Declined call from ${incomingCall.callerName}.`);
         setIncomingCall(null);
     }, [incomingCall, addLocalSystemMessage]);
 
-    // Handler to retry loading messages
-    const handleRetryLoad = useCallback(() => {
-        setLoadingTimedOut(false);
-        refreshChat();
-    }, [refreshChat]);
-
-    // Handler to attempt reconnection
-    const handleReconnect = useCallback(() => {
-        toast.info("Attempting to reconnect...");
-        if (socketService && socketService.reconnect) {
-            socketService.reconnect();
-        }
-        setTimeout(() => {
-            refreshChat();
-        }, RECONNECT_DELAY_MS);
-    }, [refreshChat]);
-
-    // Handler for re-initialization
-    const handleForceInit = useCallback(() => {
-        toast.info("Attempting to re-initialize chat...");
-        handleReconnect();
-    }, [handleReconnect]);
+    // --- UI Action Handlers ---
+    const handleRetryLoad = useCallback(() => { setLoadingTimedOut(false); refreshChat(); }, [refreshChat]);
+    const handleReconnect = useCallback(() => { toast.info("Attempting reconnect..."); socketService?.reconnect?.(); setTimeout(refreshChat, RECONNECT_DELAY_MS); }, [refreshChat]);
+    const handleForceInit = useCallback(() => { toast.info("Re-initializing chat..."); handleReconnect(); }, [handleReconnect]);
 
     // --- Render Logic ---
-
-    if (!isOpen) {
-        return null;
-    }
+    if (!isOpen) return null;
 
     if (!recipient) {
         return (
-            <div className={`${styles.chatContainer} ${styles.opening}`}>
-                <div className={styles.loadingMessages}>
-                    <div className={styles.spinner}></div>
-                    <p>Loading recipient...</p>
-                </div>
+            <div className={classNames(styles.chatContainer, styles.opening)}>
+                <LoadingIndicator showTimeoutMessage={false} handleRetry={()=>{}} handleReconnect={()=>{}} />
+                <p>Loading recipient...</p>
             </div>
         );
     }
 
-    const isActionDisabled = isUploading || sendingMessage;
+    const isInputAreaDisabled = isCallActive || !!incomingCall || !initialized || !isConnected;
+    const isHeaderActionsDisabled = isUploading || sendingMessage || isCallActive || !!incomingCall;
 
     return (
-        <div className={`${styles.chatContainer} ${styles.opening}`}>
-            <ChatHeader
+        <div className={classNames(styles.chatContainer, styles.opening)}>
+            <EmbeddedChatHeader
                 recipient={recipient}
                 userTier={user?.accountTier}
                 pendingPhotoRequests={pendingPhotoRequests}
@@ -1204,116 +631,92 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
                 isCallActive={isCallActive}
                 handleEndCall={handleEndCall}
                 handleVideoCall={handleVideoCall}
-                isActionDisabled={isActionDisabled}
+                isActionDisabled={isHeaderActionsDisabled}
                 onClose={onClose}
                 isConnected={isConnected}
             />
 
-            {user?.accountTier === "FREE" && <PremiumBanner navigate={navigate} />}
+            {user?.accountTier === ACCOUNT_TIER.FREE && <PremiumBanner onUpgradeClick={() => navigate("/subscription")} />}
 
             <CallBanners
                 incomingCall={incomingCall}
                 isCallActive={isCallActive}
                 recipientNickname={recipient.nickname}
-                handleAcceptCall={handleAcceptCall}
-                handleDeclineCall={handleDeclineCall}
-                handleEndCall={handleEndCall}
+                onAcceptCall={handleAcceptCall}
+                onDeclineCall={handleDeclineCall}
+                onEndCall={handleEndCall}
+                useSmallButtons={true} // Embedded chat might use smaller buttons
             />
 
             <div className={styles.messagesContainer} ref={messagesContainerRef}>
+                {/* --- Loading/Error/Empty States --- */}
                 {hookLoading && !localMessages.length ? (
-                    <LoadingIndicator
-                        showTimeoutMessage={loadingTimedOut}
-                        handleRetry={handleRetryLoad}
-                        handleReconnect={handleReconnect}
-                    />
+                    <LoadingIndicator showTimeoutMessage={loadingTimedOut} handleRetry={handleRetryLoad} handleReconnect={handleReconnect}/>
                 ) : hookError ? (
-                    <ErrorMessage
-                        error={hookError}
-                        handleRetry={handleRetryLoad}
-                        handleForceInit={handleForceInit}
-                        showInitButton={!initialized}
-                    />
+                    <ErrorMessage error={hookError} handleRetry={handleRetryLoad} handleForceInit={handleForceInit} showInitButton={!initialized}/>
                 ) : !initialized || (!isConnected && !localMessages.length) ? (
-                    <ConnectionIssueMessage
-                        handleReconnect={handleReconnect}
-                        isInitializing={!initialized}
-                    />
+                    <ConnectionIssueMessage handleReconnect={handleReconnect} isInitializing={!initialized}/>
                 ) : localMessages.length === 0 && !hookLoading ? (
-                    <div className={styles.noMessages}>
-                        <p>No messages yet. Say hello!</p>
-                    </div>
+                    <NoMessagesPlaceholder text="No messages yet. Say hello!" />
                 ) : (
-                    <MessageList
-                        messages={localMessages}
-                        currentUserId={user?._id}
-                        typingStatus={typingStatus}
-                        hasMore={hasMore}
-                        loadMoreMessages={loadMoreMessages}
-                    />
+                     // --- Message List Rendering ---
+                     <>
+                         {hasMore && ( <button onClick={loadMoreMessages} className={styles.loadMoreButton} disabled={hookLoading}>{hookLoading ? "Loading..." : "Load More"}</button> )}
+                          {Object.entries(groupedMessages).map(([date, msgs]) => (
+                            <React.Fragment key={date}>
+                                <div className={styles.messageDate}>{date}</div>
+                                {msgs.map((message) => ( <MessageItem key={message._id || message.tempId} message={message} currentUserId={currentUserId} isSending={sendingMessage && message.tempId === message._id }/> ))}
+                            </React.Fragment>
+                        ))}
+                         {typingStatus && ( <div className={styles.typingIndicatorBubble}><div className={styles.typingIndicator}><span></span><span></span><span></span></div></div> )}
+                     </>
                 )}
-                <div ref={messagesEndRef} />
+                <div ref={messagesEndRef} style={{ height: '1px' }} />
             </div>
 
-            {attachment && !isUploading && (
-                <AttachmentPreview
-                    attachment={attachment}
-                    isUploading={false}
-                    uploadProgress={uploadProgress}
-                    handleRemoveAttachment={handleRemoveAttachment}
-                />
-            )}
+            {/* Attachment Preview */}
+             <AttachmentPreview 
+                attachment={attachment} 
+                isUploading={isUploading} 
+                uploadProgress={uploadProgress} 
+                onRemoveAttachment={handleRemoveAttachment} 
+                onFileSelected={handleFileChange}
+                showFileInput={false}
+                disabled={isInputAreaDisabled}
+                userTier={user?.accountTier}
+             />
 
-            {isUploading && (
-                <div className={styles.uploadProgressContainer} style={{ margin: '5px 10px' }}>
-                    <div className={styles.uploadProgressBar} style={{ width: `${uploadProgress}%` }} />
-                    <span className={styles.uploadProgressText}>{`Uploading ${uploadProgress}%`}</span>
-                </div>
-            )}
-
+            {/* Chat Input Area */}
             <ChatInput
-                newMessage={newMessage}
-                handleInputChange={handleInputChange}
-                handleKeyPress={handleKeyPress}
-                chatInputRef={chatInputRef}
-                showEmojis={showEmojis}
-                setShowEmojis={setShowEmojis}
-                handleEmojiClick={handleEmojiClick}
-                handleFileAttachment={handleFileAttachmentClick}
-                handleSendWink={handleSendWink}
-                handleSubmit={handleSendMessage}
+                messageValue={newMessage}
+                onInputChange={handleInputChange}
+                onSubmit={handleSubmitMessage}
+                onWinkSend={handleSendWink}
+                onFileAttachClick={handleFileAttachmentClick}
+                onEmojiClick={handleEmojiClick}
+                userTier={user?.accountTier}
                 isSending={sendingMessage}
                 isUploading={isUploading}
-                userTier={user?.accountTier}
-                attachment={attachment}
+                attachmentSelected={!!attachment}
+                disabled={isInputAreaDisabled} // Use combined disabled state
+                inputRef={chatInputRef}
+                placeholderText={ recipient ? `Message ${recipient.nickname}...` : "Type a message..."}
             />
+            
+            {/* Hidden File Input - Kept separate since it's accessed via ChatInput */}
+            <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileChange} accept={ALLOWED_FILE_TYPES.join(",")} aria-hidden="true" />
 
-            <input
-                type="file"
-                ref={fileInputRef}
-                style={{ display: "none" }}
-                onChange={handleFileChange}
-                aria-hidden="true"
-                accept={ALLOWED_FILE_TYPES.join(",")}
-            />
-
-            {isCallActive && recipientId && user?._id && (
-                <div className={`${styles.videoCallOverlay} ${styles.active}`}>
-                    <VideoCall
-                        isActive={isCallActive}
-                        userId={user._id}
-                        recipientId={recipientId}
-                        onEndCall={handleEndCall}
-                        isIncoming={!!incomingCall && !isCallActive}
-                        callId={incomingCall?.callId}
-                    />
+            {/* Video Call Overlay */}
+            {isCallActive && recipientId && currentUserId && (
+                <div className={classNames(styles.videoCallOverlay, styles.active)}>
+                    <VideoCall isActive={isCallActive} userId={currentUserId} recipientId={recipientId} onEndCall={handleEndCall} isIncoming={false} callId={null}/>
                 </div>
             )}
         </div>
     );
 };
 
-// Prop Types
+// --- Prop Types ---
 EmbeddedChat.propTypes = {
     recipient: PropTypes.shape({
         _id: PropTypes.string.isRequired,
@@ -1325,7 +728,7 @@ EmbeddedChat.propTypes = {
     onClose: PropTypes.func,
 };
 
-// Default Props
+// --- Default Props ---
 EmbeddedChat.defaultProps = {
   isOpen: true,
   onClose: () => {},

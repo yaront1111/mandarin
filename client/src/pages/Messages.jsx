@@ -1,11 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useContext, useCallback, useMemo } from "react";
-//                                                                    ^^^^^^^^ Add useMemo here
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import chatService from "../services/ChatService";
-import { formatMessagePreview, groupMessagesByDate, formatDate, classNames } from "../utils";
+import { formatMessagePreview, formatDate, classNames } from "../utils";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import Avatar from "../components/common/Avatar";
 import MessagesWrapper from '../components/MessagesWrapper';
@@ -38,15 +37,24 @@ import VideoCall from "../components/VideoCall";
 import socketService from "../services/socketService";
 import styles from "../styles/Messages.module.css";
 
+// Chat components
+import AttachmentPreview from "../components/chat/AttachmentPreview";
+import CallBanners from "../components/chat/CallBanners";
+import PremiumBanner from "../components/chat/PremiumBanner";
+import { 
+  groupMessagesByDate,
+  generateLocalUniqueId 
+} from "../components/chat/chatUtils";
+import { ACCOUNT_TIER } from "../components/chat/chatConstants";
+import ChatInput from "../components/chat/ChatInput";
+import MessageItem from "../components/chat/MessageItem";
+import { LoadingIndicator, ErrorMessage, NoMessagesPlaceholder } from "../components/chat/ChatStatusIndicators";
+
 // Add gesture support for mobile
 const SWIPE_THRESHOLD = 50; // Minimum distance to trigger swipe action
 
-// Counter to guarantee unique system message IDs
-let idCounter = 0;
-const generateUniqueId = () => {
-  idCounter++;
-  return `system-${Date.now()}-${idCounter}-${Math.random().toString(36).substring(2, 15)}`;
-};
+// Use function from chatUtils instead
+const generateUniqueId = () => generateLocalUniqueId('system');
 
 const Messages = () => {
   // Context and router hooks
@@ -162,7 +170,7 @@ const Messages = () => {
     };
   }, [activeConversation]);
 
-  // Initialize chat service and fetch conversations
+  // Initialize chat service, fetch conversations, and set up file URL cache
   useEffect(() => {
     if (authLoading || !isAuthenticated || !currentUser?._id || chatInitializedRef.current) {
       if (!authLoading && !isAuthenticated) {
@@ -170,6 +178,26 @@ const Messages = () => {
         setError("Please log in to view messages.");
       }
       return;
+    }
+    
+    // Initialize file URL cache if it doesn't exist
+    if (typeof window !== 'undefined' && !window.__fileMessages) {
+      console.log("Initializing file URL cache");
+      window.__fileMessages = {};
+      
+      // Check localStorage for persisted file URLs
+      try {
+        const persistedUrls = localStorage.getItem('mandarin_file_urls');
+        if (persistedUrls) {
+          const parsed = JSON.parse(persistedUrls);
+          if (parsed && typeof parsed === 'object') {
+            window.__fileMessages = parsed;
+            console.log(`Restored ${Object.keys(parsed).length} file URLs from localStorage`);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to load persisted file URLs", e);
+      }
     }
 
     const initChat = async () => {
@@ -222,40 +250,147 @@ const Messages = () => {
 
       if (activeConversation && activeConversation.user._id === partnerId) {
         setMessages((prev) => {
-          let isDuplicate = prev.some(msg =>
-            msg._id === newMessage._id ||
-            (newMessage.tempId && msg.tempId === newMessage.tempId)
-          );
+          // Enhanced duplicate detection to identify duplicates even with different IDs
+          let isDuplicate = prev.some(msg => {
+            // Check for exact ID match first
+            if (msg._id === newMessage._id || (newMessage.tempId && msg.tempId === newMessage.tempId)) {
+              return true;
+            }
+            
+            // Enhanced detection: compare sender, timestamp (with tolerance), content and type
+            const timeStr = newMessage.createdAt?.substring(0, 19) || ''; // Ignore milliseconds precision
+            const msgTimeStr = msg.createdAt?.substring(0, 19) || '';
+            const contentKey = (newMessage.content || '').substring(0, 50); // First 50 chars
+            const msgContentKey = (msg.content || '').substring(0, 50);
+            
+            // Compare core attributes to detect the same message with different IDs
+            return msg.sender === newMessage.sender && 
+                   Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 3000 && // 3 second tolerance
+                   msgContentKey === contentKey &&
+                   msg.type === newMessage.type;
+          });
 
-          if (!isDuplicate && newMessage.type === 'file' && newMessage.metadata?.url) {
-            isDuplicate = prev.some(msg =>
-              msg.type === 'file' &&
-              msg.metadata?.url === newMessage.metadata.url &&
-              msg.sender === newMessage.sender &&
-              Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 10000
-            );
-
-            if (isDuplicate) {
-              const placeholderIndex = prev.findIndex(msg =>
-                msg.type === 'file' &&
-                msg.metadata?.url === newMessage.metadata.url &&
-                msg.metadata?.__localPlaceholder === true
+          // Handle file messages specially
+          if (newMessage.type === 'file' && (newMessage.metadata?.url || newMessage.metadata?.fileUrl)) {
+            console.log("Processing file message:", newMessage._id);
+            
+            // First check for exact match by ID to avoid duplicates
+            if (prev.some(msg => msg._id === newMessage._id)) {
+              console.log("Exact ID match found, skipping duplicate");
+              return prev;
+            }
+            
+            // Next, check for placeholders that need to be replaced (our own uploads)
+            if (newMessage.sender === currentUser._id) {
+              // Look for a matching tempId or a file upload placeholder
+              const placeholderIndex = prev.findIndex(msg => 
+                (msg.tempId && msg.tempId === newMessage.tempId) ||
+                (msg.type === 'file' && 
+                 msg.metadata?.__localPlaceholder === true && 
+                 msg.sender === currentUser._id &&
+                 Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 60000)
               );
-
+              
               if (placeholderIndex >= 0) {
-                console.log("Replacing placeholder with real message:", newMessage._id);
+                console.log("Replacing placeholder with real file message:", newMessage._id);
+                
+                // Extract the definitive file URL
+                const serverUrl = newMessage.metadata.url || newMessage.metadata.fileUrl;
+                
+                // Create a proper normalized message with all needed fields
                 const updatedMessages = [...prev];
                 updatedMessages[placeholderIndex] = {
                   ...newMessage,
+                  _id: newMessage._id, // Ensure server ID is used
+                  tempId: null, // Clear tempId
                   metadata: {
                     ...newMessage.metadata,
-                    fileUrl: newMessage.metadata.url || newMessage.metadata.fileUrl,
-                    url: newMessage.metadata.url || newMessage.metadata.fileUrl
+                    fileUrl: serverUrl,
+                    url: serverUrl,
+                    serverUrl: serverUrl, // Store server URL separately for persistence
+                    __localPlaceholder: false // No longer a placeholder
                   }
                 };
+                
+                // Revoke any blob URLs from the placeholder if present
+                const oldMsg = prev[placeholderIndex];
+                if (oldMsg.metadata?.fileUrl?.startsWith('blob:')) {
+                  try {
+                    URL.revokeObjectURL(oldMsg.metadata.fileUrl);
+                    console.log("Revoked blob URL for replaced message");
+                  } catch (e) {
+                    console.warn("Error revoking URL:", e);
+                  }
+                }
+                
+                // Save the URL to our persistent cache
+                if (typeof window !== 'undefined' && newMessage._id && serverUrl) {
+                  if (!window.__fileMessages) window.__fileMessages = {};
+                  window.__fileMessages[newMessage._id] = {
+                    url: serverUrl,
+                    timestamp: Date.now()
+                  };
+                  
+                  // Persist to localStorage
+                  try {
+                    localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
+                    console.log(`Cached file URL for ${newMessage._id} in localStorage`);
+                  } catch (e) {
+                    console.warn("Failed to persist file URL to localStorage", e);
+                  }
+                }
+                
+                console.log("Updated file message with actual server data");
                 return updatedMessages;
               }
             }
+            
+            // For completeness, handle the case of a totally new file message 
+            // that wasn't created by the current user
+            console.log("New file message received, adding to messages");
+            
+            // Make sure it has all required metadata fields
+            const normalizedNewMessage = {
+              ...newMessage,
+              metadata: {
+                ...newMessage.metadata,
+                fileUrl: newMessage.metadata.url || newMessage.metadata.fileUrl,
+                url: newMessage.metadata.url || newMessage.metadata.fileUrl,
+                serverUrl: newMessage.metadata.url || newMessage.metadata.fileUrl, // Add serverUrl for persistence
+                __processed: true // Mark as processed to avoid reprocessing
+              }
+            };
+            
+            // Store in our list of known file messages for recovery purposes
+            if (typeof window !== 'undefined' && !window.__fileMessages) {
+              window.__fileMessages = {};
+            }
+            
+            if (typeof window !== 'undefined') {
+              window.__fileMessages[normalizedNewMessage._id] = {
+                url: normalizedNewMessage.metadata.fileUrl,
+                timestamp: Date.now()
+              };
+              
+              // Cleanup old entries periodically
+              if (Object.keys(window.__fileMessages).length > 100) {
+                // Keep only the 50 most recent entries
+                const entries = Object.entries(window.__fileMessages);
+                entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
+                window.__fileMessages = Object.fromEntries(entries.slice(0, 50));
+              }
+              
+              // Persist file URLs to localStorage
+              try {
+                localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
+                console.log(`Persisted ${Object.keys(window.__fileMessages).length} file URLs to localStorage`);
+              } catch (e) {
+                console.warn("Failed to persist file URLs to localStorage", e);
+              }
+            }
+            
+            // Add to messages
+            return [...prev, normalizedNewMessage].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
           }
 
           if (isDuplicate) {
@@ -407,35 +542,62 @@ const Messages = () => {
 
   // Load messages for the active conversation
   useEffect(() => {
+    // Prevent unnecessary runs
     if (!activeConversation?.user?._id || !currentUser?._id) {
       setMessages([]);
       return;
     }
 
-    if (loadedConversationRef.current === activeConversation.user._id) return;
-    loadedConversationRef.current = activeConversation.user._id;
+    // Skip if we've already loaded this conversation's messages
+    if (loadedConversationRef.current === activeConversation.user._id) {
+      return;
+    }
 
+    console.log(`Loading messages for user: ${activeConversation.user._id} (previous: ${loadedConversationRef.current})`);
+    
+    // Set the ref early to prevent potential duplicate calls
+    const currentConversationId = activeConversation.user._id;
+    loadedConversationRef.current = currentConversationId;
+
+    // Set loading state
     setMessagesLoading(true);
+
+    // Use an IIFE to handle async loading
     (async () => {
       try {
-        await loadMessages(activeConversation.user._id);
-        if (targetUserIdParam !== activeConversation.user._id) {
-          // Use replace to avoid adding intermediate states to history
-          navigate(`/messages/${activeConversation.user._id}`, { replace: true });
+        // Load messages
+        await loadMessages(currentConversationId);
+        
+        // Only update URL if needed
+        if (targetUserIdParam !== currentConversationId) {
+          navigate(`/messages/${currentConversationId}`, { replace: true });
         }
-        markConversationAsRead(activeConversation.user._id);
+        
+        // Mark conversation as read
+        markConversationAsRead(currentConversationId);
+        
+        // Focus input and update UI
         messageInputRef.current?.focus();
         if (mobileView) setShowSidebar(false);
       } catch (err) {
         console.error("Error in loading messages:", err);
-        // Potentially set an error state here
+        setError(`Failed to load messages: ${err.message || "Unknown error"}`);
       } finally {
-        setMessagesLoading(false);
+        // Make sure we're still on the same conversation before changing state
+        if (loadedConversationRef.current === currentConversationId) {
+          setMessagesLoading(false);
+        }
       }
     })();
-  // Disabling exhaustive-deps for loadMessages & markConversationAsRead as they are stable functions
+
+    // Cleanup function
+    return () => {
+      // If navigation happens before loading completes,
+      // we don't want to update state for a conversation we've left
+      console.log(`Cleanup for messages loading. Current: ${loadedConversationRef.current}`);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConversation, currentUser?._id, targetUserIdParam, mobileView, navigate]);
+  }, [activeConversation?.user?._id, currentUser?._id]);
 
 
   // Auto-scroll to bottom when messages update
@@ -697,34 +859,98 @@ const Messages = () => {
    if (!currentUser?._id || !partnerUserId || partnerUserId === currentUser._id) {
      console.warn("Attempted to load messages with self or invalid partner ID");
      setMessages([]);
-     setMessagesLoading(false);
      return;
    }
+   
+   // Validate user ID
    const isValidId = /^[0-9a-fA-F]{24}$/.test(partnerUserId);
    if (!isValidId) {
      console.error(`Invalid partner user ID format: ${partnerUserId}`);
      toast.error("Cannot load messages: Invalid user ID format");
      setMessages([]);
-     setMessagesLoading(false);
      setError("Cannot load messages for this user (Invalid ID).");
      return;
    }
-   setMessagesLoading(true);
+   
+   // Store the ID we're loading for so we can check it hasn't changed
+   const loadingForUserId = partnerUserId;
+   
    try {
+     console.log(`Fetching messages for ${partnerUserId}`);
      const messagesData = await chatService.getMessages(partnerUserId);
+     
+     // Check we're still loading for the same user before updating state
+     if (loadedConversationRef.current !== loadingForUserId) {
+       console.log(`User changed during message fetch. Abandoning results for ${loadingForUserId}`);
+       return;
+     }
+     
      // Ensure messages are sorted correctly upon fetch
+     console.log(`Loaded ${messagesData.length} messages for ${partnerUserId}`);
+     
+     // Process messages to ensure file URLs are correctly set
+     const processedMessages = messagesData.map(msg => {
+       if (msg.type === 'file' && msg.metadata) {
+         // Check if we have this file URL cached
+         let cachedUrl = null;
+         
+         if (typeof window !== 'undefined' && window.__fileMessages && msg._id && window.__fileMessages[msg._id]) {
+           cachedUrl = window.__fileMessages[msg._id].url;
+           console.log(`Found cached URL for file message ${msg._id}`);
+         }
+         
+         // Get the best URL from available sources
+         const bestUrl = cachedUrl || msg.metadata.serverUrl || msg.metadata.url || msg.metadata.fileUrl;
+         
+         // If we have a good URL but no cache entry, add it to our cache
+         if (bestUrl && !cachedUrl && typeof window !== 'undefined' && msg._id) {
+           if (!window.__fileMessages) window.__fileMessages = {};
+           window.__fileMessages[msg._id] = { 
+             url: bestUrl, 
+             timestamp: Date.now() 
+           };
+           console.log(`Added URL for file message ${msg._id} to cache`);
+           
+           // Also persist to localStorage
+           try {
+             localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
+           } catch (e) {
+             console.warn("Failed to persist file URLs to localStorage", e);
+           }
+         }
+         
+         // Return a normalized message with consistent URL fields
+         return {
+           ...msg,
+           metadata: {
+             ...msg.metadata,
+             // Set all URL fields to the best URL we found
+             fileUrl: bestUrl,
+             url: bestUrl,
+             serverUrl: bestUrl,
+             __processed: true // Mark as processed to avoid duplicate processing
+           }
+         };
+       }
+       return msg;
+     });
+     
+     // Set messages with processed file URLs
      setMessages(
-       messagesData.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+       processedMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
      );
      setError(null); // Clear error on successful load
    } catch (err) {
+     // Check we're still on the same conversation before updating error state
+     if (loadedConversationRef.current !== loadingForUserId) {
+       return;
+     }
+     
      console.error("Error fetching messages:", err);
      const errorMsg = `Failed to load messages. ${err.message || "Server error"}`;
      toast.error(errorMsg);
      setError(errorMsg); // Set error state
      setMessages([]); // Clear messages on error
-   } finally {
-     setMessagesLoading(false);
    }
  }, [currentUser?._id]);
 
@@ -1033,35 +1259,72 @@ const Messages = () => {
       // you would need to manually send it here using chatService.sendMessage or a direct API call.
       // Let's assume the backend *does* broadcast it for now.
 
-      // We need to update the optimistic message metadata if possible, though waiting for socket is better.
-       setMessages((prev) =>
-         prev.map((msg) =>
-           msg.tempId === tempId
-             ? {
-                 ...msg,
-                 metadata: {
-                   ...msg.metadata,
-                   fileUrl: fileData.url, // Update with real URL
-                   url: fileData.url,
-                   __localPlaceholder: false, // Mark as no longer placeholder
-                   // Revoke the local object URL if it exists and differs from the server URL
-                   ...(msg.metadata?.fileUrl?.startsWith('blob:') && msg.metadata.fileUrl !== fileData.url && URL.revokeObjectURL(msg.metadata.fileUrl)),
-                 },
-               }
-             : msg
-         )
-       );
-
-      // Update conversation list now that we have the final message details (or let socket handle it)
-      // updateConversationList({...optimisticFileMessage, metadata: {...optimisticFileMessage.metadata, fileUrl: fileData.url, url: fileData.url }});
-
-
-      // If the local URL was used, revoke it after a short delay to allow rendering
-      if (optimisticFileMessage.metadata?.fileUrl?.startsWith('blob:')) {
+      // Store the uploaded file information in a global so we can reference it later
+      // This helps with tracking our uploads across page navigations
+      if (typeof window !== 'undefined') {
+        window.__lastUploadedFile = {
+          id: tempId,
+          url: fileData.url,
+          fileName: attachment.name,
+          timestamp: Date.now()
+        };
+        
+        // Clean up old references after a while
         setTimeout(() => {
-          URL.revokeObjectURL(optimisticFileMessage.metadata.fileUrl);
-        }, 1000); // Adjust delay as needed
+          if (window.__lastUploadedFile && window.__lastUploadedFile.id === tempId) {
+            window.__lastUploadedFile = null;
+          }
+        }, 60000); // 1 minute cleanup
+        
+        // Also store in our persistent cache
+        if (!window.__fileMessages) window.__fileMessages = {};
+        window.__fileMessages[tempId] = {
+          url: fileData.url,
+          timestamp: Date.now()
+        };
+        
+        // And persist to localStorage
+        try {
+          localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
+          console.log("Persisted uploaded file URL to localStorage");
+        } catch (e) {
+          console.warn("Failed to persist file URL to localStorage", e);
+        }
       }
+      
+      // Update the optimistic message with the real URL
+      // Keep both the local URL and real URL for a smooth transition
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.tempId === tempId
+            ? {
+                ...msg,
+                metadata: {
+                  ...msg.metadata,
+                  fileUrl: fileData.url, // Update with real URL
+                  url: fileData.url,
+                  __localPlaceholder: false, // Mark as no longer placeholder
+                  serverUrl: fileData.url, // Add a separate serverUrl field to track the permanent URL
+                },
+              }
+            : msg
+        )
+      );
+
+      // Update the conversation list with the new message including the file URL
+      updateConversationList({
+        ...optimisticFileMessage, 
+        metadata: {
+          ...optimisticFileMessage.metadata, 
+          fileUrl: fileData.url, 
+          url: fileData.url,
+          serverUrl: fileData.url,
+          __localPlaceholder: false
+        }
+      });
+      
+      // Keep the blob URL alive until we're sure the message has been rendered with the real URL
+      // We'll handle cleanup when the message is confirmed from the server
 
 
       toast.success("File uploaded successfully. Sending message..."); // Updated toast message
@@ -1392,43 +1655,60 @@ const Messages = () => {
   };
 
   const selectConversation = useCallback((conversation) => {
-    if (!conversation?.user?._id || (activeConversation && activeConversation.user._id === conversation.user._id))
+    // Validate the conversation and check if it's already selected
+    if (!conversation?.user?._id) {
+      console.warn("Attempted to select invalid conversation", conversation);
       return;
+    }
+    
+    // Skip if it's the same conversation
+    if (activeConversation && activeConversation.user._id === conversation.user._id) {
+      console.log("Already on this conversation, skipping");
+      return;
+    }
+    
+    // Can't message yourself
     if (conversation.user._id === currentUser?._id) {
       toast.warning("You cannot message yourself");
       return;
     }
+    
+    // Validate ID format
     if (!/^[0-9a-fA-F]{24}$/.test(conversation.user._id)) {
       toast.error("Cannot select conversation: Invalid user ID.");
       console.error("Attempted to select conversation with invalid ID:", conversation.user._id);
       return;
     }
 
-    // Reset relevant states before setting new conversation
-    setMessages([]); // Clear previous messages immediately
-    setMessagesLoading(true); // Indicate loading for the new conversation
-    setError(null); // Clear any previous errors
+    console.log(`Selecting conversation with user: ${conversation.user.nickname} (${conversation.user._id})`);
+
+    // Reset UI state immediately
     setMessageInput(""); // Clear message input
     setAttachment(null); // Clear any attachment preview
     setTypingUser(null); // Clear typing indicator
-    loadedConversationRef.current = null; // Reset loaded ref to force message loading
+    setError(null); // Clear any previous errors
+    
+    // Clear messages first to avoid showing previous conversation's messages
+    setMessages([]);
 
+    // Reset loadedConversationRef to force message loading in the messages effect
+    // NOTE: Only set this to null for a moment - the effect will set it to the new ID
+    loadedConversationRef.current = null;
+
+    // Update active conversation state
     setActiveConversation(conversation);
+    
+    // Navigate to the new conversation URL - use replace to avoid cluttering history
+    navigate(`/messages/${conversation.user._id}`, { replace: true });
 
-    // Navigate to the new conversation URL
-    navigate(`/messages/${conversation.user._id}`, { replace: true }); // Use replace to avoid history clutter
-
-    // Mark as read (will be handled by useEffect on activeConversation change, but can call here too)
-    // markConversationAsRead(conversation.user._id); // This might be redundant due to useEffect
-
+    // Update UI for mobile
     if (mobileView) {
-      setShowSidebar(false); // Hide sidebar on mobile when a convo is selected
+      setShowSidebar(false);
+      if ("vibrate" in navigator) {
+        navigator.vibrate(20);
+      }
     }
-
-    if (mobileView && "vibrate" in navigator) {
-      navigator.vibrate(20);
-    }
-  }, [activeConversation, currentUser?._id, mobileView, navigate]); // Dependencies
+  }, [activeConversation, currentUser?._id, mobileView, navigate]);
 
 
   const toggleSidebar = () => {
@@ -1683,129 +1963,87 @@ const Messages = () => {
               </div>
 
               {/* Premium Banner for FREE users */}
-              {currentUser?.accountTier === "FREE" && (
-                <div className={styles.premiumBanner}>
-                  <div>
-                    <FaCrown className={styles.premiumIcon} />
-                    <span>Upgrade to send messages and make calls</span>
-                  </div>
-                  <button className={styles.upgradeBtn} onClick={() => navigate("/subscription")}>
-                    Upgrade Now
-                  </button>
-                </div>
+              {currentUser?.accountTier === ACCOUNT_TIER.FREE && (
+                <PremiumBanner onUpgradeClick={() => navigate("/subscription")} />
               )}
 
-              {/* Active Call Banner */}
-              {isCallActive && (
-                <div className={styles.activeCallBanner}>
-                  <div>
-                    <FaVideo className={styles.callIcon} />
-                    <span>Call with {activeConversation.user.nickname}</span>
-                  </div>
-                  <button className={styles.endCallBtn} onClick={handleEndCall}>
-                    <FaPhoneSlash /> End Call
-                  </button>
-                </div>
-              )}
+              {/* Call Banners */}
+              <CallBanners
+                incomingCall={incomingCall}
+                isCallActive={isCallActive}
+                recipientNickname={activeConversation?.user?.nickname || 'User'}
+                onAcceptCall={() => {
+                  if (incomingCall?.callerId && /^[0-9a-fA-F]{24}$/.test(incomingCall.callerId)) {
+                    // Check account tier before accepting
+                    if (currentUser?.accountTier === ACCOUNT_TIER.FREE) {
+                      toast.error("Free accounts cannot receive video calls. Upgrade to accept.");
+                      // Decline automatically
+                      socketService.answerVideoCall(incomingCall.callerId, false, incomingCall.callId);
+                      setIncomingCall(null);
+                      return;
+                    }
 
-              {/* Incoming Call Banner */}
-              {incomingCall && !isCallActive && (
-                <div className={styles.incomingCallBanner}>
-                  <div className={styles.incomingCallInfo}>
-                    <FaVideo className={styles.callIcon} />
-                    {/* Use nickname from activeConversation for consistency */}
-                    <span>{activeConversation.user.nickname} is calling you</span>
-                  </div>
-                  <div className={styles.incomingCallActions}>
-                    <button
-                      className={styles.declineCallBtn}
-                      onClick={() => {
-                         // Validate callerId before answering
-                         if (incomingCall.callerId && /^[0-9a-fA-F]{24}$/.test(incomingCall.callerId)) {
-                           socketService.answerVideoCall(incomingCall.callerId, false, incomingCall.callId);
-                           const systemMessage = {
-                             _id: generateUniqueId(),
-                             sender: "system",
-                             content: `You declined the video call from ${activeConversation.user.nickname}.`,
-                             createdAt: new Date().toISOString(),
-                             type: "system",
-                           };
-                           setMessages((prev) => [...prev, systemMessage]);
-                         } else {
-                           console.error("Cannot decline call: Invalid caller ID format", incomingCall.callerId);
-                           toast.error("Error declining call (Invalid ID).");
-                         }
-                         setIncomingCall(null); // Clear banner after action
-                      }}
-                    >
-                      <FaTimes /> Decline
-                    </button>
-                    <button
-                      className={styles.acceptCallBtn}
-                      onClick={() => {
-                         // Validate callerId before answering
-                         if (incomingCall.callerId && /^[0-9a-fA-F]{24}$/.test(incomingCall.callerId)) {
-                             // Check account tier before accepting
-                             if (currentUser?.accountTier === "FREE") {
-                                 toast.error("Free accounts cannot receive video calls. Upgrade to accept.");
-                                 // Optionally decline automatically
-                                 socketService.answerVideoCall(incomingCall.callerId, false, incomingCall.callId);
-                                 setIncomingCall(null);
-                                 return;
-                             }
-
-                             socketService.answerVideoCall(incomingCall.callerId, true, incomingCall.callId);
-                             const systemMessage = {
-                               _id: generateUniqueId(),
-                               sender: "system",
-                               content: `You accepted the video call from ${activeConversation.user.nickname}.`,
-                               createdAt: new Date().toISOString(),
-                               type: "system",
-                             };
-                             setMessages((prev) => [...prev, systemMessage]);
-                             setIsCallActive(true); // Set call active
-                             setIncomingCall(null); // Clear banner
-                           } else {
-                               console.error("Cannot accept call: Invalid caller ID format", incomingCall.callerId);
-                               toast.error("Error accepting call (Invalid ID).");
-                               setIncomingCall(null); // Clear banner on error too
-                           }
-                       }}
-                    >
-                      <FaVideo /> Accept
-                    </button>
-                  </div>
-                </div>
-              )}
+                    socketService.answerVideoCall(incomingCall.callerId, true, incomingCall.callId);
+                    const systemMessage = {
+                      _id: generateUniqueId(),
+                      sender: "system",
+                      content: `You accepted the video call from ${activeConversation.user.nickname}.`,
+                      createdAt: new Date().toISOString(),
+                      type: "system",
+                    };
+                    setMessages((prev) => [...prev, systemMessage]);
+                    setIsCallActive(true);
+                    setIncomingCall(null);
+                  } else {
+                    console.error("Cannot accept call: Invalid caller ID format", incomingCall?.callerId);
+                    toast.error("Error accepting call (Invalid ID).");
+                    setIncomingCall(null);
+                  }
+                }}
+                onDeclineCall={() => {
+                  if (incomingCall?.callerId && /^[0-9a-fA-F]{24}$/.test(incomingCall.callerId)) {
+                    socketService.answerVideoCall(incomingCall.callerId, false, incomingCall.callId);
+                    const systemMessage = {
+                      _id: generateUniqueId(),
+                      sender: "system",
+                      content: `You declined the video call from ${activeConversation.user.nickname}.`,
+                      createdAt: new Date().toISOString(),
+                      type: "system",
+                    };
+                    setMessages((prev) => [...prev, systemMessage]);
+                  } else {
+                    console.error("Cannot decline call: Invalid caller ID format", incomingCall?.callerId);
+                    toast.error("Error declining call (Invalid ID).");
+                  }
+                  setIncomingCall(null);
+                }}
+                onEndCall={handleEndCall}
+                useSmallButtons={false}
+              />
 
               {/* Messages Area */}
               <div className={styles.messagesArea}>
                 {messagesLoading ? (
-                  <div className={styles.messagesLoading}>
-                    <LoadingSpinner size="medium" text="Loading messages..." centered />
-                  </div>
-                ) : error && messages.length === 0 ? ( // Show error only if messages failed to load initially
-                  <div className={styles.noMessages}>
-                    <div className={`${styles.noMessagesContent} ${styles.errorContent}`}>
-                      <p>Error loading messages:</p>
-                      <p>{error}</p>
-                       {/* Provide retry mechanism specific to loading messages */}
-                       <button onClick={() => loadMessages(activeConversation.user._id)} className={styles.btnSecondary}>
-                        Retry Loading Messages
-                      </button>
-                    </div>
-                  </div>
-                 ) : Object.entries(groupedMessages).length === 0 && !messagesLoading ? (
-                  // Show "No messages" only if not loading and no messages exist
-                   <div className={styles.noMessages}>
-                    <div className={styles.noMessagesContent}>
-                      <FaEnvelope size={40} />
-                      <p>No messages in this conversation yet.</p>
-                      <p className={styles.hint}>
-                           {currentUser?.accountTier === "FREE" ? "Send a wink to start!" : "Say hello to start the conversation!"}
-                       </p>
-                    </div>
-                  </div>
+                  <LoadingIndicator 
+                    showTimeoutMessage={false} 
+                    handleRetry={() => loadMessages(activeConversation.user._id)}
+                    handleReconnect={() => chatService.reconnect?.()}
+                  />
+                ) : error && messages.length === 0 ? (
+                  <ErrorMessage
+                    error={error}
+                    handleRetry={() => loadMessages(activeConversation.user._id)}
+                    handleForceInit={() => {
+                      chatInitializedRef.current = false;
+                      chatService.initialize(currentUser);
+                    }}
+                    showInitButton={true}
+                  />
+                ) : Object.entries(groupedMessages).length === 0 && !messagesLoading ? (
+                  <NoMessagesPlaceholder 
+                    text="No messages in this conversation yet."
+                    hint={currentUser?.accountTier === ACCOUNT_TIER.FREE ? "Send a wink to start!" : "Say hello to start the conversation!"}
+                  />
                 ) : (
                    // Render message groups
                    Object.entries(groupedMessages).map(([date, msgs]) => (
@@ -1814,174 +2052,19 @@ const Messages = () => {
                         <span>{date}</span>
                       </div>
                       {msgs.map((msg) => {
-                         // Validate message object before rendering
-                         if (!msg || (!msg._id && !msg.tempId)) {
-                           console.warn("Skipping rendering invalid message:", msg);
-                           return null;
-                         }
-                         const isFromMe = msg.sender === currentUser._id;
-                         let statusIndicator = null;
-                         if (isFromMe && msg.type !== 'system' && !msg.error) { // Don't show status for system or failed messages
-                              // Determine status: Sending (spinner), Sent (single check), Read (double check)
-                              if (msg.tempId && isSending && messages.some(m => m.tempId === msg.tempId)) {
-                                  statusIndicator = <FaSpinner className="fa-spin" size={12} title="Sending..." />;
-                              } else if (msg.read) {
-                                  statusIndicator = <FaCheckDouble size={12} title="Read" />;
-                              } else {
-                                  statusIndicator = <FaCheck size={12} title="Sent" />;
-                              }
-                          }
-
-                         return (
-                          <div
-                            key={msg._id || msg.tempId} // Use tempId as fallback key
-                             className={classNames(
-                                 styles.messageBubble,
-                                 isFromMe ? styles.sent : styles.received,
-                                 msg.type === "system" && styles.systemMessage,
-                                 msg.error && styles.errorMessageBubble, // Use a specific class for error bubbles
-                                 msg.type === "wink" && styles.winkMessage,
-                                 msg.metadata?.__localPlaceholder && styles.placeholderMessage // Style for placeholders
-                             )}
-                             title={msg.error ? "Message failed to send" : undefined}
-                          >
-                            {/* --- Message Content based on Type --- */}
-
-                             {/* System Message */}
-                             {msg.type === "system" ? (
-                              <div className={classNames(styles.systemMessageContent, msg.error && styles.errorContent)}>
-                                <p>{msg.content}</p>
-                                <span className={styles.messageTime} title={formatDate(msg.createdAt, { showTime: true, showDate: true })}>
-                                  {formatDate(msg.createdAt, { showTime: true, showDate: false })}
-                                </span>
-                              </div>
-                            ) :
-
-                            /* Wink Message */
-                            msg.type === "wink" ? (
-                              <div className={styles.winkContent}>
-                                <p className={styles.messageContent}>😉</p>
-                                <span className={styles.messageLabel}>Wink</span>
-                                <span className={styles.messageTime} title={formatDate(msg.createdAt, { showTime: true, showDate: true })}>
-                                  {formatDate(msg.createdAt, { showTime: true, showDate: false })}
-                                  {isFromMe && <span className={styles.statusIndicator}>{statusIndicator}</span>}
-                                </span>
-                              </div>
-                            ) :
-
-                            /* File Message */
-                            msg.type === "file" && msg.metadata ? (
-                              <div className={styles.fileMessage}>
-                                 {/* Image File */}
-                                 {msg.metadata.fileType?.startsWith("image/") ? (
-                                  <div className={styles.imageContainer}>
-                                     {/* Link wrapping the image */}
-                                     <a
-                                        href={msg.metadata.fileUrl || msg.metadata.url || "#"} // Fallback href
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className={styles.imageLink}
-                                        onClick={(e) => e.stopPropagation()} // Prevent bubble click
-                                        title={`View ${msg.metadata.fileName || "image"} in new tab`}
-                                      >
-                                      <img
-                                         // Use local blob URL for optimistic preview if available
-                                         src={msg.metadata.__localPlaceholder && msg.metadata.url?.startsWith('blob:') ? msg.metadata.url : (msg.metadata.fileUrl || msg.metadata.url || "/placeholder.svg")}
-                                         alt={msg.metadata.fileName || "Image attachment"}
-                                         className={classNames(styles.imageAttachment, msg.metadata.__localPlaceholder && styles.loading)} // Add loading style for placeholder
-                                         loading="lazy" // Lazy load images
-                                         onLoad={(e) => {
-                                             // console.log("Image loaded:", msg.metadata.fileName);
-                                             e.target.classList.remove(styles.loading);
-                                         }}
-                                         onError={(e) => {
-                                            console.error("Image failed to load:", msg.metadata.fileUrl || msg.metadata.url);
-                                            e.target.onerror = null; // prevent infinite loop
-                                            e.target.src = "/placeholder-error.svg"; // Use an error placeholder
-                                            e.target.classList.remove(styles.loading);
-                                          }}
-                                       />
-                                     </a>
-                                     {/* Caption below the image */}
-                                     <div className={styles.imgCaption}>
-                                        {/* Optionally link the caption too */}
-                                        <a
-                                            href={msg.metadata.fileUrl || msg.metadata.url || "#"}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            onClick={(e) => e.stopPropagation()}
-                                            title={`View ${msg.metadata.fileName || "image"} in new tab`}
-                                        >
-                                            {msg.metadata.fileName || "Image"}
-                                        </a>
-                                         {/* Show file size if available */}
-                                         {msg.metadata.fileSize ? ` (${Math.round(msg.metadata.fileSize / 1024)} KB)` : ""}
-                                     </div>
-                                  </div>
-                                ) : (
-                                  /* Non-Image File */
-                                  <div className={styles.fileAttachment}>
-                                    {getFileIcon(msg.metadata.fileType)}
-                                    <div className={styles.fileInfo}>
-                                        <span className={styles.fileName}>{msg.metadata.fileName || "File"}</span>
-                                        {/* Show file size */}
-                                        {msg.metadata.fileSize && (
-                                            <span className={styles.fileSize}>
-                                                {`(${Math.round(msg.metadata.fileSize / 1024)} KB)`}
-                                            </span>
-                                        )}
-                                        {/* Download link - only if URL exists and not a placeholder */}
-                                         {Boolean(msg.metadata.fileUrl || msg.metadata.url) && !msg.metadata.__localPlaceholder && (
-                                          <a
-                                              href={String(msg.metadata.fileUrl || msg.metadata.url || "#")}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className={styles.downloadLink}
-                                              onClick={(e) => e.stopPropagation()} // Prevent bubble click
-                                              download={msg.metadata.fileName || true} // Suggest filename for download
-                                          >
-                                              Download
-                                          </a>
-                                         )}
-                                         {/* Show uploading indicator */}
-                                         {msg.metadata.__localPlaceholder && (
-                                             <span className={styles.uploadingIndicator}>Uploading...</span>
-                                         )}
-                                    </div>
-                                  </div>
-                                )}
-                                {/* Timestamp and Status for File Messages */}
-                                <div className={styles.messageMeta}>
-                                    <span className={styles.messageTime} title={formatDate(msg.createdAt, { showTime: true, showDate: true })}>
-                                      {formatDate(msg.createdAt, { showTime: true, showDate: false })}
-                                    </span>
-                                    {isFromMe && <span className={styles.statusIndicator}>{statusIndicator}</span>}
-                                 </div>
-                              </div>
-                            ) :
-
-                            /* Text Message (Default) */
-                            (
-                              <>
-                                 {/* Handle failed messages specifically */}
-                                 {msg.error ? (
-                                     <div className={styles.errorMessageContent}>
-                                         <span className={styles.errorIcon}>!</span>
-                                         <span>{msg.content || "Failed to send"}</span>
-                                     </div>
-                                 ) : (
-                                     <div className={styles.messageContent}>{msg.content || ""}</div>
-                                 )}
-                                 <div className={styles.messageMeta}>
-                                  <span className={styles.messageTime} title={formatDate(msg.createdAt, { showTime: true, showDate: true })}>
-                                    {formatDate(msg.createdAt, { showTime: true, showDate: false })}
-                                  </span>
-                                  {isFromMe && <span className={styles.statusIndicator}>{statusIndicator}</span>}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                         );
+                        // Validate message object before rendering
+                        if (!msg || (!msg._id && !msg.tempId)) {
+                          console.warn("Skipping rendering invalid message:", msg);
+                          return null;
+                        }
+                        return (
+                          <MessageItem
+                            key={msg._id || msg.tempId}
+                            message={msg}
+                            currentUserId={currentUser._id}
+                            isSending={isSending && messages.some(m => m.tempId === msg.tempId)}
+                          />
+                        );
                       })}
                     </div>
                   ))
@@ -2002,36 +2085,31 @@ const Messages = () => {
                 <div ref={messagesEndRef} style={{ height: '1px' }} />
               </div>
 
-              {/* Attachment Preview Area */}
-              {attachment && (
-                <div className={styles.attachmentPreview}>
-                  <div className={styles.attachmentInfo}>
-                    {getFileIcon(attachment.type)}
-                    <span className={styles.attachmentName} title={attachment.name}>{attachment.name}</span>
-                    <span className={styles.attachmentSize}>({Math.round(attachment.size / 1024)} KB)</span>
-                  </div>
-                  {isUploading ? (
-                    <div className={styles.uploadProgressContainer}>
-                      <div
-                        className={styles.uploadProgressBar}
-                        style={{ width: `${uploadProgress}%` }} // Dynamic width based on progress
-                      ></div>
-                      <span className={styles.uploadProgressText}>{uploadProgress}%</span>
-                    </div>
-                  ) : (
-                    // Show remove button only if not currently uploading
-                    <button
-                      className={styles.removeAttachment}
-                      onClick={handleRemoveAttachment}
-                      disabled={isUploading} // Disable if uploading (double check)
-                      title="Remove attachment"
-                      aria-label="Remove attachment"
-                    >
-                      <FaTimes />
-                    </button>
-                  )}
-                </div>
-              )}
+              {/* Attachment Preview with integrated file handling */}
+              <AttachmentPreview
+                attachment={attachment}
+                isUploading={isUploading}
+                uploadProgress={uploadProgress}
+                onRemoveAttachment={handleRemoveAttachment}
+                onFileSelected={(file, error) => {
+                  if (error) {
+                    toast.error(error);
+                    return;
+                  }
+                  
+                  if (file) {
+                    setAttachment(file);
+                    toast.info(`Selected file: ${file.name}`);
+                    
+                    if (mobileView && "vibrate" in navigator) {
+                      navigator.vibrate(30);
+                    }
+                  }
+                }}
+                showFileInput={false}
+                disabled={!!incomingCall || isCallActive}
+                userTier={currentUser?.accountTier}
+              />
 
               {/* Emoji Picker */}
               {showEmojis && (
@@ -2052,87 +2130,43 @@ const Messages = () => {
                 </div>
               )}
 
-              {/* Input Area */}
-              <div className={styles.inputArea}>
-                 {/* Emoji Button */}
-                 <button
-                  type="button"
-                  className={styles.emojiButton}
-                  onClick={() => setShowEmojis(!showEmojis)}
-                  title="Add Emoji"
-                  aria-label="Add Emoji"
-                  aria-expanded={showEmojis}
-                >
-                  <FaSmile />
-                </button>
-                 {/* Message Input Textarea */}
-                 <textarea
-                  ref={messageInputRef}
-                  className={styles.messageInput}
-                   placeholder={currentUser?.accountTier === "FREE" ? "Send a wink instead (Free Account)" : "Type a message..."}
-                  value={messageInput}
-                  onChange={handleMessageInputChange}
-                  onKeyPress={handleKeyPress}
-                  rows={1} // Start with 1 row, auto-resizes
-                   // Disable input based on various states
-                   disabled={isSending || isUploading || (currentUser?.accountTier === "FREE" && !attachment) || !!incomingCall || isCallActive}
-                   title={currentUser?.accountTier === "FREE" ? "Upgrade to send text messages" : "Type a message (Shift+Enter for newline)"}
-                  aria-label="Message Input"
-                />
-                 {/* Attach File Button */}
-                 <button
-                  type="button"
-                  className={styles.attachButton}
-                  onClick={handleFileAttachment}
-                   // Disable based on states and account tier
-                   disabled={isSending || isUploading || currentUser?.accountTier === "FREE" || !!incomingCall || isCallActive}
-                   title={currentUser?.accountTier === "FREE" ? "Upgrade to send files" : "Attach File"}
-                  aria-label="Attach File"
-                >
-                  <FaPaperclip />
-                </button>
-                 {/* Hidden File Input */}
-                 <input
-                  type="file"
-                  ref={fileInputRef}
-                  style={{ display: "none" }} // Keep hidden
-                  onChange={handleFileChange}
-                  // Define accepted file types
-                   accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,audio/mpeg,audio/wav,audio/ogg,video/mp4,video/quicktime,video/webm"
-                  // Use device camera on mobile if possible
-                  capture={mobileView ? "environment" : undefined}
-                />
-                 {/* Send Wink Button */}
-                 <button
-                  type="button"
-                  className={styles.winkButton}
-                  onClick={handleSendWink}
-                   // Disable based on states
-                   disabled={isSending || isUploading || !!incomingCall || isCallActive}
-                  title="Send Wink"
-                  aria-label="Send Wink"
-                >
-                  <FaHeart />
-                </button>
-                 {/* Send Button (Text or Attachment) */}
-                 <button
-                   // Determine action based on whether an attachment is selected
-                   onClick={attachment ? handleSendAttachment : handleSendMessage}
-                   className={classNames(
-                       styles.sendButton,
-                       // Disable if no text AND no attachment, or during sending/uploading/call
-                       (!messageInput.trim() && !attachment) && styles.disabled,
-                       (isSending || isUploading) && styles.sending
-                   )}
-                   // More comprehensive disabled check
-                   disabled={(!messageInput.trim() && !attachment) || isSending || isUploading || !!incomingCall || isCallActive}
-                   title={attachment ? "Send File" : "Send Message"}
-                   aria-label={attachment ? "Send File" : "Send Message"}
-                 >
-                   {/* Show spinner when sending/uploading, otherwise show plane icon */}
-                   {isSending || isUploading ? <FaSpinner className="fa-spin" /> : <FaPaperPlane />}
-                 </button>
-              </div>
+              {/* Chat Input */}
+              <ChatInput
+                messageValue={messageInput}
+                onInputChange={handleMessageInputChange}
+                onSubmit={attachment ? handleSendAttachment : handleSendMessage}
+                onWinkSend={handleSendWink}
+                onFileAttachClick={handleFileAttachment}
+                onEmojiClick={(emoji) => {
+                  setMessageInput((prev) => prev + emoji);
+                  setShowEmojis(false);
+                  setTimeout(() => messageInputRef.current?.focus(), 0);
+                  if (mobileView && "vibrate" in navigator) {
+                    navigator.vibrate(20);
+                  }
+                }}
+                userTier={currentUser?.accountTier}
+                isSending={isSending}
+                isUploading={isUploading}
+                attachmentSelected={!!attachment}
+                disabled={!!incomingCall || isCallActive}
+                inputRef={messageInputRef}
+                placeholderText={
+                  currentUser?.accountTier === ACCOUNT_TIER.FREE 
+                    ? "Send a wink instead (Free Account)" 
+                    : `Message ${activeConversation?.user?.nickname || ''}...`
+                }
+              />
+              
+              {/* Hidden File Input */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: "none" }}
+                onChange={handleFileChange}
+                accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,audio/mpeg,audio/wav,audio/ogg,video/mp4,video/quicktime,video/webm"
+                capture={mobileView ? "environment" : undefined}
+              />
             </>
           ) : (
              // Placeholder when no conversation is selected
