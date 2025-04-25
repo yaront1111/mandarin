@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { FaSearch, FaThLarge, FaList, FaFilter, FaPlus, FaSpinner } from "react-icons/fa"
+import { FaSearch, FaThLarge, FaList, FaFilter, FaPlus, FaSpinner, FaTimes } from "react-icons/fa"
 import { toast } from "react-toastify"
 import { useTranslation } from "react-i18next"
 import { useAuth, useUser, useStories, useLanguage } from "../context"
+import { useIsMobile, useIsTablet } from "../hooks"
 import EmbeddedChat from "../components/EmbeddedChat"
 import { Navbar } from "../components/LayoutComponents"
 import StoriesCarousel from "../components/Stories/StoriesCarousel"
@@ -33,6 +34,11 @@ const Dashboard = () => {
   const { createStory } = useStories()
   const { t } = useTranslation()
   const { isRTL } = useLanguage()
+  
+  // Use our responsive design hooks
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
+  const isSmallScreen = isMobile || isTablet;
 
   // Infinite scrolling states
   const [page, setPage] = useState(1)
@@ -361,7 +367,14 @@ const Dashboard = () => {
   const isLoading = (loading || likesLoading) && page === 1 && !initialLoadComplete
 
   return (
-    <div className={`${styles.dashboardPage} ${isRTL ? 'rtl-layout' : ''}`}>
+    <div className={`${styles.dashboardPage} ${isRTL ? 'rtl-layout' : ''} ${isMobile ? 'mobile-device' : ''}`}>
+      {/* Mobile backdrop for filter panel */}
+      {showFilters && isMobile && (
+        <div 
+          className={`mobile-modal-backdrop ${showFilters ? 'open' : ''}`} 
+          onClick={() => setShowFilters(false)}
+        ></div>
+      )}
       <Navbar />
 
       <main className={styles.dashboardContent}>
@@ -427,13 +440,28 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Filter Panel */}
+          {/* Filter Panel - with mobile-optimized classes */}
           {showFilters && (
-            <div className={`${styles.filterPanel} animate-fade-in`}>
+            <div className={`${styles.filterPanel} animate-fade-in ${isMobile ? 'mobile-modal' : ''}`}>
+              {/* Mobile-only close button for filter panel */}
+              {isMobile && (
+                <div className="mobile-modal-header">
+                  <div className="mobile-modal-drag-indicator"></div>
+                  <h3 className="mobile-modal-title">{t('common.filters')}</h3>
+                  <button 
+                    className="mobile-modal-close" 
+                    onClick={() => setShowFilters(false)}
+                    aria-label="Close filters"
+                  >
+                    <FaTimes />
+                  </button>
+                </div>
+              )}
+              
               {/* Age Range Filter */}
               <div className={styles.filterSection}>
                 <h3>{t('profile.age')} {t('common.range')}</h3>
-                <div className={styles.filterOptions}>
+                <div className={`${styles.filterOptions} ${isMobile ? 'touch-target' : ''}`}>
                   <div className={styles.rangeSlider}>
                     <div className={styles.rangeValues}>
                       <span>{filterValues.ageMin}</span>
@@ -576,8 +604,8 @@ const Dashboard = () => {
           )}
 
           {/* Users Grid/List Display using enhanced UserCard component */}
-          <div className={styles.usersSection}>
-            <div className={viewMode === "grid" ? styles.usersGrid : styles.usersList}>
+          <div className={`${styles.usersSection} ${isMobile ? 'mobile-optimized' : ''}`}>
+            <div className={`${viewMode === "grid" ? styles.usersGrid : styles.usersList} ${isMobile ? 'compact-grid' : ''}`}>
               {isLoading ? (
               <div className={styles.contentLoader}>
                 <div className={styles.loadingContainer}>

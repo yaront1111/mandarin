@@ -5,6 +5,8 @@
 export { useApi } from './useApi';
 export { useSocketConnection } from './useSocketConnection';
 export { default as useChat } from './useChat';
+export { default as useMediaQuery, useIsMobile, useIsTablet, useIsDesktop, useIsLargeDesktop } from './useMediaQuery';
+export { default as useMobileDetect } from './useMobileDetect';
 
 // Simplified hook for checking if component is mounted (useful for async operations)
 import { useRef, useEffect, useState } from 'react';
@@ -52,4 +54,3 @@ export const useClickOutside = (callback) => {
   
   return ref;
 };
-

@@ -813,18 +813,51 @@
 }
 
 @media (max-width: 576px) {
+  .dashboardContent {
+    padding: var(--space-md) 0;
+    margin-top: 16px;
+  }
+
+  .container {
+    padding: 0 var(--space-sm);
+  }
+
   .profilePhoto {
-    width: 180px;
-    height: 180px;
+    width: 160px;
+    height: 160px;
   }
   
   .photoGallery {
     grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
     padding: var(--space-sm);
+    gap: 8px;
   }
   
   .galleryItem {
     height: 80px;
+  }
+  
+  .interestsTags {
+    gap: 8px;
+  }
+  
+  .interestTag {
+    padding: 8px 12px;
+    font-size: 14px;
+    min-height: 44px; /* Better touch target */
+  }
+  
+  .sectionContent {
+    padding: var(--space-sm);
+  }
+  
+  /* Larger form elements for mobile */
+  .formGroup input, 
+  .formGroup textarea, 
+  .formGroup select {
+    padding: 12px;
+    font-size: 16px; /* Prevents iOS zoom */
+    min-height: 44px;
   }
   
   .btn {
@@ -847,3 +880,39 @@
 .spaceBetween { justify-content: space-between; }
 .alignCenter { align-items: center; }
 .gap2 { gap: 8px; }
+
+/* Extra small screens */
+@media (max-width: 380px) {
+  .profilePhoto {
+    width: 140px;
+    height: 140px;
+  }
+  
+  .photoGallery {
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 6px;
+  }
+  
+  .galleryItem {
+    height: 70px;
+  }
+  
+  .interestTag {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  
+  .sectionHeader {
+    padding: 10px;
+  }
+  
+  .label {
+    font-size: 14px;
+  }
+  
+  /* Even larger touch targets for tiny screens */
+  .uploadPhotoButton {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

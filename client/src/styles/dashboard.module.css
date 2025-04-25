@@ -548,8 +548,17 @@
 }
 
 @media (max-width: 576px) {
+  .container {
+    padding: var(--space-sm);
+    margin-top: var(--space-sm);
+  }
+
+  .dashboardContent {
+    padding: var(--space-sm) 0;
+  }
+  
   .viewToggle {
-    display: none;
+    display: flex;
   }
 
   .dashboardTitle {
@@ -562,5 +571,81 @@
 
   .usersGrid {
     grid-template-columns: 1fr;
+    gap: var(--space-sm);
+  }
+  
+  .filterButton {
+    width: 100%;
+    margin-top: var(--space-sm);
+  }
+  
+  .filterPanel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: 85vh;
+    overflow-y: auto;
+    z-index: 1050;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    margin-bottom: 0;
+    padding-bottom: calc(var(--space-lg) + env(safe-area-inset-bottom, 0px));
+  }
+  
+  /* Enhanced user card for mobile */
+  .userCard {
+    margin-bottom: var(--space-md);
+  }
+  
+  /* Adjust form elements for touch */
+  .rangeInput {
+    height: 24px;
+  }
+  
+  .rangeInput::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+  }
+  
+  .searchInput {
+    height: 44px;
+    font-size: 16px; /* Prevents iOS zoom */
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 380px) {
+  .container {
+    padding: var(--space-xs);
+  }
+  
+  .dashboardTitle {
+    font-size: var(--font-size-lg);
+  }
+  
+  .dashboardActions {
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+  }
+  
+  .filterSection {
+    padding: var(--space-sm);
+  }
+  
+  .filterSection h3 {
+    font-size: var(--font-size-md);
+  }
+  
+  /* Larger touch targets for really small screens */
+  .checkboxContainer {
+    min-height: 44px;
+  }
+  
+  .tagOption {
+    padding: 10px 12px;
   }
 }

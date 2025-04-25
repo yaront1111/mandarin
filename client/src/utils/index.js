@@ -4,6 +4,13 @@
 
 export { default as logger, createLogger, LogLevel } from './logger';
 export * from './chatUtils';
+export { 
+  initializeMobileOptimizations,
+  setViewportHeight,
+  detectDevice,
+  enablePinchZoom,
+  handleOrientationChange
+} from './mobileInit';
 
 /**
  * Reset user session by clearing all local storage and session storage

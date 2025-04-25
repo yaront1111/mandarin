@@ -4,20 +4,19 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter as Router } from "react-router-dom"; // <-- Import Router
 import App from "./App.jsx";
 import "./i18n"; // Import i18n configuration
-if (typeof global === 'undefined') {
-  window.global = window;
-}
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import "./styles/base.css";
 import { HelmetProvider } from 'react-helmet-async';
+
+// Import styles in the correct cascade order
+import "./styles/base.css";
 import "./styles/layout.css"; // Modern layout system
 import "./styles/pages.css";
-// Assuming these are needed globally as well
 import "./styles/notifications.css";
-import "./styles/stories.module.css"
+import "./styles/stories.module.css";
 import "./styles/modal.css"; // Modal component styling
 import "./styles/home.css"; // Home page specific styling
 import "./styles/policy-pages.css"; // Policy pages styling
+import "./styles/mobile.css"; // Mobile-specific enhancements (should be last to override)
 
 // Polyfill for global if needed (keep as is)
 if (typeof global === 'undefined') {

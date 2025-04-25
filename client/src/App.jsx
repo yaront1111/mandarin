@@ -83,6 +83,32 @@ function App() {
 
   // Check if current page is Messages to hide footer
   const isMessagesPage = location.pathname.includes('/messages');
+  
+  // Initialize mobile optimizations
+  useEffect(() => {
+    // Import dynamically to ensure it only runs on client-side
+    import('./utils/mobileInit').then(({ initializeMobileOptimizations }) => {
+      initializeMobileOptimizations();
+    });
+    
+    // Set up resize event listener for viewport height
+    const handleResize = () => {
+      if (typeof window !== 'undefined') {
+        // Update viewport height variable on resize
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+      }
+    };
+    
+    // Initial call
+    handleResize();
+    
+    // Add event listener
+    window.addEventListener('resize', handleResize);
+    
+    // Clean up
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const openProfileModal = (userId) => {
     setProfileModalUserId(userId);

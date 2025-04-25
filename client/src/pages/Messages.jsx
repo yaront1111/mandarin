@@ -9,6 +9,7 @@ import LoadingSpinner from "../components/common/LoadingSpinner";
 import Avatar from "../components/common/Avatar";
 import MessagesWrapper from '../components/MessagesWrapper';
 import AuthContext from "../context/AuthContext";
+import { useIsMobile, useMobileDetect } from "../hooks";
 import {
   FaEnvelope,
   FaPaperPlane,
@@ -71,7 +72,9 @@ const Messages = () => {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [error, setError] = useState(null);
   const [typingUser, setTypingUser] = useState(null);
-  const [mobileView, setMobileView] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false); // Check for window
+  // Use our custom hook for mobile detection instead of manual window width check
+  const isMobile = useIsMobile();
+  const { isTouch, isIOS, isAndroid } = useMobileDetect();
   const [showSidebar, setShowSidebar] = useState(true);
   const [showEmojis, setShowEmojis] = useState(false);
   const [isCallActive, setIsCallActive] = useState(false);
@@ -141,34 +144,19 @@ const Messages = () => {
     setShowInstallBanner(false);
   };
 
-  // Responsive sidebar handling with improved mobile detection
+  // Responsive sidebar handling based on mobile detection
   useEffect(() => {
-    // Ensure this runs only on the client
-    if (typeof window === 'undefined') return;
-
-    const handleResize = () => {
-      const isMobile = window.innerWidth < 768;
-      setMobileView(isMobile);
-
-      if (!isMobile) {
-        setShowSidebar(true);
-      } else if (activeConversation) {
-        setShowSidebar(false);
-      }
-
-      setPullDistance(0);
-      setSwipeDirection(null);
-    };
-
-    handleResize(); // Initial check
-
-    window.addEventListener("resize", handleResize);
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener("resize", handleResize);
-      }
-    };
-  }, [activeConversation]);
+    // Update sidebar visibility based on mobile state
+    if (!isMobile) {
+      setShowSidebar(true);
+    } else if (activeConversation) {
+      setShowSidebar(false);
+    }
+    
+    // Reset pull distances when screen size changes
+    setPullDistance(0);
+    setSwipeDirection(null);
+  }, [isMobile, activeConversation]);
 
   // Initialize chat service, fetch conversations, and set up file URL cache
   useEffect(() => {
@@ -714,7 +702,7 @@ const Messages = () => {
             return prev;
           }
 
-          if (mobileView && "vibrate" in navigator) {
+          if (isMobile && "vibrate" in navigator) {
             navigator.vibrate(50);
           }
 
@@ -723,7 +711,7 @@ const Messages = () => {
 
         chatService.markConversationRead(activeConversation.user._id);
       } else {
-        if (mobileView && "Notification" in window && Notification.permission === "granted") {
+        if (isMobile && "Notification" in window && Notification.permission === "granted") {
           new Notification("New message", {
             body: `New message from ${newMessage.senderName || "a user"}`,
             icon: "/icon-192x192.png"
@@ -764,7 +752,7 @@ const Messages = () => {
         timestamp: call.timestamp,
       });
 
-      if (mobileView && "vibrate" in navigator) {
+      if (isMobile && "vibrate" in navigator) {
         navigator.vibrate([300, 100, 300]);
       }
 
@@ -821,7 +809,7 @@ const Messages = () => {
     const unsubscribeCallDeclined = socketService.on("callDeclined", handleCallDeclined);
     const unsubscribeVideoHangup = socketService.on("videoHangup", handleCallHangup);
 
-    if (mobileView && "Notification" in window && Notification.permission === "default") {
+    if (isMobile && "Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
 
@@ -839,7 +827,7 @@ const Messages = () => {
     // but used within the effect cleanup logic implicitly via handleCallHangup.
     // Including it might cause complexity if its definition changes frequently.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConversation, currentUser?._id, isCallActive, mobileView]); // Added updateConversationList
+  }, [activeConversation, currentUser?._id, isCallActive, isMobile]); // Added updateConversationList
 
 
   // Load conversation based on URL parameter
@@ -894,7 +882,7 @@ const Messages = () => {
         
         // Focus input and update UI
         messageInputRef.current?.focus();
-        if (mobileView) setShowSidebar(false);
+        if (isMobile) setShowSidebar(false);
       } catch (err) {
         console.error("Error in loading messages:", err);
         setError(`Failed to load messages: ${err.message || "Unknown error"}`);
@@ -1314,7 +1302,7 @@ const Messages = () => {
     if(messageInputRef.current) messageInputRef.current.style.height = 'auto';
 
 
-    if (mobileView && "vibrate" in navigator) {
+    if (isMobile && "vibrate" in navigator) {
       navigator.vibrate(20);
     }
 
@@ -1375,7 +1363,7 @@ const Messages = () => {
    setMessages((prev) => [...prev, optimisticWink].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)));
    updateConversationList(optimisticWink);
 
-   if (mobileView && "vibrate" in navigator) {
+   if (isMobile && "vibrate" in navigator) {
      navigator.vibrate([20, 30, 20]);
    }
 
@@ -1438,7 +1426,7 @@ const Messages = () => {
     toast.info(`Selected file: ${file.name}`);
     e.target.value = null; // Reset file input immediately after selection
 
-    if (mobileView && "vibrate" in navigator) {
+    if (isMobile && "vibrate" in navigator) {
       navigator.vibrate(30);
     }
   };
@@ -1473,7 +1461,7 @@ const Messages = () => {
     setIsUploading(true);
     setUploadProgress(10);
 
-    if (mobileView && "vibrate" in navigator) {
+    if (isMobile && "vibrate" in navigator) {
       navigator.vibrate(40);
     }
 
@@ -1652,7 +1640,7 @@ const Messages = () => {
 
 
       // Success vibration pattern
-      if (mobileView && "vibrate" in navigator) {
+      if (isMobile && "vibrate" in navigator) {
         navigator.vibrate([30, 50, 30]);
       }
 
@@ -1672,7 +1660,7 @@ const Messages = () => {
 
 
       // Error vibration pattern
-      if (mobileView && "vibrate" in navigator) {
+      if (isMobile && "vibrate" in navigator) {
         navigator.vibrate([100, 50, 100]);
       }
     } finally {
@@ -1688,7 +1676,7 @@ const Messages = () => {
     if (messageInputRef.current) {
       messageInputRef.current.focus();
     }
-    if (mobileView && "vibrate" in navigator) {
+    if (isMobile && "vibrate" in navigator) {
       navigator.vibrate(20);
     }
   };
@@ -1763,7 +1751,7 @@ const Messages = () => {
       setMessages((prev) => [...prev, infoMessage]);
       setIsCallActive(true); // Set call active state *before* initiating
 
-      if (mobileView && "vibrate" in navigator) {
+      if (isMobile && "vibrate" in navigator) {
         navigator.vibrate([50, 100, 50]);
       }
 
@@ -1830,10 +1818,10 @@ const Messages = () => {
 
 
     // Hangup vibration pattern
-    if (mobileView && "vibrate" in navigator) {
+    if (isMobile && "vibrate" in navigator) {
       navigator.vibrate(100);
     }
-  }, [activeConversation, isCallActive, mobileView]); // Dependencies for useCallback
+  }, [activeConversation, isCallActive, isMobile]); // Dependencies for useCallback
 
 
    const updateConversationList = useCallback((newMessage) => {
@@ -2018,18 +2006,18 @@ const Messages = () => {
     navigate(`/messages/${conversation.user._id}`, { replace: true });
 
     // Update UI for mobile
-    if (mobileView) {
+    if (isMobile) {
       setShowSidebar(false);
       if ("vibrate" in navigator) {
         navigator.vibrate(20);
       }
     }
-  }, [activeConversation, currentUser?._id, mobileView, navigate]);
+  }, [activeConversation, currentUser?._id, isMobile, navigate]);
 
 
   const toggleSidebar = () => {
     setShowSidebar(!showSidebar);
-    if (mobileView && "vibrate" in navigator) {
+    if (isMobile && "vibrate" in navigator) {
       navigator.vibrate(15);
     }
   };
@@ -2103,16 +2091,16 @@ const Messages = () => {
         className={styles.messagesContainer}
         ref={messagesContainerRef}
         // Conditionally apply touch handlers only on mobile view
-        onTouchStart={mobileView ? handleTouchStart : undefined}
-        onTouchMove={mobileView ? handleTouchMove : undefined}
-        onTouchEnd={mobileView ? handleTouchEnd : undefined}
+        onTouchStart={isMobile ? handleTouchStart : undefined}
+        onTouchMove={isMobile ? handleTouchMove : undefined}
+        onTouchEnd={isMobile ? handleTouchEnd : undefined}
       >
         {/* Sidebar */}
         <div className={classNames(styles.sidebar, showSidebar ? styles.show : styles.hide)}>
           <div className={styles.sidebarHeader}>
             <h2>Messages</h2>
             <div className={styles.sidebarActions}>
-              {mobileView && (
+              {isMobile && (
                 <button
                   className={styles.newConversationButton}
                   onClick={() => navigate('/users')} // Navigate to user list/search
@@ -2123,7 +2111,7 @@ const Messages = () => {
                 </button>
               )}
               {/* Close button for sidebar on mobile when chat is active */}
-              {mobileView && activeConversation && (
+              {isMobile && activeConversation && (
                 <button className={styles.closeSidebarButton} onClick={toggleSidebar} aria-label="Close sidebar">
                   &times; {/* Using times symbol for close */}
                 </button>
@@ -2136,7 +2124,7 @@ const Messages = () => {
             ref={conversationsListRef}
           >
             {/* Pull-to-refresh indicator */}
-            {mobileView && (
+            {isMobile && (
               <div
                 ref={refreshIndicatorRef}
                 className={styles.pullToRefreshIndicator}
@@ -2216,7 +2204,7 @@ const Messages = () => {
         </div>
 
         {/* Chat Area */}
-        <div className={classNames(styles.chatArea, (!showSidebar && mobileView) && styles.fullWidth)}>
+        <div className={classNames(styles.chatArea, (!showSidebar && isMobile) && styles.fullWidth)}>
           {activeConversation ? (
             <>
               {/* Chat Header */}
@@ -2224,7 +2212,7 @@ const Messages = () => {
                 {/* Ensure user object and ID exist before rendering */}
                 {activeConversation.user && activeConversation.user._id ? (
                   <div className={styles.chatUser}>
-                    {mobileView && (
+                    {isMobile && (
                       <button className={styles.backButton} onClick={toggleSidebar} aria-label="Back to conversation list">
                         <FaArrowLeft />
                       </button>
@@ -2417,7 +2405,7 @@ const Messages = () => {
                     setAttachment(file);
                     toast.info(`Selected file: ${file.name}`);
                     
-                    if (mobileView && "vibrate" in navigator) {
+                    if (isMobile && "vibrate" in navigator) {
                       navigator.vibrate(30);
                     }
                   }
@@ -2457,7 +2445,7 @@ const Messages = () => {
                   setMessageInput((prev) => prev + emoji);
                   setShowEmojis(false);
                   setTimeout(() => messageInputRef.current?.focus(), 0);
-                  if (mobileView && "vibrate" in navigator) {
+                  if (isMobile && "vibrate" in navigator) {
                     navigator.vibrate(20);
                   }
                 }}
@@ -2481,7 +2469,7 @@ const Messages = () => {
                 style={{ display: "none" }}
                 onChange={handleFileChange}
                 accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,audio/mpeg,audio/wav,audio/ogg,video/mp4,video/quicktime,video/webm"
-                capture={mobileView ? "environment" : undefined}
+                capture={isMobile ? "environment" : undefined}
               />
             </>
           ) : (

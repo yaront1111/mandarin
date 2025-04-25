@@ -7,6 +7,7 @@ import { useAuth, useUser, useLanguage } from "../context"
 import { toast } from "react-toastify"
 import axios from "axios"
 import { useTranslation } from "react-i18next"
+import { useIsMobile, useMobileDetect } from "../hooks"
 import {
   FaUserCircle,
   FaCamera,
@@ -32,6 +33,10 @@ const Profile = () => {
   const { updateProfile, uploadPhoto, refreshUserData } = useUser()
   const { t } = useTranslation()
   const { isRTL } = useLanguage()
+  
+  // Add mobile detection
+  const isMobile = useIsMobile()
+  const { isTouch, isIOS } = useMobileDetect()
 
   const [isEditing, setIsEditing] = useState(false)
   const [profileData, setProfileData] = useState({
@@ -770,7 +775,7 @@ const Profile = () => {
 
   // Replace the profile rendering with this
   return (
-    <div className={`${styles.profilePage} min-vh-100 w-100 overflow-hidden bg-light-subtle transition-all ${isRTL ? 'rtl-layout' : ''}`}>
+    <div className={`${styles.profilePage} min-vh-100 w-100 overflow-hidden bg-light-subtle transition-all ${isRTL ? 'rtl-layout' : ''} ${isMobile ? 'mobile-device' : ''}`}>
       {/* Use Navbar from LayoutComponents */}
       <Navbar />
 
@@ -860,13 +865,13 @@ const Profile = () => {
                 </div>
               </div>
 
-              {/* Photo Gallery Section - Now with responsive grid */}
+              {/* Photo Gallery Section - With mobile optimization */}
               {localPhotos.length > 0 && (
-                <div className={styles.photoGallery}>
+                <div className={`${styles.photoGallery} ${isMobile ? 'mobile-gallery' : ''}`}>
                   {localPhotos.map((photo) => (
                     <div
                       key={photo._id}
-                      className={`${styles.galleryItem} ${photo.isProfile ? styles.profileGalleryItem : ''}`}
+                      className={`${styles.galleryItem} ${photo.isProfile ? styles.profileGalleryItem : ''} ${isMobile ? 'touch-item' : ''}`}
                       style={{
                         cursor: photo._id.toString().startsWith("temp-") ? "not-allowed" : "pointer",
                       }}
@@ -1158,7 +1163,7 @@ const Profile = () => {
                           <button
                             key={interest}
                             type="button"
-                            className={`${styles.interestTag} ${isSelected ? styles.selected : ''}`}
+                            className={`${styles.interestTag} ${isSelected ? styles.selected : ''} ${isMobile ? 'touch-target' : ''}`}
                             onClick={() => isEditing && toggleInterest(interest)}
                             disabled={!isEditing || (!isSelected && profileData.details.interests.length >= 10)}
                             aria-pressed={isSelected}

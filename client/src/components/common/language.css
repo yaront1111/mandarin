@@ -24,14 +24,21 @@
   margin-right: 10px;
   font-size: 0.8rem;
   opacity: 0.85;
-  border-color: transparent;
+  border-color: var(--border-color, #e0e0e0);
+  background-color: rgba(var(--bg-secondary-rgb, 240, 240, 240), 0.2);
+  color: var(--text-primary, #333);
+}
+
+/* Dark mode specific styles */
+.dark .navbar-language-selector .language-toggle-btn {
   background-color: rgba(var(--bg-secondary-rgb, 240, 240, 240), 0.1);
   color: var(--text-on-accent, white);
+  border-color: transparent;
 }
 
 .navbar-language-selector .language-toggle-btn:hover {
   opacity: 1;
-  background-color: rgba(var(--bg-secondary-rgb, 240, 240, 240), 0.15);
+  background-color: rgba(var(--bg-secondary-rgb, 240, 240, 240), 0.25);
 }
 
 .language-toggle-btn:hover {
