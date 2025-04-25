@@ -125,6 +125,7 @@ async function socketAuthMiddleware(socket, next) {
     let payload;
     try {
       payload = jwt.verify(token, JWT_SECRET);
+      log.debug(`Token payload for socket ${socket.id}: ${JSON.stringify(payload)}`);
     } catch (err) {
       log.error(`JWT verify failed for socket ${socket.id}: ${err.name}: ${err.message}`);
       if (err.name === 'TokenExpiredError') {
@@ -133,15 +134,19 @@ async function socketAuthMiddleware(socket, next) {
       return next(new Error('Invalid authentication token'));
     }
 
-    if (!payload.id) {
-      log.warn(`Socket ${socket.id} JWT missing user ID`);
-      return next(new Error('Invalid token payload'));
+    // Check for any variant of user ID field
+    const userId = payload.id || payload._id || payload.userId ||
+                  (payload.user && (payload.user.id || payload.user._id));
+
+    if (!userId) {
+      log.warn(`Socket ${socket.id} JWT missing user ID (payload: ${JSON.stringify(payload)})`);
+      return next(new Error('Invalid token payload - missing user ID'));
     }
 
     // Load user
-    const user = await User.findById(payload.id).select('-password').exec();
+    const user = await User.findById(userId).select('-password').exec();
     if (!user) {
-      log.warn(`Socket ${socket.id} no user found for ID ${payload.id}`);
+      log.warn(`Socket ${socket.id} no user found for ID ${userId}`);
       return next(new Error('User not found'));
     }
 
