@@ -10,11 +10,19 @@ import logger from "../logger.js";
  * @param {string} expiresIn - Expiration time
  */
 const generateToken = (payload, expiresIn = config.JWT_EXPIRE) => {
+  // Ensure both id and _id fields are included for maximum compatibility
   const tokenPayload = {
-    _id: payload._id || payload.id,
+    id: payload._id || payload.id,       // Keep id for backward compatibility
+    _id: payload._id || payload.id,      // Keep _id for newer code
+    userId: payload._id || payload.id,   // Include userId as well
     ...payload,
   };
-  if (tokenPayload.id) delete tokenPayload.id; // Remove id, standardize on _id
+
+  // Make sure ids are properly stringified
+  if (tokenPayload.id) tokenPayload.id = tokenPayload.id.toString();
+  if (tokenPayload._id) tokenPayload._id = tokenPayload._id.toString();
+  if (tokenPayload.userId) tokenPayload.userId = tokenPayload.userId.toString();
+
   return jwt.sign(tokenPayload, config.JWT_SECRET, { expiresIn });
 };
 
@@ -22,13 +30,21 @@ const generateToken = (payload, expiresIn = config.JWT_EXPIRE) => {
  * Generate a socket-specific token
  */
 const generateSocketToken = (payload) => {
+  // Ensure both id and _id fields are included for maximum compatibility
   const socketPayload = {
-    _id: payload._id || payload.id,
+    id: payload._id || payload.id,       // Keep id for socket auth
+    _id: payload._id || payload.id,      // Keep _id for newer code
+    userId: payload._id || payload.id,   // Include userId as well
     ...payload,
     purpose: "socket",
     iat: Math.floor(Date.now() / 1000),
   };
-  if (socketPayload.id) delete socketPayload.id; // Remove id, standardize on _id
+
+  // Make sure ids are properly stringified
+  if (socketPayload.id) socketPayload.id = socketPayload.id.toString();
+  if (socketPayload._id) socketPayload._id = socketPayload._id.toString();
+  if (socketPayload.userId) socketPayload.userId = socketPayload.userId.toString();
+
   return jwt.sign(socketPayload, config.JWT_SECRET, {
     expiresIn: config.SOCKET_TOKEN_EXPIRE || "24h",
   });
@@ -55,8 +71,13 @@ const verifySocketToken = (token) => {
       return { success: false, error: "No token provided", code: "NO_TOKEN" };
     }
     const decoded = jwt.verify(token, config.JWT_SECRET);
-    if (!decoded || !decoded.id) {
-      logger.debug(`Socket token missing user ID`);
+
+    // Check for any variant of user ID field
+    const userId = decoded.id || decoded._id || decoded.userId ||
+                  (decoded.user && (decoded.user.id || decoded.user._id));
+
+    if (!userId) {
+      logger.debug(`Socket token missing user ID: ${JSON.stringify(decoded)}`);
       return { success: false, error: "Invalid token payload", code: "INVALID_TOKEN_PAYLOAD" };
     }
     return { success: true, data: decoded };
@@ -92,9 +113,12 @@ const authenticateSocket = async (socket, data) => {
   if (!verification.success) return verification;
 
   const decoded = verification.data;
-  let userId = decoded.id || decoded.userId || (decoded.user && decoded.user._id);
+  // Check all possible ID field names for maximum compatibility
+  let userId = decoded.id || decoded._id || decoded.userId ||
+              (decoded.user && (decoded.user._id || decoded.user.id));
+
   if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
-    logger.debug(`Socket auth invalid ID: ${userId}`);
+    logger.debug(`Socket auth invalid ID: ${userId}, decoded: ${JSON.stringify(decoded)}`);
     return { success: false, error: "Invalid token format", code: "INVALID_TOKEN_FORMAT" };
   }
 
@@ -112,7 +136,8 @@ const authenticateSocket = async (socket, data) => {
     success: true,
     user: {
       _id: user._id.toString(),
-      id: user._id.toString(),
+      id: user._id.toString(),  // Include both id and _id for compatibility
+      userId: user._id.toString(), // Include userId as well
       email: user.email,
       nickname: user.nickname || user.name,
       role: user.role,
@@ -125,14 +150,14 @@ const authenticateSocket = async (socket, data) => {
  */
 const protect = async (req, res, next) => {
   let token;
-  
+
   // Extra debug logging for blocked users endpoint
   const isBlockedEndpoint = req.originalUrl.includes('/users/blocked');
   if (isBlockedEndpoint) {
     logger.debug(`[DEBUG] Blocked users request received`);
     logger.debug(`[DEBUG] Request headers: ${JSON.stringify(req.headers || {})}`);
   }
-  
+
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer")) {
     token = authHeader.split(" ")[1];
@@ -155,7 +180,7 @@ const protect = async (req, res, next) => {
   let decoded;
   try {
     decoded = jwt.verify(token, config.JWT_SECRET);
-    
+
     if (isBlockedEndpoint) {
       logger.debug(`[DEBUG] Token verified successfully: ${JSON.stringify(decoded || {})}`);
     }
@@ -168,8 +193,10 @@ const protect = async (req, res, next) => {
     return res.status(401).json({ success: false, error: "Invalid token", code: "INVALID_TOKEN" });
   }
 
-  // Standardize on _id
-  let userId = decoded._id || decoded.id || decoded.userId || (decoded.user && (decoded.user._id || decoded.user.id));
+  // Check all possible ID field names for maximum compatibility
+  let userId = decoded._id || decoded.id || decoded.userId ||
+              (decoded.user && (decoded.user._id || decoded.user.id));
+
   if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
     logger.debug(`Token missing or invalid user ID: ${userId}`);
     return res.status(401).json({ success: false, error: "Invalid token format", code: "INVALID_TOKEN_FORMAT" });
@@ -181,13 +208,13 @@ const protect = async (req, res, next) => {
     if (isBlockedEndpoint) {
       logger.debug(`[DEBUG] User ID parsed: ${validId}`);
     }
-    
+
     const user = await User.findById(validId).select("+version");
     if (!user) {
       logger.debug(`User not found from token, ID: ${userId}`);
       return res.status(401).json({ success: false, error: "User not found", code: "USER_NOT_FOUND" });
     }
-    
+
     if (user.version && decoded.version && user.version !== decoded.version) {
       logger.debug(`Token version mismatch: ${user.version} vs ${decoded.version}`);
       return res.status(401).json({ success: false, error: "Session no longer valid", code: "TOKEN_REVOKED" });
@@ -195,10 +222,11 @@ const protect = async (req, res, next) => {
 
     // Make sure _id is properly stringified
     const userIdStr = user._id.toString();
-    
+
     req.user = {
       _id: userIdStr,
-      // Remove id field, standardize on _id only
+      id: userIdStr,  // Include id for backward compatibility
+      userId: userIdStr, // Include userId as well
       email: user.email,
       nickname: user.nickname,
       role: user.role,
@@ -227,6 +255,9 @@ const enhancedProtect = async (req, res, next) => {
     );
     if (req.user && req.user._id) {
       req.user._id = req.user._id.toString();
+      // Make sure id and userId are also strings
+      req.user.id = req.user._id;
+      req.user.userId = req.user._id;
     }
     next();
   } catch (err) {
@@ -276,7 +307,7 @@ const asyncHandler = (fn) => (req, res, next) =>
   });
 
 /**
- * Optional auth (populate req.user if token valid, but don’t block)
+ * Optional auth (populate req.user if token valid, but don't block)
  */
 const optionalAuth = async (req, res, next) => {
   let token;
@@ -293,11 +324,20 @@ const optionalAuth = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, config.JWT_SECRET);
-    let userId = decoded.id || decoded.userId || (decoded.user && decoded.user._id);
+    // Check all possible ID field names
+    let userId = decoded.id || decoded._id || decoded.userId ||
+                (decoded.user && (decoded.user.id || decoded.user._id));
+
     if (userId && mongoose.Types.ObjectId.isValid(userId)) {
       const user = await User.findById(userId).select("+version");
       if (user && (!user.version || user.version === decoded.version)) {
-        req.user = { _id: user._id.toString(), id: user._id.toString(), role: user.role };
+        const userIdStr = user._id.toString();
+        req.user = {
+          _id: userIdStr,
+          id: userIdStr,
+          userId: userIdStr,
+          role: user.role
+        };
         logger.debug(`[OptionalAuth] Set user ${req.user._id}`);
       }
     }
