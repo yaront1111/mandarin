@@ -4,7 +4,9 @@
 
 export { default as logger, createLogger, LogLevel } from './logger';
 export * from './chatUtils';
-export { 
+
+// Export original mobile utilities functions from mobileInit
+export {
   initializeMobileOptimizations,
   setViewportHeight,
   detectDevice,
@@ -21,33 +23,33 @@ export const resetUserSession = () => {
   // Check if token exists before clearing
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
   const hasToken = !!token;
-  
+
   // Clear tokens
   localStorage.removeItem('token');
   sessionStorage.removeItem('token');
   localStorage.removeItem('authToken');
   sessionStorage.removeItem('authToken');
-  
+
   // Clear any user data
   localStorage.removeItem('user');
   sessionStorage.removeItem('user');
-  
+
   // Optional: Clear everything but keep console message
   localStorage.clear();
   sessionStorage.clear();
-  
+
   // Add console message for debugging
   console.log("🧹 User session reset completely!");
-  
+
   // If we had a token before, put it back in localStorage only to ensure consistent source
   if (hasToken && token) {
     console.log("🔑 Re-saving token to localStorage only");
     localStorage.setItem('token', token);
   }
-  
+
   // Show alert before reloading
   alert("Session reset completed. You'll be redirected to login page.");
-  
+
   // Reload the page
   window.location.href = '/login';
 };
@@ -60,13 +62,13 @@ export const resetUserSession = () => {
  */
 export const ensureValidObjectId = (id) => {
   if (!id) return null;
-  
+
   // If already a valid ObjectId string, return it unchanged
   const idString = typeof id === 'string' ? id : String(id);
   if (/^[0-9a-fA-F]{24}$/.test(idString)) {
     return idString;
   }
-  
+
   // If it's longer than 24 chars, try to extract a valid ObjectId
   if (idString.length > 24) {
     // Look for a 24-character hex sequence
@@ -75,7 +77,7 @@ export const ensureValidObjectId = (id) => {
       return match[1];
     }
   }
-  
+
   // Handle corrupted toString() results that might include "ObjectId(...)"
   const objectIdMatch = idString.match(/ObjectId\(['"](.*)['"]\)/);
   if (objectIdMatch && objectIdMatch[1]) {
@@ -84,17 +86,17 @@ export const ensureValidObjectId = (id) => {
       return extracted;
     }
   }
-  
+
   // For object with _id property
   if (typeof id === 'object' && id !== null && id._id) {
     return ensureValidObjectId(id._id);
   }
-  
+
   // For object with id property
   if (typeof id === 'object' && id !== null && id.id) {
     return ensureValidObjectId(id.id);
   }
-  
+
   return null;
 };
 
@@ -106,9 +108,9 @@ export const patchApiObjectIdRequests = () => {
   // Only run this once
   if (window._objectIdRequestsPatched) return;
   window._objectIdRequestsPatched = true;
-  
+
   console.log("🔧 Installing API ObjectId request patch");
-  
+
   // Intercept axios requests to fix ObjectId format issues
   const originalOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function() {
@@ -116,15 +118,15 @@ export const patchApiObjectIdRequests = () => {
       if (this.readyState === 4 && this.status === 400) {
         try {
           const response = JSON.parse(this.responseText);
-          
+
           // Check if error is related to user ID format
           if (response.error && (
-              response.error === 'Invalid user ID format' || 
-              response.error === 'Invalid authenticated user ID format' || 
+              response.error === 'Invalid user ID format' ||
+              response.error === 'Invalid authenticated user ID format' ||
               response.error === 'Invalid user ID format in request'
           )) {
             console.warn("⚠️ Caught ObjectId validation error:", response.error);
-            
+
             // Try to auto-recover using the emergency fix
             if (confirm("Session ID format error detected. Apply emergency fix?")) {
               emergencyUserIdFix();
@@ -137,7 +139,7 @@ export const patchApiObjectIdRequests = () => {
     });
     originalOpen.apply(this, arguments);
   };
-  
+
   console.log("✅ API ObjectId request patch installed");
 };
 
@@ -156,19 +158,19 @@ const failedUrlsCache = new Set();
  */
 export const normalizePhotoUrl = (url) => {
   if (!url) return `${window.location.origin}/placeholder.svg`;
-  
+
   // First check if we've normalized this URL before
   if (urlNormalizationCache.has(url)) {
     return urlNormalizationCache.get(url);
   }
-  
+
   // Check if it's a known failed URL
   if (failedUrlsCache.has(url)) {
     return `${window.location.origin}/placeholder.svg`;
   }
 
   let result;
-  
+
   // If it's the default avatar or placeholder, use absolute URL
   if (url === '/default-avatar.png' || url === '/placeholder.svg') {
     result = `${window.location.origin}${url}`;
@@ -254,21 +256,21 @@ export const formatDate = (date, options = {}) => {
   } catch (e) {
     console.warn('Failed to detect locale:', e);
   }
-  
+
   const {
     showTime = true,
     showDate = true,
     showRelative = false,
     locale = detectedLocale
   } = options;
-  
+
   if (!date) return '';
-  
+
   const dateObj = typeof date === 'string' ? new Date(date) : date;
-  
+
   // For invalid dates
   if (isNaN(dateObj.getTime())) return '';
-  
+
   if (showRelative) {
     // For Hebrew locale, use Hebrew relative time strings
     if (locale.startsWith('he')) {
@@ -278,7 +280,7 @@ export const formatDate = (date, options = {}) => {
       const diffMinutes = Math.floor(diffSeconds / 60);
       const diffHours = Math.floor(diffMinutes / 60);
       const diffDays = Math.floor(diffHours / 24);
-      
+
       if (diffSeconds < 60) return 'זה עתה';
       if (diffMinutes < 60) return `לפני ${diffMinutes} דקות`;
       if (diffHours < 24) return `לפני ${diffHours} שעות`;
@@ -290,16 +292,16 @@ export const formatDate = (date, options = {}) => {
       const diffMinutes = Math.floor(diffSeconds / 60);
       const diffHours = Math.floor(diffMinutes / 60);
       const diffDays = Math.floor(diffHours / 24);
-      
+
       if (diffSeconds < 60) return 'just now';
       if (diffMinutes < 60) return `${diffMinutes}m ago`;
       if (diffHours < 24) return `${diffHours}h ago`;
       if (diffDays < 7) return `${diffDays}d ago`;
     }
   }
-  
+
   let formattedDate = '';
-  
+
   if (showDate) {
     try {
       formattedDate = dateObj.toLocaleDateString(locale, {
@@ -317,7 +319,7 @@ export const formatDate = (date, options = {}) => {
       });
     }
   }
-  
+
   if (showTime) {
     let timeStr;
     try {
@@ -333,7 +335,7 @@ export const formatDate = (date, options = {}) => {
         minute: '2-digit'
       });
     }
-    
+
     // Handle RTL languages differently for combining date and time
     if (locale.startsWith('he') || document.dir === 'rtl') {
       formattedDate = showDate ? `${timeStr} ,${formattedDate}` : timeStr;
@@ -341,7 +343,7 @@ export const formatDate = (date, options = {}) => {
       formattedDate = showDate ? `${formattedDate}, ${timeStr}` : timeStr;
     }
   }
-  
+
   return formattedDate;
 };
 
@@ -382,11 +384,11 @@ export const safeJsonParse = (json, defaultValue = null) => {
  */
 export const formatFileSize = (bytes, decimals = 2) => {
   if (bytes === 0) return '0 Bytes';
-  
+
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
   return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
 };
 
@@ -398,13 +400,13 @@ export const formatFileSize = (bytes, decimals = 2) => {
  */
 export const debounce = (func, wait = 300) => {
   let timeout;
-  
+
   return function executedFunction(...args) {
     const later = () => {
       clearTimeout(timeout);
       func(...args);
     };
-    
+
     clearTimeout(timeout);
     timeout = setTimeout(later, wait);
   };
@@ -419,7 +421,7 @@ export const debounce = (func, wait = 300) => {
 export const throttle = (func, limit = 300) => {
   let inThrottle;
   let lastResult;
-  
+
   return function executedFunction(...args) {
     if (!inThrottle) {
       lastResult = func(...args);
@@ -428,7 +430,7 @@ export const throttle = (func, limit = 300) => {
         inThrottle = false;
       }, limit);
     }
-    
+
     return lastResult;
   };
 };
