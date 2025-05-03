@@ -1,5 +1,10 @@
 import { io } from "socket.io-client"
 import { toast } from "react-toastify"
+import logger from "../utils/logger.js"
+import apiService from "./apiService.jsx"
+
+// Create a named logger for this service
+const log = logger.create("SocketClient")
 
 /**
  * Socket.io client wrapper with enhanced connection management
@@ -41,7 +46,7 @@ class SocketClient {
    */
   init(userId, token, options = {}) {
     if (this.socket && this.connected) {
-      console.log("Socket already connected")
+      log.info("Socket already connected")
       return this.socket
     }
 
@@ -54,21 +59,21 @@ class SocketClient {
                           new URLSearchParams(window.location.search).get('disable_socket') === 'true';
     
     if (socketDisabled) {
-      console.log("Socket.IO connections are temporarily disabled - using fallback mode");
+      log.warn("Socket.IO connections are temporarily disabled - using fallback mode");
       this.socket = {
         // Create a mock socket object with dummy methods
         on: (event, callback) => {},
         off: (event, callback) => {},
         emit: (event, data) => { 
-          console.log(`[Socket Mock] Would emit ${event}`, data);
+          log.debug(`[Socket Mock] Would emit ${event}`, data);
           return true; 
         },
         disconnect: () => {
-          console.log('[Socket Mock] Would disconnect');
+          log.debug('[Socket Mock] Would disconnect');
           return true;
         },
         close: () => {
-          console.log('[Socket Mock] Would close');
+          log.debug('[Socket Mock] Would close');
           return true;
         },
         io: { engine: { transport: { name: 'none' } } },
@@ -83,7 +88,7 @@ class SocketClient {
         localStorage.removeItem('socket_disabled');
         toast.success("Real-time features enabled. Refresh the page to apply changes.", 
           { autoClose: 5000 });
-        console.log("Socket.IO has been re-enabled. Refresh to apply.");
+        log.info("Socket.IO has been re-enabled. Refresh to apply.");
       };
       
       // Add method to get current socket status
@@ -108,7 +113,7 @@ class SocketClient {
       ? 'http://localhost:5000' 
       : 'https://flirtss.com' // Use explicit prod domain for better reliability
     
-    console.log(`Connecting to socket server at ${serverUrl}`)
+    log.info(`Connecting to socket server at ${serverUrl}`)
 
     try {
       // Initialize socket with improved auth and reconnection options
@@ -140,7 +145,7 @@ class SocketClient {
 
       return this.socket
     } catch (error) {
-      console.error("Socket initialization error:", error)
+      log.error("Socket initialization error:", error)
       throw error
     }
   }
@@ -165,7 +170,7 @@ class SocketClient {
 
     // Connection events
     this.socket.on("connect", () => {
-      console.log("Socket connected successfully")
+      log.info("Socket connected successfully")
       this.connected = true
       this.connectionAttempts = 0
       this._startHeartbeat()
@@ -187,12 +192,12 @@ class SocketClient {
 
     // Connection error handling with enhanced WebSocket diagnostics
     this.socket.on("connect_error", (error) => {
-      console.error("Socket connection error:", error)
+      log.error("Socket connection error:", error)
       this.connected = false
       this.connectionAttempts++
       
       // Enhanced error logging for websocket issues
-      console.error("Socket connection error details:", {
+      log.error("Socket connection error details:", {
         message: error.message || "Unknown error",
         type: error.type || "Unknown type",
         transport: this.socket.io?.engine?.transport?.name || "Unknown transport",
@@ -204,12 +209,12 @@ class SocketClient {
       if (this.connectionAttempts > 2 && 
          (error.message?.includes('websocket') || 
           this.socket.io?.engine?.transport?.name === 'websocket')) {
-        console.log("Switching to polling transport after WebSocket failures");
+        log.warn("Switching to polling transport after WebSocket failures");
         
         // Force polling as the only transport option after repeated WebSocket failures
         if (this.socket.io?.opts) {
           this.socket.io.opts.transports = ['polling'];
-          console.log("Forced polling-only transport mode");
+          log.info("Forced polling-only transport mode");
         }
       }
 
@@ -230,7 +235,7 @@ class SocketClient {
           try {
             // Store a flag in localStorage to disable sockets
             localStorage.setItem('socket_disabled', 'true');
-            console.log("Socket connections have been temporarily disabled due to connection issues");
+            log.warn("Socket connections have been temporarily disabled due to connection issues");
             
             // Notify user that a refresh is needed with the new setting
             setTimeout(() => {
@@ -240,7 +245,7 @@ class SocketClient {
               );
             }, 2000);
           } catch (err) {
-            console.error("Failed to set socket disabled flag:", err);
+            log.error("Failed to set socket disabled flag:", err);
           }
         }
       }
@@ -259,7 +264,7 @@ class SocketClient {
 
     // Disconnection events
     this.socket.on("disconnect", (reason) => {
-      console.log(`Socket disconnected: ${reason}`)
+      log.info(`Socket disconnected: ${reason}`)
       this.connected = false
       this._stopHeartbeat()
 
@@ -281,7 +286,7 @@ class SocketClient {
 
     // Reconnection events
     this.socket.on("reconnect", (attemptNumber) => {
-      console.log(`Socket reconnected after ${attemptNumber} attempts`)
+      log.info(`Socket reconnected after ${attemptNumber} attempts`)
       this.connected = true
       this.reconnecting = false
 
@@ -300,16 +305,16 @@ class SocketClient {
     })
 
     this.socket.on("reconnect_attempt", (attemptNumber) => {
-      console.log(`Socket reconnect attempt ${attemptNumber}`)
+      log.debug(`Socket reconnect attempt ${attemptNumber}`)
       this.reconnecting = true
     })
 
     this.socket.on("reconnect_error", (error) => {
-      console.error("Socket reconnection error:", error)
+      log.error("Socket reconnection error:", error)
     })
 
     this.socket.on("reconnect_failed", () => {
-      console.error("Socket reconnection failed")
+      log.error("Socket reconnection failed")
       this.reconnecting = false
 
       toast.error("Failed to reconnect to the chat server. Please reload the page.")
@@ -329,7 +334,7 @@ class SocketClient {
 
     // Server acknowledgment
     this.socket.on("welcome", (data) => {
-      console.log("Socket welcome message received:", data)
+      log.debug("Socket welcome message received:", data)
     })
 
     // Heartbeat events
@@ -339,13 +344,13 @@ class SocketClient {
 
     // Error event
     this.socket.on("error", (error) => {
-      console.error("Socket server error:", error)
+      log.error("Socket server error:", error)
       toast.error(`Server error: ${error.message || "Unknown error"}`)
     })
 
     // Authentication error
     this.socket.on("auth_error", (error) => {
-      console.error("Socket authentication error:", error)
+      log.error("Socket authentication error:", error)
       toast.error("Authentication failed. Please log in again.")
 
       // Trigger authentication event to log out
@@ -406,7 +411,7 @@ class SocketClient {
               data: data,
             })
           } catch (err) {
-            console.error("Error syncing notification to other tabs:", err)
+            log.error("Error syncing notification to other tabs:", err)
           }
         }
       }
@@ -419,7 +424,7 @@ class SocketClient {
   setupNotificationSyncChannel() {
     // Only run if the browser supports BroadcastChannel
     if (typeof BroadcastChannel === "undefined") {
-      console.log("BroadcastChannel not supported, cross-tab sync disabled")
+      log.warn("BroadcastChannel not supported, cross-tab sync disabled")
       return null
     }
 
@@ -431,21 +436,21 @@ class SocketClient {
         const { type, data } = event.data
 
         if (type === "NEW_NOTIFICATION") {
-          console.log("Received new notification from another tab")
+          log.debug("Received new notification from another tab")
           window.dispatchEvent(new CustomEvent("newNotification", { detail: data }))
         } else if (type === "MARK_READ") {
-          console.log("Received mark-read event from another tab")
+          log.debug("Received mark-read event from another tab")
           window.dispatchEvent(new CustomEvent("notificationRead", { detail: data }))
         } else if (type === "MARK_ALL_READ") {
-          console.log("Received mark-all-read event from another tab")
+          log.debug("Received mark-all-read event from another tab")
           window.dispatchEvent(new CustomEvent("allNotificationsRead"))
         }
       }
 
-      console.log("Notification sync channel initialized")
+      log.info("Notification sync channel initialized")
       return this.notificationSyncChannel
     } catch (error) {
-      console.error("Error setting up notification sync channel:", error)
+      log.error("Error setting up notification sync channel:", error)
       this.notificationSyncChannel = null
       return null
     }
@@ -466,7 +471,7 @@ class SocketClient {
         // Check if we've received a pong in the last 60 seconds
         const now = Date.now()
         if (this.lastPong && now - this.lastPong > 60000) {
-          console.warn("No heartbeat response in 60 seconds, reconnecting...")
+          log.warn("No heartbeat response in 60 seconds, reconnecting...")
           this.enhancedReconnect()
         }
       }
@@ -495,7 +500,7 @@ class SocketClient {
       this.checkSocketHealthForNotifications()
     }, 45000)
 
-    console.log("Notification connection monitoring started")
+    log.info("Notification connection monitoring started")
   }
 
   /**
@@ -524,14 +529,14 @@ class SocketClient {
     // Check if it's been too long since last pong
     if (timeSinceLastPong > 60000) {
       // 1 minute
-      console.warn("No socket response in the last minute, reconnecting for notifications...")
+      log.warn("No socket response in the last minute, reconnecting for notifications...")
       this.enhancedReconnect()
       return false
     }
 
     // Check if socket is actually connected
     if (!this.connected) {
-      console.warn("Socket appears disconnected, reconnecting for notifications...")
+      log.warn("Socket appears disconnected, reconnecting for notifications...")
       this.enhancedReconnect()
       return false
     }
@@ -545,7 +550,7 @@ class SocketClient {
   _processPendingMessages() {
     if (!this.connected || this.pendingMessages.length === 0) return
 
-    console.log(`Processing ${this.pendingMessages.length} pending messages`)
+    log.info(`Processing ${this.pendingMessages.length} pending messages`)
 
     // Process all pending messages
     const messages = [...this.pendingMessages]
@@ -610,7 +615,7 @@ class SocketClient {
         try {
           handler(data)
         } catch (error) {
-          console.error(`Error in ${event} handler:`, error)
+          log.error(`Error in ${event} handler:`, error)
         }
       })
     }
@@ -624,12 +629,12 @@ class SocketClient {
    */
   emit(event, data = {}) {
     if (!this.socket) {
-      console.warn(`Socket not initialized, cannot emit '${event}'`)
+      log.warn(`Socket not initialized, cannot emit '${event}'`)
       return false
     }
 
     if (!this.connected) {
-      console.log(`Socket not connected, queueing '${event}'`)
+      log.info(`Socket not connected, queueing '${event}'`)
       this.pendingMessages.push({ event, data })
       return true
     }
@@ -638,7 +643,7 @@ class SocketClient {
       this.socket.emit(event, data)
       return true
     } catch (error) {
-      console.error(`Error emitting '${event}':`, error)
+      log.error(`Error emitting '${event}':`, error)
       return false
     }
   }
@@ -648,17 +653,17 @@ class SocketClient {
    */
   enhancedReconnect() {
     if (this.reconnecting) {
-      console.log("Already attempting reconnection, skipping duplicate request");
+      log.info("Already attempting reconnection, skipping duplicate request");
       return;
     }
 
     // Check if socket is in fallback mode
     if (this.socket?.io?.engine?.transport?.name === 'none') {
-      console.log("Socket in fallback mode, cannot reconnect");
+      log.warn("Socket in fallback mode, cannot reconnect");
       return;
     }
 
-    console.log("Forcing socket reconnection with notification support...");
+    log.info("Forcing socket reconnection with notification support...");
     this.reconnecting = true;
 
     // Close existing connection with better error handling
@@ -667,7 +672,7 @@ class SocketClient {
         this.socket.disconnect();
         this.socket.close();
       } catch (error) {
-        console.error("Error closing socket:", error);
+        log.error("Error closing socket:", error);
         // Continue anyway - don't let this stop us from reconnecting
       }
     }
@@ -681,23 +686,23 @@ class SocketClient {
       if (token) {
         // Add a small random delay to prevent simultaneous reconnection attempts
         const reconnectDelay = 1000 + Math.random() * 2000;
-        console.log(`Scheduling reconnection in ${Math.round(reconnectDelay)}ms`);
+        log.debug(`Scheduling reconnection in ${Math.round(reconnectDelay)}ms`);
 
         setTimeout(() => {
           try {
             // Re-fetch a fresh token directly from storage in case it changed
             const freshToken = localStorage.getItem("token") || sessionStorage.getItem("token");
             if (freshToken !== token) {
-              console.log("Token changed since reconnection attempt started, using fresh token");
+              log.info("Token changed since reconnection attempt started, using fresh token");
             }
 
             // Check network status - if browser is offline, wait for online event
             if (!navigator.onLine) {
-              console.log("Browser is offline, waiting for connection to return");
+              log.warn("Browser is offline, waiting for connection to return");
 
               // Set up one-time event listener for reconnection when back online
               const onlineHandler = () => {
-                console.log("Browser back online, attempting reconnection");
+                log.info("Browser back online, attempting reconnection");
                 window.removeEventListener('online', onlineHandler);
 
                 // Wait a moment for network to stabilize
@@ -717,7 +722,7 @@ class SocketClient {
             const serverUrl = isDev ? 'http://localhost:5000' : 'https://flirtss.com';
 
             // Always use the most recent token available
-            console.log("Initializing socket with fresh token");
+            log.info("Initializing socket with fresh token");
             this.init(this.userId, freshToken || token, {
               // Explicitly try websocket first on reconnect for better reliability
               // Removed extraHeaders from transportOptions that were causing CORS issues
@@ -728,13 +733,13 @@ class SocketClient {
 
             // Dispatch reconnection success event specifically for notifications
             window.dispatchEvent(new CustomEvent("notificationSocketReconnected"));
-            console.log("Socket reconnected with notification support");
+            log.info("Socket reconnected with notification support");
           } catch (err) {
-            console.error("Socket reconnection failed:", err);
+            log.error("Socket reconnection failed:", err);
 
             // Attempt fallback to polling-only if WebSocket is the issue
             if (err.message && (err.message.includes("websocket") || err.message.includes("WebSocket"))) {
-              console.log("WebSocket error detected, trying fallback to polling transport only");
+              log.warn("WebSocket error detected, trying fallback to polling transport only");
               try {
                 // Use environment-aware server URL
                 const isDev = process.env.NODE_ENV === 'development';
@@ -744,15 +749,15 @@ class SocketClient {
                   transports: ["polling"],
                   autoConnect: true
                 });
-                console.log("Fallback to polling transport initiated");
+                log.info("Fallback to polling transport initiated");
               } catch (fallbackErr) {
-                console.error("Polling fallback also failed:", fallbackErr);
+                log.error("Polling fallback also failed:", fallbackErr);
               }
             }
 
             // If reconnection failed due to token issues, try one more time with a clean token
             if (err.message && (err.message.includes("auth") || err.message.includes("token"))) {
-              console.log("Authentication error detected, trying emergency session reset");
+              log.warn("Authentication error detected, trying emergency session reset");
 
               // Wait 2 seconds before trying the emergency recovery
               setTimeout(() => {
@@ -764,14 +769,14 @@ class SocketClient {
                     // Try to refresh the token first before full reset
                     this._attemptTokenRefresh().catch(() => {
                       // Last resort: clear storage and reload
-                      console.log("Performing emergency session reset");
+                      log.warn("Performing emergency session reset");
                       localStorage.clear();
                       sessionStorage.clear();
                       window.location.reload();
                     });
                   }
                 } catch (emergencyErr) {
-                  console.error("Emergency recovery failed:", emergencyErr);
+                  log.error("Emergency recovery failed:", emergencyErr);
                   this.reconnecting = false;
                 }
               }, 2000);
@@ -782,11 +787,11 @@ class SocketClient {
           }
         }, reconnectDelay);
       } else {
-        console.error("Cannot reconnect: No authentication token found");
+        log.error("Cannot reconnect: No authentication token found");
         this.reconnecting = false;
       }
     } else {
-      console.error("Cannot reconnect: No user ID");
+      log.error("Cannot reconnect: No user ID");
       this.reconnecting = false;
     }
   }
@@ -798,35 +803,25 @@ class SocketClient {
    */
   _attemptTokenRefresh() {
     return new Promise((resolve, reject) => {
-      console.log("Attempting to refresh authentication token");
+      log.info("Attempting to refresh authentication token");
 
-      // First try a token refresh API if available
-      fetch('/api/auth/refresh-token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include'
-      })
-      .then(response => {
-        if (!response.ok) throw new Error('Token refresh failed');
-        return response.json();
-      })
-      .then(data => {
-        if (data.token) {
-          console.log("Token refresh successful");
-          localStorage.setItem('token', data.token);
-          this.reconnecting = false;
-          this.enhancedReconnect();
-          resolve();
-        } else {
-          throw new Error('No token in response');
-        }
-      })
-      .catch(err => {
-        console.error("Token refresh failed:", err);
-        reject(err);
-      });
+      // Use apiService instead of direct fetch
+      apiService.post('/auth/refresh-token', {})
+        .then(data => {
+          if (data.token) {
+            log.info("Token refresh successful");
+            localStorage.setItem('token', data.token);
+            this.reconnecting = false;
+            this.enhancedReconnect();
+            resolve();
+          } else {
+            throw new Error('No token in response');
+          }
+        })
+        .catch(err => {
+          log.error("Token refresh failed:", err);
+          reject(err);
+        });
     });
   }
 
@@ -842,7 +837,7 @@ class SocketClient {
    * Disconnect the socket
    */
   disconnect() {
-    console.log("Disconnecting socket")
+    log.info("Disconnecting socket")
 
     this._stopHeartbeat()
     this.stopConnectionMonitoring()
@@ -853,7 +848,7 @@ class SocketClient {
         this.notificationSyncChannel.close()
         this.notificationSyncChannel = null
       } catch (err) {
-        console.error("Error closing notification sync channel:", err)
+        log.error("Error closing notification sync channel:", err)
       }
     }
 
@@ -861,7 +856,7 @@ class SocketClient {
       try {
         this.socket.disconnect()
       } catch (error) {
-        console.error("Error disconnecting socket:", error)
+        log.error("Error disconnecting socket:", error)
       }
       this.socket = null
     }

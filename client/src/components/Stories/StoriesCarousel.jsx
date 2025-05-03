@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useStories } from "../../context"
 import StoryThumbnail from "./StoryThumbnail"
 import styles from "../../styles/stories.module.css"
+import logger from "../../utils/logger"
+
+const log = logger.create("StoriesCarousel")
 
 // Improved throttle function with proper cleanup
 const throttle = (func, limit) => {
@@ -122,10 +125,10 @@ const StoriesCarousel = ({ onStoryClick }) => {
         if (typeof loadStories === "function") {
           await loadStories(false) // Don't force refresh on initial load
         } else {
-          console.warn("Stories functionality is not available - loadStories function not found")
+          log.warn("Stories functionality is not available - loadStories function not found")
         }
       } catch (error) {
-        console.error("Error loading stories:", error)
+        log.error("Error loading stories:", error)
         setError("Failed to load stories")
       } finally {
         setLoading(false)
@@ -146,7 +149,7 @@ const StoriesCarousel = ({ onStoryClick }) => {
       if (typeof onStoryClick === "function") {
         onStoryClick(storyId)
       } else {
-        console.warn("Story click handler not provided")
+        log.warn("Story click handler not provided")
       }
     }, 300), // Throttle to 300ms
     [onStoryClick],

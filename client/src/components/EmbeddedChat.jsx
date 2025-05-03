@@ -26,11 +26,11 @@ import {
 } from "./chat/chatConstants.js";
 import {
     generateLocalUniqueId,
-    createAuthAxios,
     formatMessageDateSeparator,
     groupMessagesByDate,
     classNames
 } from "./chat/chatUtils.jsx"; // Renamed to .jsx previously
+import apiService from "../services/apiService.jsx";
 import MessageItem from "./chat/MessageItem.jsx";
 import ChatInput from "./chat/ChatInput.jsx";
 import AttachmentPreview from "./chat/AttachmentPreview.jsx";
@@ -185,7 +185,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
     const isInitialLoadDone = useRef(false);
 
     // --- Memoized Values ---
-    const authAxios = useMemo(() => createAuthAxios(), []);
+    // Using apiService directly instead of deprecated createAuthAxios
     const groupedMessages = useMemo(() => groupMessagesByDate(localMessages), [localMessages]);
     const currentUserId = user?._id; // Get current user ID safely
 
@@ -283,7 +283,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
         // Update localMessages only if the content actually changed
         if (uniqueMessages.length !== localMessages.length || 
             JSON.stringify(uniqueMessages.map(m => m._id)) !== JSON.stringify(localMessages.map(m => m._id))) {
-            console.log(`Updating messages: ${uniqueMessages.length} unique of ${combined.length} total`);
+            log.debug(`Updating messages: ${uniqueMessages.length} unique of ${combined.length} total`);
             setLocalMessages(uniqueMessages);
         }
     }, [hookMessages, localMessages]); // Include localMessages to detect actual changes
@@ -326,9 +326,9 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
 
     // Check Pending Photo Requests
     const checkPendingPhotoRequests = useCallback(async () => {
-        if (!recipientId || !user?._id || !authAxios) return;
+        if (!recipientId || !user?._id) return;
         try {
-            const response = await authAxios.get(`/api/users/photos/permissions`, {
+            const response = await apiService.get(`/users/photos/permissions`, {
                 params: { requestedBy: recipientId, status: "pending" },
             });
             const requests = response?.data?.data || [];
@@ -337,7 +337,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
             log.error("Error checking photo permissions:", error.response?.data || error.message);
             setPendingPhotoRequests(0);
         }
-    }, [authAxios, recipientId, user?._id]);
+    }, [recipientId, user?._id]);
 
     // Run photo request check
     useEffect(() => {
@@ -423,7 +423,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
         if (pendingPhotoRequests === 0 || !recipientId || isApprovingRequests) return;
         setIsApprovingRequests(true);
         try {
-            const response = await authAxios.post(`/api/users/photos/approve-all`, { requesterId: recipientId });
+            const response = await apiService.post(`/users/photos/approve-all`, { requesterId: recipientId });
             if (response.data?.success) {
                 const count = response.data.approvedCount || pendingPhotoRequests;
                 toast.success(`Approved ${count} photo request${count !== 1 ? "s" : ""}.`);
@@ -438,7 +438,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
             toast.error(`Error approving requests: ${error.message || "Please try again."}`);
             addLocalSystemMessage("Failed to approve photo requests.", true);
         } finally { setIsApprovingRequests(false); }
-    }, [authAxios, recipientId, pendingPhotoRequests, isApprovingRequests, user?.accountTier, hookSendMessage, addLocalSystemMessage, recipient?.nickname]);
+    }, [recipientId, pendingPhotoRequests, isApprovingRequests, user?.accountTier, hookSendMessage, addLocalSystemMessage, recipient?.nickname]);
 
     // Input Change
     const handleInputChange = useCallback((e) => {

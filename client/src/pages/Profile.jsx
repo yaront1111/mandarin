@@ -5,9 +5,11 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth, useUser, useLanguage } from "../context"
 import { toast } from "react-toastify"
-import axios from "axios"
+// Removed axios import in favor of apiService
+import apiService from "../services/apiService.jsx"
 import { useTranslation } from "react-i18next"
 import { useIsMobile, useMobileDetect } from "../hooks"
+import logger from "../utils/logger"
 import {
   FaUserCircle,
   FaCamera,
@@ -28,7 +30,11 @@ import styles from "../styles/profile.module.css"
 // Import the normalizePhotoUrl utility
 import { normalizePhotoUrl } from "../utils/index.js"
 
+// Create a named logger for this component
+const log = logger.create("Profile")
+
 const Profile = () => {
+  
   const { user } = useAuth()
   const { updateProfile, uploadPhoto, refreshUserData } = useUser()
   const { t } = useTranslation()
@@ -418,27 +424,27 @@ const Profile = () => {
         },
       }
       
-      console.log("Submitting profile data:", submissionData)
+      profileLogger.info("Submitting profile data:", submissionData)
       const updatedUser = await updateProfile(submissionData)
       
       if (updatedUser) {
-        console.log("Profile updated successfully, refreshing user data...");
+        profileLogger.info("Profile updated successfully, refreshing user data...");
         
         try {
           // After successful update, force a refresh of user data
           const refreshResult = await refreshUserData(updatedUser._id);
           
           if (refreshResult) {
-            console.log("User data refresh successful");
+            profileLogger.info("User data refresh successful");
           } else {
-            console.warn("User data refresh may not have been complete, but continuing");
+            profileLogger.warn("User data refresh may not have been complete, but continuing");
           }
           
           toast.success(t('profile.profileUpdated'))
           setIsEditing(false)
         } catch (refreshError) {
           // Even if refresh fails, the profile was updated successfully
-          console.warn("Failed to refresh user data, but profile was updated:", refreshError);
+          profileLogger.warn("Failed to refresh user data, but profile was updated:", refreshError);
           toast.success(t('profile.profileUpdated'))
           toast.info(t('profile.refreshFailed'))
           setIsEditing(false)
@@ -447,7 +453,7 @@ const Profile = () => {
         throw new Error(t('profile.updateFailed'))
       }
     } catch (error) {
-      console.error("Failed to update profile:", error)
+      profileLogger.error("Failed to update profile:", error)
       toast.error(error.message || t('errors.profileUpdateFailed'))
     } finally {
       setIsSubmitting(false)
@@ -509,7 +515,7 @@ const Profile = () => {
         throw new Error(t('errors.photoUploadFailed'))
       }
     } catch (error) {
-      console.error("Failed to upload photo:", error)
+      log.error("Failed to upload photo:", error)
       toast.error(error.message || t('errors.photoUploadFailed'))
 
       // Remove the temporary photo on error
@@ -540,22 +546,17 @@ const Profile = () => {
     )
     setIsProcessingPhoto(true)
     try {
-      const response = await fetch(`/api/users/photos/${photoId}/privacy`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${sessionStorage.getItem("token")}`,
-        },
-        body: JSON.stringify({ isPrivate: newPrivacyValue }),
+      const data = await apiService.put(`/users/photos/${photoId}/privacy`, { 
+        isPrivate: newPrivacyValue 
       })
-      const data = await response.json()
+      
       if (!data.success) {
         throw new Error(data.error || t('errors.photoPrivacyUpdateFailed'))
       }
       toast.success(t('profile.photoPrivacySuccess', { status: newPrivacyValue ? t('common.private') : t('common.public') }))
       await refreshUserData(user?._id)
     } catch (error) {
-      console.error("Failed to update photo privacy:", error)
+      log.error("Failed to update photo privacy:", error)
       toast.error(error.message || t('errors.photoPrivacyUpdateFailed'))
       setLocalPhotos((prev) =>
         prev.map((photo) => (photo._id === photoId ? { ...photo, isPrivate: !newPrivacyValue } : photo)),
@@ -587,21 +588,15 @@ const Profile = () => {
     )
     setIsProcessingPhoto(true)
     try {
-      const response = await fetch(`/api/users/photos/${photoId}/profile`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${sessionStorage.getItem("token")}`,
-        },
-      })
-      const data = await response.json()
+      const data = await apiService.put(`/users/photos/${photoId}/profile`, {})
+      
       if (!data.success) {
         throw new Error(data.error || t('errors.profilePhotoUpdateFailed'))
       }
       toast.success(t('profile.profilePhotoUpdated'))
       await refreshUserData(user?._id)
     } catch (error) {
-      console.error("Failed to set profile photo:", error)
+      log.error("Failed to set profile photo:", error)
       toast.error(error.message || t('errors.profilePhotoUpdateFailed'))
       const oldProfileIndex = localPhotos.findIndex((p) => p.isProfile)
       if (oldProfileIndex !== -1) {
@@ -647,20 +642,15 @@ const Profile = () => {
     }
     setIsProcessingPhoto(true)
     try {
-      const response = await fetch(`/api/users/photos/${photoId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${sessionStorage.getItem("token")}`,
-        },
-      })
-      const data = await response.json()
+      const data = await apiService.delete(`/users/photos/${photoId}`)
+      
       if (!data.success) {
         throw new Error(data.error || t('errors.photoDeleteFailed'))
       }
       toast.success(t('profile.photoDeleteSuccess'))
       await refreshUserData(user?._id)
     } catch (error) {
-      console.error("Failed to delete photo:", error)
+      log.error("Failed to delete photo:", error)
       toast.error(error.message || t('errors.photoDeleteFailed'))
       await refreshUserData(user?._id)
     } finally {
@@ -702,18 +692,15 @@ const Profile = () => {
           return
         }
 
-        // Use the correct endpoint based on your API routes
+        // Use the correct endpoint based on your API routes with apiService
         // If viewing own profile, use the current user endpoint
-        const endpoint = userId ? `/api/users/${userId}` : `/api/users`
+        const endpoint = userId ? `/users/${userId}` : `/users`
 
-        const response = await axios.get(endpoint, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
+        // Use apiService instead of direct axios call
+        const response = await apiService.get(endpoint)
         setProfile(response.data)
       } catch (error) {
-        console.error("Failed to fetch profile:", error)
+        log.error("Failed to fetch profile:", error)
         setError("Could not load profile data")
       } finally {
         setLoading(false)
@@ -734,7 +721,7 @@ const Profile = () => {
         isLiked: !prevProfile.isLiked,
       }))
     } catch (error) {
-      console.error("Failed to like/unlike profile:", error)
+      log.error("Failed to like/unlike profile:", error)
       toast.error("Failed to like/unlike profile")
     } finally {
       setLikeLoading(false)
@@ -748,7 +735,7 @@ const Profile = () => {
       // Example: navigate(`/messages/${userId}`);
       navigate("/messages") // Redirect to messages for now
     } catch (error) {
-      console.error("Failed to navigate to messages:", error)
+      log.error("Failed to navigate to messages:", error)
       toast.error("Failed to navigate to messages")
     } finally {
       setMessageLoading(false)
@@ -757,12 +744,12 @@ const Profile = () => {
 
   const handleProfilePhotoUpload = () => {
     // Implement your profile photo upload logic here
-    console.log("Profile photo upload clicked")
+    log.debug("Profile photo upload clicked")
   }
 
   const handleCoverPhotoUpload = () => {
     // Implement your cover photo upload logic here
-    console.log("Cover photo upload clicked")
+    log.debug("Cover photo upload clicked")
   }
 
   // Update the getProfilePhoto function to use the normalizePhotoUrl utility

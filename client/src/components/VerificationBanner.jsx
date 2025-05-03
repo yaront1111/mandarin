@@ -3,6 +3,9 @@
 import { useState, useEffect } from "react"
 import { FaExclamationTriangle, FaEnvelope, FaTimes } from "react-icons/fa"
 import { useAuth } from "../context"
+import logger from "../utils/logger"
+
+const log = logger.create("VerificationBanner")
 
 const VerificationBanner = () => {
   const { user, resendVerificationEmail } = useAuth()
@@ -50,7 +53,7 @@ const VerificationBanner = () => {
         setCooldown(60) // Set cooldown to 60 minutes
       }
     } catch (error) {
-      console.error("Error resending verification email:", error)
+      log.error("Error resending verification email:", error)
     } finally {
       setResending(false)
     }

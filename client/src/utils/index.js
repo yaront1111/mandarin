@@ -2,7 +2,12 @@
  * Re-export all utilities for easy importing
  */
 
+// Import logger to use it in this file
+import logger from './logger';
+// Re-export logger for external use
 export { default as logger, createLogger, LogLevel } from './logger';
+// Create a logger for this file
+const log = logger.create("utils");
 export * from './chatUtils';
 
 // Export original mobile utilities functions from mobileInit
@@ -39,11 +44,11 @@ export const resetUserSession = () => {
   sessionStorage.clear();
 
   // Add console message for debugging
-  console.log("🧹 User session reset completely!");
+  log.info("🧹 User session reset completely!");
 
   // If we had a token before, put it back in localStorage only to ensure consistent source
   if (hasToken && token) {
-    console.log("🔑 Re-saving token to localStorage only");
+    log.info("🔑 Re-saving token to localStorage only");
     localStorage.setItem('token', token);
   }
 
@@ -109,7 +114,7 @@ export const patchApiObjectIdRequests = () => {
   if (window._objectIdRequestsPatched) return;
   window._objectIdRequestsPatched = true;
 
-  console.log("🔧 Installing API ObjectId request patch");
+  log.info("🔧 Installing API ObjectId request patch");
 
   // Intercept axios requests to fix ObjectId format issues
   const originalOpen = XMLHttpRequest.prototype.open;
@@ -125,7 +130,7 @@ export const patchApiObjectIdRequests = () => {
               response.error === 'Invalid authenticated user ID format' ||
               response.error === 'Invalid user ID format in request'
           )) {
-            console.warn("⚠️ Caught ObjectId validation error:", response.error);
+            log.warn("⚠️ Caught ObjectId validation error:", response.error);
 
             // Try to auto-recover using the emergency fix
             if (confirm("Session ID format error detected. Apply emergency fix?")) {
@@ -140,7 +145,7 @@ export const patchApiObjectIdRequests = () => {
     originalOpen.apply(this, arguments);
   };
 
-  console.log("✅ API ObjectId request patch installed");
+  log.info("✅ API ObjectId request patch installed");
 };
 
 // Install the patch immediately
@@ -187,7 +192,7 @@ export const normalizePhotoUrl = (url) => {
     const avatarUrl = `${apiBase}/api/avatars/${url}`;
     // Only log in development mode
     if (import.meta.env.MODE !== 'production') {
-      console.log(`Avatar URL generated: ${avatarUrl}`);
+      log.debug(`Avatar URL generated: ${avatarUrl}`);
     }
     result = avatarUrl;
   }
@@ -254,7 +259,7 @@ export const formatDate = (date, options = {}) => {
       detectedLocale = navigator.language;
     }
   } catch (e) {
-    console.warn('Failed to detect locale:', e);
+    log.warn('Failed to detect locale:', e);
   }
 
   const {
@@ -311,7 +316,7 @@ export const formatDate = (date, options = {}) => {
       });
     } catch (e) {
       // Fallback if the locale is not supported
-      console.warn(`Locale ${locale} not supported for date formatting, falling back to default`);
+      log.warn(`Locale ${locale} not supported for date formatting, falling back to default`);
       formattedDate = dateObj.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
@@ -329,7 +334,7 @@ export const formatDate = (date, options = {}) => {
       });
     } catch (e) {
       // Fallback if the locale is not supported
-      console.warn(`Locale ${locale} not supported for time formatting, falling back to default`);
+      log.warn(`Locale ${locale} not supported for time formatting, falling back to default`);
       timeStr = dateObj.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit'

@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import styles from '../styles/Messages.module.css'; // Import the enhanced styles
 import { setupTouchGestures, provideTactileFeedback, enhanceScrolling, isRunningAsInstalledPwa } from '../utils/mobileGestures'; // Assuming these utils exist
+import logger from "../utils/logger";
+
+const log = logger.create("MessagesWrapper");
 
 /**
  * MessagesWrapper component - Enhances the main Messages component with mobile optimizations
@@ -58,7 +61,7 @@ const MessagesWrapper = ({ children }) => {
 
     // Only setup if essential elements are present and utils are loaded
     if (!container || !sidebar || !chatArea || typeof setupTouchGestures !== 'function') {
-        // console.warn("MessagesWrapper: Refs not ready or utils missing for gesture setup.");
+        // log.warn("MessagesWrapper: Refs not ready or utils missing for gesture setup.");
         return;
     }
 
@@ -75,7 +78,7 @@ const MessagesWrapper = ({ children }) => {
       onRefresh: async () => {
         try {
           // Trigger refresh - replace with your actual refresh function from context or props if needed
-          console.log("Attempting to refresh conversations via wrapper...");
+          log.info("Attempting to refresh conversations via wrapper...");
           toast.info("Refreshing conversations...");
 
           // Placeholder for actual refresh logic (e.g., re-fetching conversations)
@@ -85,15 +88,15 @@ const MessagesWrapper = ({ children }) => {
           // Success feedback
           if (typeof provideTactileFeedback === 'function') provideTactileFeedback('send');
         } catch (err) {
-          console.error("Error during refresh:", err);
+          log.error("Error during refresh:", err);
           if (typeof provideTactileFeedback === 'function') provideTactileFeedback('error');
         }
       },
       onRefreshStart: () => {
-        console.log("Pull-to-refresh started");
+        log.info("Pull-to-refresh started");
       },
       onRefreshEnd: () => {
-        console.log("Pull-to-refresh ended");
+        log.info("Pull-to-refresh ended");
       }
     };
 
@@ -127,9 +130,9 @@ const MessagesWrapper = ({ children }) => {
         await promptEvent.prompt();
         // Wait for user response (optional)
         const { outcome } = await promptEvent.userChoice;
-        console.log(`User ${outcome === 'accepted' ? 'accepted' : 'declined'} the install prompt`);
+        log.info(`User ${outcome === 'accepted' ? 'accepted' : 'declined'} the install prompt`);
     } catch (error) {
-        console.error("Error prompting PWA install:", error);
+        log.error("Error prompting PWA install:", error);
         toast.error("Could not show install prompt.");
     }
 
@@ -142,7 +145,7 @@ const MessagesWrapper = ({ children }) => {
   // Callback function for child components to register their refs with the wrapper
   // Using useCallback to stabilize the function reference
   const registerRefs = React.useCallback((childRefs) => {
-    // console.log("Registering refs from child:", childRefs); // Debugging
+    // log.info("Registering refs from child:", childRefs); // Debugging
     if (childRefs.sidebarRef) {
       sidebarRef.current = childRefs.sidebarRef.current; // Assign the actual DOM node
     }

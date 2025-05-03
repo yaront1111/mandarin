@@ -1,4 +1,25 @@
 import apiService from './apiService.jsx';
+import logger from '../utils/logger.js';
+
+// Create a named logger for this service
+const log = logger.create('SettingsService');
+
+// Default settings for new users
+const DEFAULT_SETTINGS = {
+  notifications: {
+    messages: true,
+    calls: true,
+    stories: true,
+    likes: true,
+    comments: true,
+  },
+  privacy: {
+    showOnlineStatus: true,
+    showReadReceipts: true,
+    showLastSeen: true,
+    allowStoryReplies: "everyone"
+  }
+};
 
 const settingsService = {
   /**
@@ -7,36 +28,22 @@ const settingsService = {
    */
   getUserSettings: async () => {
     try {
-      // Use /auth/me endpoint instead since it includes user settings
-      console.log('Fetching user settings from /auth/me endpoint');
+      // Use /auth/me endpoint since it includes user settings
+      log.debug('Fetching user settings from /auth/me endpoint');
       const response = await apiService.get('/auth/me');
       
       // Ensure response has the right format
       if (response.success && response.data) {
         // Extract settings from the user data
-        const settings = response.data.settings || {
-          notifications: {
-            messages: true,
-            calls: true,
-            stories: true,
-            likes: true,
-            comments: true,
-          },
-          privacy: {
-            showOnlineStatus: true,
-            showReadReceipts: true,
-            showLastSeen: true,
-            allowStoryReplies: "everyone"
-          }
-        };
+        const settings = response.data.settings || DEFAULT_SETTINGS;
         
-        console.log('Successfully fetched user settings from /auth/me:', settings);
+        log.debug('Successfully fetched user settings');
         return {
           success: true,
           data: settings
         };
       } else {
-        console.error('API returned unsuccessful response:', response);
+        log.error('API returned unsuccessful response', response);
         return { 
           success: false, 
           error: response.error || 'Failed to fetch settings',
@@ -44,7 +51,7 @@ const settingsService = {
         };
       }
     } catch (error) {
-      console.error('Error fetching user settings:', error);
+      log.error('Error fetching user settings', error);
       return { 
         success: false, 
         error: error.message || 'Failed to fetch settings',
@@ -58,26 +65,33 @@ const settingsService = {
    * @param {Object} settings - The settings object to update
    * @returns {Promise} Promise with updated settings
    */
-  // In updateSettings, add a check for valid token
   updateSettings: async (settings) => {
     try {
-      // Check if token exists before making request
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      if (!token) {
-        console.error('No authentication token found');
+      log.debug('Updating settings via /users/profile endpoint');
+      // apiService already handles token injection and validation
+      const response = await apiService.put('/users/profile', { settings });
+      
+      if (response.success) {
+        log.debug('Settings update successful');
         return {
-          success: false,
-          error: 'Authentication required. Please log in again.',
+          success: true,
+          data: settings
+        };
+      } else {
+        log.warn('Settings update failed', response);
+        return { 
+          success: false, 
+          error: response.error || 'Failed to update settings',
           data: null
         };
       }
-
-      console.log('Updating settings via /users/profile endpoint', settings);
-      const response = await apiService.put('/users/profile', { settings });
-
-      // Rest of your function...
     } catch (error) {
-      // Error handling...
+      log.error('Error updating settings', error);
+      return { 
+        success: false, 
+        error: error.message || 'Failed to update settings',
+        data: null
+      };
     }
   },
 
@@ -89,24 +103,22 @@ const settingsService = {
   updateNotificationSettings: async (notificationSettings) => {
     try {
       // Use the profile update endpoint with settings structure
-      console.log('Updating notification settings via /users/profile endpoint', notificationSettings);
+      log.debug('Updating notification settings', { notificationSettings });
       const response = await apiService.put('/users/profile', {
         settings: {
           notifications: notificationSettings
         }
       });
       
-      // Log the response for debugging
-      console.log('Notification settings update API response:', response);
-      
       // Ensure response has the right format
       if (response.success) {
+        log.debug('Notification settings update successful');
         return {
           success: true,
           data: { notifications: notificationSettings }
         };
       } else {
-        console.error('API returned unsuccessful notification settings update response:', response);
+        log.warn('Notification settings update failed', response);
         return { 
           success: false, 
           error: response.error || 'Failed to update notification settings',
@@ -114,7 +126,7 @@ const settingsService = {
         };
       }
     } catch (error) {
-      console.error('Error updating notification settings:', error);
+      log.error('Error updating notification settings', error);
       return { 
         success: false, 
         error: error.message || 'Failed to update notification settings',
@@ -131,24 +143,22 @@ const settingsService = {
   updatePrivacySettings: async (privacySettings) => {
     try {
       // Use the profile update endpoint with settings structure
-      console.log('Updating privacy settings via /users/profile endpoint', privacySettings);
+      log.debug('Updating privacy settings', { privacySettings });
       const response = await apiService.put('/users/profile', {
         settings: {
           privacy: privacySettings
         }
       });
       
-      // Log the response for debugging
-      console.log('Privacy settings update API response:', response);
-      
       // Ensure response has the right format
       if (response.success) {
+        log.debug('Privacy settings update successful');
         return {
           success: true,
           data: { privacy: privacySettings }
         };
       } else {
-        console.error('API returned unsuccessful privacy settings update response:', response);
+        log.warn('Privacy settings update failed', response);
         return { 
           success: false, 
           error: response.error || 'Failed to update privacy settings',
@@ -156,7 +166,7 @@ const settingsService = {
         };
       }
     } catch (error) {
-      console.error('Error updating privacy settings:', error);
+      log.error('Error updating privacy settings', error);
       return { 
         success: false, 
         error: error.message || 'Failed to update privacy settings',
@@ -172,13 +182,15 @@ const settingsService = {
    */
   deleteAccount: async (password) => {
     try {
-      // Make sure your endpoint here is also correct (remove extra "/api" if needed)
+      log.info('Attempting account deletion');
       const response = await apiService.delete('/users/account', {
         data: { password }
       });
+      
+      log.info('Account deletion successful');
       return response.data;
     } catch (error) {
-      console.error('Error deleting account:', error);
+      log.error('Error deleting account', error);
       throw error;
     }
   }

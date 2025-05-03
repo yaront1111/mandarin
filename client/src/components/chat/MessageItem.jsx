@@ -6,6 +6,10 @@ import {
 } from 'react-icons/fa';
 import { formatMessageTime, getFileIcon, classNames } from './chatUtils.jsx';
 import styles from '../../styles/embedded-chat.module.css';
+import { logger } from '../../utils/logger.js';
+
+// Create a named logger for this component
+const log = logger.create('MessageItem');
 
 const MessageItem = React.memo(({
     message,
@@ -14,7 +18,7 @@ const MessageItem = React.memo(({
 }) => {
     // Basic validation
     if (!message || (!message._id && !message.tempId)) {
-        console.warn("Invalid message object passed to MessageItem:", message);
+        log.warn("Invalid message object passed to MessageItem:", message);
         return null;
     }
 
@@ -179,7 +183,7 @@ const MessageItem = React.memo(({
                                     loading="lazy" 
                                     style={{ display: 'block', visibility: 'visible', minHeight: '100px' }}
                                     onError={(e) => { 
-                                        console.error(`Failed to load image: ${displayUrl}`);
+                                        log.error(`Failed to load image: ${displayUrl}`);
                                         e.target.onerror = null; 
                                         e.target.src = "/placeholder-error.svg"; 
                                         e.target.classList.remove(styles.loading);
@@ -205,7 +209,7 @@ const MessageItem = React.memo(({
                                             if (!recoverySuccessful && messageHash && window.__fileMessagesByHash && window.__fileMessagesByHash[messageHash]) {
                                                 const cachedUrl = window.__fileMessagesByHash[messageHash].url;
                                                 if (cachedUrl && cachedUrl !== displayUrl) {
-                                                    console.log(`Attempting to recover image URL by hash: ${cachedUrl}`);
+                                                    log.debug(`Attempting to recover image URL by hash: ${cachedUrl}`);
                                                     setTimeout(() => {
                                                         e.target.src = cachedUrl;
                                                         updateMetadataUrl(cachedUrl);
@@ -229,7 +233,7 @@ const MessageItem = React.memo(({
                                                         ? displayUrl.replace('https', 'http')
                                                         : displayUrl.replace('http', 'https');
                                                     
-                                                    console.log(`Attempting protocol switch recovery: ${altProtocolUrl}`);
+                                                    log.debug(`Attempting protocol switch recovery: ${altProtocolUrl}`);
                                                     setTimeout(() => { 
                                                         e.target.src = altProtocolUrl;
                                                         if (e.target.complete && e.target.naturalWidth > 0) {
@@ -348,7 +352,7 @@ const MessageItem = React.memo(({
             case "video":
                 return renderVideoContent();
             default:
-                console.warn(`Unsupported message type: ${message.type}`, message);
+                log.warn(`Unsupported message type: ${message.type}`, message);
                 return <p className={styles.messageContent}>Unsupported message</p>;
         }
     };
@@ -372,10 +376,10 @@ const MessageItem = React.memo(({
                         const stored = localStorage.getItem('mandarin_file_urls');
                         if (stored) {
                             window.__fileMessages = JSON.parse(stored) || {};
-                            console.log(`Loaded ${Object.keys(window.__fileMessages).length} file URLs from localStorage`);
+                            log.debug(`Loaded ${Object.keys(window.__fileMessages).length} file URLs from localStorage`);
                         }
                     } catch (e) {
-                        console.warn("Error loading file URLs from localStorage", e);
+                        log.warn("Error loading file URLs from localStorage", e);
                     }
                 }
                 
@@ -388,19 +392,19 @@ const MessageItem = React.memo(({
                             window.__fileMessagesByHash = JSON.parse(stored) || {};
                         }
                     } catch (e) {
-                        console.warn("Error loading file URL hashes from localStorage", e);
+                        log.warn("Error loading file URL hashes from localStorage", e);
                     }
                 }
                 
                 // Strategy 1: ID-based lookup
                 if (message._id && window.__fileMessages[message._id]) {
                     cachedUrl = window.__fileMessages[message._id].url;
-                    console.log(`Found cached URL for ${message._id} via ID lookup`);
+                    log.debug(`Found cached URL for ${message._id} via ID lookup`);
                 }
                 // Strategy 2: Hash-based lookup
                 else if (messageHash && window.__fileMessagesByHash[messageHash]) {
                     cachedUrl = window.__fileMessagesByHash[messageHash].url;
-                    console.log(`Found cached URL for message via hash lookup`);
+                    log.debug(`Found cached URL for message via hash lookup`);
                     
                     // Also store with ID for future direct lookups
                     if (message._id) {
@@ -421,14 +425,14 @@ const MessageItem = React.memo(({
                         // Use the most recent match
                         const latestMatch = fileNameMatches.sort((a, b) => b.timestamp - a.timestamp)[0];
                         cachedUrl = latestMatch.url;
-                        console.log(`Found cached URL via filename match: ${message.metadata.fileName}`);
+                        log.debug(`Found cached URL via filename match: ${message.metadata.fileName}`);
                     }
                 }
             }
             
             // If URL found, update the message metadata
             if (cachedUrl && message.metadata) {
-                console.log(`Restoring file URL: ${cachedUrl.substring(0, 50)}...`);
+                log.debug(`Restoring file URL: ${cachedUrl.substring(0, 50)}...`);
                 
                 // Update all URL fields for maximum compatibility
                 message.metadata.url = cachedUrl;
@@ -462,9 +466,9 @@ const MessageItem = React.memo(({
                             try {
                                 localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
                                 localStorage.setItem('mandarin_file_urls_by_hash', JSON.stringify(window.__fileMessagesByHash));
-                                console.log(`Persisted file URLs to localStorage`);
+                                log.debug(`Persisted file URLs to localStorage`);
                             } catch (e) {
-                                console.warn("Failed to persist file URLs to localStorage", e);
+                                log.warn("Failed to persist file URLs to localStorage", e);
                             }
                             window.__fileUrlPersistTimeout = null;
                         }, 1000);
@@ -485,7 +489,7 @@ const MessageItem = React.memo(({
         if ((!message.metadata.url || !message.metadata.fileUrl) && message._id) {
             setTimeout(() => {
                 if (!message.metadata.url && !message.metadata.fileUrl) {
-                    console.log(`Retrying URL recovery for message ${message._id}`);
+                    log.debug(`Retrying URL recovery for message ${message._id}`);
                     tryRecoverFileUrl();
                 }
             }, 500);

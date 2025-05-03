@@ -5,6 +5,10 @@ import { FaTimes, FaPaperclip } from 'react-icons/fa';
 import { getFileIcon, classNames } from './chatUtils.jsx';
 import { MAX_FILE_SIZE, ALLOWED_FILE_TYPES } from './chatConstants.js';
 import styles from '../../styles/embedded-chat.module.css';
+import { logger } from '../../utils/logger.js';
+
+// Create a named logger for this component
+const log = logger.create('AttachmentPreview');
 
 /**
  * AttachmentPreview component for showing file attachments and upload progress
@@ -46,7 +50,7 @@ const AttachmentPreview = React.memo(({
         // Validate file size
         if (file.size > MAX_FILE_SIZE) {
             const errorMessage = `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB.`;
-            console.warn(errorMessage, file);
+            log.warn(errorMessage, file);
             if (onFileSelected) {
                 onFileSelected(null, errorMessage);
             }
@@ -57,7 +61,7 @@ const AttachmentPreview = React.memo(({
         // Validate file type
         if (!ALLOWED_FILE_TYPES.includes(file.type)) {
             const errorMessage = `File type (${file.type || 'unknown'}) not supported.`;
-            console.warn(errorMessage, file);
+            log.warn(errorMessage, file);
             if (onFileSelected) {
                 onFileSelected(null, errorMessage);
             }

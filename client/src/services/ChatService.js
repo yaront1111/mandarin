@@ -297,14 +297,15 @@ class ChatService {
   }
 
   async _fetchDirect() {
-    const token = localStorage.token || sessionStorage.token;
-    if (!token) return [];
-    const res = await fetch('/api/messages/conversations', {
-      headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache' }
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.success && Array.isArray(data.data) ? data.data : [];
+    try {
+      const response = await apiService.get('/messages/conversations', {}, { 
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      log.error('Failed to fetch conversations directly:', error);
+      return [];
+    }
   }
 
   sendTypingIndicator(recipientId) {

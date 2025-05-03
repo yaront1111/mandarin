@@ -1,5 +1,9 @@
 // client/src/services/socketService.jsx - Production version with improvements
 import socketClient from "./socketClient.jsx"
+import logger from "../utils/logger.js"
+
+// Create a named logger for this service
+const log = logger.create("SocketService")
 
 class SocketService {
   constructor() {
@@ -683,19 +687,15 @@ class SocketService {
   _log(message, level = "log") {
     if (!this.debugMode && level === "log") return
 
-    const prefix = `[SocketService]`
-    const timestamp = new Date().toISOString().substring(11, 19) // HH:MM:SS
-
     switch (level) {
       case "warn":
-        console.warn(`${prefix} [${timestamp}]`, message)
+        log.warn(message)
         break
       case "error":
-        console.error(`${prefix} [${timestamp}]`, message)
-        // Could also send to an error reporting service here
+        log.error(message)
         break
       default:
-        console.log(`${prefix} [${timestamp}]`, message)
+        log.info(message)
     }
   }
 }

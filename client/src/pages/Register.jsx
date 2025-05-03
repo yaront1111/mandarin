@@ -28,7 +28,10 @@ import { useTranslation } from "react-i18next"
 import { toast } from "react-toastify"
 // Import apiService directly for upload
 import apiService from '../services/apiService.jsx';
+import { createLogger } from "../utils/logger"
 import styles from "../styles/register.module.css"
+
+const logger = createLogger('Register')
 
 const Register = () => {
   const [currentStep, setCurrentStep] = useState(1)
@@ -438,12 +441,12 @@ const Register = () => {
             if (photoResult.success) { // Adjust based on apiService response structure
               toast.success(t('profile.photoUploadSuccess', "Profile photo uploaded successfully"));
             } else {
-              console.error("Photo upload failed via apiService:", photoResult);
+              logger.error("Photo upload failed via apiService:", photoResult);
               // Use error message from apiService response if available
               toast.error(t('errors.photoUploadFailed', "Failed to upload profile photo:") + " " + (photoResult.error || photoResult.message || t('errors.unknownError', "Unknown error")));
             }
           } catch (photoErr) {
-            console.error("Error uploading photo via apiService:", photoErr);
+            logger.error("Error uploading photo via apiService:", photoErr);
              // Use error message from apiService error if available
             toast.error(t('errors.photoUploadFailed', "Failed to upload profile photo:") + " " + (photoErr.message || photoErr.error || ""));
           }
@@ -458,7 +461,7 @@ const Register = () => {
       // or the useEffect watching authError.
 
     } catch (err) {
-      console.error("Registration error caught in component:", err);
+      logger.error("Registration error caught in component:", err);
       // Error handling is mostly done within useAuth's register function now.
       // We rely on the useEffect watching authError to display errors.
       // Set a general fallback error if needed and not already set by auth context.

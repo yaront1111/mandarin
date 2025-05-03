@@ -18,7 +18,10 @@ import apiService from "../services/apiService";       // your axios/fetch wrapp
 import { useLanguage } from "../context";              // your LanguageContext
 import { ThemeToggle } from "../components/theme-toggle";
 import { SEO } from "../components";
+import { createLogger } from "../utils/logger";
 import "../styles/home.css";
+
+const logger = createLogger('Home');
 
 // Fallback data if API fails or returns no users
 const getMockUsers = () => [
@@ -106,7 +109,7 @@ const Home = () => {
         setDisplayError(null);
       })
       .catch((err) => {
-        console.error("Error fetching online users:", err);
+        logger.error("Error fetching online users:", err);
         if (!isMounted) return;
         // On error, show mock data instead of an error message for better UX
         setOnlineUsers(getMockUsers());

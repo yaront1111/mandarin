@@ -6,6 +6,10 @@ import { useTranslation } from "react-i18next"
 import { useAuth, useNotifications, useLanguage } from "../context"
 import { LanguageSelector } from "./common"
 import { toast } from "react-toastify"
+import { logger } from "../utils/logger.js"
+
+// Create a named logger for this component
+const log = logger.create('LayoutComponents')
 import {
   FaUserCircle,
   FaBell,
@@ -55,7 +59,7 @@ export const Navbar = () => {
       e.preventDefault()
       e.stopPropagation()
     }
-    console.log("Toggle notification dropdown")
+    log.debug("Toggle notification dropdown")
     setShowNotifications((prevState) => !prevState)
     setShowUserDropdown(false) // Close user dropdown
   }
@@ -285,7 +289,7 @@ export const Alert = ({ type, message, onClose, actions }) => {
         }
         if (onClose) onClose()
       } catch (e) {
-        console.error("Error showing toast:", e)
+        log.error("Error showing toast:", e)
         toast.info("Notification")
       }
     }

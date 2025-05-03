@@ -1,15 +1,15 @@
 // client/src/services/PermissionClient.jsx
 import socketService from "./socketService.jsx";
 import { toast } from "react-toastify";
+import logger from "../utils/logger";
+
+const log = logger.create("PermissionClient");
 
 /**
  * Client for handling photo permission socket operations.
+ * Uses standardized socketService for communication.
  */
 class PermissionClient {
-  constructor(socket) {
-    this.socket = socket;
-  }
-
   /**
    * Request access to a private photo.
    * @param {string} ownerId - The ID of the photo owner.
@@ -18,19 +18,29 @@ class PermissionClient {
    */
   requestPhotoPermission(ownerId, photoId) {
     return new Promise((resolve, reject) => {
-      if (!this.socket.isConnected()) {
+      if (!socketService.isConnected()) {
+        log.warn("Cannot request photo permission: Socket not connected");
         return reject(new Error("Socket not connected"));
       }
       if (!ownerId || !photoId) {
+        log.warn("Missing required parameters for photo permission request");
         return reject(new Error("Owner ID and Photo ID are required"));
       }
 
       const payload = { ownerId, photoId };
-      const requestId = `req-${photoId}-${this.socket.socket?.userId}`; // Match server-side for potential tracking
+      const requestId = `req-${photoId}-${Date.now()}`; // Unique ID for this request
+      payload.requestId = requestId; // Add requestId to payload
+      
+      log.debug(`Requesting photo permission: ${photoId} from ${ownerId}`);
+
+      // Create event handlers
+      let cleanup;
+      let timeoutId;
 
       const handleSuccess = (response) => {
         if (response.requestId === requestId) {
-          cleanup();
+          log.debug(`Photo permission request succeeded: ${requestId}`);
+          if (cleanup) cleanup();
           if (response.success) {
             resolve(response);
           } else {
@@ -40,31 +50,36 @@ class PermissionClient {
       };
 
       const handleError = (response) => {
-         if (response.requestId === requestId) {
-          cleanup();
+        if (response.requestId === requestId) {
+          log.error(`Photo permission request error: ${response.error || 'Unknown error'}`);
+          if (cleanup) cleanup();
           reject(new Error(response.error || 'Permission request failed'));
         }
       };
 
-      const cleanup = () => {
-        this.socket.off('photoPermissionRequested', handleSuccess);
-        this.socket.off('photoPermissionError', handleError);
+      // Setup cleanup function
+      cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        socketService.off('photoPermissionRequested', handleSuccess);
+        socketService.off('photoPermissionError', handleError);
       };
 
-      // Listen for response events
-      this.socket.on('photoPermissionRequested', handleSuccess);
-      this.socket.on('photoPermissionError', handleError);
+      // Register event handlers using socketService
+      socketService.on('photoPermissionRequested', handleSuccess);
+      socketService.on('photoPermissionError', handleError);
 
-      // Emit the request
-      const success = this.socket.emit("requestPhotoPermission", payload);
+      // Send the request using socketService
+      const emitted = socketService.emit("requestPhotoPermission", payload);
 
-      if (!success) {
+      if (!emitted) {
+        log.error(`Failed to emit photo permission request: ${requestId}`);
         cleanup();
-        reject(new Error("Failed to send permission request event"));
+        reject(new Error("Failed to send permission request"));
       }
 
-      // Timeout for the request
-      setTimeout(() => {
+      // Set timeout
+      timeoutId = setTimeout(() => {
+        log.warn(`Photo permission request timed out: ${requestId}`);
         cleanup();
         reject(new Error('Permission request timed out'));
       }, 10000); // 10-second timeout
@@ -79,56 +94,72 @@ class PermissionClient {
    */
   respondToPhotoPermission(permissionId, status) {
     return new Promise((resolve, reject) => {
-      if (!this.socket.isConnected()) {
+      if (!socketService.isConnected()) {
+        log.warn("Cannot respond to photo permission: Socket not connected");
         return reject(new Error("Socket not connected"));
       }
       if (!permissionId || !status) {
+        log.warn("Missing required parameters for photo permission response");
         return reject(new Error("Permission ID and status are required"));
       }
       if (!['approved', 'rejected'].includes(status)) {
-         return reject(new Error("Invalid status provided"));
+        log.warn(`Invalid status for photo permission response: ${status}`);
+        return reject(new Error("Invalid status provided"));
       }
 
       const payload = { permissionId, status };
-      const requestId = `res-${permissionId}-${this.socket.socket?.userId}`;
+      const requestId = `res-${permissionId}-${Date.now()}`;
+      payload.requestId = requestId;
+      
+      log.debug(`Responding to photo permission: ${permissionId} with ${status}`);
 
-       const handleSuccess = (response) => {
-         if (response.requestId === requestId) {
-           cleanup();
-           if (response.success) {
-             resolve(response);
-           } else {
-             reject(new Error(response.error || 'Failed to respond to permission'));
-           }
-         }
-       };
+      // Create event handlers
+      let cleanup;
+      let timeoutId;
 
-       const handleError = (response) => {
-          if (response.requestId === requestId) {
-           cleanup();
-           reject(new Error(response.error || 'Permission response failed'));
-         }
-       };
+      const handleSuccess = (response) => {
+        if (response.requestId === requestId) {
+          log.debug(`Photo permission response succeeded: ${requestId}`);
+          if (cleanup) cleanup();
+          if (response.success) {
+            resolve(response);
+          } else {
+            reject(new Error(response.error || 'Failed to respond to permission'));
+          }
+        }
+      };
 
-       const cleanup = () => {
-         this.socket.off('photoPermissionResponded', handleSuccess);
-         this.socket.off('photoPermissionError', handleError);
-       };
+      const handleError = (response) => {
+        if (response.requestId === requestId) {
+          log.error(`Photo permission response error: ${response.error || 'Unknown error'}`);
+          if (cleanup) cleanup();
+          reject(new Error(response.error || 'Permission response failed'));
+        }
+      };
 
-      // Listen for response events
-      this.socket.on('photoPermissionResponded', handleSuccess);
-      this.socket.on('photoPermissionError', handleError);
+      // Setup cleanup function
+      cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        socketService.off('photoPermissionResponded', handleSuccess);
+        socketService.off('photoPermissionError', handleError);
+      };
 
-      // Emit the response
-      const success = this.socket.emit("respondToPhotoPermission", payload);
+      // Register event handlers
+      socketService.on('photoPermissionResponded', handleSuccess);
+      socketService.on('photoPermissionError', handleError);
 
-      if (!success) {
-         cleanup();
-         reject(new Error("Failed to send permission response event"));
+      // Send the response
+      const emitted = socketService.emit("respondToPhotoPermission", payload);
+
+      if (!emitted) {
+        log.error(`Failed to emit photo permission response: ${requestId}`);
+        cleanup();
+        reject(new Error("Failed to send permission response"));
       }
 
-      // Timeout for the request
-      setTimeout(() => {
+      // Set timeout
+      timeoutId = setTimeout(() => {
+        log.warn(`Photo permission response timed out: ${requestId}`);
         cleanup();
         reject(new Error('Permission response timed out'));
       }, 10000); // 10-second timeout
@@ -137,5 +168,5 @@ class PermissionClient {
 }
 
 // Create a singleton instance
-const permissionClient = new PermissionClient(socketService);
+const permissionClient = new PermissionClient();
 export default permissionClient;

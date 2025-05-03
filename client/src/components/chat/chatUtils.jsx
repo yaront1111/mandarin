@@ -5,6 +5,10 @@ import {
     FaFile, FaImage, FaFileAlt, FaFilePdf,
     FaFileAudio, FaFileVideo
 } from "react-icons/fa";
+import { logger } from "../../utils/logger.js";
+
+// Create a named logger for this module
+const log = logger.create('chatUtils');
 
 /**
  * Generates a unique local ID for optimistic updates and temporary items
@@ -19,23 +23,17 @@ export const generateLocalUniqueId = (prefix = 'local') => {
 };
 
 /**
+ * DEPRECATED: Use apiService for API calls instead of this function.
  * Creates an authenticated axios instance with token from storage
  * @returns {object} Axios instance with auth headers
+ * @deprecated Use apiService directly instead of creating separate axios instances
  */
 export const createAuthAxios = () => {
-    const token = typeof window !== 'undefined'
-        ? localStorage.getItem("token") || 
-          sessionStorage.getItem("token") || 
-          localStorage.getItem("authToken") || 
-          sessionStorage.getItem("authToken")
-        : null;
-        
-    return axios.create({
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": token ? `Bearer ${token}` : "",
-        },
-    });
+    log.warn('createAuthAxios is deprecated. Use apiService from src/services/apiService.jsx instead.');
+    
+    // Import at runtime to avoid circular dependencies
+    const apiService = require('../../services/apiService.jsx').default;
+    return apiService.api;
 };
 
 /**
@@ -52,7 +50,7 @@ export const formatMessageTime = (timestamp) => {
             hour12: false 
         });
     } catch (error) {
-        console.warn("Error formatting message time:", error);
+        log.warn("Error formatting message time:", error);
         return "";
     }
 };
@@ -83,7 +81,7 @@ export const formatMessageDateSeparator = (timestamp) => {
             day: 'numeric' 
         });
     } catch (error) {
-        console.warn("Error formatting message date separator:", error);
+        log.warn("Error formatting message date separator:", error);
         return "Unknown date";
     }
 };
@@ -110,7 +108,7 @@ export const formatPreviewTime = (timestamp) => {
         if (diffDays < 7) return messageDate.toLocaleDateString([], { weekday: 'short' });
         return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
     } catch (error) {
-        console.warn("Error formatting preview time:", error);
+        log.warn("Error formatting preview time:", error);
         return "";
     }
 };
@@ -119,49 +117,58 @@ export const formatPreviewTime = (timestamp) => {
  * Groups messages by date for display
  * @param {Array} messages - Array of message objects
  * @returns {Object} Messages grouped by date string
+ * @deprecated Import from utils/chatUtils.js or utils/index.js instead for consistency
  */
 export const groupMessagesByDate = (messages) => {
-    const groups = {};
-    if (!Array.isArray(messages)) return groups;
+    log.warn('This groupMessagesByDate function is deprecated. Import from utils/chatUtils.js or utils/index.js instead.');
+    
+    // Import at runtime to avoid circular dependencies
+    try {
+        const { groupMessagesByDate } = require('../../utils/chatUtils');
+        return groupMessagesByDate(messages);
+    } catch (error) {
+        const groups = {};
+        if (!Array.isArray(messages)) return groups;
 
-    // Ensure messages are sorted chronologically first
-    const sortedMessages = [...messages].sort(
-        (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
-    );
+        // Ensure messages are sorted chronologically first
+        const sortedMessages = [...messages].sort(
+            (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+        );
 
-    // Group messages by date
-    sortedMessages.forEach((message) => {
-        if (message && message.createdAt) {
-            const dateStr = formatMessageDateSeparator(message.createdAt);
-            if (!groups[dateStr]) {
-                groups[dateStr] = [];
+        // Group messages by date
+        sortedMessages.forEach((message) => {
+            if (message && message.createdAt) {
+                const dateStr = formatMessageDateSeparator(message.createdAt);
+                if (!groups[dateStr]) {
+                    groups[dateStr] = [];
+                }
+                groups[dateStr].push(message);
+            } else {
+                log.warn("Invalid message object encountered during grouping:", message);
             }
-            groups[dateStr].push(message);
-        } else {
-            console.warn("Invalid message object encountered during grouping:", message);
-        }
-    });
+        });
 
-    // Custom sort for dates (chronological: oldest to newest)
-    const sortedDates = Object.keys(groups).sort((a, b) => {
-        // Compare actual dates for entries
-        try {
-            const dateA = groups[a][0]?.createdAt ? new Date(groups[a][0].createdAt) : 0;
-            const dateB = groups[b][0]?.createdAt ? new Date(groups[b][0].createdAt) : 0;
-            return dateA - dateB; // Sort ascending by date
-        } catch (error) {
-            console.warn("Error sorting message dates:", error);
-            return 0;
-        }
-    });
+        // Custom sort for dates (chronological: oldest to newest)
+        const sortedDates = Object.keys(groups).sort((a, b) => {
+            // Compare actual dates for entries
+            try {
+                const dateA = groups[a][0]?.createdAt ? new Date(groups[a][0].createdAt) : 0;
+                const dateB = groups[b][0]?.createdAt ? new Date(groups[b][0].createdAt) : 0;
+                return dateA - dateB; // Sort ascending by date
+            } catch (error) {
+                log.warn("Error sorting message dates:", error);
+                return 0;
+            }
+        });
 
-    // Create final sorted object
-    const sortedGroups = {};
-    sortedDates.forEach(date => {
-        sortedGroups[date] = groups[date];
-    });
+        // Create final sorted object
+        const sortedGroups = {};
+        sortedDates.forEach(date => {
+            sortedGroups[date] = groups[date];
+        });
 
-    return sortedGroups;
+        return sortedGroups;
+    }
 };
 
 /**
@@ -188,46 +195,55 @@ export const getFileIcon = (file) => {
  * @param {Object} message - Message object
  * @param {string} currentUserId - Current user's ID
  * @returns {string} Formatted preview text
+ * @deprecated Import from utils/chatUtils.js or utils/index.js instead for consistency
  */
 export const formatMessagePreview = (message, currentUserId) => {
-    if (!message) return "No messages yet";
+    log.warn('This formatMessagePreview function is deprecated. Import from utils/chatUtils.js or utils/index.js instead.');
     
-    const prefix = message.sender === currentUserId ? "You: " : "";
-    const contentLimit = 35; // Character limit for preview
+    // Import at runtime to avoid circular dependencies
+    try {
+        const { formatMessagePreview } = require('../../utils/chatUtils');
+        return formatMessagePreview(message, currentUserId);
+    } catch (error) {
+        if (!message) return "No messages yet";
+        
+        const prefix = message.sender === currentUserId ? "You: " : "";
+        const contentLimit = 35; // Character limit for preview
 
-    switch (message.type) {
-        case 'text': {
-            const text = message.content || "";
-            return `${prefix}${text.substring(0, contentLimit)}${text.length > contentLimit ? '...' : ''}`;
+        switch (message.type) {
+            case 'text': {
+                const text = message.content || "";
+                return `${prefix}${text.substring(0, contentLimit)}${text.length > contentLimit ? '...' : ''}`;
+            }
+                
+            case 'wink':
+                return `${prefix}😉 Wink`;
+                
+            case 'file': {
+                const fileName = message.metadata?.fileName || 'file';
+                const fileType = message.metadata?.fileType || '';
+                let fileIcon = '📄'; // Default icon
+                
+                if (fileType.startsWith('image/')) fileIcon = '📷';
+                else if (fileType.startsWith('video/')) fileIcon = '🎬';
+                else if (fileType.startsWith('audio/')) fileIcon = '🎵';
+                
+                return `${prefix}${fileIcon} ${fileName.substring(0, contentLimit - 5)}${fileName.length > (contentLimit - 5) ? '...' : ''}`;
+            }
+                
+            case 'system': {
+                const sysText = message.content || "System message";
+                return `ℹ️ ${sysText.substring(0, contentLimit)}${sysText.length > contentLimit ? '...' : ''}`;
+            }
+                
+            case 'video': {
+                const callText = message.content || "Video Call related";
+                return `${prefix}📞 ${callText.substring(0, contentLimit - 3)}${callText.length > (contentLimit - 3) ? '...' : ''}`;
+            }
+                
+            default:
+                return `${prefix}Unsupported message`;
         }
-            
-        case 'wink':
-            return `${prefix}😉 Wink`;
-            
-        case 'file': {
-            const fileName = message.metadata?.fileName || 'file';
-            const fileType = message.metadata?.fileType || '';
-            let fileIcon = '📄'; // Default icon
-            
-            if (fileType.startsWith('image/')) fileIcon = '📷';
-            else if (fileType.startsWith('video/')) fileIcon = '🎬';
-            else if (fileType.startsWith('audio/')) fileIcon = '🎵';
-            
-            return `${prefix}${fileIcon} ${fileName.substring(0, contentLimit - 5)}${fileName.length > (contentLimit - 5) ? '...' : ''}`;
-        }
-            
-        case 'system': {
-            const sysText = message.content || "System message";
-            return `ℹ️ ${sysText.substring(0, contentLimit)}${sysText.length > contentLimit ? '...' : ''}`;
-        }
-            
-        case 'video': {
-            const callText = message.content || "Video Call related";
-            return `${prefix}📞 ${callText.substring(0, contentLimit - 3)}${callText.length > (contentLimit - 3) ? '...' : ''}`;
-        }
-            
-        default:
-            return `${prefix}Unsupported message`;
     }
 };
 
@@ -235,7 +251,9 @@ export const formatMessagePreview = (message, currentUserId) => {
  * Utility for concatenating conditional class names
  * @param {...string} classes - Class names to join (falsy values filtered out)
  * @returns {string} Space-separated class string
+ * @deprecated Import from utils/chatUtils.js or utils/index.js instead for consistency
  */
 export const classNames = (...classes) => {
+    log.warn('This classNames function is deprecated. Import from utils/chatUtils.js or utils/index.js instead.');
     return classes.filter(Boolean).join(' ');
 };

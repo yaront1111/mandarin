@@ -7,6 +7,9 @@ import apiService from "../services/apiService"
 import { useAuth } from "../context/AuthContext"
 import { useTranslation } from "react-i18next"
 import { useLanguage } from "../context"
+import { createLogger } from "../utils/logger"
+
+const logger = createLogger('VerifyEmail')
 
 const VerifyEmail = () => {
   const [status, setStatus] = useState("loading") // loading, success, error
@@ -45,7 +48,7 @@ const VerifyEmail = () => {
             try {
               await apiService.get("/auth/me")
             } catch (err) {
-              console.error("Error refreshing user profile:", err)
+              logger.error("Error refreshing user profile:", err)
             }
           }
         } else {
@@ -53,7 +56,7 @@ const VerifyEmail = () => {
           setMessage(response.error || t('auth.verificationFailed'))
         }
       } catch (err) {
-        console.error("Verification error:", err)
+        logger.error("Verification error:", err)
         setStatus("error")
         setMessage(err.response?.data?.error || t('auth.verificationFailed'))
       }

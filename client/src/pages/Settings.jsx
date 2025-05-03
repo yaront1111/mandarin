@@ -8,6 +8,7 @@ import {
 import { toast } from "react-toastify"
 import { useTranslation } from 'react-i18next'
 import { useAuth, useTheme, useUser, useLanguage } from "../context"
+import logger from "../utils/logger"
 import { settingsService } from "../services"
 import notificationService from "../services/notificationService.jsx"
 import socketService from "../services/socketService.jsx"
@@ -15,6 +16,9 @@ import { ThemeToggle } from "../components/theme-toggle.tsx"
 import { Navbar } from "../components/LayoutComponents"
 import { LanguageSelector } from "../components/common"
 import styles from "../styles/settings.module.css"
+
+// Create a named logger for this component
+const log = logger.create("Settings")
 
 const Settings = () => {
   const navigate = useNavigate()
@@ -65,17 +69,17 @@ const Settings = () => {
       return;
     }
 
-    console.log('useEffect for settings loading triggered');
+    log.debug('useEffect for settings loading triggered');
 
     const loadSettings = async () => {
       // Always fetch fresh settings from the server first
       try {
-        console.log('Fetching fresh settings from the server');
+        log.info('Fetching fresh settings from the server');
         const freshSettings = await settingsService.getUserSettings();
 
         if (freshSettings && freshSettings.success && freshSettings.data) {
-          console.log('Successfully loaded settings from server:', freshSettings.data);
-          console.log('Message notifications from server:',
+          log.info('Successfully loaded settings from server:', freshSettings.data);
+          log.debug('Message notifications from server:',
             freshSettings.data.notifications?.messages,
             'typeof:', typeof freshSettings.data.notifications?.messages);
 
@@ -97,8 +101,8 @@ const Settings = () => {
             },
           };
 
-          console.log('Normalized settings to apply:', normalizedSettings);
-          console.log('Message notifications in normalized settings:',
+          log.debug('Normalized settings to apply:', normalizedSettings);
+          log.debug('Message notifications in normalized settings:',
             normalizedSettings.notifications.messages,
             'typeof:', typeof normalizedSettings.notifications.messages);
 
@@ -108,12 +112,12 @@ const Settings = () => {
           return;
         }
       } catch (error) {
-        console.error('Error fetching settings from server:', error);
+        log.error('Error fetching settings from server:', error);
       }
 
       // Fall back to currentUser settings if server fetch fails
       if (currentUser && currentUser.settings) {
-        console.log('Falling back to currentUser settings:', currentUser.settings);
+        log.info('Falling back to currentUser settings:', currentUser.settings);
 
         // Normalize the settings
         const userSettings = currentUser.settings || {};
@@ -133,8 +137,8 @@ const Settings = () => {
           },
         };
 
-        console.log('Normalized settings from user object:', normalizedSettings);
-        console.log('Message notifications in normalized user settings:',
+        log.debug('Normalized settings from user object:', normalizedSettings);
+        log.debug('Message notifications in normalized user settings:',
           normalizedSettings.notifications.messages,
           'typeof:', typeof normalizedSettings.notifications.messages);
 
@@ -142,7 +146,7 @@ const Settings = () => {
         setSettings(normalizedSettings);
         setInitialLoadComplete(true);
       } else {
-        console.log('No settings available, using defaults');
+        log.info('No settings available, using defaults');
         // If all else fails, use defaults - already set in the initial useState
         setInitialLoadComplete(true);
       }
@@ -152,7 +156,7 @@ const Settings = () => {
     if (currentUser) {
       loadSettings();
     } else {
-      console.log('No currentUser available, skipping settings load');
+      log.warn('No currentUser available, skipping settings load');
     }
   }, [currentUser, defaultSettings, initialLoadComplete])
 
@@ -164,7 +168,7 @@ const Settings = () => {
       : !!settings[section][setting];
 
     // Log the toggle for debugging
-    console.log(`Toggling ${section}.${setting}:`,
+    log.debug(`Toggling ${section}.${setting}:`,
       `Current value: ${currentValue} (${typeof settings[section][setting]})`,
       `New value: ${!currentValue}`);
 
@@ -177,7 +181,7 @@ const Settings = () => {
         },
       };
 
-      console.log(`New settings after toggle:`, newSettings);
+      log.debug(`New settings after toggle:`, newSettings);
       return newSettings;
     });
 
@@ -205,7 +209,7 @@ const Settings = () => {
   const handleSaveSettings = async () => {
     try {
       setSaving(true)
-      console.log('Saving settings:', settings);
+      log.info('Saving settings:', settings);
 
       // Ensure boolean values are correct before saving
       const normalizedSettings = {
@@ -219,8 +223,8 @@ const Settings = () => {
         privacy: { ...settings.privacy }
       };
 
-      console.log('Normalized settings before saving:', normalizedSettings);
-      console.log('Messages notification specifically:', normalizedSettings.notifications.messages);
+      log.debug('Normalized settings before saving:', normalizedSettings);
+      log.debug('Messages notification specifically:', normalizedSettings.notifications.messages);
 
       // Update settings via API with normalized settings
       const settingsResponse = await settingsService.updateSettings(normalizedSettings);
@@ -230,32 +234,32 @@ const Settings = () => {
 
       // Update user profile with new settings
       if (currentUser) {
-        console.log('Updating user profile with normalized settings');
+        log.info('Updating user profile with normalized settings');
         const profileResponse = await updateProfile({ settings: normalizedSettings });
         if (!profileResponse) {
-          console.warn("User profile update returned empty response");
+          log.warn("User profile update returned empty response");
         }
       }
 
-      console.log('Updating notification service with normalized settings:', normalizedSettings.notifications);
+      log.info('Updating notification service with normalized settings:', normalizedSettings.notifications);
       // Update notification settings
       notificationService.updateSettings(normalizedSettings.notifications);
 
-      console.log('Updating socket service with settings:', normalizedSettings.privacy);
+      log.info('Updating socket service with settings:', normalizedSettings.privacy);
       // Update privacy settings
       socketService.updatePrivacySettings(normalizedSettings.privacy);
 
-      console.log('Services updated with new settings');
+      log.info('Services updated with new settings');
 
       toast.success("Settings saved successfully");
       setHasUnsavedChanges(false);
 
       // Reset the state to match the normalized settings for UI consistency
-      console.log('Setting current UI state to match saved settings');
+      log.debug('Setting current UI state to match saved settings');
       setSettings(normalizedSettings);
       // and the profile update already triggers a state update in the UserContext
     } catch (error) {
-      console.error("Error saving settings:", error);
+      log.error("Error saving settings:", error);
       toast.error(error.message || "Failed to save settings. Please try again.");
     } finally {
       setSaving(false);
@@ -300,7 +304,7 @@ const Settings = () => {
         setDeleteError(response.error || t('settings.deleteAccountFailed', 'Failed to delete account'))
       }
     } catch (error) {
-      console.error("Error deleting account:", error)
+      log.error("Error deleting account:", error)
       setDeleteError(error.error || t('settings.deleteAccountFailedRetry', 'Failed to delete account. Please try again.'))
     }
   }
@@ -320,28 +324,28 @@ const Settings = () => {
       return;
     }
 
-    console.log('Combined loading effect running');
-    console.log('User available:', !!user, 'currentUser available:', !!currentUser);
+    log.debug('Combined loading effect running');
+    log.debug('User available:', !!user, 'currentUser available:', !!currentUser);
 
     const loadUserAndSettings = async () => {
       // Part 1: Try to load the user if needed
       if (user && !currentUser && user._id) {
-        console.log('User exists but currentUser is not available yet - fetching user profile');
+        log.info('User exists but currentUser is not available yet - fetching user profile');
 
         try {
           // Method 1: Try to fetch from UserContext first
           if (typeof getUser === 'function') {
-            console.log('Using getUser from UserContext to fetch profile');
+            log.debug('Using getUser from UserContext to fetch profile');
             await getUser(user._id);
           }
 
           // Method 2: Try to fetch from AuthContext if still needed
           if (!currentUser && typeof getCurrentUser === 'function') {
-            console.log('Using getCurrentUser from AuthContext to fetch profile');
+            log.debug('Using getCurrentUser from AuthContext to fetch profile');
             await getCurrentUser();
           }
         } catch (error) {
-          console.error('Error fetching user profile:', error);
+          log.error('Error fetching user profile:', error);
         }
       }
 
@@ -359,24 +363,24 @@ const Settings = () => {
   // Load blocked users
   const loadBlockedUsers = useCallback(async () => {
     if (!currentUser || !currentUser._id) {
-      console.warn("Cannot load blocked users: no current user");
+      log.warn("Cannot load blocked users: no current user");
       return;
     }
     
     setLoadingBlockedUsers(true);
     try {
-      console.log("Loading blocked users from Settings component");
+      log.info("Loading blocked users from Settings component");
       const blockedData = await getBlockedUsers();
-      console.log("Blocked users data:", blockedData);
+      log.debug("Blocked users data:", blockedData);
       
       if (blockedData && Array.isArray(blockedData)) {
         setBlockedUsers(blockedData);
       } else {
-        console.warn("Blocked users data is not an array:", blockedData);
+        log.warn("Blocked users data is not an array:", blockedData);
         setBlockedUsers([]);
       }
     } catch (error) {
-      console.error("Error loading blocked users:", error);
+      log.error("Error loading blocked users:", error);
       setBlockedUsers([]);
       // Don't show toast for this non-critical feature
       // toast.error("Unable to load blocked users");
@@ -403,7 +407,7 @@ const Settings = () => {
         setBlockedUsers(prevUsers => prevUsers.filter(user => user._id !== userId));
       }
     } catch (error) {
-      console.error("Error unblocking user:", error);
+      log.error("Error unblocking user:", error);
       toast.error("Failed to unblock user");
     }
   }, [unblockUser]);
@@ -429,7 +433,7 @@ const Settings = () => {
       return;
     }
 
-    console.log('Detected meaningful change in currentUser settings, updating UI state');
+    log.debug('Detected meaningful change in currentUser settings, updating UI state');
 
     // Update the settings state with normalized values
     const normalized = {

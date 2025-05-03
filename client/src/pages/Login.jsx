@@ -4,7 +4,10 @@ import { Link, useNavigate, useLocation } from "react-router-dom"
 import { FaEnvelope, FaLock, FaEye, FaEyeSlash, FaGoogle, FaFacebook, FaArrowRight, FaExclamationTriangle } from "react-icons/fa"
 import { useTranslation } from "react-i18next"
 import { useAuth, useLanguage } from "../context"
+import { createLogger } from "../utils/logger"
 import styles from "../styles/login.module.css"
+
+const logger = createLogger('Login')
 
 const Login = () => {
   const [formData, setFormData] = useState({ email: "", password: "" })
@@ -83,7 +86,7 @@ const Login = () => {
     try {
       await login({ email: formData.email, password: formData.password })
     } catch (err) {
-      console.error("Login error", err)
+      logger.error("Login error", err)
     }
   }
 

@@ -9,7 +9,10 @@ import { useLanguage } from "../context"
 import { toast } from "react-toastify"
 import { ThemeToggle } from "../components/theme-toggle.tsx"
 import subscriptionService from "../services/subscriptionService.jsx"
+import { createLogger } from "../utils/logger"
 import styles from "../styles/subscription.module.css"
+
+const logger = createLogger('Subscription')
 
 const Subscription = () => {
   const { user, getCurrentUser } = useAuth()
@@ -38,7 +41,7 @@ const Subscription = () => {
         setSubscriptionData(response.data)
       }
     } catch (error) {
-      console.error("Error fetching subscription status:", error)
+      logger.error("Error fetching subscription status:", error)
       toast.error(t('subscriptions.fetchFailed'))
     }
   }
@@ -70,7 +73,7 @@ const Subscription = () => {
         navigate("/dashboard")
       }
     } catch (error) {
-      console.error("Subscription error:", error)
+      logger.error("Subscription error:", error)
       toast.error(error.message || t('subscriptions.paymentFailed'))
     } finally {
       setLoading(false)

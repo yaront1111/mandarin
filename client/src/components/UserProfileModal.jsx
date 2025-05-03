@@ -209,7 +209,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   // IMPORTANT: We're not using this callback anymore - it's replaced with a direct API call
   // in the useEffect to prevent loops. Keep this here just for reference and documentation.
   const fetchUserPhotoAccess = useCallback(() => {
-    console.log("This function is no longer used - direct API call is made instead");
+    log.debug("This function is no longer used - direct API call is made instead");
     // No-op
   }, []);
 

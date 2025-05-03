@@ -1,15 +1,21 @@
-// client/src/services/storiesService.jsx - Production-ready implementation with caching
-import apiService from "./apiService.jsx"
+// client/src/services/storiesService.jsx
+import apiService from "./apiService.jsx";
+import logger from "../utils/logger.js";
+import { API, CACHE } from "../config.js";
 
-const BASE_URL = "/stories"
+// Create a named logger for this service
+const log = logger.create("StoriesService");
+
+// Constants for the service
+const BASE_URL = "/stories";
+const CACHE_DURATION = CACHE.TTL.STORIES || 60000; // 1 minute cache by default
 
 // Cache management
 let cachedStories = null;
 let lastFetchTime = 0;
-const CACHE_DURATION = 60000; // 1 minute cache
 
 // Track in-progress requests to prevent duplicates
-const pendingRequests = new Map()
+const pendingRequests = new Map();
 
 /**
  * Get all stories with caching to prevent excessive API calls
@@ -21,14 +27,17 @@ export const getAllStories = async () => {
 
     // Return cached stories if available and not expired
     if (cachedStories && now - lastFetchTime < CACHE_DURATION) {
+      log.debug("Returning cached stories");
       return cachedStories;
     }
 
-    const response = await apiService.get(BASE_URL)
+    log.debug("Fetching all stories");
+    const response = await apiService.get(BASE_URL);
     lastFetchTime = now;
 
     // Handle old API format (raw array) for backwards compatibility
     if (Array.isArray(response)) {
+      log.debug("Handling legacy API format for stories");
       cachedStories = {
         success: true,
         data: response,
@@ -39,13 +48,13 @@ export const getAllStories = async () => {
     cachedStories = response;
     return response;
   } catch (error) {
-    console.error("Error fetching stories:", error)
+    log.error("Error fetching stories", error);
     return {
       success: false,
       message: error.message || "Failed to fetch stories",
-    }
+    };
   }
-}
+};
 
 /**
  * Get stories for a specific user
@@ -54,25 +63,27 @@ export const getAllStories = async () => {
  */
 export const getUserStories = async (userId) => {
   try {
-    const response = await apiService.get(`${BASE_URL}/user/${userId}`)
+    log.debug(`Fetching stories for user ${userId}`);
+    const response = await apiService.get(`${BASE_URL}/user/${userId}`);
 
     // Handle old API format (raw array) for backwards compatibility
     if (Array.isArray(response)) {
+      log.debug("Handling legacy API format for user stories");
       return {
         success: true,
         data: response,
-      }
+      };
     }
 
-    return response
+    return response;
   } catch (error) {
-    console.error(`Error fetching stories for user ${userId}:`, error)
+    log.error(`Error fetching stories for user ${userId}`, error);
     return {
       success: false,
       message: error.message || "Failed to fetch user stories",
-    }
+    };
   }
-}
+};
 
 /**
  * Create a new story with media
@@ -82,35 +93,38 @@ export const getUserStories = async (userId) => {
  */
 export const createStory = async (formData, onProgress) => {
   // Generate a unique request ID based on timestamp
-  const requestId = `create-story-${Date.now()}`
+  const requestId = `create-story-${Date.now()}`;
 
   // Check if a similar request is already in progress
   if (pendingRequests.has(requestId.substring(0, requestId.length - 3))) {
-    console.warn("Duplicate story creation request detected")
+    log.warn("Duplicate story creation request detected");
     return {
       success: false,
       message: "A similar request is already in progress",
-    }
+    };
   }
 
   // Mark this request as pending
-  pendingRequests.set(requestId, true)
+  pendingRequests.set(requestId, true);
+  log.debug(`Starting story creation request: ${requestId}`);
 
   try {
     // Add a timestamp to prevent caching issues
     if (formData instanceof FormData) {
-      formData.append("timestamp", Date.now().toString())
+      formData.append("timestamp", Date.now().toString());
     } else if (typeof formData === "object") {
       // For text stories, check if this is a text or media request
       if (formData.mediaType === "text" || formData.type === "text") {
         // This is a text story, handle it with createTextStory function
-        return createTextStory(formData, onProgress)
+        log.debug("Redirecting to text story creation");
+        return createTextStory(formData, onProgress);
       }
-      formData.timestamp = Date.now()
+      formData.timestamp = Date.now();
     }
 
     // This is a media upload
-    const response = await apiService.upload(BASE_URL, formData, onProgress)
+    log.debug("Uploading media story");
+    const response = await apiService.upload(BASE_URL, formData, onProgress);
 
     // Handle new and old API response formats
     const result = {
@@ -120,22 +134,24 @@ export const createStory = async (formData, onProgress) => {
     };
 
     // Invalidate stories cache after creating a new story
+    log.debug("Invalidating stories cache after creation");
     cachedStories = null;
 
     return result;
   } catch (error) {
-    console.error("Error creating story:", error)
+    log.error("Error creating story", error);
     return {
       success: false,
-    }
+      message: error.message || "Failed to create story",
+    };
   } finally {
     // Remove from pending requests after a 5-second cooldown to prevent rapid submissions
     setTimeout(() => {
-      pendingRequests.delete(requestId)
-      console.log(`Story request ${requestId} unlocked after cooldown`)
-    }, 5000)
+      pendingRequests.delete(requestId);
+      log.debug(`Story request ${requestId} unlocked after cooldown`);
+    }, 5000);
   }
-}
+};
 
 /**
  * Create a text-only story
@@ -144,23 +160,23 @@ export const createStory = async (formData, onProgress) => {
  * @returns {Promise<Object>} Response with created story
  */
 export const createTextStory = async (storyData, onProgress) => {
-  // Generate a unique request ID based on content only to prevent multiple submissions
-  const contentHash = storyData.content ? storyData.content.trim().substring(0, 20) : ""
-  const requestId = `create-text-story-${contentHash}`
+  // Generate a unique request ID based on content to prevent multiple submissions
+  const contentHash = storyData.content ? storyData.content.trim().substring(0, 20) : "";
+  const requestId = `create-text-story-${contentHash}`;
 
   // Check if a similar request is already in progress or was recently submitted
   if (pendingRequests.has(requestId)) {
-    console.warn("Duplicate text story creation request detected")
-    // Don't create a new story - just return the warning message
+    log.warn("Duplicate text story creation request detected");
     return {
       success: false,
       error: "Duplicate submission",
       message: "Please wait 5 seconds before posting another story",
-    }
+    };
   }
 
   // Mark this request as pending
-  pendingRequests.set(requestId, true)
+  pendingRequests.set(requestId, true);
+  log.debug(`Starting text story creation: ${requestId}`);
 
   try {
     // Ensure type and mediaType are properly set for text stories
@@ -169,21 +185,22 @@ export const createTextStory = async (storyData, onProgress) => {
       timestamp: Date.now(),
       type: "text",
       mediaType: "text",
-    }
+    };
 
-    // Use the same endpoint as media stories - the server differentiates by the 'type' field
-    const response = await apiService.post(`${BASE_URL}`, dataWithTimestamp, {
+    // Use the same endpoint as media stories - server differentiates by 'type'
+    log.debug("Sending text story to API");
+    const response = await apiService.post(BASE_URL, dataWithTimestamp, {
       onUploadProgress: onProgress,
-    })
+    });
 
     // Check for error responses in various formats
     if (response && typeof response === "object") {
       if (response.error) {
-        throw new Error(response.error)
+        throw new Error(response.error);
       }
 
       if (response.success === false) {
-        throw new Error(response.message || "Failed to create text story")
+        throw new Error(response.message || "Failed to create text story");
       }
     }
 
@@ -200,20 +217,20 @@ export const createTextStory = async (storyData, onProgress) => {
         success: true,
         data: response.data || response.story || response,
         message: "Story created successfully",
-      }
+      };
     } else if (response && response.success) {
       result = {
         success: true,
         data: response.data || response.story,
         message: "Story created successfully",
-      }
+      };
     } else if (response && response._id) {
       // Handle old API that might return the story directly
       result = {
         success: true,
         data: response,
         message: "Story created successfully",
-      }
+      };
     } else if (response === undefined || response === null) {
       // If we get an undefined or null response but no error was thrown,
       // assume success but wrap it in our standard format
@@ -221,34 +238,35 @@ export const createTextStory = async (storyData, onProgress) => {
         success: true,
         message: "Story created successfully",
         data: { created: true, timestamp: Date.now() }
-      }
+      };
     } else {
       // Wrap any other response format in a success object
       result = {
         success: true,
         data: response,
         message: "Story created successfully"
-      }
+      };
     }
 
     // Invalidate stories cache after creating a new story
+    log.debug("Invalidating stories cache after text story creation");
     cachedStories = null;
 
     return result;
   } catch (error) {
-    console.error("Error creating text story:", error)
+    log.error("Error creating text story", error);
     return {
       success: false,
       message: error.message || "Failed to create text story",
-    }
+    };
   } finally {
     // Remove from pending requests after a 5-second cooldown to prevent rapid submissions
     setTimeout(() => {
-      pendingRequests.delete(requestId)
-      console.log(`Story request ${requestId} unlocked after cooldown`)
-    }, 5000)
+      pendingRequests.delete(requestId);
+      log.debug(`Text story request ${requestId} unlocked after cooldown`);
+    }, 5000);
   }
-}
+};
 
 /**
  * Delete a story
@@ -257,7 +275,8 @@ export const createTextStory = async (storyData, onProgress) => {
  */
 export const deleteStory = async (storyId) => {
   try {
-    const response = await apiService.delete(`${BASE_URL}/${storyId}`)
+    log.debug(`Deleting story ${storyId}`);
+    const response = await apiService.delete(`${BASE_URL}/${storyId}`);
 
     // Handle old API format for backwards compatibility
     const result = response && !response.success && response.msg ? {
@@ -266,17 +285,18 @@ export const deleteStory = async (storyId) => {
     } : response;
 
     // Invalidate stories cache after deleting a story
+    log.debug("Invalidating stories cache after deletion");
     cachedStories = null;
 
     return result;
   } catch (error) {
-    console.error(`Error deleting story ${storyId}:`, error)
+    log.error(`Error deleting story ${storyId}`, error);
     return {
       success: false,
       message: error.message || "Failed to delete story",
-    }
+    };
   }
-}
+};
 
 /**
  * Mark a story as viewed
@@ -285,25 +305,26 @@ export const deleteStory = async (storyId) => {
  */
 export const markStoryAsViewed = async (storyId) => {
   try {
-    const response = await apiService.post(`${BASE_URL}/${storyId}/view`)
+    log.debug(`Marking story ${storyId} as viewed`);
+    const response = await apiService.post(`${BASE_URL}/${storyId}/view`);
 
     // Handle old API format for backwards compatibility
     if (response && !response.success && response.msg) {
       return {
         success: true,
         message: response.msg,
-      }
+      };
     }
 
-    return response
+    return response;
   } catch (error) {
-    console.error(`Error marking story ${storyId} as viewed:`, error)
+    log.error(`Error marking story ${storyId} as viewed`, error);
     return {
       success: false,
       message: error.message || "Failed to mark story as viewed",
-    }
+    };
   }
-}
+};
 
 /**
  * React to a story
@@ -313,7 +334,8 @@ export const markStoryAsViewed = async (storyId) => {
  */
 export const reactToStory = async (storyId, reactionType) => {
   try {
-    const response = await apiService.post(`${BASE_URL}/${storyId}/react`, { reactionType })
+    log.debug(`Reacting to story ${storyId} with type: ${reactionType}`);
+    const response = await apiService.post(`${BASE_URL}/${storyId}/react`, { reactionType });
 
     // Ensure we return a properly formatted response with the updated reactions
     if (response && response.data && !response.success) {
@@ -321,18 +343,18 @@ export const reactToStory = async (storyId, reactionType) => {
         success: true,
         data: response.data,
         message: "Reaction added successfully",
-      }
+      };
     }
 
-    return response
+    return response;
   } catch (error) {
-    console.error(`Error reacting to story ${storyId}:`, error)
+    log.error(`Error reacting to story ${storyId}`, error);
     return {
       success: false,
       message: error.message || "Failed to react to story",
-    }
+    };
   }
-}
+};
 
 /**
  * Remove a reaction from a story
@@ -341,16 +363,17 @@ export const reactToStory = async (storyId, reactionType) => {
  */
 export const removeReaction = async (storyId) => {
   try {
-    const response = await apiService.delete(`${BASE_URL}/${storyId}/react`)
-    return response
+    log.debug(`Removing reaction from story ${storyId}`);
+    const response = await apiService.delete(`${BASE_URL}/${storyId}/react`);
+    return response;
   } catch (error) {
-    console.error(`Error removing reaction from story ${storyId}:`, error)
+    log.error(`Error removing reaction from story ${storyId}`, error);
     return {
       success: false,
       message: error.message || "Failed to remove reaction",
-    }
+    };
   }
-}
+};
 
 /**
  * Get reactions for a story
@@ -359,16 +382,17 @@ export const removeReaction = async (storyId) => {
  */
 export const getStoryReactions = async (storyId) => {
   try {
-    const response = await apiService.get(`${BASE_URL}/${storyId}/reactions`)
-    return response
+    log.debug(`Fetching reactions for story ${storyId}`);
+    const response = await apiService.get(`${BASE_URL}/${storyId}/reactions`);
+    return response;
   } catch (error) {
-    console.error(`Error fetching reactions for story ${storyId}:`, error)
+    log.error(`Error fetching reactions for story ${storyId}`, error);
     return {
       success: false,
       message: error.message || "Failed to fetch story reactions",
-    }
+    };
   }
-}
+};
 
 /**
  * Get viewers of a story
@@ -377,16 +401,17 @@ export const getStoryReactions = async (storyId) => {
  */
 export const getStoryViewers = async (storyId) => {
   try {
-    const response = await apiService.get(`${BASE_URL}/${storyId}/viewers`)
-    return response
+    log.debug(`Fetching viewers for story ${storyId}`);
+    const response = await apiService.get(`${BASE_URL}/${storyId}/viewers`);
+    return response;
   } catch (error) {
-    console.error(`Error fetching viewers for story ${storyId}:`, error)
+    log.error(`Error fetching viewers for story ${storyId}`, error);
     return {
       success: false,
       message: error.message || "Failed to fetch story viewers",
-    }
+    };
   }
-}
+};
 
 // Export as an object for backwards compatibility
 const storiesService = {
@@ -400,6 +425,6 @@ const storiesService = {
   removeReaction,
   getStoryReactions,
   getStoryViewers,
-}
+};
 
-export default storiesService
+export default storiesService;

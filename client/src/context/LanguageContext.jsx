@@ -1,5 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import logger from '../utils/logger';
+
+// Create a named logger
+const log = logger.create('LanguageContext');
 
 // Create the language context
 const LanguageContext = createContext();
@@ -13,7 +17,7 @@ export function LanguageProvider({ children }) {
   // Change the language
   const changeLanguage = (lang) => {
     try {
-      console.log('Changing language to:', lang);
+      log.info('Changing language to:', lang);
       
       // Update i18next instance
       i18n.changeLanguage(lang);
@@ -40,9 +44,9 @@ export function LanguageProvider({ children }) {
         })
       );
       
-      console.log('Language changed successfully to:', lang, 'RTL:', lang === 'he');
+      log.info('Language changed successfully to:', lang, 'RTL:', lang === 'he');
     } catch (error) {
-      console.error('Error changing language:', error);
+      log.error('Error changing language:', error);
     }
   };
 

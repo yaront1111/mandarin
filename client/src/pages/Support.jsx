@@ -4,7 +4,10 @@ import { useTranslation } from "react-i18next";
 import { useLanguage } from "../context";
 import { SEO } from "../components";
 import { FaEnvelope, FaPhone, FaComments, FaQuestionCircle, FaAngleDown, FaAngleUp } from "react-icons/fa";
+import { createLogger } from "../utils/logger";
 import "../styles/pages.css";
+
+const logger = createLogger('Support');
 
 const Support = () => {
   const { t } = useTranslation();
@@ -27,7 +30,7 @@ const Support = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
     // In a real app, you would send the form data to your backend
-    console.log("Form submitted:", formData);
+    logger.info("Form submitted:", formData);
     setFormSubmitted(true);
     // Reset form after submission
     setFormData({ name: "", email: "", subject: "", message: "" });

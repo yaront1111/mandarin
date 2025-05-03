@@ -5,6 +5,11 @@ import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import chatService from "../services/ChatService";
 import { formatMessagePreview, formatDate, classNames } from "../utils";
+import apiService from "../services/apiService";
+import logger from "../utils/logger";
+
+// Create a named logger for this component
+const log = logger.create("Messages");
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import Avatar from "../components/common/Avatar";
 import MessagesWrapper from '../components/MessagesWrapper';
@@ -1088,12 +1093,12 @@ const Messages = () => {
       const headers = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
-      // Make sure API path is correct (e.g., relative or absolute)
-      const response = await fetch(`/api/users/${idToLoad}`, { headers });
+      // Use apiService for API calls
+      const response = await apiService.get(`/users/${idToLoad}`);
 
-      if (!response.ok) {
-        console.warn(`API error ${response.status} fetching user ${idToLoad}.`);
-        let errorMsg = `Could not find or load user details (Error: ${response.status}).`;
+      if (!response.success) {
+        log.warn(`API error fetching user ${idToLoad}.`);
+        let errorMsg = `Could not find or load user details.`;
         if (response.status === 404) errorMsg = `User not found (${idToLoad}).`;
         toast.error(errorMsg);
         navigate("/messages", { replace: true });
@@ -1101,8 +1106,8 @@ const Messages = () => {
         return; // Stop execution
       }
 
-      const result = await response.json();
-      const userDetail = result.data?.user || result.user || result;
+      // apiService already returns the parsed JSON data
+      const userDetail = response.data?.user || response.user || response.data || response;
 
       if (userDetail?._id) {
         const newConvo = {

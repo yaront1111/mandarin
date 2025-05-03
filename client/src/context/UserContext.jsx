@@ -219,7 +219,7 @@ export function UserProvider({ children }) {
       dispatch({ type: "UPDATING_PROFILE" })
       try {
         const res = await apiService.put("/users/profile", data)
-        console.log("Profile update response:", res)
+        log.debug("Profile update response:", res)
         
         if (!res.success) {
           throw new Error(res.error || "Profile update failed")
@@ -241,7 +241,7 @@ export function UserProvider({ children }) {
         dispatch({ type: "UPDATE_PROFILE", payload: updated })
         return updated
       } catch (err) {
-        console.error("Profile update error details:", err)
+        log.error("Profile update error details:", err)
         dispatch({ type: "USER_ERROR", payload: err.message })
         return null
       }
@@ -447,9 +447,9 @@ export function UserProvider({ children }) {
       if (!userId && state.currentUser?._id) {
         userId = state.currentUser._id;
       }
-      console.log("Refreshing user data for ID:", userId || user?._id);
+      log.info("Refreshing user data for ID:", userId || user?._id);
       const res = await apiService.get(`/users/${userId || user?._id}`);
-      console.log("Refresh user data response:", res);
+      log.debug("Refresh user data response:", res);
       
       // Handle nested success property
       if (!res.success && res.data && res.data.success) {
@@ -462,7 +462,7 @@ export function UserProvider({ children }) {
       dispatch({ type: "GET_USER", payload: res.data });
       return res.data;
     } catch (err) {
-      console.error("Error refreshing user data:", err);
+      log.error("Error refreshing user data:", err);
       dispatch({ type: "USER_ERROR", payload: err.message });
       return null;
     }

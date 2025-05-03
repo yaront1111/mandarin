@@ -7,6 +7,9 @@ import { toast } from "react-toastify"
 import { useTranslation } from "react-i18next"
 import { useAuth, useUser, useStories, useLanguage } from "../context"
 import { useIsMobile, useIsTablet } from "../hooks"
+import { createLogger } from "../utils/logger"
+
+const logger = createLogger('Dashboard')
 import EmbeddedChat from "../components/EmbeddedChat"
 import { Navbar } from "../components/LayoutComponents"
 import StoriesCarousel from "../components/Stories/StoriesCarousel"
@@ -98,7 +101,7 @@ const Dashboard = () => {
         setPage(pageNum)
         return result
       } catch (error) {
-        console.error("Error loading users:", error)
+        logger.error("Error loading users:", error)
         toast.error("Failed to load users. Please try again.")
         return null
       } finally {
@@ -279,7 +282,7 @@ const Dashboard = () => {
       })
       .catch((error) => {
         toast.error("An error occurred while creating your story")
-        console.error("Story creation error:", error)
+        logger.error("Story creation error:", error)
       })
       .finally(() => {
         setCreatingStory(false)

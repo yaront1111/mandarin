@@ -5,6 +5,9 @@ import { useStories, useUser, useAuth } from "../../context"
 import { FaHeart, FaRegHeart, FaComment, FaShare, FaPlay, FaPause, FaVolumeUp, FaVolumeMute, FaTimes } from "react-icons/fa"
 import { toast } from "react-toastify"
 import styles from "../../styles/stories.module.css"
+import logger from "../../utils/logger"
+
+const log = logger.create("StoriesViewer")
 
 const StoriesViewer = ({ storyId, userId, onClose }) => {
   // Context hooks
@@ -46,7 +49,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
   // Ensure all stories are loaded if needed
   useEffect(() => {
     if ((!stories || !stories.length) && loadStories) {
-      loadStories(true).catch((err) => console.error("Error loading stories:", err))
+      loadStories(true).catch((err) => log.error("Error loading stories:", err))
     }
   }, [stories, loadStories])
 
@@ -80,7 +83,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
         }
         setUserStories(uniqueStories)
       } catch (err) {
-        console.error("Error loading user stories:", err)
+        log.error("Error loading user stories:", err)
         setError("Failed to load stories")
       } finally {
         setLoading(false)
@@ -123,7 +126,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
     const currentStory = currentStories[currentStoryIndex]
     if (currentStory && user && currentStory._id) {
       viewStory(currentStory._id).catch((err) => {
-        console.error("Error marking story as viewed:", err)
+        log.error("Error marking story as viewed:", err)
       })
     }
   }, [currentStoryIndex, currentStories, user, viewStory])
@@ -139,12 +142,12 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
         // Handle play promise to avoid uncaught rejection errors
         if (playPromise !== undefined) {
           playPromise.catch((error) => {
-            console.error("Error playing video:", error)
+            log.error("Error playing video:", error)
             // Auto-mute and try again (common solution for autoplay issues)
             if (error.name === "NotAllowedError" && !muted) {
               setMuted(true)
               videoRef.current.muted = true
-              videoRef.current.play().catch((e) => console.error("Still couldn't play even with mute:", e))
+              videoRef.current.play().catch((e) => log.error("Still couldn't play even with mute:", e))
             }
           })
         }
@@ -370,7 +373,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
             }
           })
           .catch((error) => {
-            console.error("Error reacting to story:", error)
+            log.error("Error reacting to story:", error)
             setReacted(false) // Reset on error
             toast.error("Failed to react to story")
           })
@@ -701,7 +704,7 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
             crossOrigin="anonymous"
             onTimeUpdate={handleTimeUpdate}
             onError={(e) => {
-              console.error("Video failed to load:", e);
+              log.error("Video failed to load:", e);
             }}
           />
           {paused && (

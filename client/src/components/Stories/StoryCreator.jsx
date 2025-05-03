@@ -9,6 +9,9 @@ import { useTranslation } from "react-i18next"
 import { useAuth, useLanguage } from "../../context"
 import { useStories } from "../../context/StoriesContext"
 import styles from "../../styles/stories.module.css"
+import logger from "../../utils/logger"
+
+const log = logger.create("StoryCreator")
 
 const BACKGROUND_OPTIONS = [
   { id: "gradient-1", name: "Sunset", style: "linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%)" },
@@ -67,7 +70,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
       try {
         localStorage.removeItem(key);
       } catch (e) {
-        console.error("Failed to clean up submission record", e);
+        log.error("Failed to clean up submission record", e);
       }
     }, 10000);
   }
@@ -161,7 +164,7 @@ const StoryCreator = ({ onClose, onSubmit }) => {
         setError(response?.message || response?.error || "Failed to create story")
       }
     } catch (error) {
-      console.error("Error creating story:", error)
+      log.error("Error creating story:", error)
       setError(error.message || t('errors.somethingWentWrong'))
       toast.error(error.message || t('errors.somethingWentWrong'))
     } finally {
