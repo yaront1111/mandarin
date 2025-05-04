@@ -3,7 +3,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { FaVideo, FaTimes, FaPhoneSlash } from 'react-icons/fa';
 import { classNames } from './chatUtils.jsx';
-import styles from '../../styles/embedded-chat.module.css';
+import styles from '../../styles/Messages.module.css';
 
 const CallBanners = React.memo(({
     incomingCall = null,

@@ -58,14 +58,14 @@ export const useChat = (recipientId = null) => {
     const initChat = async () => {
       if (isAuthenticated && user?._id) {
         try {
-          console.log(`Initializing chat service (attempt ${retryCount + 1})...`, {
+          log.info(`Initializing chat service (attempt ${retryCount + 1})...`, {
             userId: user._id,
             isAuthenticated
           });
           
           // Check if already initialized
           if (chatService.isReady() && chatService.user?._id === user._id) {
-            console.log("Chat service already initialized with correct user!");
+            log.info("Chat service already initialized with correct user!");
             if (mountedRef.current) {
               setInitialized(true);
               setIsConnected(chatService.isConnected());
@@ -77,25 +77,25 @@ export const useChat = (recipientId = null) => {
           await chatService.initialize(user);
           
           if (mountedRef.current) {
-            console.log("Chat service initialized successfully!");
+            log.info("Chat service initialized successfully!");
             setInitialized(true);
             setIsConnected(chatService.isConnected());
           }
         } catch (err) {
           log.error("Failed to initialize chat service:", err);
-          console.error("Chat service initialization error:", err);
+          // Error is already logged above with log.error
           
           if (mountedRef.current) {
             if (retryCount < maxRetries) {
               // Retry with exponential backoff
               retryCount++;
               const delay = Math.min(1000 * Math.pow(2, retryCount), 5000);
-              console.log(`Retrying chat initialization in ${delay}ms (attempt ${retryCount + 1}/${maxRetries + 1})`);
+              log.info(`Retrying chat initialization in ${delay}ms (attempt ${retryCount + 1}/${maxRetries + 1})`);
               
               retryTimeoutId = setTimeout(initChat, delay);
             } else {
               // After max retries, force initialization state to true and try to work with API fallbacks
-              console.warn("Max retries reached. Forcing initialization state to continue with API fallbacks");
+              log.warn("Max retries reached. Forcing initialization state to continue with API fallbacks");
               
               if (mountedRef.current) {
                 setInitialized(true);
@@ -105,7 +105,7 @@ export const useChat = (recipientId = null) => {
           }
         }
       } else {
-        console.warn("Cannot initialize chat: missing user ID or not authenticated", {
+        log.warn("Cannot initialize chat: missing user ID or not authenticated", {
           userId: user?._id,
           isAuthenticated,
         });
@@ -118,7 +118,7 @@ export const useChat = (recipientId = null) => {
     // to prevent UI from being permanently stuck in loading
     const safetyTimeoutId = setTimeout(() => {
       if (mountedRef.current && !initialized) {
-        console.warn("Safety timeout hit - forcing initialization state to true");
+        log.warn("Safety timeout hit - forcing initialization state to true");
         setInitialized(true);
       }
     }, 8000);
@@ -741,50 +741,22 @@ export const useChat = (recipientId = null) => {
       if (fileUrl) createdBlobUrls.add(fileUrl);
       
       try {
-        // Create an XHR request to track upload progress
-        const xhr = new XMLHttpRequest();
-        
-        // Create a promise to handle the upload
-        const uploadPromise = new Promise((resolve, reject) => {
-          xhr.upload.onprogress = (event) => {
-            // Update progress in metadata if needed
-          };
-          
-          xhr.open("POST", "/api/messages/attachments", true);
-          
-          // Get auth token
-          const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-          if (token) {
-            xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        // Use apiService.upload for file uploads with progress tracking
+        const onUploadProgress = (progressEvent) => {
+          // Update progress in metadata if needed
+          if (progressEvent.total) {
+            const percentComplete = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+            log.debug(`Upload progress: ${percentComplete}%`);
+            // Additional progress handling can be added here
           }
-          
-          // Handle response
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try {
-                const result = JSON.parse(xhr.responseText);
-                if(result.success && result.data) {
-                  resolve(result.data);
-                } else {
-                  reject(new Error(result.error || "Upload processing failed"));
-                }
-              } catch (e) {
-                reject(new Error(`Invalid response format: ${e.message}`));
-              }
-            } else {
-              reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
-            }
-          };
-          
-          xhr.onerror = () => reject(new Error("Network error during upload"));
-          xhr.ontimeout = () => reject(new Error("Upload timed out"));
-          xhr.timeout = 60000; // 60 second timeout
-          
-          xhr.send(formData);
-        });
+        };
         
-        // Wait for upload to complete
-        const uploadResult = await uploadPromise;
+        // Use apiService for uploads, which already handles auth tokens
+        const uploadResult = await apiService.upload(
+          '/messages/attachments', 
+          formData,
+          onUploadProgress
+        );
         
         // Clear any created blob URLs
         createdBlobUrls.forEach(url => {

@@ -2,6 +2,8 @@ import { io } from "socket.io-client"
 import { toast } from "react-toastify"
 import logger from "../utils/logger.js"
 import apiService from "./apiService.jsx"
+import { getToken, setToken } from "../utils/tokenStorage"
+import { SOCKET } from "../config.js"
 
 // Create a named logger for this service
 const log = logger.create("SocketClient")
@@ -19,22 +21,13 @@ class SocketClient {
     this.pendingMessages = []
     this.eventHandlers = {}
     this.connectionAttempts = 0
-    this.maxReconnectAttempts = 5
-    this.reconnectDelay = 5000
+    this.maxReconnectAttempts = SOCKET.RECONNECT.MAX_ATTEMPTS
+    this.reconnectDelay = SOCKET.RECONNECT.DELAY
     this.heartbeatInterval = null
     this.lastPong = null
     this.notificationSyncChannel = null
     this.connectionMonitorInterval = null
-    this.notificationEventTypes = [
-      "notification",
-      "newMessage",
-      "newLike",
-      "photoPermissionRequestReceived",
-      "photoPermissionResponseReceived",
-      "newComment",
-      "incomingCall",
-      "newStory",
-    ]
+    this.notificationEventTypes = SOCKET.NOTIFICATION.SYNC_EVENT_TYPES
   }
 
   /**
@@ -55,7 +48,7 @@ class SocketClient {
 
     // TEMPORARY SOLUTION: Detect connection issues and provide graceful fallback
     // Look for a URL parameter or localStorage flag to enable/disable sockets
-    const socketDisabled = localStorage.getItem('socket_disabled') === 'true' ||
+    const socketDisabled = window.localStorage?.getItem('socket_disabled') === 'true' ||
                           new URLSearchParams(window.location.search).get('disable_socket') === 'true';
     
     if (socketDisabled) {
@@ -85,7 +78,7 @@ class SocketClient {
       
       // Add method to re-enable sockets
       this.enableSockets = function() {
-        localStorage.removeItem('socket_disabled');
+        window.localStorage?.removeItem('socket_disabled');
         toast.success("Real-time features enabled. Refresh the page to apply changes.", 
           { autoClose: 5000 });
         log.info("Socket.IO has been re-enabled. Refresh to apply.");
@@ -106,12 +99,8 @@ class SocketClient {
     
     // Determine correct server URL based on environment
     const isDev = process.env.NODE_ENV === 'development'
-    // Use localhost in development, production server in production
-    // Connect directly to the current domain instead of hardcoded domain
-    // This helps with cross-domain issues and makes deployment more flexible
-    const serverUrl = isDev 
-      ? 'http://localhost:5000' 
-      : 'https://flirtss.com' // Use explicit prod domain for better reliability
+    // Use config values for server URLs
+    const serverUrl = isDev ? SOCKET.URLS.DEV : SOCKET.URLS.PROD
     
     log.info(`Connecting to socket server at ${serverUrl}`)
 
@@ -123,10 +112,10 @@ class SocketClient {
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectDelay,
-        reconnectionDelayMax: 30000,
-        timeout: 30000, // Increased timeout
+        reconnectionDelayMax: SOCKET.RECONNECT.DELAY_MAX,
+        timeout: SOCKET.CONNECTION.TIMEOUT,
         path: "/socket.io/", // Explicitly specify path for more reliability
-        transports: ["polling", "websocket"], // Try polling first for better reliability, then upgrade to websocket
+        transports: SOCKET.TRANSPORT.DEFAULT,
         autoConnect: true,
         forceNew: true, // Force new connection attempt
         withCredentials: true, // Enable sending credentials with cross-origin requests
@@ -177,14 +166,14 @@ class SocketClient {
       this._processPendingMessages()
 
       // Notify listeners
-      this._notifyEventHandlers("socketConnected", {
+      this._notifyEventHandlers(SOCKET.EVENTS.SOCKET_CONNECTED, {
         userId: this.userId,
         socketId: this.socket.id,
       })
 
       // Dispatch global event for notification components
       window.dispatchEvent(
-        new CustomEvent("socketConnected", {
+        new CustomEvent(SOCKET.EVENTS.SOCKET_CONNECTED, {
           detail: { userId: this.userId, socketId: this.socket.id },
         }),
       )
@@ -213,13 +202,13 @@ class SocketClient {
         
         // Force polling as the only transport option after repeated WebSocket failures
         if (this.socket.io?.opts) {
-          this.socket.io.opts.transports = ['polling'];
+          this.socket.io.opts.transports = SOCKET.TRANSPORT.FALLBACK;
           log.info("Forced polling-only transport mode");
         }
       }
 
       if (this.connectionAttempts >= this.maxReconnectAttempts) {
-        this._notifyEventHandlers("socketConnectionFailed", {
+        this._notifyEventHandlers(SOCKET.EVENTS.SOCKET_CONNECTION_FAILED, {
           error: error.message,
           attempts: this.connectionAttempts,
         })
@@ -234,7 +223,7 @@ class SocketClient {
           // Auto-disable socket connections after persistent failures
           try {
             // Store a flag in localStorage to disable sockets
-            localStorage.setItem('socket_disabled', 'true');
+            window.localStorage?.setItem('socket_disabled', 'true');
             log.warn("Socket connections have been temporarily disabled due to connection issues");
             
             // Notify user that a refresh is needed with the new setting
@@ -269,11 +258,11 @@ class SocketClient {
       this._stopHeartbeat()
 
       // Notify listeners
-      this._notifyEventHandlers("socketDisconnected", { reason })
+      this._notifyEventHandlers(SOCKET.EVENTS.SOCKET_DISCONNECTED, { reason })
 
       // Dispatch global event for notification components
       window.dispatchEvent(
-        new CustomEvent("socketDisconnected", {
+        new CustomEvent(SOCKET.EVENTS.SOCKET_DISCONNECTED, {
           detail: { reason },
         }),
       )
@@ -291,14 +280,14 @@ class SocketClient {
       this.reconnecting = false
 
       // Notify listeners
-      this._notifyEventHandlers("socketReconnected", {
+      this._notifyEventHandlers(SOCKET.EVENTS.SOCKET_RECONNECTED, {
         userId: this.userId,
         attempts: attemptNumber,
       })
 
       // Dispatch global event for notification components
       window.dispatchEvent(
-        new CustomEvent("socketReconnected", {
+        new CustomEvent(SOCKET.EVENTS.SOCKET_RECONNECTED, {
           detail: { userId: this.userId, attempts: attemptNumber },
         }),
       )
@@ -320,13 +309,13 @@ class SocketClient {
       toast.error("Failed to reconnect to the chat server. Please reload the page.")
 
       // Notify listeners
-      this._notifyEventHandlers("socketReconnectFailed", {
+      this._notifyEventHandlers(SOCKET.EVENTS.SOCKET_RECONNECT_FAILED, {
         userId: this.userId,
       })
 
       // Dispatch global event for notification components
       window.dispatchEvent(
-        new CustomEvent("socketReconnectFailed", {
+        new CustomEvent(SOCKET.EVENTS.SOCKET_RECONNECT_FAILED, {
           detail: { userId: this.userId },
         }),
       )
@@ -407,7 +396,7 @@ class SocketClient {
         if (this.notificationSyncChannel) {
           try {
             this.notificationSyncChannel.postMessage({
-              type: "NEW_NOTIFICATION",
+              type: SOCKET.NOTIFICATION.SYNC_ACTIONS.NEW_NOTIFICATION,
               data: data,
             })
           } catch (err) {
@@ -429,19 +418,19 @@ class SocketClient {
     }
 
     try {
-      this.notificationSyncChannel = new BroadcastChannel("notification_sync")
+      this.notificationSyncChannel = new BroadcastChannel(SOCKET.NOTIFICATION.SYNC_CHANNEL_NAME)
 
       // Listen for messages from other tabs
       this.notificationSyncChannel.onmessage = (event) => {
         const { type, data } = event.data
 
-        if (type === "NEW_NOTIFICATION") {
+        if (type === SOCKET.NOTIFICATION.SYNC_ACTIONS.NEW_NOTIFICATION) {
           log.debug("Received new notification from another tab")
           window.dispatchEvent(new CustomEvent("newNotification", { detail: data }))
-        } else if (type === "MARK_READ") {
+        } else if (type === SOCKET.NOTIFICATION.SYNC_ACTIONS.MARK_READ) {
           log.debug("Received mark-read event from another tab")
           window.dispatchEvent(new CustomEvent("notificationRead", { detail: data }))
-        } else if (type === "MARK_ALL_READ") {
+        } else if (type === SOCKET.NOTIFICATION.SYNC_ACTIONS.MARK_ALL_READ) {
           log.debug("Received mark-all-read event from another tab")
           window.dispatchEvent(new CustomEvent("allNotificationsRead"))
         }
@@ -463,19 +452,19 @@ class SocketClient {
     this._stopHeartbeat()
     this.lastPong = Date.now()
 
-    // Send ping every 30 seconds
+    // Send ping based on configured interval
     this.heartbeatInterval = setInterval(() => {
       if (this.socket && this.connected) {
         this.socket.emit("ping")
 
-        // Check if we've received a pong in the last 60 seconds
+        // Check if we've received a pong in the configured timeout period
         const now = Date.now()
-        if (this.lastPong && now - this.lastPong > 60000) {
-          log.warn("No heartbeat response in 60 seconds, reconnecting...")
+        if (this.lastPong && now - this.lastPong > SOCKET.CONNECTION.HEARTBEAT_TIMEOUT) {
+          log.warn(`No heartbeat response in ${SOCKET.CONNECTION.HEARTBEAT_TIMEOUT / 1000} seconds, reconnecting...`)
           this.enhancedReconnect()
         }
       }
-    }, 30000)
+    }, SOCKET.CONNECTION.HEARTBEAT_INTERVAL)
   }
 
   /**
@@ -495,10 +484,10 @@ class SocketClient {
     // Stop any existing monitoring
     this.stopConnectionMonitoring()
 
-    // Check connection health every 45 seconds
+    // Check connection health based on configured interval
     this.connectionMonitorInterval = setInterval(() => {
       this.checkSocketHealthForNotifications()
-    }, 45000)
+    }, SOCKET.CONNECTION.MONITOR_INTERVAL)
 
     log.info("Notification connection monitoring started")
   }
@@ -527,9 +516,8 @@ class SocketClient {
     const timeSinceLastPong = now - lastPong
 
     // Check if it's been too long since last pong
-    if (timeSinceLastPong > 60000) {
-      // 1 minute
-      log.warn("No socket response in the last minute, reconnecting for notifications...")
+    if (timeSinceLastPong > SOCKET.CONNECTION.HEARTBEAT_TIMEOUT) {
+      log.warn(`No socket response in the last ${SOCKET.CONNECTION.HEARTBEAT_TIMEOUT / 1000} seconds, reconnecting for notifications...`)
       this.enhancedReconnect()
       return false
     }
@@ -682,16 +670,17 @@ class SocketClient {
 
     // Reconnect if we have userId
     if (this.userId) {
-      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      // Use tokenStorage utility instead of direct localStorage/sessionStorage access
+      const token = getToken();
       if (token) {
         // Add a small random delay to prevent simultaneous reconnection attempts
-        const reconnectDelay = 1000 + Math.random() * 2000;
+        const reconnectDelay = SOCKET.CONNECTION.RECONNECT_DELAY_MIN + Math.random() * (SOCKET.CONNECTION.RECONNECT_DELAY_MAX - SOCKET.CONNECTION.RECONNECT_DELAY_MIN);
         log.debug(`Scheduling reconnection in ${Math.round(reconnectDelay)}ms`);
 
         setTimeout(() => {
           try {
             // Re-fetch a fresh token directly from storage in case it changed
-            const freshToken = localStorage.getItem("token") || sessionStorage.getItem("token");
+            const freshToken = getToken();
             if (freshToken !== token) {
               log.info("Token changed since reconnection attempt started, using fresh token");
             }
@@ -709,7 +698,7 @@ class SocketClient {
                 setTimeout(() => {
                   this.reconnecting = false;
                   this.enhancedReconnect();
-                }, 2000);
+                }, SOCKET.CONNECTION.ONLINE_RECONNECT_DELAY);
               };
 
               window.addEventListener('online', onlineHandler, { once: true });
@@ -717,9 +706,9 @@ class SocketClient {
               return;
             }
 
-            // Use environment-aware server URL
+            // Use environment-aware server URL from config
             const isDev = process.env.NODE_ENV === 'development';
-            const serverUrl = isDev ? 'http://localhost:5000' : 'https://flirtss.com';
+            const serverUrl = isDev ? SOCKET.URLS.DEV : SOCKET.URLS.PROD;
 
             // Always use the most recent token available
             log.info("Initializing socket with fresh token");
@@ -732,7 +721,7 @@ class SocketClient {
             });
 
             // Dispatch reconnection success event specifically for notifications
-            window.dispatchEvent(new CustomEvent("notificationSocketReconnected"));
+            window.dispatchEvent(new CustomEvent(SOCKET.EVENTS.NOTIFICATION_SOCKET_RECONNECTED));
             log.info("Socket reconnected with notification support");
           } catch (err) {
             log.error("Socket reconnection failed:", err);
@@ -741,12 +730,12 @@ class SocketClient {
             if (err.message && (err.message.includes("websocket") || err.message.includes("WebSocket"))) {
               log.warn("WebSocket error detected, trying fallback to polling transport only");
               try {
-                // Use environment-aware server URL
+                // Use environment-aware server URL from config
                 const isDev = process.env.NODE_ENV === 'development';
-                const serverUrl = isDev ? 'http://localhost:5000' : 'https://flirtss.com';
+                const serverUrl = isDev ? SOCKET.URLS.DEV : SOCKET.URLS.PROD;
 
                 this.init(this.userId, token, {
-                  transports: ["polling"],
+                  transports: SOCKET.TRANSPORT.FALLBACK,
                   autoConnect: true
                 });
                 log.info("Fallback to polling transport initiated");
@@ -770,8 +759,8 @@ class SocketClient {
                     this._attemptTokenRefresh().catch(() => {
                       // Last resort: clear storage and reload
                       log.warn("Performing emergency session reset");
-                      localStorage.clear();
-                      sessionStorage.clear();
+                      // Use a more targeted approach than clearing all storage
+                      apiService.logout(); // This will handle token removal through the proper channels
                       window.location.reload();
                     });
                   }
@@ -805,12 +794,13 @@ class SocketClient {
     return new Promise((resolve, reject) => {
       log.info("Attempting to refresh authentication token");
 
-      // Use apiService instead of direct fetch
+      // Use apiService for token refresh
       apiService.post('/auth/refresh-token', {})
         .then(data => {
           if (data.token) {
             log.info("Token refresh successful");
-            localStorage.setItem('token', data.token);
+            // Use tokenStorage utility instead of direct localStorage access
+            setToken(data.token, true);
             this.reconnecting = false;
             this.enhancedReconnect();
             resolve();

@@ -1,76 +1,57 @@
 // src/components/chat/chatConstants.js
+import { UPLOADS, TIMEOUTS, SOCKET, ACCOUNT_TIER, MESSAGE_TYPES, UI } from '../../config';
 
 /**
  * File Settings
  */
 // Maximum allowed file size for uploads (5MB)
-export const MAX_FILE_SIZE = 5 * 1024 * 1024;
+export const MAX_FILE_SIZE = UPLOADS.MAX_SIZE.AVATAR;
 
-// List of allowed MIME types for file uploads
+// List of allowed MIME types for file uploads (combined from config)
 export const ALLOWED_FILE_TYPES = [
-    // Images
-    "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",
-    // Documents
-    "application/pdf",
-    "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "text/plain",
-    // Media
-    "audio/mpeg", "audio/wav", "audio/ogg",
-    "video/mp4", "video/quicktime", "video/webm"
+    ...UPLOADS.ALLOWED_TYPES.IMAGES,
+    ...UPLOADS.ALLOWED_TYPES.DOCUMENTS,
+    ...UPLOADS.ALLOWED_TYPES.AUDIO,
+    ...UPLOADS.ALLOWED_TYPES.VIDEOS,
+    "text/plain" // Additional type not in config
 ];
 
 /**
  * UI Constants
  */
 // Common emojis available in the emoji picker
-export const COMMON_EMOJIS = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"];
+export const COMMON_EMOJIS = UI.EMOJI.COMMON;
 
-/**
- * Timeouts and Delays
- */
-// Time before showing timeout message for loading (10 seconds)
-export const LOADING_TIMEOUT_MS = 10000;
+// Time before showing timeout message for loading
+export const LOADING_TIMEOUT_MS = TIMEOUTS.UI.LOADING_TIMEOUT;
 
-// Delay before attempting reconnection (1.5 seconds)
-export const RECONNECT_DELAY_MS = 1500;
+// Delay before attempting reconnection
+export const RECONNECT_DELAY_MS = SOCKET.CONNECTION.RECONNECT_DELAY_MIN;
 
-// Delay before focusing input field (300ms)
-export const INPUT_FOCUS_DELAY_MS = 300;
+// Delay before focusing input field
+export const INPUT_FOCUS_DELAY_MS = TIMEOUTS.UI.INPUT_FOCUS_DELAY;
 
-// Debounce time for typing indicator (400ms)
-export const TYPING_DEBOUNCE_MS = 400;
+// Debounce time for typing indicator
+export const TYPING_DEBOUNCE_MS = TIMEOUTS.DEBOUNCE.TYPING;
 
-// Debounce time for smooth scrolling (100ms)
-export const SMOOTH_SCROLL_DEBOUNCE_MS = 100;
+// Debounce time for smooth scrolling
+export const SMOOTH_SCROLL_DEBOUNCE_MS = TIMEOUTS.DEBOUNCE.SMOOTH_SCROLL;
 
-// Delay before clearing upload UI after completion (500ms)
-export const UPLOAD_COMPLETE_DELAY_MS = 500;
+// Delay before clearing upload UI after completion
+export const UPLOAD_COMPLETE_DELAY_MS = TIMEOUTS.UI.UPLOAD_COMPLETE_DELAY;
 
 /**
  * Mobile Specific Constants
  */
 // Threshold for swipe gesture detection
-export const SWIPE_THRESHOLD = 50;
+export const SWIPE_THRESHOLD = UI.MOBILE.GESTURE.SWIPE_THRESHOLD;
 
 // Threshold for pull-to-refresh gesture
-export const PULL_TO_REFRESH_THRESHOLD = 50;
+export const PULL_TO_REFRESH_THRESHOLD = UI.MOBILE.GESTURE.PULL_TO_REFRESH_THRESHOLD;
 
 /**
- * Account Tiers
+ * Account Tiers and Message Types
  */
-export const ACCOUNT_TIER = {
-    FREE: "FREE",
-    PREMIUM: "PREMIUM",
-    // Add future tiers here
-};
-
-/**
- * Message Types
- */
-export const MESSAGE_TYPE = {
-    TEXT: "text",
-    WINK: "wink",
-    FILE: "file",
-    SYSTEM: "system",
-    VIDEO: "video", // For call-related system messages
-};
+// Re-export for backward compatibility
+export { ACCOUNT_TIER };
+export const MESSAGE_TYPE = MESSAGE_TYPES;

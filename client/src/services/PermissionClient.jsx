@@ -1,6 +1,6 @@
 // client/src/services/PermissionClient.jsx
 import socketService from "./socketService.jsx";
-import { toast } from "react-toastify";
+import { SOCKET } from "../config";
 import logger from "../utils/logger";
 
 const log = logger.create("PermissionClient");
@@ -10,6 +10,11 @@ const log = logger.create("PermissionClient");
  * Uses standardized socketService for communication.
  */
 class PermissionClient {
+  constructor() {
+    // Track unsubscribers to clean up event listeners correctly
+    this._eventUnsubscribers = new Map();
+  }
+
   /**
    * Request access to a private photo.
    * @param {string} ownerId - The ID of the photo owner.
@@ -34,13 +39,12 @@ class PermissionClient {
       log.debug(`Requesting photo permission: ${photoId} from ${ownerId}`);
 
       // Create event handlers
-      let cleanup;
       let timeoutId;
 
       const handleSuccess = (response) => {
         if (response.requestId === requestId) {
           log.debug(`Photo permission request succeeded: ${requestId}`);
-          if (cleanup) cleanup();
+          this._cleanupEventListeners(requestId);
           if (response.success) {
             resolve(response);
           } else {
@@ -52,38 +56,67 @@ class PermissionClient {
       const handleError = (response) => {
         if (response.requestId === requestId) {
           log.error(`Photo permission request error: ${response.error || 'Unknown error'}`);
-          if (cleanup) cleanup();
+          this._cleanupEventListeners(requestId);
           reject(new Error(response.error || 'Permission request failed'));
         }
       };
 
-      // Setup cleanup function
-      cleanup = () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        socketService.off('photoPermissionRequested', handleSuccess);
-        socketService.off('photoPermissionError', handleError);
-      };
-
       // Register event handlers using socketService
-      socketService.on('photoPermissionRequested', handleSuccess);
-      socketService.on('photoPermissionError', handleError);
+      this._registerEventListener(requestId, 'photoPermissionRequested', handleSuccess);
+      this._registerEventListener(requestId, 'photoPermissionError', handleError);
 
       // Send the request using socketService
       const emitted = socketService.emit("requestPhotoPermission", payload);
 
       if (!emitted) {
         log.error(`Failed to emit photo permission request: ${requestId}`);
-        cleanup();
+        this._cleanupEventListeners(requestId);
         reject(new Error("Failed to send permission request"));
+        return;
       }
 
-      // Set timeout
+      // Set timeout using configuration
       timeoutId = setTimeout(() => {
         log.warn(`Photo permission request timed out: ${requestId}`);
-        cleanup();
+        this._cleanupEventListeners(requestId);
         reject(new Error('Permission request timed out'));
-      }, 10000); // 10-second timeout
+      }, SOCKET.TIMEOUT.PERMISSION_REQUEST || SOCKET.TIMEOUT.ACK * 5); // Use permission timeout or 5x ACK
+
+      // Store timeout for cleanup
+      this._eventUnsubscribers.set(`${requestId}-timeout`, timeoutId);
     });
+  }
+
+  /**
+   * Register an event listener and store the unsubscribe function
+   * @private
+   * @param {string} requestId - Unique request ID
+   * @param {string} event - Event name
+   * @param {Function} handler - Event handler
+   */
+  _registerEventListener(requestId, event, handler) {
+    const unsubscribe = socketService.on(event, handler);
+    this._eventUnsubscribers.set(`${requestId}-${event}`, unsubscribe);
+  }
+
+  /**
+   * Clean up event listeners and timeouts for a request
+   * @private
+   * @param {string} requestId - Unique request ID
+   */
+  _cleanupEventListeners(requestId) {
+    // Clean up all event listeners and timeouts for this request
+    for (const [key, unsubscribe] of this._eventUnsubscribers.entries()) {
+      if (key.startsWith(requestId)) {
+        if (key.endsWith('-timeout')) {
+          clearTimeout(unsubscribe);
+        } else {
+          // Call the unsubscribe function
+          unsubscribe();
+        }
+        this._eventUnsubscribers.delete(key);
+      }
+    }
   }
 
   /**
@@ -114,13 +147,10 @@ class PermissionClient {
       log.debug(`Responding to photo permission: ${permissionId} with ${status}`);
 
       // Create event handlers
-      let cleanup;
-      let timeoutId;
-
       const handleSuccess = (response) => {
         if (response.requestId === requestId) {
           log.debug(`Photo permission response succeeded: ${requestId}`);
-          if (cleanup) cleanup();
+          this._cleanupEventListeners(requestId);
           if (response.success) {
             resolve(response);
           } else {
@@ -132,38 +162,51 @@ class PermissionClient {
       const handleError = (response) => {
         if (response.requestId === requestId) {
           log.error(`Photo permission response error: ${response.error || 'Unknown error'}`);
-          if (cleanup) cleanup();
+          this._cleanupEventListeners(requestId);
           reject(new Error(response.error || 'Permission response failed'));
         }
       };
 
-      // Setup cleanup function
-      cleanup = () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        socketService.off('photoPermissionResponded', handleSuccess);
-        socketService.off('photoPermissionError', handleError);
-      };
-
-      // Register event handlers
-      socketService.on('photoPermissionResponded', handleSuccess);
-      socketService.on('photoPermissionError', handleError);
+      // Register event handlers using consolidated method
+      this._registerEventListener(requestId, 'photoPermissionResponded', handleSuccess);
+      this._registerEventListener(requestId, 'photoPermissionError', handleError);
 
       // Send the response
       const emitted = socketService.emit("respondToPhotoPermission", payload);
 
       if (!emitted) {
         log.error(`Failed to emit photo permission response: ${requestId}`);
-        cleanup();
+        this._cleanupEventListeners(requestId);
         reject(new Error("Failed to send permission response"));
+        return;
       }
 
       // Set timeout
-      timeoutId = setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         log.warn(`Photo permission response timed out: ${requestId}`);
-        cleanup();
+        this._cleanupEventListeners(requestId);
         reject(new Error('Permission response timed out'));
-      }, 10000); // 10-second timeout
+      }, SOCKET.TIMEOUT.PERMISSION_REQUEST || SOCKET.TIMEOUT.ACK * 5); // Use permission timeout or 5x ACK
+
+      // Store timeout for cleanup
+      this._eventUnsubscribers.set(`${requestId}-timeout`, timeoutId);
     });
+  }
+
+  /**
+   * Clean up all event listeners
+   */
+  cleanup() {
+    // Clean up all registered event listeners
+    for (const [key, unsubscribe] of this._eventUnsubscribers.entries()) {
+      if (key.endsWith('-timeout')) {
+        clearTimeout(unsubscribe);
+      } else {
+        unsubscribe();
+      }
+    }
+    this._eventUnsubscribers.clear();
+    log.debug('Permission client cleaned up');
   }
 }
 

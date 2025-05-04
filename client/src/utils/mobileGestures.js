@@ -2,6 +2,9 @@
  * Mobile Touch Gesture Utility
  * Enhances mobile experience for the Messages component with smooth gesture handling
  */
+import logger from './logger';
+
+const log = logger.create('mobileGestures');
 
 // Configuration
 const SWIPE_THRESHOLD = 80; // Minimum distance to trigger swipe action
@@ -58,9 +61,24 @@ export const setupTouchGestures = (elements, callbacks) => {
     pullDistance = 0;
   };
 
+  // Check if virtual keyboard is likely open (used to prevent gesture conflicts)
+  const isVirtualKeyboardOpen = () => {
+    // For iOS, use a heuristic of window inner height vs window outer height
+    if (window.visualViewport) {
+      return window.visualViewport.height < window.innerHeight * 0.8;
+    }
+    // Fallback for other browsers
+    return document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName);
+  };
+
   // Handle touch move events
   const handleTouchMove = (e) => {
     if (!e.touches[0]) return;
+    
+    // Skip gesture handling if keyboard is likely open
+    if (isVirtualKeyboardOpen()) {
+      return;
+    }
 
     const touchX = e.touches[0].clientX;
     const touchY = e.touches[0].clientY;
@@ -93,12 +111,19 @@ export const setupTouchGestures = (elements, callbacks) => {
         const resistance = 0.5;
         const transformX = deltaX * resistance;
 
+        // Only apply transform during active swipe - don't override CSS classes
+        // Use a data attribute to track that we're in a gesture - this prevents conflicts
+        sidebar.dataset.swiping = 'true';
+        
         if (isSidebarShowing) {
-          // Swiping left to hide sidebar
-          sidebar.style.transform = `translateX(${transformX}px)`;
+          // Swiping left to hide sidebar (limit to negative values only)
+          if (transformX < 0) {
+            sidebar.style.transform = `translateX(${transformX}px)`;
+          }
         } else {
-          // Swiping right to show sidebar
-          sidebar.style.transform = `translateX(${-100 + (transformX / container.offsetWidth) * 100}%)`;
+          // Swiping right to show sidebar (ensure we start from -100%)
+          const percentValue = Math.min(0, -100 + (transformX / container.offsetWidth) * 100);
+          sidebar.style.transform = `translateX(${percentValue}%)`;
         }
       }
     }
@@ -126,37 +151,42 @@ export const setupTouchGestures = (elements, callbacks) => {
 
   // Handle touch end events
   const handleTouchEnd = (e) => {
+    // Clear the swiping data attribute to avoid style conflicts
+    if (sidebar && sidebar.dataset.swiping) {
+      delete sidebar.dataset.swiping;
+    }
     // Handle swipe completion
     if (isSwiping) {
       const isSidebarShowing = !sidebar.classList.contains('hide');
 
-      // Add transition for smooth animation
-      sidebar.style.transition = `transform ${ANIMATION_DURATION}ms ease`;
-
+      // We'll use CSS classes instead of direct style manipulation
+      // as this plays better with React's state management
+      
+      // Determine what action to take based on swipe distance
       if (isSidebarShowing && currentSwipe < -SWIPE_THRESHOLD) {
-        // Hide sidebar if swiped left far enough
-        sidebar.style.transform = 'translateX(-100%)';
-        if (onSidebarHide) onSidebarHide();
+        // Don't manipulate style directly, use callback to update state
+        if (onSidebarHide) {
+          // Add a transition class temporarily for animation
+          sidebar.classList.add('animating');
+          onSidebarHide();
+        }
       } else if (!isSidebarShowing && currentSwipe > SWIPE_THRESHOLD) {
-        // Show sidebar if swiped right far enough
-        sidebar.style.transform = 'translateX(0)';
-        if (onSidebarShow) onSidebarShow();
+        if (onSidebarShow) {
+          // Add a transition class temporarily for animation
+          sidebar.classList.add('animating');
+          onSidebarShow();
+        }
       } else {
-        // Reset to original position if not swiped far enough
-        sidebar.style.transform = isSidebarShowing ? 'translateX(0)' : 'translateX(-100%)';
+        // If not passing threshold, reset any inline styles but don't change state
+        sidebar.style.transform = '';
       }
 
-      // Clear transition after animation completes
+      // Clean up animation class after transition completes
       setTimeout(() => {
+        sidebar.classList.remove('animating');
+        // Clear any inline styles that might interfere with the CSS classes
         sidebar.style.transition = '';
         sidebar.style.transform = '';
-
-        // Update classes based on final state
-        if (isSidebarShowing && currentSwipe < -SWIPE_THRESHOLD) {
-          sidebar.classList.add('hide');
-        } else if (!isSidebarShowing && currentSwipe > SWIPE_THRESHOLD) {
-          sidebar.classList.remove('hide');
-        }
       }, ANIMATION_DURATION);
     }
 
@@ -307,7 +337,7 @@ export const promptForInstallation = (onPromptShown) => {
 
     // Wait for user response
     window.deferredPrompt.userChoice.then((choiceResult) => {
-      console.log(`User ${choiceResult.outcome === 'accepted' ? 'accepted' : 'declined'} the install prompt`);
+      log.info(`User ${choiceResult.outcome === 'accepted' ? 'accepted' : 'declined'} the install prompt`);
       window.deferredPrompt = null;
     });
 

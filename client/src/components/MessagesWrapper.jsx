@@ -1,10 +1,10 @@
 // client/src/components/MessagesWrapper.jsx
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import styles from '../styles/Messages.module.css'; // Import the enhanced styles
+import { toast } from 'react-toastify';// Import the enhanced styles
 import { setupTouchGestures, provideTactileFeedback, enhanceScrolling, isRunningAsInstalledPwa } from '../utils/mobileGestures'; // Assuming these utils exist
 import logger from "../utils/logger";
+import styles from "../styles/Messages.module.css";
 
 const log = logger.create("MessagesWrapper");
 
@@ -12,6 +12,54 @@ const log = logger.create("MessagesWrapper");
  * MessagesWrapper component - Enhances the main Messages component with mobile optimizations
  */
 const MessagesWrapper = ({ children }) => {
+  // Helper function to setup gestures with the given refs
+  const setupGesturesWithRefs = (container, sidebar, chatArea, conversationList, refreshIndicator) => {
+    if (!container || !sidebar || !chatArea || typeof setupTouchGestures !== 'function') {
+      log.warn("setupGesturesWithRefs: Missing required elements or utilities");
+      return null;
+    }
+    
+    // Callbacks for gesture events
+    const callbacks = {
+      onSidebarShow: () => {
+         if (sidebar) sidebar.classList.remove(styles.hide); // Use styles module
+         if (typeof provideTactileFeedback === 'function') provideTactileFeedback('selectConversation');
+      },
+      onSidebarHide: () => {
+         if (sidebar) sidebar.classList.add(styles.hide); // Use styles module
+         if (typeof provideTactileFeedback === 'function') provideTactileFeedback('selectConversation');
+      },
+      onRefresh: async () => {
+        try {
+          // Trigger refresh - replace with your actual refresh function from context or props if needed
+          log.info("Attempting to refresh conversations via wrapper...");
+          toast.info("Refreshing conversations...");
+
+          // Placeholder for actual refresh logic (e.g., re-fetching conversations)
+          // Example: await props.refreshConversations?.();
+          await new Promise(resolve => setTimeout(resolve, 800)); // Simulate delay
+
+          // Success feedback
+          if (typeof provideTactileFeedback === 'function') provideTactileFeedback('send');
+        } catch (err) {
+          log.error("Error during refresh:", err);
+          if (typeof provideTactileFeedback === 'function') provideTactileFeedback('error');
+        }
+      },
+      onRefreshStart: () => {
+        log.info("Pull-to-refresh started");
+      },
+      onRefreshEnd: () => {
+        log.info("Pull-to-refresh ended");
+      }
+    };
+    
+    // Set up touch gesture handling
+    return setupTouchGestures(
+      { container, sidebar, chatArea, conversationList, refreshIndicator },
+      callbacks
+    );
+  };
   const navigate = useNavigate();
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
@@ -60,50 +108,41 @@ const MessagesWrapper = ({ children }) => {
     const refreshIndicator = refreshIndicatorRef.current;
 
     // Only setup if essential elements are present and utils are loaded
-    if (!container || !sidebar || !chatArea || typeof setupTouchGestures !== 'function') {
-        // log.warn("MessagesWrapper: Refs not ready or utils missing for gesture setup.");
+    if (!container || typeof setupTouchGestures !== 'function') {
         return;
     }
-
-    // Callbacks for gesture events
-    const callbacks = {
-      onSidebarShow: () => {
-         if (sidebar) sidebar.classList.remove(styles.hide); // Use styles module
-         if (typeof provideTactileFeedback === 'function') provideTactileFeedback('selectConversation');
-      },
-      onSidebarHide: () => {
-         if (sidebar) sidebar.classList.add(styles.hide); // Use styles module
-         if (typeof provideTactileFeedback === 'function') provideTactileFeedback('selectConversation');
-      },
-      onRefresh: async () => {
-        try {
-          // Trigger refresh - replace with your actual refresh function from context or props if needed
-          log.info("Attempting to refresh conversations via wrapper...");
-          toast.info("Refreshing conversations...");
-
-          // Placeholder for actual refresh logic (e.g., re-fetching conversations)
-          // Example: await props.refreshConversations?.();
-          await new Promise(resolve => setTimeout(resolve, 800)); // Simulate delay
-
-          // Success feedback
-          if (typeof provideTactileFeedback === 'function') provideTactileFeedback('send');
-        } catch (err) {
-          log.error("Error during refresh:", err);
-          if (typeof provideTactileFeedback === 'function') provideTactileFeedback('error');
+    
+    // Log whether we have found all required elements
+    log.debug("MessagesWrapper: Setting up gestures with refs:", {
+      sidebarFound: !!sidebar,
+      chatAreaFound: !!chatArea,
+      conversationListFound: !!conversationList,
+      refreshIndicatorFound: !!refreshIndicator
+    });
+    
+    // If important refs are missing, try again in a short timeout
+    // This can help if the DOM is still being populated
+    if (!sidebar || !chatArea) {
+      const retryTimerId = setTimeout(() => {
+        log.debug("MessagesWrapper: Retrying gesture setup after delay");
+        // Update ref pointers
+        const updatedSidebar = sidebarRef.current;
+        const updatedChatArea = chatAreaRef.current;
+        
+        if (updatedSidebar && updatedChatArea) {
+          log.info("MessagesWrapper: Refs now available, setting up gestures");
+          // Setup gestures with updated refs
+          setupGesturesWithRefs(containerRef.current, updatedSidebar, updatedChatArea, 
+                               conversationsListRef.current, refreshIndicatorRef.current);
         }
-      },
-      onRefreshStart: () => {
-        log.info("Pull-to-refresh started");
-      },
-      onRefreshEnd: () => {
-        log.info("Pull-to-refresh ended");
-      }
-    };
+      }, 200);
+      
+      return () => clearTimeout(retryTimerId);
+    }
 
-    // Set up touch gesture handling
-    const cleanupGestures = setupTouchGestures(
-      { container, sidebar, chatArea, conversationList, refreshIndicator },
-      callbacks
+    // Use our helper function to set up gestures
+    const cleanupGestures = setupGesturesWithRefs(
+      container, sidebar, chatArea, conversationList, refreshIndicator
     );
 
     // Set up enhanced scrolling for messages area if available

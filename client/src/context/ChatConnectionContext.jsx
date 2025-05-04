@@ -11,6 +11,7 @@ import {
 import { useAuth } from "./AuthContext"
 import socketService from "../services/socketService"
 import { logger } from "../utils/logger"
+import { SOCKET } from "../config"
 
 const log = logger.create("ChatConnectionContext")
 
@@ -140,11 +141,11 @@ export function ChatConnectionProvider({ children }) {
 
     // Auto-reconnect logic
     reconnectRef.current = setInterval(() => {
-      if (!socketService.isConnected() && state.attempts < 5) {
+      if (!socketService.isConnected() && state.attempts < SOCKET.RECONNECT.MAX_ATTEMPTS) {
         dispatch({ type: ACTIONS.ATTEMPT })
         socketService.reconnect()
       }
-    }, 30_000)
+    }, SOCKET.CONNECTION.HEARTBEAT_INTERVAL)
 
     return () => {
       subs.forEach(sub => sub())

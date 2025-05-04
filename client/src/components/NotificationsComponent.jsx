@@ -273,25 +273,32 @@ const NotificationsComponent = ({
       }
     };
 
-    // Ensure socketService and socket exist before attaching listeners
-    if (socketService?.socket) {
-      log.debug("📱 Attaching direct socket event listeners in NotificationsComponent.");
+    // Use socketService for event handling instead of direct socket access
+    if (socketService && socketService.isConnected) {
+      log.debug("📱 Attaching socket event listeners in NotificationsComponent.");
       const events = [
         "notification", "newMessage", "newLike", "photoPermissionRequestReceived",
         "photoPermissionResponseReceived", "newComment", "incomingCall"
       ];
-      events.forEach(event => socketService.socket.on(event, handleDirectNotification));
+      
+      // Store unsubscriber functions to remove listeners later
+      const unsubscribers = events.map(event => 
+        socketService.on(event, handleDirectNotification)
+      );
 
       // Check initial connection state
-      log.debug("Direct socket check - Connected:", socketService.isConnected());
-      log.debug("Direct socket check - ID:", socketService.socket.id);
+      log.debug("Socket check - Connected:", socketService.isConnected());
 
       // Cleanup listeners on unmount
       return () => {
-        log.debug("🧹 Cleaning up direct socket listeners in NotificationsComponent.");
-        if (socketService.socket) {
-            events.forEach(event => socketService.socket.off(event, handleDirectNotification));
-        }
+        log.debug("🧹 Cleaning up socket listeners in NotificationsComponent.");
+        // Call each unsubscriber function
+        unsubscribers.forEach(unsubscribe => {
+          if (typeof unsubscribe === 'function') {
+            unsubscribe();
+          }
+        });
+        
         // Clear any pending polling timeouts
         if (refreshTimeoutRef.current) {
           clearTimeout(refreshTimeoutRef.current);

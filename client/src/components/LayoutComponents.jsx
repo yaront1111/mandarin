@@ -164,7 +164,7 @@ export const Navbar = () => {
                   onClick={(e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    console.log("Notification button clicked");
+                    log.debug("Notification button clicked");
                     toggleNotificationDropdown(e);
                   }}
                   style={{

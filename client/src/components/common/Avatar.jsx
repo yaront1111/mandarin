@@ -17,8 +17,19 @@ const Avatar = ({
   online = false,
   placeholder = '/default-avatar1.png',
   statusPosition = 'bottom-right',
-  showFallback = true
+  showFallback = true,
+  user = null,
+  showOnlineStatus = false
 }) => {
+  // If user object is provided, extract src, alt and online status from it
+  const userSrc = user?.photos?.[0]?.url || user?._id || src;
+  const userAlt = user?.nickname || alt || "User";
+  const userOnline = (showOnlineStatus && user?.isOnline) || online;
+  
+  // Use extracted values for the rest of the component
+  src = userSrc;
+  alt = userAlt;
+  online = userOnline;
   // Handle fallback image if src is invalid
   const [imgSrc, setImgSrc] = React.useState(src);
   const [imageError, setImageError] = React.useState(false);
@@ -159,7 +170,9 @@ Avatar.propTypes = {
   online: PropTypes.bool,
   placeholder: PropTypes.string,
   statusPosition: PropTypes.oneOf(['top-right', 'top-left', 'bottom-right', 'bottom-left']),
-  showFallback: PropTypes.bool
+  showFallback: PropTypes.bool,
+  user: PropTypes.object, // User object with nickname, photos, isOnline, etc.
+  showOnlineStatus: PropTypes.bool // Whether to show online status from user object
 };
 
 export default Avatar;

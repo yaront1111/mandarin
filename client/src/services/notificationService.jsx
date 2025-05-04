@@ -6,8 +6,10 @@ import { logger } from "../utils/logger.js";
 import { formatDate } from "../utils/index.js";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { SOCKET, TIMEOUTS } from "../config";
 
-const POLL_INTERVAL_MS = 60_000;
+// Use constants from config
+const POLL_INTERVAL_MS = TIMEOUTS.POLL.NOTIFICATIONS;
 const BUNDLE_WINDOW_MS = 5 * 60_000;
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 2000;
@@ -48,7 +50,20 @@ class NotificationService {
     this.bc = null;
     this._abortController = null;
     this._retryAttempts = 0;
+    
+    // Define notificationEventTypes centrally for consistency with socketService
+    this.notificationEventTypes = [
+      "notification",
+      "newMessage",
+      "newLike",
+      "photoPermissionRequestReceived",
+      "photoPermissionResponseReceived",
+      "newComment",
+      "incomingCall",
+      "newStory",
+    ];
 
+    // Move socketHandlers higher for clarity
     this.socketHandlers = {
       notification: d => this._onSocket("generic", d),
       newMessage: d => this._onSocket("message", d),
@@ -119,13 +134,17 @@ class NotificationService {
     this._managePolling();
   }
 
-  /** Wire up socket handlers */
+  /** Wire up socket handlers using socketService */
   _setupSocket() {
+    // Use socketService for connect/disconnect events
     socketService.on("connect", () => {
       this._clearPoller();
       this.fetchNotifications();
     });
+    
     socketService.on("disconnect", () => this._managePolling());
+    
+    // Set up handlers for all notification events
     for (const [evt, fn] of Object.entries(this.socketHandlers)) {
       socketService.on(evt, fn);
     }
@@ -134,7 +153,10 @@ class NotificationService {
   /** Start or stop polling based on socket state */
   _managePolling() {
     if (!this.settings._init) return;
+    
+    // Use socketService to check connection
     const connected = socketService.isConnected();
+    
     if (!connected && !this.poller) {
       this.poller = setInterval(() => this.fetchNotifications(), POLL_INTERVAL_MS);
       this.fetchNotifications();
@@ -397,7 +419,14 @@ class NotificationService {
 
   /** Tear down sockets, polling, broadcast, and listeners */
   cleanup() {
-    socketService.offAll();
+    // Use proper socketService methods to clean up events
+    for (const evt of Object.keys(this.socketHandlers)) {
+      socketService.off(evt, this.socketHandlers[evt]);
+    }
+    
+    socketService.off("connect");
+    socketService.off("disconnect");
+    
     this._clearPoller();
     if (this.bc) this.bc.close();
     this.listeners.clear();

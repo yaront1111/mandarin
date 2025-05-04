@@ -178,3 +178,80 @@ export const commonEmojis = ["😊", "😂", "😍", "❤️", "👍", "🙌", "
 export const classNames = (...classes) => {
   return classes.filter(Boolean).join(" ")
 }
+
+/**
+ * Formats message timestamp to display time
+ * @param {string} timestamp - ISO date string
+ * @returns {string} Formatted time (HH:MM)
+ */
+export const formatMessageTime = (timestamp) => {
+  if (!timestamp) return "";
+  try {
+    return new Date(timestamp).toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      hour12: false 
+    });
+  } catch (error) {
+    log.warn("Error formatting message time:", error);
+    return "";
+  }
+};
+
+/**
+ * Formats date for message group separators
+ * @param {string} timestamp - ISO date string
+ * @returns {string} Formatted date (Today, Yesterday, or date)
+ */
+export const formatMessageDateSeparator = (timestamp) => {
+  if (!timestamp) return "Unknown date";
+  try {
+    const date = new Date(timestamp);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (date.toDateString() === today.toDateString()) {
+      return "Today";
+    }
+    if (date.toDateString() === yesterday.toDateString()) {
+      return "Yesterday";
+    }
+    
+    return date.toLocaleDateString([], { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+  } catch (error) {
+    log.warn("Error formatting message date separator:", error);
+    return "Unknown date";
+  }
+};
+
+/**
+ * Formats timestamp for conversation previews
+ * @param {string} timestamp - ISO date string
+ * @returns {string} Relative time (e.g., "2h ago", "Yesterday")
+ */
+export const formatPreviewTime = (timestamp) => {
+  if (!timestamp) return "";
+  try {
+    const messageDate = new Date(timestamp);
+    const now = new Date();
+    const diffSeconds = Math.round((now - messageDate) / 1000);
+    const diffMinutes = Math.round(diffSeconds / 60);
+    const diffHours = Math.round(diffMinutes / 60);
+    const diffDays = Math.round(diffHours / 24);
+
+    if (diffSeconds < 60) return "Just now";
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return messageDate.toLocaleDateString([], { weekday: 'short' });
+    return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  } catch (error) {
+    log.warn("Error formatting preview time:", error);
+    return "";
+  }
+};

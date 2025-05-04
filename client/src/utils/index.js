@@ -107,49 +107,17 @@ export const ensureValidObjectId = (id) => {
 
 /**
  * A utility to directly patch MongoDB ObjectId requests into the API layer
- * This is a more targeted version of the emergency fix that can be used in specific contexts
+ * This is now implemented as an interceptor in apiService.jsx
+ * @deprecated Use apiService's ObjectId interceptor instead
  */
 export const patchApiObjectIdRequests = () => {
-  // Only run this once
-  if (window._objectIdRequestsPatched) return;
-  window._objectIdRequestsPatched = true;
-
-  log.info("🔧 Installing API ObjectId request patch");
-
-  // Intercept axios requests to fix ObjectId format issues
-  const originalOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function() {
-    this.addEventListener('readystatechange', function() {
-      if (this.readyState === 4 && this.status === 400) {
-        try {
-          const response = JSON.parse(this.responseText);
-
-          // Check if error is related to user ID format
-          if (response.error && (
-              response.error === 'Invalid user ID format' ||
-              response.error === 'Invalid authenticated user ID format' ||
-              response.error === 'Invalid user ID format in request'
-          )) {
-            log.warn("⚠️ Caught ObjectId validation error:", response.error);
-
-            // Try to auto-recover using the emergency fix
-            if (confirm("Session ID format error detected. Apply emergency fix?")) {
-              emergencyUserIdFix();
-            }
-          }
-        } catch (e) {
-          // Ignore parsing errors
-        }
-      }
-    });
-    originalOpen.apply(this, arguments);
-  };
-
-  log.info("✅ API ObjectId request patch installed");
+  log.warn("🔧 patchApiObjectIdRequests is deprecated. Object ID format errors are now handled by apiService interceptors");
+  
+  // This function is kept for backward compatibility but does nothing
+  return;
 };
 
-// Install the patch immediately
-patchApiObjectIdRequests();
+// Note: The patch is now applied in apiService.jsx as an interceptor
 
 // Create a URL normalization cache to avoid repetitive normalization work
 // and prevent duplicate network requests

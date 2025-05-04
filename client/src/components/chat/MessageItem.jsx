@@ -5,7 +5,7 @@ import {
     FaCheckDouble, FaCheck, FaSpinner, FaVideo, FaExclamationCircle
 } from 'react-icons/fa';
 import { formatMessageTime, getFileIcon, classNames } from './chatUtils.jsx';
-import styles from '../../styles/embedded-chat.module.css';
+import styles from '../../styles/Messages.module.css';
 import { logger } from '../../utils/logger.js';
 
 // Create a named logger for this component
@@ -139,9 +139,9 @@ const MessageItem = React.memo(({
                         try {
                             localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
                             localStorage.setItem('mandarin_file_urls_by_hash', JSON.stringify(window.__fileMessagesByHash));
-                            console.log(`Persisted ${Object.keys(window.__fileMessages).length} file URLs to localStorage`);
+                            log.debug(`Persisted ${Object.keys(window.__fileMessages).length} file URLs to localStorage`);
                         } catch (e) {
-                            console.warn("Failed to persist file URLs to localStorage", e);
+                            log.warn("Failed to persist file URLs to localStorage", e);
                         }
                         window.__fileUrlPersistTimeout = null;
                     }, 1000);
@@ -179,7 +179,10 @@ const MessageItem = React.memo(({
                                 <img 
                                     src={displayUrl} 
                                     alt={metadata.fileName || "Image attachment"} 
-                                    className={classNames(styles.imageAttachment, isPlaceholder && styles.loading)} 
+                                    className={classNames(
+                                        styles.imageAttachment, 
+                                        isPlaceholder && styles.loading
+                                    )} 
                                     loading="lazy" 
                                     style={{ display: 'block', visibility: 'visible', minHeight: '100px' }}
                                     onError={(e) => { 
@@ -196,7 +199,7 @@ const MessageItem = React.memo(({
                                             if (message._id && window.__fileMessages && window.__fileMessages[message._id]) {
                                                 const cachedUrl = window.__fileMessages[message._id].url;
                                                 if (cachedUrl && cachedUrl !== displayUrl) {
-                                                    console.log(`Attempting to recover image URL by ID: ${cachedUrl}`);
+                                                    log.debug(`Attempting to recover image URL by ID: ${cachedUrl}`);
                                                     setTimeout(() => {
                                                         e.target.src = cachedUrl;
                                                         updateMetadataUrl(cachedUrl);
@@ -500,7 +503,7 @@ const MessageItem = React.memo(({
         <div className={styles.messageWrapper}>
             <div
                 className={classNames(
-                    styles.message, 
+                    styles.messageBubble, 
                     isSentByMe ? styles.sent : styles.received,
                     isSystem ? styles.systemMessage : "", 
                     isFailed ? styles.error : "",
@@ -508,6 +511,7 @@ const MessageItem = React.memo(({
                     isPlaceholder ? styles.placeholderMessage : "",
                     message.pending ? styles.pending : ""
                 )}
+                data-system-type={message.systemType || ""}
                 role={isSystem ? "status" : "listitem"}
                 aria-label={
                     isSystem ? 

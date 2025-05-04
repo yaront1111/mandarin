@@ -3,7 +3,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { FaExclamationCircle, FaEnvelope } from 'react-icons/fa';
 import LoadingSpinner from '../common/LoadingSpinner.jsx';
-import styles from '../../styles/embedded-chat.module.css';
+import styles from '../../styles/Messages.module.css';
 import { classNames } from './chatUtils.jsx';
 
 export const LoadingIndicator = React.memo(({ 

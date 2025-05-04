@@ -7,6 +7,13 @@ export { useSocketConnection } from './useSocketConnection';
 export { default as useChat } from './useChat';
 export { default as useMediaQuery, useIsMobile, useIsTablet, useIsDesktop, useIsLargeDesktop } from './useMediaQuery';
 export { default as useMobileDetect } from './useMobileDetect';
+export { default as useModal } from './useModal';
+export { default as useFormState } from './useFormState';
+export { default as useMessagesState } from './useMessagesState';
+export { default as usePhotoGallery } from './usePhotoGallery';
+export { default as useProfileModal } from './useProfileModal';
+export { default as useDashboard } from './useDashboard';
+export { default as useBlockedUsers } from './useBlockedUsers';
 
 // Simplified hook for checking if component is mounted (useful for async operations)
 import { useRef, useEffect, useState } from 'react';

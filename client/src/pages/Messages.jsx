@@ -4,57 +4,53 @@ import React, { useState, useEffect, useRef, useContext, useCallback, useMemo } 
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import chatService from "../services/ChatService";
-import { formatMessagePreview, formatDate, classNames } from "../utils";
+import { formatDate, classNames } from "../utils";
 import apiService from "../services/apiService";
 import logger from "../utils/logger";
+import styles from "../styles/Messages.module.css";
+import { useUser } from "../context";
 
 // Create a named logger for this component
 const log = logger.create("Messages");
+
+// Core components
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import Avatar from "../components/common/Avatar";
 import MessagesWrapper from '../components/MessagesWrapper';
 import AuthContext from "../context/AuthContext";
-import { useIsMobile, useMobileDetect } from "../hooks";
-import {
-  FaEnvelope,
-  FaPaperPlane,
-  FaCircle,
-  FaEllipsisH,
-  FaCheckDouble,
-  FaCheck,
-  FaVideo,
-  FaPhoneSlash,
-  FaSmile,
-  FaHeart,
-  FaPaperclip,
-  FaTimes,
-  FaSpinner,
-  FaCrown,
-  FaFile,
-  FaImage,
-  FaFileAlt,
-  FaFilePdf,
-  FaFileVideo,
-  FaFileAudio,
-  FaArrowLeft,
-  FaPlus
-} from "react-icons/fa";
+import { useIsMobile, useMobileDetect, useBlockedUsers } from "../hooks";
+import { FaCrown, FaEnvelope } from "react-icons/fa";
 import VideoCall from "../components/VideoCall";
+import UserProfileModal from "../components/UserProfileModal";
 import socketService from "../services/socketService";
-import styles from "../styles/Messages.module.css";
 
 // Chat components
-import AttachmentPreview from "../components/chat/AttachmentPreview";
-import CallBanners from "../components/chat/CallBanners";
-import PremiumBanner from "../components/chat/PremiumBanner";
-import { 
+import {
+  // Components
+  AttachmentPreview,
+  CallBanners,
+  ChatArea,
+  ChatHeader,
+  ChatInput,
+  ConversationList,
+  EmojiPicker,
+  FileAttachmentHandler,
+  LoadingIndicator,
+  ErrorMessage,
+  NoMessagesPlaceholder,
+  MessageItem,
+  MessageList,
+  PremiumBanner,
+  TypingIndicator,
+  
+  // Utils
   groupMessagesByDate,
-  generateLocalUniqueId 
-} from "../components/chat/chatUtils";
-import { ACCOUNT_TIER } from "../components/chat/chatConstants";
-import ChatInput from "../components/chat/ChatInput";
-import MessageItem from "../components/chat/MessageItem";
-import { LoadingIndicator, ErrorMessage, NoMessagesPlaceholder } from "../components/chat/ChatStatusIndicators";
+  formatMessagePreview,
+  generateLocalUniqueId,
+  
+  // Constants
+  ACCOUNT_TIER
+} from "../components/chat";
 
 // Add gesture support for mobile
 const SWIPE_THRESHOLD = 50; // Minimum distance to trigger swipe action
@@ -67,6 +63,8 @@ const Messages = () => {
   const { userId: targetUserIdParam } = useParams();
   const navigate = useNavigate();
   const { user: currentUser, loading: authLoading, isAuthenticated } = useContext(AuthContext);
+  const { blockUser, reportUser, unblockUser } = useUser();
+  const { isUserBlocked, markBlockedUsers, fetchBlockedUsers, blockedUsers } = useBlockedUsers();
 
   // Local state
   const [conversations, setConversations] = useState([]);
@@ -96,6 +94,10 @@ const Messages = () => {
   const [touchStartX, setTouchStartX] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
   const [swipeDirection, setSwipeDirection] = useState(null);
+  
+  // Profile modal state
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileUserId, setProfileUserId] = useState(null);
 
   // Refs
   const messagesEndRef = useRef(null);
@@ -917,6 +919,27 @@ const Messages = () => {
     }, 100);
     return () => clearTimeout(timer);
   }, [messages]);
+  
+  // Ensure active conversation has current blocked status
+  useEffect(() => {
+    if (activeConversation?.user?._id) {
+      // Update the active conversation's blocked status whenever blocked users change
+      const isBlocked = isUserBlocked(activeConversation.user._id);
+      
+      if (isBlocked !== activeConversation.user.isBlocked) {
+        setActiveConversation(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            user: {
+              ...prev.user,
+              isBlocked: isBlocked
+            }
+          };
+        });
+      }
+    }
+  }, [blockedUsers, isUserBlocked, activeConversation]);
 
   // --- Touch Gesture Handlers ---
 
@@ -1038,11 +1061,26 @@ const Messages = () => {
     if (!currentUser?._id) return;
     // Consider adding a loading state specific to conversation fetching if needed
     try {
+      // Refresh blocked users list
+      await fetchBlockedUsers();
+      
+      // Get conversations
       const conversationsData = await chatService.getConversations();
       const filteredConversations = conversationsData.filter(
         (conversation) => conversation?.user?._id && conversation.user._id !== currentUser._id // Add null check for user
       );
-      setConversations(filteredConversations);
+      
+      // Mark blocked users
+      const markedConversations = markBlockedUsers(filteredConversations);
+      setConversations(markedConversations);
+      
+      // Also update the active conversation if it exists
+      if (activeConversation && activeConversation.user && activeConversation.user._id) {
+        const updatedActiveConversation = markedConversations.find(c => c.user._id === activeConversation.user._id);
+        if (updatedActiveConversation) {
+          setActiveConversation(updatedActiveConversation);
+        }
+      }
       if (
         targetUserIdParam &&
         !filteredConversations.find((c) => c.user._id === targetUserIdParam) &&
@@ -1271,6 +1309,10 @@ const Messages = () => {
       toast.error("Cannot send messages to yourself");
       return;
     }
+    if (activeConversation.user.isBlocked || isUserBlocked(activeConversation.user._id)) {
+      toast.error("Cannot send messages to a blocked user");
+      return;
+    }
     const partnerId = activeConversation.user._id;
     if (!/^[0-9a-fA-F]{24}$/.test(partnerId)) {
       toast.error("Cannot send message: Invalid recipient ID format.");
@@ -1343,6 +1385,10 @@ const Messages = () => {
      toast.error("Cannot send winks to yourself");
      return;
    }
+   if (activeConversation.user.isBlocked || isUserBlocked(activeConversation.user._id)) {
+     toast.error("Cannot send winks to a blocked user");
+     return;
+   }
    const partnerId = activeConversation.user._id;
    if (!/^[0-9a-fA-F]{24}$/.test(partnerId)) {
      toast.error("Cannot send wink: Invalid recipient ID format.");
@@ -1400,8 +1446,11 @@ const Messages = () => {
     if (currentUser?.accountTier === "FREE") {
       return toast.error("Free accounts cannot send files. Upgrade to send files.");
     }
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
+    
+    // Trigger file selection in the FileAttachmentHandler component
+    const fileInput = document.querySelector('input[type="file"]');
+    if (fileInput) {
+      fileInput.click();
     }
   };
 
@@ -1450,6 +1499,10 @@ const Messages = () => {
     if (!attachment || !activeConversation?.user?._id || isUploading) return;
     if (activeConversation.user._id === currentUser._id) {
       toast.error("Cannot send files to yourself");
+      return;
+    }
+    if (activeConversation.user.isBlocked || isUserBlocked(activeConversation.user._id)) {
+      toast.error("Cannot send files to a blocked user");
       return;
     }
     const partnerId = activeConversation.user._id;
@@ -2026,22 +2079,63 @@ const Messages = () => {
       navigator.vibrate(15);
     }
   };
+  
+  // Function to refresh conversations list
+  const refreshConversations = useCallback(async () => {
+    try {
+      log.debug("Refreshing conversations list");
+      setComponentLoading(true);
+      const refreshedConversations = await chatService.getConversations();
+      
+      if (refreshedConversations && Array.isArray(refreshedConversations)) {
+        setConversations(refreshedConversations);
+        log.debug(`Loaded ${refreshedConversations.length} conversations`);
+      }
+      
+      if (isMobile && "vibrate" in navigator) {
+        navigator.vibrate([15, 30, 15]); // Vibration pattern for refresh success
+      }
+    } catch (err) {
+      log.error("Error refreshing conversations:", err);
+      toast.error("Failed to refresh conversations");
+      
+      if (isMobile && "vibrate" in navigator) {
+        navigator.vibrate([100, 50, 100]); // Vibration pattern for error
+      }
+    } finally {
+      setComponentLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [chatService, isMobile]);
 
   // Memoize grouped messages to avoid re-computation on every render
-   const groupedMessages = useMemo(() => groupMessagesByDate(messages), [messages]);
+  const groupedMessages = useMemo(() => groupMessagesByDate(messages), [messages]);
 
+  // Handle message scrolling - can be used for infinite scrolling or other scroll behaviors
+  const handleMessageScroll = useCallback((e) => {
+    // Placeholder for future scroll handling
+    // For example, loading more messages when scrolling up
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    
+    // Near the top - could load older messages
+    if (scrollTop < 100) {
+      // Placeholder for loading older messages
+      // loadOlderMessages();
+    }
+  }, []);
 
-  const getFileIcon = (fileType) => {
-    if (!fileType) return <FaFile />;
-    if (fileType.startsWith("image/")) return <FaImage />;
-    if (fileType.startsWith("video/")) return <FaFileVideo />;
-    if (fileType.startsWith("audio/")) return <FaFileAudio />;
-    if (fileType === "application/pdf") return <FaFilePdf />;
-    // Add more specific icons if needed
-    if (fileType.includes("word")) return <FaFileAlt />; // Simple check for Word
-    if (fileType.includes("spreadsheet") || fileType.includes("excel")) return <FaFileAlt />; // Placeholder
-    return <FaFileAlt />; // Default document icon
-  };
+  // No longer needed - using the shared component getFileIcon function
+  // const getFileIcon = (fileType) => {
+  //   if (!fileType) return <FaFile />;
+  //   if (fileType.startsWith("image/")) return <FaImage />;
+  //   if (fileType.startsWith("video/")) return <FaFileVideo />;
+  //   if (fileType.startsWith("audio/")) return <FaFileAudio />;
+  //   if (fileType === "application/pdf") return <FaFilePdf />;
+  //   // Add more specific icons if needed
+  //   if (fileType.includes("word")) return <FaFileAlt />; // Simple check for Word
+  //   if (fileType.includes("spreadsheet") || fileType.includes("excel")) return <FaFileAlt />; // Placeholder
+  //   return <FaFileAlt />; // Default document icon
+  // };
 
   // --- Render Logic ---
 
@@ -2100,176 +2194,133 @@ const Messages = () => {
         onTouchMove={isMobile ? handleTouchMove : undefined}
         onTouchEnd={isMobile ? handleTouchEnd : undefined}
       >
-        {/* Sidebar */}
+        {/* Sidebar with Conversation List */}
         <div className={classNames(styles.sidebar, showSidebar ? styles.show : styles.hide)}>
-          <div className={styles.sidebarHeader}>
-            <h2>Messages</h2>
-            <div className={styles.sidebarActions}>
-              {isMobile && (
-                <button
-                  className={styles.newConversationButton}
-                  onClick={() => navigate('/users')} // Navigate to user list/search
-                  aria-label="New conversation"
-                  title="Find Users"
-                >
-                  <FaPlus />
-                </button>
-              )}
-              {/* Close button for sidebar on mobile when chat is active */}
-              {isMobile && activeConversation && (
-                <button className={styles.closeSidebarButton} onClick={toggleSidebar} aria-label="Close sidebar">
-                  &times; {/* Using times symbol for close */}
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div
-            className={styles.conversationsList}
-            ref={conversationsListRef}
-          >
-            {/* Pull-to-refresh indicator */}
-            {isMobile && (
-              <div
-                ref={refreshIndicatorRef}
-                className={styles.pullToRefreshIndicator}
-                style={{ transform: `translateY(0)`, opacity: 0 }} // Initial state: hidden
-              >
-                {/* Dynamically change text based on pull distance */}
-                <span>
-                  {isRefreshing && pullDistance > 50 ? 'Release to refresh' : 'Pull down to refresh'}
-                </span>
-                {/* Show spinner only when actively pulling below threshold */}
-                {isRefreshing && pullDistance > 10 && pullDistance <= 50 && <LoadingSpinner size="small" />}
-              </div>
-            )}
-
-            {/* Handle case where conversations might still be loading */}
-             {componentLoading && conversations.length === 0 ? (
-                 <div className={styles.noConversations}>
-                     <LoadingSpinner size="medium" text="Loading conversations..." />
-                 </div>
-             ) : conversations.length === 0 ? (
-              <div className={styles.noConversations}>
-                <FaEnvelope size={32} />
-                <p>No conversations yet.</p>
-                <button
-                  className={styles.startChatButton}
-                  onClick={() => navigate('/users')}
-                >
-                  Find someone to chat with
-                </button>
-              </div>
-            ) : (
-              conversations.map((convo) => {
-                // Basic validation for conversation object
-                if (!convo || !convo.user || !convo.user._id || !/^[0-9a-fA-F]{24}$/.test(convo.user._id)) {
-                  console.warn("Skipping rendering invalid conversation item:", convo);
-                  return null; // Skip rendering this item
-                }
-                return (
-                  <div
-                    key={convo.user._id}
-                    className={classNames(
-                        styles.conversationItem,
-                        activeConversation?.user._id === convo.user._id && styles.active,
-                        convo.unreadCount > 0 && styles.unread
-                    )}
-                    onClick={() => selectConversation(convo)}
-                    role="button"
-                    tabIndex={0}
-                    aria-current={activeConversation?.user._id === convo.user._id ? "page" : undefined}
-                  >
-                    <div className={styles.avatarContainer}>
-                      <Avatar src={convo.user.photo} alt={convo.user.nickname || 'User Avatar'} size="medium" />
-                      {convo.user.isOnline && <span className={`${styles.statusIndicator} ${styles.online}`} title="Online"></span>}
-                    </div>
-                    <div className={styles.conversationInfo}>
-                      <div className={styles.conversationName}>
-                        {/* Display nickname, fallback to 'Unknown User' */}
-                        <span>{convo.user.nickname || "Unknown User"}</span>
-                        {convo.unreadCount > 0 && <span className={styles.unreadBadge} title={`${convo.unreadCount} unread message${convo.unreadCount > 1 ? 's' : ''}`}>{convo.unreadCount}</span>}
-                      </div>
-                      <div className={styles.conversationPreview}>
-                         {/* Format last message preview, handle null/undefined lastMessage */}
-                         {convo.lastMessage ? formatMessagePreview(convo.lastMessage, currentUser._id) : <span className={styles.noMessagesHint}>No messages yet</span>}
-                      </div>
-                    </div>
-                    {/* Show time only if last message exists and has a timestamp */}
-                    {convo.lastMessage?.createdAt && (
-                      <div className={styles.conversationTime} title={formatDate(convo.lastMessage.createdAt, { showTime: true, showDate: true })}>
-                        {formatDate(convo.lastMessage.createdAt, { showRelative: true })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
+          <ConversationList
+            conversations={conversations}
+            activeConversation={activeConversation}
+            onConversationSelect={selectConversation}
+            onNewConversation={() => navigate('/dashboard')}
+            currentUserId={currentUser?._id}
+            onRefresh={refreshConversations}
+            conversationsLoading={componentLoading && conversations.length === 0}
+            conversationsListRef={conversationsListRef}
+          />
         </div>
 
         {/* Chat Area */}
-        <div className={classNames(styles.chatArea, (!showSidebar && isMobile) && styles.fullWidth)}>
+        <ChatArea 
+          className={(!showSidebar && isMobile) && styles.fullWidth}
+          isUserBlocked={activeConversation?.user?.isBlocked || (activeConversation?.user?._id && isUserBlocked(activeConversation.user._id))}
+        >
           {activeConversation ? (
             <>
               {/* Chat Header */}
-              <div className={styles.chatHeader}>
-                {/* Ensure user object and ID exist before rendering */}
-                {activeConversation.user && activeConversation.user._id ? (
-                  <div className={styles.chatUser}>
-                    {isMobile && (
-                      <button className={styles.backButton} onClick={toggleSidebar} aria-label="Back to conversation list">
-                        <FaArrowLeft />
-                      </button>
-                    )}
-                    <div className={styles.avatarContainer}>
-                      <Avatar src={activeConversation.user.photo} alt={activeConversation.user.nickname || 'User Avatar'} size="medium" />
-                       {/* Show online status indicator */}
-                       {activeConversation.user.isOnline && <span className={`${styles.statusIndicator} ${styles.online}`} title="Online"></span>}
-                    </div>
-                    <div className={styles.chatUserDetails}>
-                       {/* Display nickname, fallback to 'Unknown User' */}
-                       <h3>{activeConversation.user.nickname || "Unknown User"}</h3>
-                      <span className={classNames(styles.statusText, activeConversation.user.isOnline ? styles.online : styles.offline)}>
-                        {activeConversation.user.isOnline ? "Online" : "Offline"}
-                      </span>
-                    </div>
-                    <div className={styles.chatActions}>
-                      {/* Video Call / End Call Button */}
-                      {currentUser?.accountTier !== "FREE" && (
-                        <>
-                          {isCallActive ? (
-                             // End call button
-                             <button className={classNames(styles.actionButton, styles.endCallButton)} onClick={handleEndCall} title="End call">
-                              <FaPhoneSlash />
-                            </button>
-                          ) : (
-                            // Start call button
-                             <button
-                              className={styles.actionButton}
-                              onClick={handleVideoCall}
-                               // Dynamic title based on online status
-                               title={activeConversation.user.isOnline ? "Start Video Call" : `${activeConversation.user.nickname} is offline`}
-                               // Disable if user is offline, call is already active, or ID is invalid
-                               disabled={!activeConversation.user.isOnline || isCallActive || !/^[0-9a-fA-F]{24}$/.test(activeConversation.user._id)}
-                              aria-label="Start Video Call"
-                            >
-                              <FaVideo />
-                            </button>
-                          )}
-                        </>
-                      )}
-                      {/* More Options Button (Placeholder) */}
-                      <button className={styles.actionButton} title="More options" aria-label="More options">
-                        <FaEllipsisH />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                   // Placeholder if user data is somehow missing (shouldn't happen with checks)
-                   <div className={styles.chatUser}>Loading user...</div>
-                )}
-              </div>
+              <ChatHeader
+                conversation={activeConversation}
+                isMobile={isMobile}
+                onBackClick={toggleSidebar}
+                onStartVideoCall={handleVideoCall}
+                onProfileClick={() => {
+                  // Show user profile modal
+                  setProfileUserId(activeConversation.user._id);
+                  setIsProfileModalOpen(true);
+                }}
+                onBlockUser={(userId) => {
+                  // Check if the user is already blocked
+                  const isBlocked = activeConversation?.user?.isBlocked;
+                  
+                  if (isBlocked) {
+                    // Handle unblocking
+                    if (window.confirm("Are you sure you want to unblock this user? They will be able to send you messages again.")) {
+                      unblockUser(userId).then(() => {
+                        // Also update our local storage to reflect the unblocked status
+                        try {
+                          const storedBlockedUsers = localStorage.getItem('blockedUsers');
+                          if (storedBlockedUsers) {
+                            const blockList = JSON.parse(storedBlockedUsers);
+                            const filteredList = blockList.filter(blockedId => blockedId !== userId);
+                            localStorage.setItem('blockedUsers', JSON.stringify(filteredList));
+                          }
+                        } catch (e) {
+                          console.warn("Failed to update blocked users in localStorage:", e);
+                        }
+                        
+                        // Refresh blocked users list
+                        fetchBlockedUsers().then(() => {
+                          // Refresh conversations to update UI
+                          fetchConversations();
+                        });
+                      });
+                      
+                      toast.success("User unblocked successfully");
+                      
+                      // Add a system message about unblocking
+                      const systemMessage = {
+                        _id: generateUniqueId(),
+                        content: "You have unblocked this user. You will now receive messages from them.",
+                        type: "system",
+                        createdAt: new Date().toISOString(),
+                        sender: "system",
+                        systemType: "unblock"
+                      };
+                      
+                      setMessages(prev => [...prev, systemMessage]);
+                    }
+                  } else {
+                    // Handle blocking
+                    if (window.confirm("Are you sure you want to block this user? You will no longer receive messages from them.")) {
+                      blockUser(userId).then(() => {
+                        // Also update our local storage to reflect the blocked status
+                        try {
+                          const storedBlockedUsers = localStorage.getItem('blockedUsers');
+                          let blockList = [];
+                          
+                          if (storedBlockedUsers) {
+                            blockList = JSON.parse(storedBlockedUsers);
+                          }
+                          
+                          // Only add if it's not already in the list
+                          if (!blockList.includes(userId)) {
+                            blockList.push(userId);
+                            localStorage.setItem('blockedUsers', JSON.stringify(blockList));
+                          }
+                        } catch (e) {
+                          console.warn("Failed to update blocked users in localStorage:", e);
+                        }
+                        
+                        // Refresh blocked users list
+                        fetchBlockedUsers().then(() => {
+                          // Refresh conversations to update UI
+                          fetchConversations();
+                        });
+                      });
+                      
+                      toast.success("User blocked successfully");
+                      
+                      // Add a system message about blocking
+                      const systemMessage = {
+                        _id: generateUniqueId(),
+                        content: "You have blocked this user. You will no longer receive messages from them.",
+                        type: "system",
+                        createdAt: new Date().toISOString(),
+                        sender: "system",
+                        systemType: "block"
+                      };
+                      
+                      setMessages(prev => [...prev, systemMessage]);
+                    }
+                  }
+                }}
+                onReportUser={(userId) => {
+                  const reason = window.prompt("Please provide a reason for reporting this user:");
+                  if (reason) {
+                    reportUser(userId, reason);
+                    toast.success("User reported successfully. Our team will review your report.");
+                  }
+                }}
+                userTier={currentUser?.accountTier}
+              />
 
               {/* Premium Banner for FREE users */}
               {currentUser?.accountTier === ACCOUNT_TIER.FREE && (
@@ -2330,69 +2381,39 @@ const Messages = () => {
                 useSmallButtons={false}
               />
 
-              {/* Messages Area */}
-              <div className={styles.messagesArea}>
-                {messagesLoading ? (
-                  <LoadingIndicator 
-                    showTimeoutMessage={false} 
-                    handleRetry={() => loadMessages(activeConversation.user._id)}
-                    handleReconnect={() => chatService.reconnect?.()}
-                  />
-                ) : error && messages.length === 0 ? (
-                  <ErrorMessage
-                    error={error}
-                    handleRetry={() => loadMessages(activeConversation.user._id)}
-                    handleForceInit={() => {
-                      chatInitializedRef.current = false;
-                      chatService.initialize(currentUser);
-                    }}
-                    showInitButton={true}
-                  />
-                ) : Object.entries(groupedMessages).length === 0 && !messagesLoading ? (
-                  <NoMessagesPlaceholder 
-                    text="No messages in this conversation yet."
-                    hint={currentUser?.accountTier === ACCOUNT_TIER.FREE ? "Send a wink to start!" : "Say hello to start the conversation!"}
-                  />
-                ) : (
-                   // Render message groups
-                   Object.entries(groupedMessages).map(([date, msgs]) => (
-                    <div key={date} className={styles.messageGroup}>
-                      <div className={styles.dateSeparator}>
-                        <span>{date}</span>
-                      </div>
-                      {msgs.map((msg) => {
-                        // Validate message object before rendering
-                        if (!msg || (!msg._id && !msg.tempId)) {
-                          console.warn("Skipping rendering invalid message:", msg);
-                          return null;
-                        }
-                        return (
-                          <MessageItem
-                            key={msg._id || msg.tempId}
-                            message={msg}
-                            currentUserId={currentUser._id}
-                            isSending={isSending && messages.some(m => m.tempId === msg.tempId)}
-                          />
-                        );
-                      })}
-                    </div>
-                  ))
-                )}
-
-                {/* Typing Indicator */}
-                 {typingUser && activeConversation?.user?._id === typingUser && (
-                    <div className={styles.typingIndicatorBubble}>
-                        <div className={styles.typingIndicator}>
-                          <div className={styles.dot}></div>
-                          <div className={styles.dot}></div>
-                          <div className={styles.dot}></div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Element to scroll to */}
-                <div ref={messagesEndRef} style={{ height: '1px' }} />
-              </div>
+              {/* Messages Area - Show appropriate status components */}
+              {messagesLoading ? (
+                <LoadingIndicator 
+                  showTimeoutMessage={false} 
+                  handleRetry={() => loadMessages(activeConversation.user._id)}
+                  handleReconnect={() => chatService.reconnect?.()}
+                />
+              ) : error && messages.length === 0 ? (
+                <ErrorMessage
+                  error={error}
+                  handleRetry={() => loadMessages(activeConversation.user._id)}
+                  handleForceInit={() => {
+                    chatInitializedRef.current = false;
+                    chatService.initialize(currentUser);
+                  }}
+                  showInitButton={true}
+                />
+              ) : messages.length === 0 ? (
+                <NoMessagesPlaceholder 
+                  text="No messages in this conversation yet."
+                  hint={currentUser?.accountTier === ACCOUNT_TIER.FREE ? "Send a wink to start!" : "Say hello to start the conversation!"}
+                />
+              ) : (
+                <MessageList
+                  messages={messages}
+                  currentUserId={currentUser?._id}
+                  isSending={isSending}
+                  typingUser={typingUser && activeConversation?.user?._id === typingUser ? activeConversation.user.nickname : null}
+                  isMobile={isMobile}
+                  onScroll={handleMessageScroll}
+                  messagesEndRef={messagesEndRef}
+                />
+              )}
 
               {/* Attachment Preview with integrated file handling */}
               <AttachmentPreview
@@ -2421,23 +2442,18 @@ const Messages = () => {
               />
 
               {/* Emoji Picker */}
-              {showEmojis && (
-                <div className={styles.emojiPicker}>
-                  <div className={styles.emojiHeader}>
-                    <h4>Select Emoji</h4>
-                    <button onClick={() => setShowEmojis(false)} aria-label="Close emoji picker">
-                      <FaTimes />
-                    </button>
-                  </div>
-                  <div className={styles.emojiList}>
-                    {commonEmojis.map((emoji) => (
-                      <button key={emoji} type="button" onClick={() => handleEmojiClick(emoji)} title={emoji}>
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <EmojiPicker
+                isVisible={showEmojis}
+                onClose={() => setShowEmojis(false)}
+                onEmojiClick={(emoji) => {
+                  setMessageInput((prev) => prev + emoji);
+                  setShowEmojis(false);
+                  setTimeout(() => messageInputRef.current?.focus(), 0);
+                  if (isMobile && "vibrate" in navigator) {
+                    navigator.vibrate(20);
+                  }
+                }}
+              />
 
               {/* Chat Input */}
               <ChatInput
@@ -2446,6 +2462,9 @@ const Messages = () => {
                 onSubmit={attachment ? handleSendAttachment : handleSendMessage}
                 onWinkSend={handleSendWink}
                 onFileAttachClick={handleFileAttachment}
+                disabled={activeConversation?.user?.isBlocked || (activeConversation?.user?._id && isUserBlocked(activeConversation.user._id))}
+                isUserBlocked={activeConversation?.user?.isBlocked || (activeConversation?.user?._id && isUserBlocked(activeConversation.user._id))}
+                placeholderText={activeConversation?.user?.isBlocked ? "You have blocked this user" : "Type a message..."}
                 onEmojiClick={(emoji) => {
                   setMessageInput((prev) => prev + emoji);
                   setShowEmojis(false);
@@ -2467,14 +2486,22 @@ const Messages = () => {
                 }
               />
               
-              {/* Hidden File Input */}
-              <input
-                type="file"
-                ref={fileInputRef}
-                style={{ display: "none" }}
-                onChange={handleFileChange}
-                accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,audio/mpeg,audio/wav,audio/ogg,video/mp4,video/quicktime,video/webm"
-                capture={isMobile ? "environment" : undefined}
+              {/* File Attachment Handler */}
+              <FileAttachmentHandler
+                onFileSelected={(file) => {
+                  if (file) {
+                    setAttachment(file);
+                    toast.info(`Selected file: ${file.name}`);
+                    
+                    if (isMobile && "vibrate" in navigator) {
+                      navigator.vibrate(30);
+                    }
+                  }
+                }}
+                isUploading={isUploading}
+                uploadProgress={uploadProgress}
+                showProgress={false}
+                acceptedFileTypes="image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,audio/mpeg,audio/wav,audio/ogg,video/mp4,video/quicktime,video/webm"
               />
             </>
           ) : (
@@ -2488,32 +2515,36 @@ const Messages = () => {
                  {error && <p className={styles.errorMessage}>{error}</p>}
                 <button
                   className={styles.startChatButton}
-                  onClick={() => navigate('/users')} // Navigate to user list/search
+                  onClick={() => navigate('/dashboard')} // Navigate to dashboard
                 >
                   Find someone to chat with
                 </button>
               </div>
             </div>
           )}
-        </div>
+        </ChatArea>
       </div>
 
       {/* Video Call Overlay */}
-       {/* Render VideoCall component conditionally */}
-       {isCallActive && activeConversation?.user?._id && /^[0-9a-fA-F]{24}$/.test(activeConversation.user._id) && (
+      {isCallActive && activeConversation?.user?._id && /^[0-9a-fA-F]{24}$/.test(activeConversation.user._id) && (
         <div className={styles.videoCallOverlay}>
           <VideoCall
-            isActive={isCallActive} // Pass active state
+            isActive={isCallActive}
             userId={currentUser?._id}
-            recipientId={activeConversation.user._id} // Pass recipient ID
-            onEndCall={handleEndCall} // Pass end call handler
-             // Determine if it's an incoming call being accepted
-             isIncoming={false} // This overlay is generally for outgoing or *active* calls
-             // Pass call ID if available (might be needed for signalling)
-             callId={null} // Or pass relevant call ID if stored
+            recipientId={activeConversation.user._id}
+            onEndCall={handleEndCall}
+            isIncoming={false}
+            callId={null}
           />
         </div>
       )}
+      
+      {/* User Profile Modal */}
+      <UserProfileModal 
+        userId={profileUserId}
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
     </MessagesWrapper>
   );
 };

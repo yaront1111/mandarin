@@ -9,13 +9,14 @@ import {
   isTokenExpired,
 } from "../utils/tokenStorage";
 import logger from "../utils/logger";
+import { API, CACHE } from "../config";
 
 // --- Constants ---
-const DEFAULT_BASE_URL = "/api";
-const DEFAULT_TIMEOUT = 15000;
-const DEFAULT_CACHE_SIZE = Number.parseInt(import.meta.env.VITE_CACHE_SIZE || "100", 10);
-const DEFAULT_CACHE_TTL = Number.parseInt(import.meta.env.VITE_CACHE_TTL || "60000", 10);
-const MAX_QUEUE_RETRIES = 3;
+const DEFAULT_BASE_URL = API.BASE_URL;
+const DEFAULT_TIMEOUT = API.TIMEOUT;
+const DEFAULT_CACHE_SIZE = CACHE.SIZE;
+const DEFAULT_CACHE_TTL = CACHE.TTL.DEFAULT;
+const MAX_QUEUE_RETRIES = API.RETRIES.MAX_QUEUE_RETRIES;
 
 // --- LRU + TTL Cache for GET responses ---
 class ResponseCache {
@@ -54,8 +55,18 @@ class ResponseCache {
     if (!data?.success) return;
     const key = this._makeKey(url, params);
     let ttl = this.ttl;
-    if (url.match(/\/users\/[0-9a-fA-F]{24}$/)) ttl = 120000;
-    else if (url.includes("/messages/")) ttl = 10000;
+    
+    // Use TTL values from config
+    if (url.match(/\/users\/[0-9a-fA-F]{24}$/)) {
+      ttl = CACHE.TTL.USER_PROFILE;
+    } else if (url.includes("/messages/")) {
+      ttl = CACHE.TTL.MESSAGES;
+    } else if (url.includes("/stories/")) {
+      ttl = CACHE.TTL.STORIES;
+    } else if (url.includes("/messages/conversations")) {
+      ttl = CACHE.TTL.CONVERSATIONS;
+    }
+    
     this._evictIfNeeded();
     this.map.set(key, { data, expiresAt: Date.now() + ttl });
     logger.create("ResponseCache").debug(`Cached ${key} (TTL ${ttl}ms)`);
@@ -150,6 +161,9 @@ class ApiService {
     this._loadToken();
     this.api.interceptors.request.use(this._onRequest.bind(this), err => Promise.reject(err));
     this.api.interceptors.response.use(this._onResponse.bind(this), this._onError.bind(this));
+    
+    // Add ObjectId error interceptor
+    this._addObjectIdInterceptor();
   }
 
   // --- Interceptors ---
@@ -157,7 +171,10 @@ class ApiService {
     config.metadata = { start: Date.now() };
     this.metrics.total++;
     const token = getToken();
-    if (token && isTokenExpired(token) && !config._retryAuth) {
+    
+    // Skip auth refresh logic for specific requests that should proceed regardless of token state
+    // This prevents loops in refresh token logic
+    if (token && isTokenExpired(token) && !config._retryAuth && !config._skipAuthRefresh) {
       config._retryAuth = true;
       this.retryQueue.push(config);
       this._refreshToken().catch(() => {});
@@ -165,6 +182,7 @@ class ApiService {
       config.cancelToken = source.token;
       source.cancel("Token expired");
     }
+    
     if (config.method === "get" && config.headers["x-no-cache"]) {
       config.params = { ...(config.params || {}), _: Date.now() };
     }
@@ -229,18 +247,30 @@ class ApiService {
     this.refreshPromise = (async () => {
       const old = getToken();
       if (!old) throw new Error("No token");
-      const { data } = await axios.post(
-        `${this.baseURL}/auth/refresh-token`,
-        { token: old },
-        { headers: { "x-no-cache": "true" } }
-      );
-      if (data.success && data.token) {
-        setToken(data.token, !!localStorage.token);
-        this.api.defaults.headers.common.Authorization = `Bearer ${data.token}`;
-        this._retryQueued(data.token);
-        return data.token;
+      
+      try {
+        // Use the api instance itself to do the request, but avoid any interceptors that would cause a loop
+        const response = await this.api.post(
+          API.ENDPOINTS.AUTH.REFRESH,
+          { token: old },
+          { 
+            headers: { "x-no-cache": "true" },
+            _skipAuthRefresh: true // Special flag to avoid interceptor loops
+          }
+        );
+        
+        const data = response;
+        if (data.success && data.token) {
+          setToken(data.token, !!localStorage.token);
+          this.api.defaults.headers.common.Authorization = `Bearer ${data.token}`;
+          this._retryQueued(data.token);
+          return data.token;
+        }
+        throw new Error("Refresh failed");
+      } catch (error) {
+        logger.create("ApiService").error("Token refresh failed:", error);
+        throw error;
       }
-      throw new Error("Refresh failed");
     })();
     this.refreshPromise.finally(() => (this.refreshPromise = null));
     return this.refreshPromise;
@@ -317,10 +347,10 @@ class ApiService {
   }
 
   testConnection() {
-    return this.get("/auth/test-connection", {}, { timeout: 5000 });
+    return this.get(API.ENDPOINTS.AUTH.TEST, {}, { timeout: API.HEALTH_CHECK.CONNECTION_TEST_TIMEOUT });
   }
   getHealth() {
-    return this.get("/health", {}, { timeout: 3000 });
+    return this.get("/health", {}, { timeout: API.HEALTH_CHECK.TIMEOUT });
   }
   getMetrics() {
     return { ...this.metrics };
@@ -331,6 +361,47 @@ class ApiService {
   cleanup() {
     this.network.cleanup();
     this.cancelAll("Cleanup");
+  }
+
+  /**
+   * Add interceptor to handle ObjectId format errors
+   * This replaces the XMLHttpRequest patch in utils/index.js
+   */
+  _addObjectIdInterceptor() {
+    const log = logger.create("ApiObjectId");
+    
+    // Add a response interceptor specifically for ObjectId errors
+    this.api.interceptors.response.use(
+      response => response, // Let successful responses pass through
+      error => {
+        // Only handle 400 errors potentially related to ObjectId format issues
+        if (error.response && error.response.status === 400) {
+          const data = error.response.data;
+          
+          // Check if error is related to user ID format
+          if (data && data.error && (
+            data.error === 'Invalid user ID format' ||
+            data.error === 'Invalid authenticated user ID format' ||
+            data.error === 'Invalid user ID format in request'
+          )) {
+            log.warn("⚠️ Caught ObjectId validation error:", data.error);
+            
+            // Try to auto-recover using the emergency fix if it exists
+            const { emergencyUserIdFix } = require('../utils/index.js');
+            if (typeof emergencyUserIdFix === 'function') {
+              if (confirm("Session ID format error detected. Apply emergency fix?")) {
+                emergencyUserIdFix();
+              }
+            }
+          }
+        }
+        
+        // Continue with rejection so other error handlers can process
+        return Promise.reject(error);
+      }
+    );
+    
+    log.info("✅ API ObjectId interceptor installed");
   }
 
   _notifyError(status, msg) {

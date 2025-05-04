@@ -3,12 +3,18 @@
 import socketService from './socketService.jsx';
 import apiService from './apiService.jsx';
 import { logger } from '../utils';
+import { getToken } from '../utils/tokenStorage';
+import { CACHE, SOCKET, TIMEOUTS } from '../config';
 
 const log = logger.create('ChatService');
-const MESSAGE_TTL = 60_000;           // 1 min for message cache
-const CONVERSATION_TTL = 60_000;      // 1 min for conversations cache
-const INIT_TIMEOUT = 5_000;           // 5 sec init timeout
-const SOCKET_ACK_TIMEOUT = 2_000;     // 2 sec socket send timeout
+// Use configuration values from config.js
+const MESSAGE_TTL = CACHE.TTL.MESSAGES;                    // From config
+const CONVERSATION_TTL = CACHE.TTL.CONVERSATIONS;          // From config
+const INIT_TIMEOUT = SOCKET.TIMEOUT.INIT;                  // From config
+const SOCKET_ACK_TIMEOUT = SOCKET.TIMEOUT.ACK;             // From config
+const MESSAGE_FETCH_TIMEOUT = TIMEOUTS.FETCH.MESSAGES;     // From config
+const MESSAGE_DEDUP_TIMEOUT = TIMEOUTS.MESSAGE.DEDUPLICATION; // From config
+const PENDING_MESSAGE_EXPIRY = TIMEOUTS.MESSAGE.PENDING_EXPIRY; // From config
 
 function isValidObjectId(id) {
   return typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
@@ -16,7 +22,7 @@ function isValidObjectId(id) {
 
 function extractIdFromToken() {
   try {
-    const token = localStorage.token || sessionStorage.token;
+    const token = getToken();
     if (!token) return null;
     const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
     return payload.id || payload.sub || (payload.user && (payload.user._id || payload.user._id));
@@ -41,11 +47,18 @@ class ChatService {
     this.pendingMessages = [];
 
     this.socketUnsubscribers = [];
+    // Use socketService for connection events
+    this._registerSocketHandlers();
+  }
+
+  _registerSocketHandlers() {
+    // Register for connect/disconnect events from socketService
     socketService.on('connect', () => {
       log.info('Socket connected – processing pending messages');
       this._processPending();
       this._notify('connectionChanged', { connected: true });
     });
+    
     socketService.on('disconnect', () => {
       log.warn('Socket disconnected');
       this._notify('connectionChanged', { connected: false });
@@ -65,7 +78,8 @@ class ChatService {
         this.user = { ...user, _id: uid, id: uid };
         log.info(`Initializing ChatService for ${uid}`);
 
-        const token = localStorage.token || sessionStorage.token;
+        const token = getToken();
+        // Let socketService handle the connection
         if (token && !socketService.isConnected()) {
           socketService.init(uid, token);
         }
@@ -94,6 +108,7 @@ class ChatService {
       this.socketUnsubscribers.push(unsub);
     };
 
+    // Register for message events
     listen('messageReceived', (msg) => this._onSocketMessage(msg, false));
     listen('messageSent',    (msg) => this._onSocketMessage(msg, true));
     listen('messageError',   (err) => this._notify('messageError', err));
@@ -116,7 +131,7 @@ class ChatService {
     const key = `${message._id || message.tempId}-${convoId}`;
     if (this.processed.has(key)) return;
     this.processed.add(key);
-    setTimeout(() => this.processed.delete(key), 1500);
+    setTimeout(() => this.processed.delete(key), MESSAGE_DEDUP_TIMEOUT);
 
     let arr = this.messageCache.get(convoId) || [];
     const idx = arr.findIndex(m => m._id === message._id || m.tempId === message.tempId);
@@ -146,7 +161,7 @@ class ChatService {
       log.debug(`getMessages: fetching page ${page} for ${recipientId}`);
       const resp = await Promise.race([
         apiService.get(`/messages/${recipientId}`, { page, limit, _t: now }),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 8000))
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), MESSAGE_FETCH_TIMEOUT))
       ]);
       if (resp.success && Array.isArray(resp.data)) {
         const msgs = resp.data.map(m => ({
@@ -182,6 +197,7 @@ class ChatService {
     };
     this._cacheMessage(recipientId, tempMsg);
 
+    // Use socketService for sending, with API fallback
     if (socketService.isConnected()) {
       return new Promise((resolve, reject) => {
         let done = false;
@@ -205,6 +221,7 @@ class ChatService {
           socketService.off('messageError', errh);
         };
 
+        // Use socketService event handlers
         socketService.on('messageSent', ack);
         socketService.on('messageError', errh);
         socketService.emit('sendMessage', { recipientId, content, type, metadata, tempId });
@@ -246,7 +263,8 @@ class ChatService {
     const pend = [...this.pendingMessages];
     this.pendingMessages = [];
     pend.forEach(m => {
-      if (Date.now() - m.timestamp > 600_000) return; // drop >10 min
+      if (Date.now() - m.timestamp > PENDING_MESSAGE_EXPIRY) return; // Drop expired messages
+      // Use socketService.emit for all socket operations
       socketService.emit('sendMessage', {
         recipientId: m.recipientId || m.recipient,
         content: m.content,
@@ -310,8 +328,12 @@ class ChatService {
 
   sendTypingIndicator(recipientId) {
     if (this.initialized && socketService.isConnected() && recipientId) {
-      socketService.emit('typing', { recipientId });
-      return true;
+      // Use socketService.sendTyping method if available, otherwise use emit
+      if (typeof socketService.sendTyping === 'function') {
+        return socketService.sendTyping(recipientId);
+      } else {
+        return socketService.emit('typing', { recipientId });
+      }
     }
     return false;
   }
@@ -336,6 +358,7 @@ class ChatService {
   }
 
   isConnected() {
+    // Directly use socketService's isConnected method
     return socketService.isConnected();
   }
 

@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import socketService from '../services/socketService';
+import { logger } from '../utils';
+
+// Create a named logger for this hook
+const log = logger.create('useSocketConnection');
 
 /**
  * Custom hook to manage socket connection and events
@@ -40,26 +44,26 @@ export const useSocketConnection = (options = {}) => {
       setConnected(true);
       setConnectionError(null);
       setIsConnecting(false);
-      console.log("Socket connected successfully");
+      log.info("Socket connected successfully");
     };
     
     const handleDisconnect = (reason) => {
       setConnected(false);
       setIsConnecting(false);
-      console.log(`Socket disconnected: ${reason}`);
+      log.info(`Socket disconnected: ${reason}`);
       
       // If disconnected by server, set error
       if (reason === 'io server disconnect') {
         setConnectionError('Server disconnected the socket');
       } else if (reason === 'transport close' || reason === 'transport error') {
         // Network issues - don't show error to user but log it
-        console.log("Network disconnect - will auto-reconnect");
+        log.info("Network disconnect - will auto-reconnect");
       }
     };
     
     const handleError = (err) => {
       const errorMsg = err?.message || 'Connection error';
-      console.error(`Socket error: ${errorMsg}`);
+      log.error(`Socket error: ${errorMsg}`);
       setConnectionError(errorMsg);
       setIsConnecting(false);
     };
@@ -71,12 +75,12 @@ export const useSocketConnection = (options = {}) => {
     
     // Add connect error handler
     const connectErrorListener = socketService.on('connect_error', (err) => {
-      console.error(`Socket connect error: ${err?.message}`);
+      log.error(`Socket connect error: ${err?.message}`);
       setIsConnecting(false);
       
       // Don't show auth errors to user immediately - let retry happen first
       if (err?.message?.includes('auth') || err?.message?.includes('token')) {
-        console.log("Auth error in socket - will retry");
+        log.info("Auth error in socket - will retry");
       } else {
         setConnectionError(`Connect error: ${err?.message}`);
       }

@@ -3,6 +3,9 @@
  * This module handles viewport adjustments and device detection
  * to improve mobile experience across the application
  */
+import logger from './logger';
+
+const log = logger.create('mobileInit');
 
 /**
  * Sets the correct viewport height CSS variable
@@ -24,7 +27,7 @@ export const setViewportHeight = () => {
 
   // Log for debugging in development
   if (process.env.NODE_ENV !== 'production') {
-    console.log('Setting viewport height:', vh * 100, 'px');
+    log.debug('Setting viewport height:', vh * 100, 'px');
   }
 };
 
@@ -44,9 +47,9 @@ export const detectDevice = () => {
 
   // Debug info in development
   if (process.env.NODE_ENV !== 'production') {
-    console.log('User Agent:', userAgent);
-    console.log('Screen size:', window.innerWidth, 'x', window.innerHeight);
-    console.log('Device pixel ratio:', window.devicePixelRatio);
+    log.debug('User Agent:', userAgent);
+    log.debug('Screen size:', window.innerWidth, 'x', window.innerHeight);
+    log.debug('Device pixel ratio:', window.devicePixelRatio);
   }
 
   // Mobile detection - using both UA and screen size
@@ -284,7 +287,7 @@ export const handleOrientationChange = () => {
     setViewportHeight();
 
     if (process.env.NODE_ENV !== 'production') {
-      console.log('Orientation changed:', isLandscape ? 'landscape' : 'portrait');
+      log.debug('Orientation changed:', isLandscape ? 'landscape' : 'portrait');
     }
   };
 
@@ -305,7 +308,7 @@ export const handleOrientationChange = () => {
  */
 export const initializeMobileOptimizations = () => {
   if (process.env.NODE_ENV !== 'production') {
-    console.log('Initializing mobile optimizations');
+    log.info('Initializing mobile optimizations');
   }
 
   // Basic setup
@@ -356,7 +359,7 @@ export const fixXiaomiIssues = () => {
   if (!isXiaomi) return;
 
   if (process.env.NODE_ENV !== 'production') {
-    console.log('Applying Xiaomi/Poco specific fixes');
+    log.info('Applying Xiaomi/Poco specific fixes');
   }
 
   // Add specific styles for Xiaomi/Poco devices

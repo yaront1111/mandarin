@@ -6,13 +6,13 @@ import {
 } from 'react-icons/fa';
 import { COMMON_EMOJIS, ACCOUNT_TIER } from './chatConstants.js';
 import { classNames } from './chatUtils.jsx';
-import styles from '../../styles/embedded-chat.module.css';
+import styles from '../../styles/Messages.module.css';
 
 const ChatInput = React.memo(({
     messageValue,
     onInputChange,
     onSubmit,
-    onWinkSend,
+    onWinkSend = () => {},
     onFileAttachClick,
     onEmojiClick,
     userTier = ACCOUNT_TIER.FREE,
@@ -20,18 +20,16 @@ const ChatInput = React.memo(({
     isUploading = false,
     attachmentSelected = false,
     disabled = false,
+    isUserBlocked = false,
     inputRef,
     placeholderText = "Type a message...",
 }) => {
     const [showEmojis, setShowEmojis] = useState(false);
     const emojiPickerRef = useRef(null);
 
-    // Auto-resizing text area with height limits
+    // Simple input change handler
     const handleTextAreaChange = (e) => {
         onInputChange(e);
-        e.target.style.height = "auto";
-        const maxHeight = 120;
-        e.target.style.height = `${Math.min(e.target.scrollHeight, maxHeight)}px`;
     };
 
     // Handle Enter key to submit (except when Shift is pressed for new line)
@@ -64,6 +62,8 @@ const ChatInput = React.memo(({
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+    
+    // No longer needed for simple textarea
 
     // Derived state calculations
     const isFreeUserNoAttachment = userTier === ACCOUNT_TIER.FREE && !attachmentSelected;
@@ -80,7 +80,7 @@ const ChatInput = React.memo(({
     const emojiDisabled = disabled || isSending || isUploading;
 
     return (
-        <div className={styles.messageInput}>
+        <div className={styles.inputWrapper}>
             {/* Emoji Picker Popup */}
             {showEmojis && (
                 <div 
@@ -120,7 +120,7 @@ const ChatInput = React.memo(({
                 {/* Emoji Button */}
                 <button 
                     type="button" 
-                    className={styles.inputEmoji || styles.emojiButton} 
+                    className={styles.emojiButton}
                     onClick={() => setShowEmojis(!showEmojis)} 
                     disabled={emojiDisabled} 
                     title="Add Emoji" 
@@ -133,23 +133,28 @@ const ChatInput = React.memo(({
                 {/* Text Input */}
                 <textarea 
                     ref={inputRef} 
-                    className={styles.textInput} 
-                    placeholder={effectivePlaceholder} 
+                    className={classNames(
+                        styles.messageInput,
+                        isUserBlocked && styles.blockedInput
+                    )}
+                    placeholder={isUserBlocked ? "Cannot send messages to blocked users" : effectivePlaceholder}
                     value={messageValue} 
                     onChange={handleTextAreaChange} 
                     onKeyPress={handleKeyPress} 
                     rows={1} 
-                    disabled={inputDisabled} 
-                    title={isFreeUserNoAttachment ? 
-                        "Upgrade to send text messages" : 
-                        "Type a message (Shift+Enter for newline)"}
+                    disabled={inputDisabled || isUserBlocked} 
+                    title={isUserBlocked ? 
+                        "This user is blocked" : 
+                        (isFreeUserNoAttachment ? 
+                            "Upgrade to send text messages" : 
+                            "Type a message (Shift+Enter for newline)")}
                     aria-label="Message Input" 
                 />
                 
                 {/* Attachment Button */}
                 <button 
                     type="button" 
-                    className={styles.inputAttach || styles.attachButton} 
+                    className={styles.attachButton}
                     onClick={onFileAttachClick} 
                     disabled={attachDisabled} 
                     title={userTier === ACCOUNT_TIER.FREE ? 
@@ -163,7 +168,7 @@ const ChatInput = React.memo(({
                 {/* Wink Button */}
                 <button 
                     type="button" 
-                    className={styles.inputWink || styles.winkButton} 
+                    className={styles.winkButton}
                     onClick={onWinkSend} 
                     disabled={winkDisabled} 
                     title="Send Wink" 
@@ -177,7 +182,7 @@ const ChatInput = React.memo(({
                     type="button" 
                     onClick={onSubmit} 
                     className={classNames(
-                        styles.inputSend, 
+                        styles.sendButton,
                         !canSubmit && styles.disabled, 
                         (isSending || isUploading) && styles.sending
                     )} 
@@ -201,7 +206,7 @@ ChatInput.propTypes = {
     messageValue: PropTypes.string.isRequired,
     onInputChange: PropTypes.func.isRequired,
     onSubmit: PropTypes.func.isRequired,
-    onWinkSend: PropTypes.func.isRequired,
+    onWinkSend: PropTypes.func,
     onFileAttachClick: PropTypes.func.isRequired,
     onEmojiClick: PropTypes.func.isRequired,
     userTier: PropTypes.string,
@@ -209,6 +214,7 @@ ChatInput.propTypes = {
     isUploading: PropTypes.bool,
     attachmentSelected: PropTypes.bool,
     disabled: PropTypes.bool,
+    isUserBlocked: PropTypes.bool,
     inputRef: PropTypes.oneOfType([
         PropTypes.func,
         PropTypes.shape({ current: PropTypes.instanceOf(Element) })

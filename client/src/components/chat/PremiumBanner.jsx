@@ -2,7 +2,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { FaCrown } from 'react-icons/fa';
-import styles from '../../styles/embedded-chat.module.css';
+import styles from '../../styles/Messages.module.css';
 
 const PremiumBanner = React.memo(({ onUpgradeClick }) => {
     return (

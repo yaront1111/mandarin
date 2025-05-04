@@ -4,7 +4,7 @@ import PropTypes from 'prop-types';
 import { FaTimes, FaPaperclip } from 'react-icons/fa';
 import { getFileIcon, classNames } from './chatUtils.jsx';
 import { MAX_FILE_SIZE, ALLOWED_FILE_TYPES } from './chatConstants.js';
-import styles from '../../styles/embedded-chat.module.css';
+import styles from '../../styles/Messages.module.css';
 import { logger } from '../../utils/logger.js';
 
 // Create a named logger for this component

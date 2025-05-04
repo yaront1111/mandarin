@@ -2,6 +2,15 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import HttpBackend from "i18next-http-backend";
+import logger from "./utils/logger";
+
+// Initialize i18next with all required modules
+i18n
+  .use(HttpBackend)
+  .use(LanguageDetector)
+  .use(initReactI18next);
+
+const log = logger.create('i18n');
 
 // --- English Translations ---
 const enTranslations = {
@@ -2182,14 +2191,14 @@ i18n
     joinArrays: true,
     parseMissingKeyHandler: (key) => {
       // Log missing keys in console for debugging
-      console.warn(`Missing translation key: ${key}`);
+      log.warn(`Missing translation key: ${key}`);
       return key.split(".").pop().replace(/_/g, " ");
     },
 
     // Save missing translations for debugging
     saveMissing: true,
     missingKeyHandler: (lng, ns, key, fallbackValue) => {
-      console.log(
+      log.info(
         `Missing translation - Language: ${lng}, NS: ${ns}, Key: ${key}, Fallback: ${fallbackValue}`,
       );
     },
@@ -2206,7 +2215,15 @@ i18n
     debug: process.env.NODE_ENV === "development",
   });
 
-// Force a reload of translations
+// Force a reload of translations and configure backend
 i18n.reloadResources(["en", "he"]);
+
+// Configure backend options for loading
+i18n.services.backendConnector.backend.options = {
+  loadPath: '/locales/{{lng}}/{{ns}}.json',
+  requestOptions: {
+    cache: 'no-cache'
+  }
+};
 
 export default i18n;

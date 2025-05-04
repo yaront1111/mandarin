@@ -10,6 +10,7 @@ import {
   useMemo,
 } from "react"
 import { useAuth } from "./AuthContext"
+import { useModals } from "./ModalContext"
 import notificationService from "../services/notificationService"
 import socketService from "../services/socketService"
 import { toast } from "react-toastify"
@@ -75,8 +76,9 @@ function reducer(state, { type, payload }) {
   }
 }
 
-export function NotificationProvider({ children, openProfileModal }) {
+export function NotificationProvider({ children }) {
   const { user, isAuthenticated } = useAuth()
+  const { openProfileModal } = useModals()
   const navigate = useNavigate()
   const [state, dispatch] = useReducer(reducer, initialState)
   const pollingRef = useRef(null)
@@ -118,7 +120,7 @@ export function NotificationProvider({ children, openProfileModal }) {
 
   // Handle incoming socket events
   useEffect(() => {
-    if (!isAuthenticated || !socketService.socket) return
+    if (!isAuthenticated) return
 
     const handleIncoming = (data, event) => {
       dispatch({ type: "ADD_NOTIFICATION", payload: data })
@@ -150,25 +152,33 @@ export function NotificationProvider({ children, openProfileModal }) {
       dispatch({ type: "SET_SOCKET_CONNECTED", payload: false })
     }
 
-    const events = [
-      ["notification", d => handleIncoming(d, "notification")],
-      ["newMessage", d => handleIncoming(d, "newMessage")],
-      ["newLike", d => handleIncoming(d, "newLike")],
-      ["photoPermissionRequestReceived", d => handleIncoming(d, "photoPermissionRequest")],
-      ["photoPermissionResponseReceived", d => handleIncoming(d, "photoPermissionResponse")],
-      ["newComment", d => handleIncoming(d, "newComment")],
-      ["incomingCall", d => handleIncoming(d, "incomingCall")],
-      ["connect", onConnect],
-      ["disconnect", onDisconnect],
+    // Create event handlers and unsubscribers
+    const unsubscribers = [
+      socketService.on("notification", d => handleIncoming(d, "notification")),
+      socketService.on("newMessage", d => handleIncoming(d, "newMessage")),
+      socketService.on("newLike", d => handleIncoming(d, "newLike")),
+      socketService.on("photoPermissionRequestReceived", d => handleIncoming(d, "photoPermissionRequest")),
+      socketService.on("photoPermissionResponseReceived", d => handleIncoming(d, "photoPermissionResponse")),
+      socketService.on("newComment", d => handleIncoming(d, "newComment")),
+      socketService.on("incomingCall", d => handleIncoming(d, "incomingCall")),
+      socketService.on("connect", onConnect),
+      socketService.on("disconnect", onDisconnect)
     ]
-
-    events.forEach(([evt, fn]) => socketService.socket.on(evt, fn))
+    
+    // Set initial connection state
     dispatch({
       type: "SET_SOCKET_CONNECTED",
       payload: socketService.isConnected(),
     })
 
-    return () => events.forEach(([evt, fn]) => socketService.socket.off(evt, fn))
+    // Cleanup function - unsubscribe all event handlers
+    return () => {
+      unsubscribers.forEach(unsubscribe => {
+        if (typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      });
+    }
   }, [isAuthenticated, fetchNotifications])
 
   // Poll as fallback when socket is disconnected

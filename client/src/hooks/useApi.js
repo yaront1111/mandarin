@@ -2,6 +2,9 @@
 
 import { useState, useCallback, useRef } from "react"
 import apiService from "../services/apiService"
+import logger from "../utils/logger"
+
+const log = logger.create('useApi')
 
 /**
  * Custom hook for making API calls with standardized handling
@@ -47,7 +50,7 @@ export const useApi = (options = {}) => {
         // Handle null/undefined responses - may happen if the server returns nothing
         if (!response) {
           if (options.logErrors !== false) {
-            console.warn(`API response is null or undefined`)
+            log.warn(`API response is null or undefined`)
           }
           // Clean up this request reference
           delete activeRequestsRef.current[key]
@@ -90,7 +93,7 @@ export const useApi = (options = {}) => {
 
         // Log error if enabled
         if (options.logErrors !== false) {
-          console.error(`API error: ${errorMsg}`)
+          log.error(`API error: ${errorMsg}`, err)
         }
 
         return null

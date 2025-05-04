@@ -113,33 +113,34 @@ class ApiDebugger {
   async testConnection(endpoint = '/api/auth/test-connection') {
     log.info('Testing API connection...');
 
+    // Import apiService at runtime to avoid circular dependencies
+    const apiService = require('../services/apiService.jsx').default;
+    
     // Get the token
     const token = getToken();
     log.debug('Token available:', !!token);
 
     // Make a test request
     try {
-      const response = await axios.get(endpoint, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
+      const response = await apiService.get(endpoint.replace('/api', ''));
 
       log.info('✅ Connection test successful');
-      log.debug('Connection response:', response.data);
+      log.debug('Connection response:', response);
       
       return { 
         success: true, 
-        data: response.data,
-        ping: response.data.timestamp ? new Date() - new Date(response.data.timestamp) : null
+        data: response,
+        ping: response.timestamp ? new Date() - new Date(response.timestamp) : null
       };
     } catch (error) {
-      log.error('❌ Connection test failed:', error.message);
+      log.error('❌ Connection test failed:', error.message || error.error);
       
       return {
         success: false,
-        error: error.message,
-        response: error.response?.data || null,
-        status: error.response?.status,
-        isNetworkError: !error.response
+        error: error.message || error.error,
+        response: error.data || null,
+        status: error.status,
+        isNetworkError: !error.data
       };
     }
   }
@@ -152,6 +153,9 @@ class ApiDebugger {
   async testAuth(endpoint = '/api/auth/me') {
     log.info('Testing authentication...');
 
+    // Import apiService at runtime to avoid circular dependencies
+    const apiService = require('../services/apiService.jsx').default;
+    
     const token = getToken();
     if (!token) {
       log.warn('No token available for auth test');
@@ -159,22 +163,20 @@ class ApiDebugger {
     }
 
     try {
-      const response = await axios.get(endpoint, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await apiService.get(endpoint.replace('/api', ''));
 
       log.info('✅ Authentication test successful');
-      log.debug('Auth response:', response.data);
+      log.debug('Auth response:', response);
       
-      return { success: true, data: response.data };
+      return { success: true, data: response };
     } catch (error) {
-      log.error('❌ Authentication test failed:', error.message);
+      log.error('❌ Authentication test failed:', error.message || error.error);
       
       return {
         success: false,
-        error: error.message,
-        response: error.response?.data || null,
-        status: error.response?.status
+        error: error.message || error.error,
+        response: error.data || null,
+        status: error.status
       };
     }
   }
