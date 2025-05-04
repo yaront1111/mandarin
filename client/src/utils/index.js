@@ -124,17 +124,27 @@ export const patchApiObjectIdRequests = () => {
 const urlNormalizationCache = new Map();
 const failedUrlsCache = new Set();
 
+// Make cache accessible globally for other components that need to clear it
+if (typeof window !== 'undefined') {
+  window.__url_normalization_cache = urlNormalizationCache;
+  window.__failed_urls_cache = failedUrlsCache;
+}
+
 /**
- * Normalize photo URLs consistently across the app
+ * Normalize photo URLs consistently across the app with cache busting
  * @param {string} url - Photo URL to normalize
+ * @param {boolean} bustCache - Whether to add a cache-busting parameter
  * @returns {string} Normalized URL
  */
-export const normalizePhotoUrl = (url) => {
+export const normalizePhotoUrl = (url, bustCache = false) => {
   if (!url) return `${window.location.origin}/placeholder.svg`;
 
-  // First check if we've normalized this URL before
-  if (urlNormalizationCache.has(url)) {
-    return urlNormalizationCache.get(url);
+  // Create a cache key that includes the bustCache parameter
+  const cacheKey = `${url}:${bustCache}`;
+  
+  // Check cache only if we're not busting
+  if (!bustCache && urlNormalizationCache.has(cacheKey)) {
+    return urlNormalizationCache.get(cacheKey);
   }
 
   // Check if it's a known failed URL
@@ -193,9 +203,15 @@ export const normalizePhotoUrl = (url) => {
       result = url;
     }
   }
+  
+  // Add cache busting parameter if requested
+  if (bustCache && result) {
+    const separator = result.includes('?') ? '&' : '?';
+    result = `${result}${separator}_t=${Date.now()}`;
+  }
 
   // Cache the normalized URL to avoid future processing
-  urlNormalizationCache.set(url, result);
+  urlNormalizationCache.set(cacheKey, result);
   return result;
 };
 

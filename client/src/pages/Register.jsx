@@ -22,12 +22,10 @@ import {
   FaEdit,
 } from "react-icons/fa"
 // Assuming hooks are exported from here
-import { useApi } from '../hooks'; // Keep useApi from hooks
+import { useApi, usePhotoManagement } from '../hooks'; // Add usePhotoManagement
 import { useAuth, useLanguage } from '../context'; // Import useLanguage from context
 import { useTranslation } from "react-i18next"
 import { toast } from "react-toastify"
-// Import apiService directly for upload
-import apiService from '../services/apiService.jsx';
 import { createLogger } from "../utils/logger"
 import styles from "../styles/register.module.css"
 
@@ -71,6 +69,15 @@ const Register = () => {
   const { register, error: authError, isAuthenticated } = useAuth() // Rename error to avoid conflict
   const navigate = useNavigate()
   const location = useLocation()
+  
+  // Get photo upload functionality from central hook
+  const { 
+    uploadPhoto, 
+    isUploading, 
+    uploadProgress, 
+    normalizePhotoUrl,
+    clearCache
+  } = usePhotoManagement()
 
   // --- Options (Consider translating these if they appear in UI directly) ---
   const availableInterests = [ /* Keys for interests */
@@ -332,23 +339,31 @@ const Register = () => {
     }
   }
 
-   // Handle photo upload (translate toast messages)
-  const handlePhotoChange = (e) => {
+   // Handle photo upload using the centralized hook
+  const handlePhotoChange = async (e) => {
     const file = e.target.files[0]
     if (!file) return
+    
     const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg']
     if (!allowedTypes.includes(file.type)) {
       toast.error(t('errors.uploadTypeMismatch', 'Please upload a valid image file (JPEG, JPG or PNG)'))
       return
     }
+    
     if (file.size > 5 * 1024 * 1024) {
       toast.error(t('errors.uploadSizeLimitExceeded', 'Image size should be less than 5MB'))
       return
     }
+    
+    // For registration, we'll just preview the image but not upload it yet
+    // We'll upload it after successful registration
     setFormData({ ...formData, profilePhoto: file }) // Store the File object
+    
+    // Show preview
     const reader = new FileReader()
     reader.onloadend = () => { setPreviewImage(reader.result) }
     reader.readAsDataURL(file)
+    
     if (formErrors.profilePhoto) {
       setFormErrors({ ...formErrors, profilePhoto: '' })
     }
@@ -425,30 +440,24 @@ const Register = () => {
 
       // --- Step 2: Upload Photo if Registration Successful ---
       if (result && result.token) {
-        // If there's a profile photo File object, upload it using apiService
+        // If there's a profile photo File object, upload it using the centralized hook
         if (formData.profilePhoto instanceof File) {
           try {
-            const photoFormData = new FormData();
-            // Use 'photo' as the field name expected by the backend
-            photoFormData.append('photo', formData.profilePhoto);
-            // Add any other necessary fields for the upload endpoint
-            photoFormData.append('isPrivate', 'false'); // Example: Default to public
+            // Use the centralized hook with 'public' privacy setting for profile photos
+            const photoResult = await uploadPhoto(formData.profilePhoto, 'public');
 
-            // Use apiService.upload (or appropriate method like post with FormData)
-            // The token will be handled automatically by apiService interceptors
-            const photoResult = await apiService.upload('/users/photos', photoFormData);
-
-            if (photoResult.success) { // Adjust based on apiService response structure
+            if (photoResult) {
               toast.success(t('profile.photoUploadSuccess', "Profile photo uploaded successfully"));
+              
+              // The hook automatically refreshes user data, so no need to do that separately
+              logger.debug("Profile photo uploaded successfully via hook:", photoResult);
             } else {
-              logger.error("Photo upload failed via apiService:", photoResult);
-              // Use error message from apiService response if available
-              toast.error(t('errors.photoUploadFailed', "Failed to upload profile photo:") + " " + (photoResult.error || photoResult.message || t('errors.unknownError', "Unknown error")));
+              logger.error("Photo upload returned no result");
+              toast.error(t('errors.photoUploadFailed', "Failed to upload profile photo"));
             }
           } catch (photoErr) {
-            logger.error("Error uploading photo via apiService:", photoErr);
-             // Use error message from apiService error if available
-            toast.error(t('errors.photoUploadFailed', "Failed to upload profile photo:") + " " + (photoErr.message || photoErr.error || ""));
+            logger.error("Error uploading photo via hook:", photoErr);
+            toast.error(t('errors.photoUploadFailed', "Failed to upload profile photo:") + " " + (photoErr.message || ""));
           }
         }
 
@@ -632,21 +641,63 @@ const Register = () => {
         <p>{t('register.improveVisibility', 'Add a profile photo to improve your visibility')}</p>
       </div>
       <div className={styles.photoUploadContainer}>
-        <div className={`${styles.photoUploadArea} ${previewImage ? styles.hasImage : ''}`} onClick={triggerFileInput}>
-          <input type="file" ref={fileInputRef} accept="image/jpeg,image/png,image/jpg" onChange={handlePhotoChange} className="d-none" />
-          {previewImage ? (<img src={previewImage} alt={t('profile.profilePhoto', 'Profile Preview')} className={styles.profileImagePreview} />) : (<> <FaCamera className={styles.photoUploadIcon} /> <p className={styles.photoUploadText}>{t('register.clickToUpload', 'Click to upload a profile photo')}</p> </>)}
-        </div>
+        {isUploading ? (
+          <div className={styles.uploadProgressContainer}>
+            <div className={styles.uploadProgressBar}>
+              <div 
+                className={styles.uploadProgressFill} 
+                style={{ width: `${uploadProgress}%` }}
+              ></div>
+            </div>
+            <p className={styles.uploadProgressText}>{t('profile.uploading', 'Uploading')} {uploadProgress}%</p>
+          </div>
+        ) : (
+          <div className={`${styles.photoUploadArea} ${previewImage ? styles.hasImage : ''}`} onClick={triggerFileInput}>
+            <input type="file" ref={fileInputRef} accept="image/jpeg,image/png,image/jpg" onChange={handlePhotoChange} className="d-none" />
+            {previewImage ? (
+              <img 
+                src={previewImage} 
+                alt={t('profile.profilePhoto', 'Profile Preview')} 
+                className={styles.profileImagePreview} 
+              />
+            ) : (
+              <>
+                <FaCamera className={styles.photoUploadIcon} />
+                <p className={styles.photoUploadText}>
+                  {t('register.clickToUpload', 'Click to upload a profile photo')}
+                </p>
+              </>
+            )}
+          </div>
+        )}
+        
         <p className={styles.uploadGuidelines}>
           {t('register.profileImageHelp', 'Photos should be clear, recent and show your face.')}
           <br />{t('register.profileImageSize', 'Maximum size: 5MB. Formats: JPG, JPEG, PNG.')}
         </p>
-        {formErrors.profilePhoto && (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.profilePhoto}</p>)}
-        {previewImage && (
+        
+        {formErrors.profilePhoto && (
+          <p className={styles.errorMessage}>
+            <FaExclamationTriangle /> {formErrors.profilePhoto}
+          </p>
+        )}
+        
+        {previewImage && !isUploading && (
           <div className={styles.photoActions}>
-            <button type="button" className={`${styles.photoActionButton} ${styles.changePhotoButton}`} onClick={triggerFileInput}>
+            <button 
+              type="button" 
+              className={`${styles.photoActionButton} ${styles.changePhotoButton}`} 
+              onClick={triggerFileInput}
+              disabled={isUploading}
+            >
               <FaEdit /> {t('register.changePhoto', 'Change Photo')}
             </button>
-            <button type="button" className={`${styles.photoActionButton} ${styles.removePhotoButton}`} onClick={handleRemovePhoto}>
+            <button 
+              type="button" 
+              className={`${styles.photoActionButton} ${styles.removePhotoButton}`} 
+              onClick={handleRemovePhoto}
+              disabled={isUploading}
+            >
               <FaTrash /> {t('register.removePhoto', 'Remove')}
             </button>
           </div>

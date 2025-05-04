@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { FaCheck, FaTimes, FaCrown, FaHeart, FaImage, FaComment, FaUserCircle } from "react-icons/fa"
+import { FaCheck, FaTimes, FaCrown, FaHeart, FaImage, FaComment, FaArrowLeft } from "react-icons/fa"
 import { useAuth } from "../context"
 import { useTranslation } from "react-i18next"
 import { useLanguage } from "../context"
 import { toast } from "react-toastify"
-import { ThemeToggle } from "../components/theme-toggle.tsx"
 import subscriptionService from "../services/subscriptionService.jsx"
 import { createLogger } from "../utils/logger"
 import styles from "../styles/subscription.module.css"
@@ -82,40 +81,16 @@ const Subscription = () => {
 
   return (
     <div className={`modern-dashboard ${isRTL ? 'rtl-layout' : ''}`}>
-      {/* Header */}
-      <header className="modern-header">
-        <div className="container d-flex justify-content-between align-items-center">
-          <div className="logo" style={{ cursor: "pointer" }} onClick={() => navigate("/dashboard")}>
-            Mandarin
-          </div>
-          <div className="d-none d-md-flex main-tabs">
-            <button className="tab-button" onClick={() => navigate("/dashboard")}>
-              {t('common.dashboard')}
-            </button>
-            <button className="tab-button" onClick={() => navigate("/messages")}>
-              {t('common.messages')}
-            </button>
-          </div>
-          <div className="header-actions d-flex align-items-center">
-            <ThemeToggle />
-            {user?.photos?.[0] ? (
-              <img
-                src={user.photos[0].url || "/placeholder.svg"}
-                alt={user.nickname}
-                className="user-avatar"
-                onClick={() => navigate("/profile")}
-              />
-            ) : (
-              <FaUserCircle className="user-avatar" style={{ fontSize: "32px" }} onClick={() => navigate("/profile")} />
-            )}
-          </div>
-        </div>
-      </header>
-
       {/* Main Content */}
       <main className="dashboard-content">
         <div className={styles.subscriptionContainer}>
           <div className={styles.gradientBar}></div>
+          
+          <div className={styles.backNav}>
+            <button className={styles.backButton} onClick={() => navigate("/dashboard")}>
+              <FaArrowLeft /> {t('common.backToDashboard') || 'Back to Dashboard'}
+            </button>
+          </div>
 
           <h1 className={styles.pageTitle}>
             <FaCrown /> {t('subscriptions.premiumMembership')}

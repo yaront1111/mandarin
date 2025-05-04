@@ -251,18 +251,18 @@ export function UserProvider({ children }) {
 
   // Upload photo
   const uploadPhoto = useCallback(
-    async (file, isPrivate) => {
+    async (file, privacy = 'private') => {
       dispatch({ type: "UPLOADING_PHOTO" })
       try {
         const form = new FormData()
         form.append("photo", file)
-        form.append("isPrivate", isPrivate)
+        form.append("privacy", privacy)
         const res = await apiService.upload("/users/photos", form, pct =>
           log.debug(`Upload progress: ${pct}%`)
         )
         if (!res.success) throw new Error(res.error)
         dispatch({ type: "UPLOAD_PHOTO", payload: res.data })
-        toast.success(`${isPrivate ? "Private" : "Public"} photo uploaded`)
+        toast.success(`Photo uploaded (${privacy})`)
         return res.data
       } catch (err) {
         dispatch({ type: "USER_ERROR", payload: err.message })
@@ -275,7 +275,7 @@ export function UserProvider({ children }) {
   // Photo permission
   const requestPhotoPermission = useCallback(async (photoId, ownerId) => {
     try {
-      const res = await apiService.post(`/photos/${photoId}/request`, { userId: ownerId })
+      const res = await apiService.post(`/users/photos/${photoId}/request`, { userId: ownerId })
       if (!res.success) throw new Error(res.error)
       dispatch({ type: "PHOTO_PERMISSION_REQUESTED", payload: res.data })
       toast.success("Access request sent")
@@ -288,7 +288,7 @@ export function UserProvider({ children }) {
 
   const updatePhotoPermission = useCallback(async (permId, status) => {
     try {
-      const res = await apiService.put(`/photos/permissions/${permId}`, { status })
+      const res = await apiService.put(`/users/photos/permissions/${permId}`, { status })
       if (!res.success) throw new Error(res.error)
       dispatch({ type: "PHOTO_PERMISSION_UPDATED", payload: res.data })
       toast.success(`Photo ${status}`)
@@ -441,32 +441,87 @@ export function UserProvider({ children }) {
 
   const clearError = useCallback(() => dispatch({ type: "CLEAR_ERROR" }), [])
   
-  // Add refreshUserData function to refresh user data
-  const refreshUserData = useCallback(async (userId) => {
+  // Refresh user data optimized for current user and photo updates
+  const refreshUserData = useCallback(async (userId, forceImmediate = false) => {
     try {
-      if (!userId && state.currentUser?._id) {
-        userId = state.currentUser._id;
+      // If refreshing current user data
+      if (!userId && user?._id) {
+        log.info("Refreshing current user data" + (forceImmediate ? " (immediate)" : ""));
+        // Use /auth/me endpoint for current user which returns full data including private photos
+        // Force skip cache when forceImmediate is true
+        const res = await apiService.get(
+          `/auth/me`, 
+          {}, 
+          { 
+            useCache: false, 
+            headers: { 
+              'x-no-cache': 'true',
+              // Adding a unique timestamp to force a fresh request
+              'Cache-Control': forceImmediate ? 'no-cache, no-store, must-revalidate' : undefined,
+              'Pragma': forceImmediate ? 'no-cache' : undefined
+            } 
+          }
+        );
+        
+        if (!res.success) {
+          throw new Error(res.error || "Failed to refresh user data");
+        }
+        
+        // Create a payload similar to what the GET_USER action expects
+        const payload = {
+          user: res,
+          messages: state.messages || []
+        };
+        
+        // Clear any cached data for this endpoint
+        if (forceImmediate) {
+          apiService.clearCache('/auth/me');
+        }
+        
+        dispatch({ type: "GET_USER", payload });
+        return res;
+      } 
+      // If refreshing specific user data
+      else {
+        const targetId = userId || state.currentUser?._id || user?._id;
+        if (!targetId) {
+          throw new Error("No user ID available for refresh");
+        }
+        
+        log.info("Refreshing user data for ID:", targetId + (forceImmediate ? " (immediate)" : ""));
+        // Force skip cache when forceImmediate is true
+        const res = await apiService.get(
+          `/users/${targetId}`, 
+          {}, 
+          { 
+            useCache: false, 
+            headers: { 
+              'x-no-cache': 'true',
+              // Adding a unique timestamp to force a fresh request
+              'Cache-Control': forceImmediate ? 'no-cache, no-store, must-revalidate' : undefined,
+              'Pragma': forceImmediate ? 'no-cache' : undefined
+            } 
+          }
+        );
+        
+        if (!res.success) {
+          throw new Error(res.error || "Failed to refresh user data");
+        }
+        
+        // Clear any cached data for this endpoint
+        if (forceImmediate) {
+          apiService.clearCache(`/users/${targetId}`);
+        }
+        
+        dispatch({ type: "GET_USER", payload: res.data });
+        return res.data;
       }
-      log.info("Refreshing user data for ID:", userId || user?._id);
-      const res = await apiService.get(`/users/${userId || user?._id}`);
-      log.debug("Refresh user data response:", res);
-      
-      // Handle nested success property
-      if (!res.success && res.data && res.data.success) {
-        dispatch({ type: "GET_USER", payload: res.data.data });
-        return res.data.data;
-      } else if (!res.success) {
-        throw new Error(res.error || "Failed to refresh user data");
-      }
-      
-      dispatch({ type: "GET_USER", payload: res.data });
-      return res.data;
     } catch (err) {
       log.error("Error refreshing user data:", err);
       dispatch({ type: "USER_ERROR", payload: err.message });
       return null;
     }
-  }, [state.currentUser, user]);
+  }, [state.currentUser, state.messages, user]);
   
   // Handle error toasts outside of reducer
   useEffect(() => {

@@ -151,6 +151,10 @@ requiredDirs.forEach((dir) => {
     logger.info(`Created uploads subdirectory: ${dirPath}`);
   }
 });
+
+// We'll create user directories later, after the database connection is established
+logger.info(`Upload directories initialized. User-specific directories will be created after DB connection.`);
+
 logger.info(`Uploads base directory configured at: ${uploadsBasePath}`);
 
 
@@ -212,7 +216,14 @@ app.use(
         // Already set CORS headers in middleware above
         // Set cache control based on file type
         if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-            res.set('Cache-Control', `public, max-age=${config.IMAGE_CACHE_MAX_AGE || 86400}`); // Default 1 day for images
+            // For profile photos and user uploads, use a shorter cache time
+            if (filePath.includes('/photos/') || filePath.includes('/images/')) {
+                res.set('Cache-Control', `no-cache, must-revalidate`); // Don't cache user photos
+                res.set('Pragma', 'no-cache');
+                res.set('Expires', '0');
+            } else {
+                res.set('Cache-Control', `public, max-age=${config.IMAGE_CACHE_MAX_AGE || 86400}`); // Default 1 day for images
+            }
         } else if (filePath.match(/\.(mp4|webm|mov)$/i)) {
             res.set('Cache-Control', `public, max-age=${config.VIDEO_CACHE_MAX_AGE || 604800}`); // Default 7 days for videos
         } else {
@@ -427,6 +438,37 @@ const initializeApp = async () => {
   try {
     // Connect to Database
     await connectDB();
+    
+    // Now that the database is connected, create user-specific photo directories
+    try {
+      // Import the User model
+      const { User } = await import("./models/index.js");
+      
+      // Use a timeout to ensure the connection is stable before querying
+      setTimeout(async () => {
+        try {
+          // Query with a longer server selection timeout
+          const userIds = await User.find().select('_id').lean().maxTimeMS(30000);
+          
+          if (userIds && userIds.length > 0) {
+            logger.info(`Creating user-specific photo directories for ${userIds.length} users`);
+            for (const { _id } of userIds) {
+              const userPhotoDir = path.join(uploadsBasePath, 'photos', _id.toString());
+              if (!fs.existsSync(userPhotoDir)) {
+                fs.mkdirSync(userPhotoDir, { recursive: true });
+              }
+            }
+            logger.info(`User-specific photo directories created successfully`);
+          } else {
+            logger.info(`No users found in database, skipping user photo directory creation`);
+          }
+        } catch (dirErr) {
+          logger.warn(`Could not create user photo directories after DB connection: ${dirErr.message}`);
+        }
+      }, 2000); // Give a 2-second delay after DB connection
+    } catch (importErr) {
+      logger.warn(`Could not import User model: ${importErr.message}`);
+    }
 
     // Start HTTP Server
     const PORT = process.env.PORT || config.PORT || 5000;

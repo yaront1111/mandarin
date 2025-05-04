@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { normalizePhotoUrl, markUrlAsFailed, logger } from '../../utils';
+import { logger } from '../../utils';
+import usePhotoManagement from '../../hooks/usePhotoManagement';
 
 const log = logger.create('Avatar');
 
@@ -21,8 +22,17 @@ const Avatar = ({
   user = null,
   showOnlineStatus = false
 }) => {
+  // Use the shared photo management hook
+  const { 
+    normalizePhotoUrl, 
+    getProfilePhotoUrl, 
+    handlePhotoLoadError, 
+    clearCache 
+  } = usePhotoManagement();
+
   // If user object is provided, extract src, alt and online status from it
-  const userSrc = user?.photos?.[0]?.url || user?._id || src;
+  // Use getProfilePhotoUrl to get the proper profile photo if available
+  const userSrc = user ? getProfilePhotoUrl(user) : (src || null);
   const userAlt = user?.nickname || alt || "User";
   const userOnline = (showOnlineStatus && user?.isOnline) || online;
   
@@ -30,6 +40,7 @@ const Avatar = ({
   src = userSrc;
   alt = userAlt;
   online = userOnline;
+  
   // Handle fallback image if src is invalid
   const [imgSrc, setImgSrc] = React.useState(src);
   const [imageError, setImageError] = React.useState(false);
@@ -41,6 +52,31 @@ const Avatar = ({
   // Fix for default avatar path
   const defaultAvatarPath = `${window.location.origin}/default-avatar1.png`;
   
+  // Add timestamp state to force re-renders when photo is updated
+  const [renderTimestamp, setRenderTimestamp] = React.useState(Date.now());
+
+  // Force refresh when needed
+  const forceRefresh = () => {
+    clearCache();
+    setRenderTimestamp(Date.now());
+  };
+  
+  // Listen for global avatar refresh events
+  useEffect(() => {
+    const handleAvatarRefresh = (event) => {
+      // Update the timestamp to trigger a re-render
+      setRenderTimestamp(event.detail.timestamp || Date.now());
+    };
+    
+    // Add event listener
+    window.addEventListener('avatar:refresh', handleAvatarRefresh);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('avatar:refresh', handleAvatarRefresh);
+    };
+  }, []);
+
   React.useEffect(() => {
     // Only reset if src actually changes to avoid infinite loop
     if (src !== imgSrc || (!src && !imageError)) {
@@ -61,7 +97,12 @@ const Avatar = ({
         return;
       }
       
-      setImgSrc(src || defaultAvatarPath);
+      // Add cache busting for profile photos to ensure we always have the latest version
+      const processedSrc = user && user.photos?.length > 0 ? 
+        normalizePhotoUrl(src, true) : // Use cache busting for user profile photos
+        (src || defaultAvatarPath);
+        
+      setImgSrc(processedSrc);
       setImageError(false);
       
       // For debugging
@@ -69,7 +110,7 @@ const Avatar = ({
         log.debug(`Avatar for user ID: ${src}`);
       }
     }
-  }, [src, defaultAvatarPath, imgSrc, imageError]);
+  }, [src, defaultAvatarPath, imgSrc, imageError, normalizePhotoUrl, user, renderTimestamp]);
   
   const handleError = (e) => {
     // Collect error information for debugging
@@ -94,9 +135,9 @@ const Avatar = ({
           fallback: fallbackImg 
         });
         
-        // Global URL cache to help other components
+        // Global URL cache to help other components using handlePhotoLoadError
         if (failedSrc) {
-          markUrlAsFailed(failedSrc);
+          handlePhotoLoadError(src, failedSrc);
         }
       }
       
@@ -108,13 +149,8 @@ const Avatar = ({
   // Normalize URL with better error handling
   let normalizedSrc;
   try {
-    // For MongoDB ObjectId patterns, directly use the avatar API
-    if (imgSrc && typeof imgSrc === 'string' && /^[0-9a-f]{24}$/i.test(imgSrc)) {
-      normalizedSrc = `${window.location.origin}/api/avatars/${imgSrc}`;
-      log.debug(`Using direct avatar API path: ${normalizedSrc}`);
-    } else {
-      normalizedSrc = normalizePhotoUrl(imgSrc);
-    }
+    // Always use the shared normalizePhotoUrl function
+    normalizedSrc = normalizePhotoUrl(imgSrc, user && user.photos?.length > 0);
   } catch (err) {
     log.error(`Error normalizing URL: ${err.message}`, { src: imgSrc });
     normalizedSrc = defaultAvatarPath;
@@ -135,14 +171,25 @@ const Avatar = ({
     backgroundPosition: 'center'
   };
   
+  // Add a double-click handler to force refresh if needed
+  const handleDoubleClick = (e) => {
+    // Only respond to double-click if we're not also handling clicks
+    if (!onClick) {
+      forceRefresh();
+      e.stopPropagation();
+    }
+  };
+
   return (
     <div 
       className={`avatar ${sizeClasses[size] || ''} ${online ? 'avatar-online' : ''} ${className}`}
       onClick={onClick}
+      onDoubleClick={handleDoubleClick}
       style={avatarStyles}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       data-debug={debugInfo}
+      data-timestamp={renderTimestamp}
     >
       {/* Actual image is hidden but helps with loading and fallback */}
       <img 
@@ -151,6 +198,7 @@ const Avatar = ({
         onError={handleError}
         style={{ display: 'none' }}
         crossOrigin="anonymous"
+        key={`img-${renderTimestamp}`}
       />
       
       {status && (

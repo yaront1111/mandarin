@@ -103,9 +103,10 @@ const ChatHeader = ({
         }}
       >
         <Avatar 
-          src={user.photo} 
+          user={user}
           size="medium" 
-          status={user.online ? 'online' : 'offline'} 
+          status={user.online ? 'online' : 'offline'}
+          showOnlineStatus={true}
         />
         <div className={useStyles.userInfo}>
           <h3 className={useStyles.userName}>

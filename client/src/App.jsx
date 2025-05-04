@@ -13,6 +13,7 @@ import { UI } from "./config";
 import "./styles/base.css";
 import "./styles/pages.css";
 import "./styles/notifications.css";
+import "./styles/navbar-avatar.css";
 
 // --- Context Providers ---
 import {
@@ -53,6 +54,7 @@ import Safety from "./pages/Safety";
 import Support from "./pages/Support";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
+import { AvatarTest } from "./components/common";
 
 // --- Initialize GA4 ---
 import logger from './utils/logger';
@@ -187,6 +189,10 @@ function App() {
                               <Route
                                 path="/subscription"
                                 element={<PrivateRoute><Subscription /></PrivateRoute>}
+                              />
+                              <Route
+                                path="/avatar-test"
+                                element={<PrivateRoute><AvatarTest /></PrivateRoute>}
                               />
                               <Route path="*" element={<NotFound />} />
                             </Routes>

@@ -10,7 +10,8 @@ export { default as useMobileDetect } from './useMobileDetect';
 export { default as useModal } from './useModal';
 export { default as useFormState } from './useFormState';
 export { default as useMessagesState } from './useMessagesState';
-export { default as usePhotoGallery } from './usePhotoGallery';
+// Removed usePhotoGallery export - now using centralized usePhotoManagement instead
+export { default as usePhotoManagement } from './usePhotoManagement';
 export { default as useProfileModal } from './useProfileModal';
 export { default as useDashboard } from './useDashboard';
 export { default as useBlockedUsers } from './useBlockedUsers';

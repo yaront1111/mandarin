@@ -8,7 +8,8 @@ import {
   FaTrash,
   FaSpinner,
   FaChevronLeft,
-  FaChevronRight
+  FaChevronRight,
+  FaUsers
 } from 'react-icons/fa';
 import { usePhotoManagement } from '../../hooks';
 import PropTypes from 'prop-types';
@@ -67,7 +68,9 @@ const PhotoGallery = ({
   const activePhoto = processedPhotos[activePhotoIndex] || null;
   
   // Whether the current photo is private and can't be viewed
-  const isPrivateAndHidden = activePhoto?.isPrivate && !canViewPrivate;
+  const isPrivateAndHidden = (activePhoto?.privacy === 'private' || 
+                             (activePhoto?.isPrivate && !activePhoto?.privacy)) && 
+                             !canViewPrivate;
 
   // Handlers
   const handleFileSelection = async (e) => {
@@ -95,19 +98,41 @@ const PhotoGallery = ({
     if (isProcessingPhoto) return;
     
     try {
-      await togglePhotoPrivacy(photoId, userId);
+      // Get the current photo
+      const photo = processedPhotos.find(p => p._id === photoId);
+      if (!photo) return;
+      
+      // Determine current privacy
+      const currentPrivacy = photo.privacy || (photo.isPrivate ? 'private' : 'public');
+      
+      // Cycle to next privacy level
+      let newPrivacy;
+      switch(currentPrivacy) {
+        case 'private':
+          newPrivacy = 'public';
+          break;
+        case 'public':
+          newPrivacy = 'friends_only';
+          break;
+        case 'friends_only':
+        default:
+          newPrivacy = 'private';
+      }
+      
+      // Update via API
+      await togglePhotoPrivacy(photoId, userId, newPrivacy);
       
       // Update local state optimistically
       if (onPhotoChange) {
-        const updatedPhotos = processedPhotos.map(photo => 
-          photo._id === photoId 
-            ? { ...photo, isPrivate: !photo.isPrivate }
-            : photo
+        const updatedPhotos = processedPhotos.map(p => 
+          p._id === photoId 
+            ? { ...p, privacy: newPrivacy, isPrivate: newPrivacy === 'private' }
+            : p
         );
         onPhotoChange(updatedPhotos);
       }
     } catch (error) {
-      log.error('Failed to toggle photo privacy:', error);
+      log.error('Failed to update photo privacy:', error);
     }
   };
   
@@ -272,10 +297,17 @@ const PhotoGallery = ({
               alt={t('common.photo', 'Photo')}
               className={styles.mainPhoto}
             />
-            {activePhoto?.isPrivate && (
+            {(activePhoto?.privacy === 'private' || 
+              (activePhoto?.isPrivate && !activePhoto?.privacy)) && (
               <div className={styles.privateIndicator}>
                 <FaLock />
                 {t('common.private', 'Private')}
+              </div>
+            )}
+            {activePhoto?.privacy === 'friends_only' && (
+              <div className={styles.friendsIndicator}>
+                <FaUsers />
+                {t('common.friendsOnly', 'Friends Only')}
               </div>
             )}
             {activePhoto?.isProfile && (
@@ -319,9 +351,13 @@ const PhotoGallery = ({
               className={`${styles.thumbnail} ${index === activePhotoIndex ? styles.activeThumbnail : ''}`}
               onClick={() => setActivePhotoIndex(index)}
             >
-              {photo.isPrivate && !canViewPrivate ? (
+              {(photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) && !canViewPrivate ? (
                 <div className={styles.privateThumbnail}>
                   <FaLock />
+                </div>
+              ) : photo.privacy === 'friends_only' && !canViewPrivate ? (
+                <div className={styles.friendsThumbnail}>
+                  <FaUsers />
                 </div>
               ) : (
                 <img
@@ -343,10 +379,26 @@ const PhotoGallery = ({
                     <button
                       onClick={(e) => handleTogglePrivacy(photo._id, e)}
                       className={styles.controlButton}
-                      aria-label={photo.isPrivate ? t('common.makePublic', 'Make public') : t('common.makePrivate', 'Make private')}
-                      title={photo.isPrivate ? t('common.makePublic', 'Make public') : t('common.makePrivate', 'Make private')}
+                      aria-label={
+                        (photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) 
+                          ? t('common.makePublic', 'Make public') 
+                          : photo.privacy === 'friends_only'
+                            ? t('common.makePrivate', 'Make private')
+                            : t('common.makeFriendsOnly', 'Make friends only')
+                      }
+                      title={
+                        (photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) 
+                          ? t('common.makePublic', 'Make public') 
+                          : photo.privacy === 'friends_only'
+                            ? t('common.makePrivate', 'Make private')
+                            : t('common.makeFriendsOnly', 'Make friends only')
+                      }
                     >
-                      {photo.isPrivate ? <FaLockOpen /> : <FaLock />}
+                      {(photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) 
+                        ? <FaLockOpen /> 
+                        : photo.privacy === 'friends_only'
+                          ? <FaLock />
+                          : <FaUsers />}
                     </button>
                   )}
                   
@@ -418,8 +470,10 @@ PhotoGallery.propTypes = {
     PropTypes.shape({
       _id: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
       url: PropTypes.string.isRequired,
-      isPrivate: PropTypes.bool,
+      privacy: PropTypes.string, // 'public', 'private', or 'friends_only'
+      isPrivate: PropTypes.bool, // For backward compatibility
       isProfile: PropTypes.bool,
+      isDeleted: PropTypes.bool,
     })
   ),
   onPhotoChange: PropTypes.func,

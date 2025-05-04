@@ -13,6 +13,7 @@ import config from "../config.js";
 import { protect, enhancedProtect } from "../middleware/auth.js";
 import { canLikeUser } from "../middleware/permissions.js";
 import logger from "../logger.js";
+import { uploadPhoto } from "../middleware/upload.js";
 
 const router = express.Router();
 
@@ -45,6 +46,7 @@ const respondError = (res, status, msg) =>
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    // Store files in the images directory to match existing pattern
     const dir = path.join(config.FILE_UPLOAD_PATH, "images");
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
@@ -83,7 +85,7 @@ async function processImage(filePath) {
 
 /**
  * GET /api/users/likes
- * Get paginated list of users you’ve liked
+ * Get paginated list of users you've liked
  */
 router.get(
   "/likes",
@@ -163,9 +165,27 @@ router.get(
     const user = await User.findById(id).select("nickname details photos isOnline lastActive createdAt settings");
     if (!user) return respondError(res, 404, "User not found");
 
-    const uObj = user.toObject();
-    if (uObj.settings?.privacy?.showOnlineStatus === false) uObj.isOnline = false;
-    delete uObj.settings;
+    // Filter photos based on privacy and logged-in user
+    const targetUser = user.toObject();
+    const requestingUserId = req.user._id.toString();
+    const isOwner = requestingUserId === id;
+    
+    // Apply photo privacy filtering
+    if (targetUser.photos && Array.isArray(targetUser.photos)) {
+      // Get only non-deleted photos
+      targetUser.photos = targetUser.photos.filter(photo => !photo.isDeleted);
+      
+      // If not the owner, apply privacy filters
+      if (!isOwner) {
+        targetUser.photos = targetUser.photos.filter(photo => {
+          return photo.privacy === 'public';
+          // Add friends_only handling here when implementing friendship system
+        });
+      }
+    }
+    
+    if (targetUser.settings?.privacy?.showOnlineStatus === false) targetUser.isOnline = false;
+    delete targetUser.settings;
 
     const { page, limit, skip } = paginate(req);
     const mQuery = {
@@ -183,7 +203,7 @@ router.get(
     res.json({
       success: true,
       data: {
-        user: uObj,
+        user: targetUser,
         messages,
         messagesPagination: { total: totalMessages, page, pages: Math.ceil(totalMessages / limit) },
         isLiked: !!liked,
@@ -195,7 +215,7 @@ router.get(
 
 /**
  * GET /api/users/:id/photo-permissions
- * List your permission requests for someone’s private photos
+ * List your permission requests for someone's private photos
  */
 router.get(
   "/:id/photo-permissions",
@@ -206,7 +226,7 @@ router.get(
     const target = await User.findById(id).select("photos");
     if (!target) return respondError(res, 404, "User not found");
 
-    const privateIds = target.photos.filter((p) => p.isPrivate).map((p) => p._id);
+    const privateIds = target.photos.filter((p) => p.privacy === 'private').map((p) => p._id);
     if (privateIds.length === 0) return res.json({ success: true, data: [] });
 
     const permissions = await PhotoPermission.find({
@@ -298,22 +318,49 @@ router.post(
   upload.single("photo"),
   asyncHandler(async (req, res) => {
     if (!req.file) return respondError(res, 400, "No file uploaded");
-    if ((req.user.photos || []).length >= 10) {
+    
+    const loggedInUserId = req.user._id;
+    console.log(`PHOTO UPLOAD: User ID: ${loggedInUserId}`);
+    
+    // Fetch the full Mongoose User document
+    const userDocument = await User.findById(loggedInUserId);
+    if (!userDocument) {
+      console.error(`PHOTO UPLOAD ERROR: User document not found for ID: ${loggedInUserId}`);
+      return respondError(res, 404, "User not found");
+    }
+    
+    if ((userDocument.photos || []).length >= 10) {
       fs.unlinkSync(req.file.path);
       return respondError(res, 400, "Max 10 photos");
     }
 
     try {
       const meta = await processImage(req.file.path);
+      // Set URL to match the actual location where the file is stored
       const url = `/uploads/images/${path.basename(req.file.path)}`;
-      const photo = { url, isPrivate: req.body.isPrivate === "true", metadata: meta };
-      req.user.photos.push(photo);
-      await req.user.save();
+      
+      // Create photo data object
+      const photoData = {
+        url, 
+        privacy: req.body.privacy || 'private',
+        metadata: {
+          ...meta,
+          filename: path.basename(req.file.path),
+          mimeType: req.file.mimetype,
+          size: req.file.size
+        }
+      };
+      
+      // Use our new method to add the photo on the Mongoose document
+      await userDocument.addPhoto(photoData);
+      
+      // Find the newly added photo (last one)
+      const addedPhoto = userDocument.photos[userDocument.photos.length - 1];
 
       res.json({
         success: true,
-        data: req.user.photos.slice(-1)[0],
-        isProfilePhoto: req.user.photos.length === 1,
+        data: addedPhoto,
+        isProfilePhoto: addedPhoto.isProfile,
         url,
       });
     } catch (err) {
@@ -325,24 +372,61 @@ router.post(
 
 /**
  * PUT /api/users/photos/:id/privacy
- * Toggle a photo’s privacy
+ * Set a photo's privacy level
  */
 router.put(
   "/photos/:id/privacy",
   protect,
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    if (!isValidId(id)) return respondError(res, 400, "Invalid photo ID");
-    if (typeof req.body.isPrivate !== "boolean")
-      return respondError(res, 400, "isPrivate must be boolean");
+    const loggedInUserId = req.user._id;
+    
+    console.log(`PRIVACY UPDATE: User ID: ${loggedInUserId}, Photo ID: ${id}, Body:`, req.body);
+    
+    if (!isValidId(id)) {
+      console.error(`PRIVACY UPDATE ERROR: Invalid photo ID format: ${id}`);
+      return respondError(res, 400, "Invalid photo ID");
+    }
+    
+    const { privacy } = req.body;
+    if (!privacy || !['public', 'private', 'friends_only'].includes(privacy)) {
+      console.error(`PRIVACY UPDATE ERROR: Invalid privacy value: ${privacy}`);
+      return respondError(res, 400, "Privacy must be 'public', 'private', or 'friends_only'");
+    }
 
-    const user = await User.findOne({ _id: req.user._id, "photos._id": id });
-    if (!user) return respondError(res, 404, "Photo not found");
-
-    const p = user.photos.id(id);
-    p.isPrivate = req.body.isPrivate;
-    await user.save();
-    res.json({ success: true, data: p });
+    try {
+      // Fetch the full Mongoose User document
+      const userDocument = await User.findById(loggedInUserId);
+      if (!userDocument) {
+        console.error(`PRIVACY UPDATE ERROR: User document not found for ID: ${loggedInUserId}`);
+        return respondError(res, 404, "User not found");
+      }
+      
+      // Log user photos before the operation
+      console.log(`PRIVACY UPDATE: User photos count: ${userDocument.photos?.length || 0}`);
+      console.log(`PRIVACY UPDATE: Photo IDs:`, userDocument.photos?.map(p => p._id?.toString()));
+      
+      // Call the method on the Mongoose document
+      await userDocument.updatePhotoPrivacy(id, privacy);
+      
+      // Get the updated photo after the operation
+      const updatedUser = await User.findById(loggedInUserId);
+      const updatedPhoto = updatedUser.photos.id(id);
+      
+      if (!updatedPhoto) {
+        console.error(`PRIVACY UPDATE ERROR: Photo not found after update: ${id}`);
+        return respondError(res, 404, "Photo not found after update");
+      }
+      
+      console.log(`PRIVACY UPDATE SUCCESS: Updated photo privacy to ${privacy} for photo ${id}`);
+      res.json({ success: true, data: updatedPhoto });
+    } catch (err) {
+      console.error(`PRIVACY UPDATE ERROR: ${err.message}`);
+      if (err.message === 'Photo not found' || err.message === 'Cannot update privacy of deleted photo') {
+        return respondError(res, 404, err.message);
+      }
+      respondError(res, 400, err.message);
+    }
   })
 );
 
@@ -355,16 +439,54 @@ router.put(
   protect,
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    if (!isValidId(id)) return respondError(res, 400, "Invalid photo ID");
+    const loggedInUserId = req.user._id;
+    
+    console.log(`PROFILE PHOTO UPDATE: User ID: ${loggedInUserId}, Photo ID: ${id}`);
+    
+    if (!isValidId(id)) {
+      console.error(`PROFILE PHOTO ERROR: Invalid photo ID format: ${id}`);
+      return respondError(res, 400, "Invalid photo ID");
+    }
 
-    const user = await User.findOne({ _id: req.user._id, "photos._id": id });
-    if (!user) return respondError(res, 404, "Photo not found");
-
-    const p = user.photos.id(id);
-    user.photos.pull(id);
-    user.photos.unshift(p);
-    await user.save();
-    res.json({ success: true, data: user.photos });
+    try {
+      // Fetch the full Mongoose User document
+      const userDocument = await User.findById(loggedInUserId);
+      if (!userDocument) {
+        console.error(`PROFILE PHOTO ERROR: User document not found for ID: ${loggedInUserId}`);
+        return respondError(res, 404, "User not found");
+      }
+      
+      // Log user photos before the operation
+      console.log(`PROFILE PHOTO UPDATE: User photos count: ${userDocument.photos?.length || 0}`);
+      console.log(`PROFILE PHOTO UPDATE: Photo IDs:`, userDocument.photos?.map(p => p._id?.toString()));
+      
+      // Call the method on the Mongoose document
+      await userDocument.setProfilePhoto(id);
+      
+      // Get updated user data with photos
+      const updatedUser = await User.findById(loggedInUserId).select('photos');
+      
+      if (!updatedUser || !updatedUser.photos) {
+        console.error(`PROFILE PHOTO ERROR: Failed to retrieve updated user photos`);
+        return respondError(res, 500, "Failed to retrieve updated user photos");
+      }
+      
+      // Verify the photo was set as profile
+      const profilePhoto = updatedUser.photos.find(p => p.isProfile && p._id.toString() === id);
+      if (!profilePhoto) {
+        console.error(`PROFILE PHOTO ERROR: Failed to set photo ${id} as profile`);
+      } else {
+        console.log(`PROFILE PHOTO SUCCESS: Set photo ${id} as profile`);
+      }
+      
+      res.json({ success: true, data: updatedUser.photos });
+    } catch (err) {
+      console.error(`PROFILE PHOTO ERROR: ${err.message}`);
+      if (err.message === 'Photo not found' || err.message === 'Cannot set deleted photo as profile photo') {
+        return respondError(res, 404, err.message);
+      }
+      respondError(res, 400, err.message);
+    }
   })
 );
 
@@ -377,27 +499,35 @@ router.delete(
   protect,
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    if (!isValidId(id)) return respondError(res, 400, "Invalid photo ID");
-
-    const user = await User.findOne({ _id: req.user._id, "photos._id": id });
-    if (!user) return respondError(res, 404, "Photo not found");
-    if (user.photos.length === 1) return respondError(res, 400, "Cannot delete only photo");
-
-    const p = user.photos.id(id);
-    if (user.photos[0]._id.toString() === id)
-      return respondError(res, 400, "Cannot delete profile photo");
-
-    user.photos.pull(id);
-    await user.save();
-
-    const filePath = path.join(config.FILE_UPLOAD_PATH, "images", path.basename(p.url));
-    if (fs.existsSync(filePath)) {
-      const delDir = path.join(config.FILE_UPLOAD_PATH, "deleted");
-      fs.mkdirSync(delDir, { recursive: true });
-      fs.renameSync(filePath, path.join(delDir, path.basename(filePath)));
+    const loggedInUserId = req.user._id;
+    
+    console.log(`DELETE PHOTO: User ID: ${loggedInUserId}, Photo ID: ${id}`);
+    
+    if (!isValidId(id)) {
+      console.error(`DELETE PHOTO ERROR: Invalid photo ID format: ${id}`);
+      return respondError(res, 400, "Invalid photo ID");
     }
 
-    res.json({ success: true, message: "Photo deleted", data: { photoId: id } });
+    try {
+      // Fetch the full Mongoose User document
+      const userDocument = await User.findById(loggedInUserId);
+      if (!userDocument) {
+        console.error(`DELETE PHOTO ERROR: User document not found for ID: ${loggedInUserId}`);
+        return respondError(res, 404, "User not found");
+      }
+      
+      // Call the method on the Mongoose document
+      await userDocument.softDeletePhoto(id);
+      
+      console.log(`DELETE PHOTO SUCCESS: Deleted photo ${id}`);
+      res.json({ success: true, message: "Photo deleted", data: { photoId: id } });
+    } catch (err) {
+      console.error(`DELETE PHOTO ERROR: ${err.message}`);
+      if (err.message === 'Photo not found' || err.message === 'Cannot delete profile photo. Set another photo as profile first.') {
+        return respondError(res, 404, err.message);
+      }
+      respondError(res, 400, err.message);
+    }
   })
 );
 
@@ -480,7 +610,7 @@ router.get(
 
 /**
  * GET /api/users/matches
- * Get mutual likes (“matches”)
+ * Get mutual likes ("matches")
  */
 router.get(
   "/matches",
@@ -618,7 +748,7 @@ router.put("/settings/privacy", protect, async (req, res) => {
 
 /**
  * GET /api/users/:id/photo-access-status
- * Check overall access status for someone’s private photos
+ * Check overall access status for someone's private photos
  */
 router.get(
   "/:id/photo-access-status",
@@ -630,7 +760,7 @@ router.get(
     const target = await User.findById(id).select("photos");
     if (!target) return respondError(res, 404, "User not found");
 
-    const privatePhotos = target.photos.filter((p) => p.isPrivate);
+    const privatePhotos = target.photos.filter((p) => p.privacy === 'private');
     if (!privatePhotos.length) {
       return res.json({ success: true, status: "approved", message: "No private photos" });
     }
@@ -868,7 +998,7 @@ router.post(
 
 /**
  * POST /api/users/:id/request-photo-access
- * Request access to all of someone’s private photos
+ * Request access to all of someone's private photos
  */
 router.post(
   "/:id/request-photo-access",
@@ -882,7 +1012,7 @@ router.post(
     const owner = await User.findById(id).select("photos");
     if (!owner) return respondError(res, 404, "User not found");
 
-    const privatePhotos = owner.photos.filter((p) => p.isPrivate);
+    const privatePhotos = owner.photos.filter((p) => p.privacy === 'private');
     if (!privatePhotos.length)
       return res.json({
         success: true,
@@ -1007,7 +1137,7 @@ router.post(
 
     const photo = owner.photos.id(id);
     if (!photo) return respondError(res, 404, "Photo not found");
-    if (!photo.isPrivate) return respondError(res, 400, "Photo not private");
+    if (photo.privacy !== 'private') return respondError(res, 400, "Photo not private");
     if (owner._id.toString() === req.user._id.toString())
       return respondError(res, 400, "Cannot request own photo");
 

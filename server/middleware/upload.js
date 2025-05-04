@@ -61,6 +61,12 @@ const getUploadDirectory = (req, file) => {
     return DIRECTORIES.messages;
   }
   if (url.includes("/photos")) {
+    // If we have a user, organize photos by user ID
+    if (req.user && req.user._id) {
+      const userPhotoDir = path.join(DIRECTORIES.photos, req.user._id.toString());
+      fs.mkdirSync(userPhotoDir, { recursive: true });
+      return userPhotoDir;
+    }
     return DIRECTORIES.photos;
   }
   if (url.includes("/videos") || file.mimetype.startsWith("video/")) {

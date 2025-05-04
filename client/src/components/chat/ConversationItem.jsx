@@ -37,10 +37,11 @@ const ConversationItem = ({
       }}
     >
       <Avatar 
-        src={user.photo} 
+        user={user}
         size="medium" 
         borderActive={isActive}
         status={user.online ? 'online' : 'offline'}
+        showOnlineStatus={true}
       />
       
       <div className={styles.conversationDetails}>

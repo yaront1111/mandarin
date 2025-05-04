@@ -4,7 +4,8 @@ import { useEffect, useState, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth, useNotifications, useLanguage } from "../context"
-import { LanguageSelector } from "./common"
+import { LanguageSelector, Avatar } from "./common"
+import { usePhotoManagement } from "../hooks"
 import { toast } from "react-toastify"
 import { logger } from "../utils/logger.js"
 
@@ -43,6 +44,7 @@ export const Navbar = () => {
   const { t } = useTranslation()
   const { isRTL } = useLanguage()
   const navigate = useNavigate()
+  const { clearCache } = usePhotoManagement()
 
   const handleLogout = async (e) => {
     e.preventDefault()
@@ -194,18 +196,19 @@ export const Navbar = () => {
               </div>
 
               <div className="user-menu">
-                <div className="user-avatar-container">
-                  {user?.photos?.length > 0 ? (
-                    <img
-                      src={user.photos[0].url || "/placeholder.svg?height=32&width=32"}
+                <div className="user-avatar-container" onClick={toggleUserDropdown}>
+                  {user ? (
+                    <Avatar
+                      user={user}
+                      size="small"
                       alt={user.nickname}
-                      className="user-avatar"
-                      onClick={toggleUserDropdown}
+                      status={user.online ? "online" : null}
+                      showOnlineStatus={true}
+                      className="navbar-avatar"
                     />
                   ) : (
                     <FaUserCircle
                       className="user-avatar-icon"
-                      onClick={toggleUserDropdown}
                     />
                   )}
 

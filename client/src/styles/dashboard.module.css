@@ -198,7 +198,7 @@
   border: 1px solid var(--border-color);
   color: var(--text-medium);
   padding: 0 var(--space-md);
-  height: 36px;
+  height: 44px;
   border-radius: var(--radius-full);
   display: flex;
   align-items: center;

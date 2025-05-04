@@ -5,11 +5,8 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth, useUser, useLanguage } from "../context"
 import { toast } from "react-toastify"
-// Removed axios import in favor of apiService
-import apiService from "../services/apiService.jsx"
+import axios from "axios"
 import { useTranslation } from "react-i18next"
-import { useIsMobile, useMobileDetect } from "../hooks"
-import logger from "../utils/logger"
 import {
   FaUserCircle,
   FaCamera,
@@ -21,28 +18,41 @@ import {
   FaTimes,
   FaCheck,
   FaExclamationTriangle,
+  FaUsers
 } from "react-icons/fa"
 import { Navbar } from "../components/LayoutComponents"
 
 // Import CSS module
 import styles from "../styles/profile.module.css"
 
+// Import hooks and components
+import { usePhotoManagement } from "../hooks"
+import PhotoGallery from "../components/profile/PhotoGallery"
+
 // Import the normalizePhotoUrl utility
 import { normalizePhotoUrl } from "../utils/index.js"
+import logger from "../utils/logger"
 
-// Create a named logger for this component
 const log = logger.create("Profile")
 
 const Profile = () => {
-  
   const { user } = useAuth()
-  const { updateProfile, uploadPhoto, refreshUserData } = useUser()
+  const { updateProfile, refreshUserData } = useUser() // Removed uploadPhoto since we'll use the hook version
   const { t } = useTranslation()
   const { isRTL } = useLanguage()
   
-  // Add mobile detection
-  const isMobile = useIsMobile()
-  const { isTouch, isIOS } = useMobileDetect()
+  // Use the centralized photo management hook
+  const {
+    uploadPhoto,
+    setPhotoPrivacy,
+    setProfilePhoto,
+    deletePhoto,
+    isUploading,
+    uploadProgress,
+    isProcessingPhoto,
+    processPhotos,
+    clearCache
+  } = usePhotoManagement()
 
   const [isEditing, setIsEditing] = useState(false)
   const [profileData, setProfileData] = useState({
@@ -53,7 +63,6 @@ const Profile = () => {
       location: "",
       bio: "",
       interests: [],
-      // Change back to iAm
       iAm: "",
       lookingFor: [],
       intoTags: [],
@@ -61,11 +70,8 @@ const Profile = () => {
       maritalStatus: "",
     },
   })
-  const [localPhotos, setLocalPhotos] = useState([])
-  const [profilePhotoIndex, setProfilePhotoIndex] = useState(0)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [isUploading, setIsUploading] = useState(false)
-  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false)
+  
+  // Remove localPhotos state, use processPhotos from the hook instead
   const [availableInterests] = useState([
     "Dating",
     "Casual",
@@ -161,10 +167,11 @@ const Profile = () => {
   const [messageLoading, setMessageLoading] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [photoLoading, setPhotoLoading] = useState({})
+  const [photosUpdateTimestamp, setPhotosUpdateTimestamp] = useState(Date.now())
 
   const isOwnProfile = !userId // Determine if it's the logged-in user's profile
 
-  // Initialize profile state from user data.
+  // Initialize profile state from user data
   useEffect(() => {
     setIsLoading(true)
     if (user) {
@@ -176,7 +183,6 @@ const Profile = () => {
           location: user.details?.location || "",
           bio: user.details?.bio || "",
           interests: user.details?.interests || [],
-          // Ensure these fields are properly read from user data
           iAm: user.details?.iAm || "",
           lookingFor: user.details?.lookingFor || [],
           intoTags: user.details?.intoTags || [],
@@ -184,22 +190,9 @@ const Profile = () => {
           maritalStatus: user.details?.maritalStatus || "",
         },
       })
-
-      if (user.photos && user.photos.length > 0) {
-        const photos = user.photos.map((photo) => ({
-          ...photo,
-          isPrivate: photo.isPrivate ?? false,
-          isProfile: false,
-        }))
-        if (photos.length > 0) {
-          photos[0].isProfile = true
-          setProfilePhotoIndex(0)
-        }
-        setLocalPhotos(photos)
-      } else {
-        setLocalPhotos([])
-        setProfilePhotoIndex(-1)
-      }
+      
+      // No longer need to manually process photos - the hook handles this
+      log.debug(`User has ${user.photos?.length || 0} photos`)
     }
     setIsLoading(false)
   }, [user])
@@ -423,238 +416,147 @@ const Profile = () => {
           maritalStatus: profileData.details.maritalStatus || "",
         },
       }
-      
-      profileLogger.info("Submitting profile data:", submissionData)
+
+      console.log("Submitting profile data:", submissionData)
       const updatedUser = await updateProfile(submissionData)
-      
+
       if (updatedUser) {
-        profileLogger.info("Profile updated successfully, refreshing user data...");
-        
-        try {
-          // After successful update, force a refresh of user data
-          const refreshResult = await refreshUserData(updatedUser._id);
-          
-          if (refreshResult) {
-            profileLogger.info("User data refresh successful");
-          } else {
-            profileLogger.warn("User data refresh may not have been complete, but continuing");
-          }
-          
-          toast.success(t('profile.profileUpdated'))
-          setIsEditing(false)
-        } catch (refreshError) {
-          // Even if refresh fails, the profile was updated successfully
-          profileLogger.warn("Failed to refresh user data, but profile was updated:", refreshError);
-          toast.success(t('profile.profileUpdated'))
-          toast.info(t('profile.refreshFailed'))
-          setIsEditing(false)
+        console.log("Profile updated successfully, refreshing user data...");
+
+        // After successful update, force a refresh of user data and wait for it to complete
+        const refreshResult = await refreshUserData(updatedUser._id);
+
+        if (refreshResult) {
+          console.log("User data refresh successful");
+        } else {
+          console.warn("User data refresh may not have been complete, but continuing");
         }
+
+        toast.success(t('profile.profileUpdated'))
+        setIsEditing(false)
       } else {
         throw new Error(t('profile.updateFailed'))
       }
     } catch (error) {
-      profileLogger.error("Failed to update profile:", error)
+      console.error("Failed to update profile:", error)
       toast.error(error.message || t('errors.profileUpdateFailed'))
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  // Update the handlePhotoUpload function to fix race conditions and memory leaks
+  // Updated to use the centralized photo management hook
   const handlePhotoUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
-    const fileType = file.type.split("/")[0]
-    if (fileType !== "image") {
-      toast.error(t('errors.uploadTypeMismatch'))
-      return
-    }
-    const maxSize = 5 * 1024 * 1024 // 5MB
-    if (file.size > maxSize) {
-      toast.error(t('errors.uploadSizeLimitExceeded'))
-      return
-    }
-    setIsUploading(true)
-    setUploadProgress(0)
-
-    // Create a temporary ID for this upload
-    const tempId = `temp-${Date.now()}`
-
-    // Add a temporary photo with loading state
-    setLocalPhotos((prev) => [
-      ...prev,
-      {
-        _id: tempId,
-        url: URL.createObjectURL(file),
-        isPrivate: false,
-        isProfile: false,
-        isLoading: true,
-      },
-    ])
-
+    
+    // No need to duplicate validation logic from the hook
     try {
-      const newPhoto = await uploadPhoto(file, false, (progress) => {
-        setUploadProgress(progress)
-      })
-
+      // Default to private for new uploads
+      const newPhoto = await uploadPhoto(file, 'private')
+      
       if (newPhoto) {
+        // Clear URL cache to ensure new photo is displayed without refresh
+        clearCache();
+        
+        // Update timestamp to force re-rendering
+        setPhotosUpdateTimestamp(Date.now());
+        
         toast.success(t('profile.photoUploadSuccess'))
-
-        // Clean up temporary photo before refreshing data
-        setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
-
-        // Refresh user data to get the updated photos
-        await refreshUserData(user?._id)
-
-        // Reset upload progress and file input
-        setUploadProgress(0)
+        
+        // Force immediate refresh of user data to update UI without page reload
+        await refreshUserData(user?._id, true)
+        
+        // Reset file input
         if (fileInputRef.current) {
           fileInputRef.current.value = ""
         }
-      } else {
-        throw new Error(t('errors.photoUploadFailed'))
       }
     } catch (error) {
       log.error("Failed to upload photo:", error)
       toast.error(error.message || t('errors.photoUploadFailed'))
-
-      // Remove the temporary photo on error
-      setLocalPhotos((prev) => prev.filter((photo) => photo._id !== tempId))
-    } finally {
-      setIsUploading(false)
     }
   }
   const triggerFileInput = () => {
     fileInputRef.current?.click()
   }
 
-  const handleTogglePhotoPrivacy = async (photoId, e) => {
+  // Updated to use the centralized hook's setPhotoPrivacy method
+  const handleSetPhotoPrivacy = async (photoId, newPrivacy, e) => {
     e?.stopPropagation()
-    if (isProcessingPhoto) return
-
-    // Check if this is a temporary photo
-    if (photoId.toString().startsWith("temp-")) {
-      toast.warning(t('profile.uploading'))
-      return
-    }
-
-    const photoIndex = localPhotos.findIndex((p) => p._id === photoId)
-    if (photoIndex === -1) return
-    const newPrivacyValue = !localPhotos[photoIndex].isPrivate
-    setLocalPhotos((prev) =>
-      prev.map((photo) => (photo._id === photoId ? { ...photo, isPrivate: newPrivacyValue } : photo)),
-    )
-    setIsProcessingPhoto(true)
+    
     try {
-      const data = await apiService.put(`/users/photos/${photoId}/privacy`, { 
-        isPrivate: newPrivacyValue 
-      })
+      // The hook handles all validation and error processing
+      await setPhotoPrivacy(photoId, newPrivacy, user?._id)
       
-      if (!data.success) {
-        throw new Error(data.error || t('errors.photoPrivacyUpdateFailed'))
-      }
-      toast.success(t('profile.photoPrivacySuccess', { status: newPrivacyValue ? t('common.private') : t('common.public') }))
-      await refreshUserData(user?._id)
+      // Clear URL cache to ensure photo is displayed with updated privacy
+      clearCache();
+      
+      // Update timestamp to force re-rendering
+      setPhotosUpdateTimestamp(Date.now());
+      
+      // Force immediate refresh of user data to update UI without page reload
+      await refreshUserData(user?._id, true)
+      
+      // Toast with the privacy level that was set
+      const privacyName = 
+        newPrivacy === 'private' ? t('common.private') : 
+        newPrivacy === 'friends_only' ? t('common.friendsOnly') :
+        t('common.public');
+      
+      toast.success(t('profile.photoPrivacySuccess', { status: privacyName }))
     } catch (error) {
       log.error("Failed to update photo privacy:", error)
       toast.error(error.message || t('errors.photoPrivacyUpdateFailed'))
-      setLocalPhotos((prev) =>
-        prev.map((photo) => (photo._id === photoId ? { ...photo, isPrivate: !newPrivacyValue } : photo)),
-      )
-    } finally {
-      setIsProcessingPhoto(false)
     }
   }
 
+  // Updated to use the centralized hook's setProfilePhoto method
   const handleSetProfilePhoto = async (photoId) => {
-    if (isProcessingPhoto) return
-
-    // Check if this is a temporary photo
-    if (photoId.toString().startsWith("temp-")) {
-      toast.warning(t('profile.uploading'))
-      return
-    }
-
-    const photoIndex = localPhotos.findIndex((p) => p._id === photoId)
-    if (photoIndex === -1) return
-    if (profilePhotoIndex === photoIndex) return
-
-    setProfilePhotoIndex(photoIndex)
-    setLocalPhotos((prev) =>
-      prev.map((photo, index) => ({
-        ...photo,
-        isProfile: index === photoIndex,
-      })),
-    )
-    setIsProcessingPhoto(true)
     try {
-      const data = await apiService.put(`/users/photos/${photoId}/profile`, {})
+      // The hook handles all validation and processing
+      await setProfilePhoto(photoId, user?._id)
       
-      if (!data.success) {
-        throw new Error(data.error || t('errors.profilePhotoUpdateFailed'))
-      }
+      // Clear URL cache to ensure the profile photo updates are visible
+      clearCache();
+      
+      // Update timestamp to force re-rendering
+      setPhotosUpdateTimestamp(Date.now());
+      
+      // Force immediate refresh of user data to update UI without page reload
+      await refreshUserData(user?._id, true)
+      
       toast.success(t('profile.profilePhotoUpdated'))
-      await refreshUserData(user?._id)
     } catch (error) {
       log.error("Failed to set profile photo:", error)
       toast.error(error.message || t('errors.profilePhotoUpdateFailed'))
-      const oldProfileIndex = localPhotos.findIndex((p) => p.isProfile)
-      if (oldProfileIndex !== -1) {
-        setProfilePhotoIndex(oldProfileIndex)
-        setLocalPhotos((prev) =>
-          prev.map((photo, index) => ({
-            ...photo,
-            isProfile: index === oldProfileIndex,
-          })),
-        )
-      }
-    } finally {
-      setIsProcessingPhoto(false)
     }
   }
 
+  // Updated to use the centralized hook's deletePhoto method
   const handleDeletePhoto = async (photoId, e) => {
     e?.stopPropagation()
-    if (isProcessingPhoto) return
-
-    // Check if this is a temporary photo
-    if (photoId.toString().startsWith("temp-")) {
-      // For temporary photos, just remove them from the local state
-      setLocalPhotos((prev) => prev.filter((photo) => photo._id !== photoId))
-      return
-    }
-
+    
+    // Confirm deletion with the user
     if (!window.confirm(t('profile.confirmDeletePhoto'))) return
-    const photoIndex = localPhotos.findIndex((p) => p._id === photoId)
-    if (photoIndex === -1) return
-    if (localPhotos.length === 1) {
-      toast.error(t('profile.cannotDeleteOnlyPhoto'))
-      return
-    }
-    if (localPhotos[photoIndex].isProfile) {
-      toast.error(t('profile.cannotDeleteProfilePhoto'))
-      return
-    }
-    const updatedPhotos = localPhotos.filter((photo) => photo._id !== photoId)
-    setLocalPhotos(updatedPhotos)
-    if (photoIndex < profilePhotoIndex) {
-      setProfilePhotoIndex(profilePhotoIndex - 1)
-    }
-    setIsProcessingPhoto(true)
+    
     try {
-      const data = await apiService.delete(`/users/photos/${photoId}`)
+      // The hook handles validation including profile photo check
+      await deletePhoto(photoId, user?._id)
       
-      if (!data.success) {
-        throw new Error(data.error || t('errors.photoDeleteFailed'))
-      }
+      // Clear URL cache to ensure deleted photo is no longer displayed
+      clearCache();
+      
+      // Update timestamp to force re-rendering
+      setPhotosUpdateTimestamp(Date.now());
+      
+      // Force immediate refresh of user data to update UI without page reload
+      await refreshUserData(user?._id, true)
+      
       toast.success(t('profile.photoDeleteSuccess'))
-      await refreshUserData(user?._id)
     } catch (error) {
       log.error("Failed to delete photo:", error)
       toast.error(error.message || t('errors.photoDeleteFailed'))
-      await refreshUserData(user?._id)
-    } finally {
-      setIsProcessingPhoto(false)
     }
   }
 
@@ -692,15 +594,18 @@ const Profile = () => {
           return
         }
 
-        // Use the correct endpoint based on your API routes with apiService
+        // Use the correct endpoint based on your API routes
         // If viewing own profile, use the current user endpoint
-        const endpoint = userId ? `/users/${userId}` : `/users`
+        const endpoint = userId ? `/api/users/${userId}` : `/api/users`
 
-        // Use apiService instead of direct axios call
-        const response = await apiService.get(endpoint)
+        const response = await axios.get(endpoint, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
         setProfile(response.data)
       } catch (error) {
-        log.error("Failed to fetch profile:", error)
+        console.error("Failed to fetch profile:", error)
         setError("Could not load profile data")
       } finally {
         setLoading(false)
@@ -721,7 +626,7 @@ const Profile = () => {
         isLiked: !prevProfile.isLiked,
       }))
     } catch (error) {
-      log.error("Failed to like/unlike profile:", error)
+      console.error("Failed to like/unlike profile:", error)
       toast.error("Failed to like/unlike profile")
     } finally {
       setLikeLoading(false)
@@ -735,22 +640,15 @@ const Profile = () => {
       // Example: navigate(`/messages/${userId}`);
       navigate("/messages") // Redirect to messages for now
     } catch (error) {
-      log.error("Failed to navigate to messages:", error)
+      console.error("Failed to navigate to messages:", error)
       toast.error("Failed to navigate to messages")
     } finally {
       setMessageLoading(false)
     }
   }
 
-  const handleProfilePhotoUpload = () => {
-    // Implement your profile photo upload logic here
-    log.debug("Profile photo upload clicked")
-  }
-
-  const handleCoverPhotoUpload = () => {
-    // Implement your cover photo upload logic here
-    log.debug("Cover photo upload clicked")
-  }
+  // Removed unused profile photo upload functions
+  // All photo uploads are now handled via the centralized usePhotoManagement hook
 
   // Update the getProfilePhoto function to use the normalizePhotoUrl utility
   const getProfilePhoto = () => {
@@ -761,8 +659,9 @@ const Profile = () => {
   }
 
   // Replace the profile rendering with this
+  
   return (
-    <div className={`${styles.profilePage} min-vh-100 w-100 overflow-hidden bg-light-subtle transition-all ${isRTL ? 'rtl-layout' : ''} ${isMobile ? 'mobile-device' : ''}`}>
+    <div className={`${styles.profilePage} min-vh-100 w-100 overflow-hidden bg-light-subtle transition-all ${isRTL ? 'rtl-layout' : ''}`}>
       {/* Use Navbar from LayoutComponents */}
       <Navbar />
 
@@ -778,36 +677,39 @@ const Profile = () => {
             <>
               {/* Profile Photo Section */}
               <div className={`${styles.photoSection} text-center bg-white shadow-lg rounded-lg border py-4 transform-gpu hover-shadow-xl transition-all`}>
-                {localPhotos.length > 0 && profilePhotoIndex >= 0 ? (
+                {user?.photos && user.photos.some(p => p.isProfile && !p.isDeleted) ? (
                   <div className={`${styles.profilePhotoWrapper} position-relative d-inline-block`}>
-                    <img
-                      src={localPhotos[profilePhotoIndex].url || "/placeholder.svg?height=200&width=200"}
-                      alt={t('profile.profilePhoto')}
-                      className={`${styles.profilePhoto} w-300px h-300px object-cover rounded-circle shadow-lg border-4 border-white transform-gpu transition-transform hover-scale`}
-                      onLoad={() => {
-                        // Clear loading state when image loads
-                        if (localPhotos[profilePhotoIndex]?.isLoading) {
-                          setLocalPhotos((prev) =>
-                            prev.map((photo, idx) =>
-                              idx === profilePhotoIndex ? { ...photo, isLoading: false } : photo,
-                            ),
-                          )
-                        }
-                      }}
-                    />
-                    {localPhotos[profilePhotoIndex]?.isLoading && (
-                      <div className="position-absolute top-0 left-0 w-100 h-100 rounded-circle d-flex align-items-center justify-content-center bg-overlay-light">
-                        <div className={`${styles.spinner} ${styles.spinnerLarge}`}></div>
-                      </div>
-                    )}
-                    {localPhotos[profilePhotoIndex].isPrivate && (
-                      <div className="position-absolute top-0 left-0 w-100 h-100 rounded-circle d-flex align-items-center justify-content-center bg-overlay-dark">
-                        <FaLock className="text-3xl text-white" />
-                      </div>
-                    )}
-                    <div className="position-absolute bottom-0 left-0 w-100 py-1 bg-overlay-dark text-white text-xs rounded-bottom-circle">
-                      {t('profile.profilePhoto')}
-                    </div>
+                    {/* Find the profile photo from user photos */}
+                    {(() => {
+                      const profilePhoto = user.photos.find(p => p.isProfile && !p.isDeleted) || user.photos[0];
+                      const photoPrivacy = profilePhoto.privacy || (profilePhoto.isPrivate ? 'private' : 'public');
+                      
+                      return (
+                        <>
+                          <img
+                            key={`profile-photo-${photosUpdateTimestamp}`}
+                            src={normalizePhotoUrl(profilePhoto.url, true) || "/placeholder.svg?height=200&width=200"}
+                            alt={t('profile.profilePhoto')}
+                            className={`${styles.profilePhoto} w-300px h-300px object-cover rounded-circle shadow-lg border-4 border-white transform-gpu transition-transform hover-scale`}
+                          />
+                          
+                          {/* Show privacy overlay based on the new privacy model */}
+                          {photoPrivacy !== 'public' && (
+                            <div className="position-absolute top-0 left-0 w-100 h-100 rounded-circle d-flex align-items-center justify-content-center bg-overlay-dark">
+                              {photoPrivacy === 'private' ? (
+                                <FaLock className="text-3xl text-white" />
+                              ) : (
+                                <FaUsers className="text-3xl text-white" />
+                              )}
+                            </div>
+                          )}
+                          
+                          <div className="position-absolute bottom-0 left-0 w-100 py-1 bg-overlay-dark text-white text-xs rounded-bottom-circle">
+                            {t('profile.profilePhoto')}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 ) : (
                   <div className="w-300px h-300px rounded-circle bg-light d-flex align-items-center justify-content-center mx-auto border-4 border-white">
@@ -852,90 +754,33 @@ const Profile = () => {
                 </div>
               </div>
 
-              {/* Photo Gallery Section - With mobile optimization */}
-              {localPhotos.length > 0 && (
-                <div className={`${styles.photoGallery} ${isMobile ? 'mobile-gallery' : ''}`}>
-                  {localPhotos.map((photo) => (
-                    <div
-                      key={photo._id}
-                      className={`${styles.galleryItem} ${photo.isProfile ? styles.profileGalleryItem : ''} ${isMobile ? 'touch-item' : ''}`}
-                      style={{
-                        cursor: photo._id.toString().startsWith("temp-") ? "not-allowed" : "pointer",
-                      }}
-                      onClick={() => handleSetProfilePhoto(photo._id)}
+              {/* Photo Gallery Section - Using the new PhotoGallery component */}
+              {user?.photos && user.photos.length > 0 && (
+                <>
+                  <PhotoGallery
+                    key={`photo-gallery-${user.photos?.length || 0}-${photosUpdateTimestamp}`}
+                    photos={processPhotos(user.photos)}
+                    onSetProfilePhoto={handleSetProfilePhoto}
+                    onSetPrivacy={handleSetPhotoPrivacy}
+                    onDeletePhoto={handleDeletePhoto}
+                    isProcessing={isProcessingPhoto}
+                    isUploading={isUploading}
+                  />
+                  
+                  {/* Add Photo Button - Keep outside the gallery for better positioning */}
+                  <div className="text-center mt-4">
+                    <button
+                      type="button"
+                      className={styles.addPhotoButton}
+                      onClick={triggerFileInput}
+                      disabled={isUploading || isProcessingPhoto}
+                      aria-label={t('profile.addPhoto')}
                     >
-                      <img
-                        src={photo.url || "/placeholder.svg?height=100&width=100"}
-                        alt={t('profile.profilePhoto')}
-                        className={styles.galleryImage}
-                      />
-                      {photo.isLoading && (
-                        <div className={styles.galleryItemLoading}>
-                          <div className={`${styles.spinner} ${styles.spinnerSmall}`}></div>
-                        </div>
-                      )}
-                      {photo._id.toString().startsWith("temp-") && (
-                        <div className={styles.galleryItemUploading}>
-                          {t('profile.uploading')}
-                        </div>
-                      )}
-                      <div className={styles.photoControls}>
-                        <button
-                          onClick={(e) => handleTogglePhotoPrivacy(photo._id, e)}
-                          className={styles.photoControlBtn}
-                          title={photo.isPrivate ? t('profile.makePublic') : t('profile.makePrivate')}
-                          disabled={isProcessingPhoto || photo.isLoading || photo._id.toString().startsWith("temp-")}
-                          aria-label={photo.isPrivate ? t('profile.makePublic') : t('profile.makePrivate')}
-                        >
-                          {photo.isPrivate ? (
-                            <FaLock style={{ fontSize: "14px" }} />
-                          ) : (
-                            <FaLockOpen style={{ fontSize: "14px" }} />
-                          )}
-                        </button>
-                        {!photo.isProfile && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleSetProfilePhoto(photo._id)
-                            }}
-                            className={styles.photoControlBtn}
-                            title={t('profile.setAsProfilePhoto')}
-                            disabled={isProcessingPhoto || photo.isLoading || photo._id.toString().startsWith("temp-")}
-                            aria-label={t('profile.setAsProfilePhoto')}
-                          >
-                            <FaStar style={{ fontSize: "14px" }} />
-                          </button>
-                        )}
-                        {!photo.isProfile && (
-                          <button
-                            onClick={(e) => handleDeletePhoto(photo._id, e)}
-                            className={styles.photoControlBtn}
-                            title={t('profile.deletePhoto')}
-                            disabled={isProcessingPhoto || photo.isLoading}
-                            aria-label={t('profile.deletePhoto')}
-                          >
-                            <FaTrash style={{ fontSize: "14px" }} />
-                          </button>
-                        )}
-                      </div>
-                      {photo.isProfile && (
-                        <div className={styles.profileBadge}>
-                          {t('profile.profilePhoto')}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    className={styles.addPhotoItem}
-                    onClick={triggerFileInput}
-                    disabled={isUploading || isProcessingPhoto}
-                    aria-label={t('profile.addPhoto')}
-                  >
-                    <FaCamera style={{ fontSize: "24px", color: "#555" }} />
-                  </button>
-                </div>
+                      <FaCamera style={{ fontSize: "18px", marginRight: "8px" }} />
+                      {t('profile.addPhoto')}
+                    </button>
+                  </div>
+                </>
               )}
 
               {/* Profile Information Section - Enhanced with utility classes */}
@@ -943,9 +788,9 @@ const Profile = () => {
                 <div className={styles.profileHeader}>
                   <h2 className={styles.profileTitle}>{t('profile.myProfile')}</h2>
                   {!isEditing ? (
-                    <button 
+                    <button
                       className={`${styles.btn} ${styles.btnPrimary}`}
-                      onClick={() => setIsEditing(true)} 
+                      onClick={() => setIsEditing(true)}
                       aria-label={t('profile.edit')}
                     >
                       <FaEdit /> <span>{t('profile.edit')}</span>
@@ -1056,16 +901,16 @@ const Profile = () => {
                         )}
                       </div>
                     </div>
-                    
+
                     <div className={styles.mt4}>
                       <label className={styles.formLabel}>{t('profile.iAmA')}</label>
                       <div className={`${styles.flexDisplay} ${styles.flexWrap} ${styles.gap2}`}>
                         {iAmOptions.map((option) => {
-                          const identityClass = 
-                            option === "woman" ? styles["identity-woman"] : 
-                            option === "man" ? styles["identity-man"] : 
+                          const identityClass =
+                            option === "woman" ? styles["identity-woman"] :
+                            option === "man" ? styles["identity-man"] :
                             option === "couple" ? styles["identity-couple"] : "";
-                            
+
                           return (
                             <button
                               key={option}
@@ -1085,7 +930,7 @@ const Profile = () => {
                         <p className={`${styles.textMuted} ${styles.fstItalic} ${styles.mt2}`}>{t('profile.notSpecified')}</p>
                       )}
                     </div>
-                    
+
                     <div className={styles.mt4}>
                       <label className={styles.formLabel}>{t('profile.maritalStatus')}</label>
                       <div className={`${styles.flexDisplay} ${styles.flexWrap} ${styles.gap2}`}>
@@ -1150,7 +995,7 @@ const Profile = () => {
                           <button
                             key={interest}
                             type="button"
-                            className={`${styles.interestTag} ${isSelected ? styles.selected : ''} ${isMobile ? 'touch-target' : ''}`}
+                            className={`${styles.interestTag} ${isSelected ? styles.selected : ''}`}
                             onClick={() => isEditing && toggleInterest(interest)}
                             disabled={!isEditing || (!isSelected && profileData.details.interests.length >= 10)}
                             aria-pressed={isSelected}
@@ -1178,11 +1023,11 @@ const Profile = () => {
                       {lookingForOptions.map((option) => {
                         const isSelected = profileData.details.lookingFor.includes(option);
                         // Gender-based styling
-                        const identityClass = 
-                          option.toLowerCase().includes("women") || option.toLowerCase().includes("woman") ? styles["identity-woman"] : 
-                          option.toLowerCase().includes("men") || option.toLowerCase().includes("man") ? styles["identity-man"] : 
+                        const identityClass =
+                          option.toLowerCase().includes("women") || option.toLowerCase().includes("woman") ? styles["identity-woman"] :
+                          option.toLowerCase().includes("men") || option.toLowerCase().includes("man") ? styles["identity-man"] :
                           option.toLowerCase().includes("couple") ? styles["identity-couple"] : "";
-                          
+
                         return (
                           <button
                             key={option}

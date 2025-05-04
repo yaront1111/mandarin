@@ -367,6 +367,57 @@
   border-color: var(--primary, #ff5a5f);
 }
 
+/* Add Photo Button */
+.addPhotoButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: var(--white, #ffffff);
+  color: var(--primary, #ff5a5f);
+  border: 1px solid var(--primary, #ff5a5f);
+  font-weight: 500;
+  border-radius: 9999px;
+  padding: 12px 24px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.17, 0.67, 0.34, 0.99);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  margin: 16px auto;
+}
+
+.addPhotoButton:hover {
+  background-color: var(--primary, #ff5a5f);
+  color: var(--white, #ffffff);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 15px rgba(var(--primary-rgb), 0.2);
+}
+
+.addPhotoButton:active {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.15);
+}
+
+.addPhotoButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+:global(.dark) .addPhotoButton {
+  background-color: rgba(30, 30, 30, 0.8);
+  color: var(--primary, #ff5a5f);
+  border-color: var(--primary, #ff5a5f);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+:global(.dark) .addPhotoButton:hover {
+  background-color: var(--primary, #ff5a5f);
+  color: #121212;
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3);
+}
+
 /* Profile Info */
 .profileInfo {
   margin-bottom: var(--space-xl, 2rem);

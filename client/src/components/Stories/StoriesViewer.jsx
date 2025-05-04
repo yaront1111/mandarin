@@ -6,6 +6,7 @@ import { FaHeart, FaRegHeart, FaComment, FaShare, FaPlay, FaPause, FaVolumeUp, F
 import { toast } from "react-toastify"
 import styles from "../../styles/stories.module.css"
 import logger from "../../utils/logger"
+import Avatar from "../common/Avatar"
 
 const log = logger.create("StoriesViewer")
 
@@ -894,16 +895,15 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
 
           {/* User info */}
           <div className={styles.storiesUserInfo}>
-            <img
-              src={profilePicture() || "/placeholder.svg"}
+            <Avatar 
+              user={
+                typeof currentStory?.user === "object" 
+                  ? currentStory.user 
+                  : currentStory?.userData || { _id: currentStory?.user, nickname: getUserDisplayName() }
+              }
               alt={getUserDisplayName()}
               className={styles.storiesUserAvatar}
-              loading="lazy"
-              crossOrigin="anonymous"
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = "/placeholder.svg";
-              }}
+              size="small"
             />
             <div className={styles.storiesUserDetails}>
               <span className={styles.storiesUsername}>{getUserDisplayName()}</span>

@@ -1,13 +1,14 @@
 // seedDb.js (Refactored for Better Data Quality)
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 
 // --- Configuration ---
 const MONGO_URI = 'mongodb://localhost:27017/mandarin';
-const NUM_USERS = 300;
-const MAX_PHOTOS_PER_USER = 6; // Increased for more photos
-const NUM_LIKES_TO_SEED = 500; // Increased for more engagement
-const NUM_PHOTO_REQUESTS_TO_SEED = 250;
+const NUM_USERS = 50; // Reduced number of users
+const MAX_PHOTOS_PER_USER = 5;
+const NUM_LIKES_TO_SEED = 100;
+const NUM_PHOTO_REQUESTS_TO_SEED = 50;
 const SALT_ROUNDS = 12;
 
 // --- Import Mongoose Models ---
@@ -18,7 +19,6 @@ import logger from './logger.js';
 
 // --- Helper Functions ---
 const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
 const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // Get multiple random elements without duplicates
@@ -100,7 +100,6 @@ const interestsBank = [
 ];
 
 const iAmOptions = ["woman", "man", "couple"];
-
 const lookingForOptions = ["women", "men", "couples"];
 
 const intoTagsOptions = [
@@ -138,72 +137,16 @@ const bioTemplates = [
   (details) => `${details.location} native, ${details.age} years old. ${details.maritalStatus} and enjoying life. I'm deeply into ${details.interests[0] || 'entertainment'} and ${details.interests[1] || 'culture'}. I value honesty, respect, and good communication. Let's chat and see if we click.`,
 
   (details) => `Just a ${details.iAm} who enjoys the finer things in life. ${details.age}, living in beautiful ${details.location}. ${details.maritalStatus}. My passions include ${details.interests[0] || 'traveling'} and ${details.interests[1] || 'meeting new people'}. Message me if you're interested in knowing more.`,
-
-  (details) => `${details.iAm.charAt(0).toUpperCase() + details.iAm.slice(1)}, ${details.age}, ${details.maritalStatus.toLowerCase()}. Based in ${details.location}. Looking for fun times and meaningful connections. Love ${details.interests[0] || 'adventures'} and ${details.interests[1] || 'spontaneous plans'}. Say hi if you think we'd get along!`,
-
-  (details) => `Living my best life in ${details.location}! ${details.age}-year-old ${details.iAm}, ${details.maritalStatus.toLowerCase()}. When I'm not working, I enjoy ${details.interests[0] || 'socializing'} and ${details.interests[1] || 'relaxing'}. Open to new experiences and meeting interesting people.`,
-
-  (details) => `${details.maritalStatus} ${details.iAm} from ${details.location}. ${details.age} years young with a passion for ${details.interests[0] || 'meeting new people'} and ${details.interests[1] || 'trying new things'}. Looking for genuine connections - life's too short for anything less!`,
-
-  (details) => `Hello from ${details.location}! I'm a ${details.age}-year-old ${details.iAm}, ${details.maritalStatus.toLowerCase()} and enjoying life. My interests include ${details.interests[0] || 'socializing'}, ${details.interests[1] || 'having fun'}, and making meaningful connections. Let's chat!`,
-
-  (details) => `${details.iAm.charAt(0).toUpperCase() + details.iAm.slice(1)}, ${details.age}. Living in ${details.location} and loving it! ${details.maritalStatus} and open to new experiences. Passionate about ${details.interests[0] || 'life'} and ${details.interests[1] || 'good company'}. Message me if we seem compatible!`
 ];
 
-// Enhanced photo collections with better quality image URLs
-const photoCollections = {
-  woman: [
-    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1524250502761-1ac6f2e30d43?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1548142813-c348350df52b?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1503944583220-79d8926ad5e2?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1499714608240-22fc6ad53fb2?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1577023311546-cdc07a8454d9?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1481824429379-07aa5e5b0739?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1509967419530-da38b4704bc6?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1513732822839-24f03a92f633?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1507152832244-10d45c7eda57?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1564485377539-4af72d1f6a2f?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1524638431109-93d95c968f03?auto=format&fit=crop&w=800'
-  ],
-  man: [
-    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1568602471122-7832951cc4c5?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1480455624313-e29b44bbfde1?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1531891437562-4301cf35b7e4?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1488161628813-04466f872be2?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1564564321837-a57b7070ac4f?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1508341591423-4347099e1f19?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1463453091185-61582044d556?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1504257432389-52343af06ae3?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=800'
-  ],
-  couple: [
-    'https://images.unsplash.com/photo-1516585427167-9f4af9627e6c?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1528657249085-554e19b13cde?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1491438590914-bc09fcaaf77a?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1567784177951-6fa58317e16b?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1494774157365-9e04c6720e47?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1521897258701-21e2a01f5e8b?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1589440557903-e7a8b40a254c?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1477265650817-5dd8256e26ae?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1542841791-1925b02a2bbb?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1515355758951-b4b26c789f2e?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1521260857128-e762e14101a6?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1604604557773-c70cbc10360b?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1523031456599-e7689798c5dc?auto=format&fit=crop&w=800',
-    'https://images.unsplash.com/photo-1503224081655-338c8cf6e9f8?auto=format&fit=crop&w=800'
-  ]
-};
+// Local file placeholders for testing
+const placeholderImages = [
+  '/uploads/seed/placeholder_1.jpg',
+  '/uploads/seed/placeholder_2.png',
+  '/uploads/seed/placeholder_3.png',
+  '/uploads/seed/placeholder_4.png',
+  '/uploads/seed/placeholder_8.png'
+];
 
 // --- Main Seeding Function ---
 const seedDatabase = async () => {
@@ -339,7 +282,7 @@ const seedDatabase = async () => {
         accountTier,
         details: userDetails,
         isOnline: Math.random() < 0.3,
-        lastActive: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 14)), // More recent activity
+        lastActive: new Date(),
         photos: [],
         isVerified: true,
         active: true,
@@ -351,18 +294,13 @@ const seedDatabase = async () => {
         createdUserIds.push(savedUser._id.toString());
         createdUsers.push(savedUser);
 
-        if ((i + 1) % 50 === 0) {
+        if ((i + 1) % 10 === 0) {
           logger.info(`Created ${i + 1} users so far...`);
         }
       } catch (error) {
         logger.error(`Error creating user ${nickname}: ${error.message}. Skipping user.`);
         if (error.code === 11000) {
           logger.warn(`Duplicate key error for user ${nickname}. Might be email/nickname collision.`);
-        }
-        if (error.errors) {
-          Object.keys(error.errors).forEach(key => {
-            logger.error(`Validation Error (${key}): ${error.errors[key].message}`);
-          });
         }
       }
     }
@@ -373,88 +311,76 @@ const seedDatabase = async () => {
       return;
     }
 
-    // --- 2. Seed Photos with Better Quality Images ---
-    logger.info('Seeding photos for users with higher quality images...');
-    const allPrivatePhotoIdsWithOwner = [];
+    // --- 2. Seed Photos with New Schema ---
+    logger.info('Seeding photos for users with the new schema format...');
+    const allPhotoIdsWithOwner = [];
 
     for (const user of createdUsers) {
-      const userType = user.details?.iAm || 'default';
-      const photoCollection = photoCollections[userType] || photoCollections.man;
-
       // Determine how many photos based on account tier
       let numPhotos;
       if (user.accountTier === 'PAID' || user.accountTier === 'FEMALE' || user.accountTier === 'COUPLE') {
-        numPhotos = getRandomInt(3, MAX_PHOTOS_PER_USER);
+        numPhotos = getRandomInt(2, MAX_PHOTOS_PER_USER);
       } else {
-        numPhotos = getRandomInt(1, 3); // Free accounts get fewer photos
+        numPhotos = getRandomInt(1, 2); // Free accounts get fewer photos
       }
 
-      // Shuffle the collection and take the first numPhotos
-      const shuffledPhotos = [...photoCollection].sort(() => 0.5 - Math.random());
-      const selectedPhotos = shuffledPhotos.slice(0, numPhotos);
+      // Use local placeholder images for testing
+      const userPhotos = [];
 
-      const photosToAdd = [];
-
-      // Add the profile picture first (public)
-      photosToAdd.push({
-        url: selectedPhotos[0],
-        isPrivate: false,
-        metadata: {
-          uploadedBySeed: true,
-          originalName: `${userType}_profile.jpg`,
-          uploadDate: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 30))
-        }
-      });
-
-      // Add additional photos (some private)
-      for (let p = 1; p < selectedPhotos.length; p++) {
-        // Higher tier accounts have more private photos
-        const isPrivate = user.accountTier !== 'FREE' && Math.random() < 0.5;
-
+      for (let p = 0; p < numPhotos; p++) {
+        const now = new Date();
+        const isProfile = p === 0; // First photo is profile
+        const privacy = p === 0 ? 'public' : getRandomElement(['private', 'public', 'friends_only']);
+        
         const photoData = {
-          url: selectedPhotos[p],
-          isPrivate: isPrivate,
+          url: getRandomElement(placeholderImages),
+          isProfile: isProfile,
+          privacy: privacy,
+          isDeleted: false,
+          uploadedAt: new Date(now - getRandomInt(0, 1000 * 60 * 60 * 24 * 10)),
           metadata: {
-            uploadedBySeed: true,
-            originalName: `${userType}_photo_${p + 1}.jpg`,
-            uploadDate: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 20))
+            filename: `photo_${crypto.randomBytes(4).toString('hex')}.jpg`,
+            size: getRandomInt(50000, 500000),
+            mimeType: 'image/jpeg',
+            width: getRandomInt(800, 1200),
+            height: getRandomInt(800, 1200)
           }
         };
-        photosToAdd.push(photoData);
+
+        userPhotos.push(photoData);
       }
 
-      if (photosToAdd.length > 0) {
+      if (userPhotos.length > 0) {
         try {
-          // Update user directly
+          // Update user with photos conforming to new schema
           const updatedUser = await User.findByIdAndUpdate(
             user._id,
-            { $set: { photos: photosToAdd } },
+            { $set: { photos: userPhotos } },
             { new: true }
           );
 
-          if (updatedUser) {
-            // Record private photo IDs from the updated user document
+          if (updatedUser && updatedUser.photos) {
+            // Record all photos for potential permissions
             updatedUser.photos.forEach((photo) => {
-              if (photo.isPrivate && photo._id) {
-                allPrivatePhotoIdsWithOwner.push({
+              if (photo._id) {
+                allPhotoIdsWithOwner.push({
                   photoId: photo._id.toString(),
-                  ownerId: updatedUser._id.toString()
+                  ownerId: updatedUser._id.toString(),
+                  privacy: photo.privacy
                 });
               }
             });
-          } else {
-            logger.warn(`Could not find user ${user.nickname} to add photos after creation.`);
           }
         } catch(error) {
-          logger.error(`Error adding photos for user ${user.nickname}: ${error.message}. Skipping photos for this user.`);
+          logger.error(`Error adding photos for user ${user.nickname}: ${error.message}`);
         }
       }
     }
 
-    logger.info(`Finished seeding photos. ${allPrivatePhotoIdsWithOwner.length} private photos recorded.`);
+    logger.info(`Finished seeding photos. ${allPhotoIdsWithOwner.length} photos recorded.`);
 
-    // --- 3. Seed Likes with Better Distribution---
-    logger.info(`Seeding ${NUM_LIKES_TO_SEED} likes with improved distribution...`);
+    // --- 3. Seed Likes ---
+    logger.info(`Seeding ${NUM_LIKES_TO_SEED} likes...`);
     let likesCreated = 0;
 
     // Create a map of users by type for more realistic matching
@@ -471,7 +397,7 @@ const seedDatabase = async () => {
       const senderId = getRandomElement(createdUserIds);
       const sender = createdUsers.find(u => u._id.toString() === senderId);
 
-      if (!sender || !sender.details || !sender.details.iAm || !sender.details.lookingFor) {
+      if (!sender || !sender.details || !sender.details.lookingFor) {
         continue; // Skip if sender details are missing
       }
 
@@ -503,8 +429,8 @@ const seedDatabase = async () => {
           const newLike = new Like({
             sender: senderId,
             recipient: recipientId,
-            createdAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 30)), // Random time within last month
-            updatedAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 15))
+            createdAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 10)),
+            updatedAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 5))
           });
           await newLike.save();
           likesCreated++;
@@ -514,56 +440,26 @@ const seedDatabase = async () => {
           logger.error(`Error creating like: ${error.message}`);
         }
       }
-
-      if (likesCreated > 0 && likesCreated % 100 === 0) {
-        logger.info(`Seeded ${likesCreated} likes so far...`);
-      }
     }
 
     logger.info(`Seeded ${likesCreated} unique likes.`);
 
-    // --- 4. Seed Photo Requests with Better Distribution ---
+    // --- 4. Seed Photo Permission Requests ---
     logger.info(`Seeding ${NUM_PHOTO_REQUESTS_TO_SEED} photo permission requests...`);
     let requestsCreated = 0;
 
-    if (allPrivatePhotoIdsWithOwner.length > 0 && createdUserIds.length > 1) {
+    // Get private photos for permission requests
+    const privatePhotos = allPhotoIdsWithOwner.filter(p => p.privacy === 'private');
+
+    if (privatePhotos.length > 0 && createdUserIds.length > 1) {
       for (let i = 0; i < NUM_PHOTO_REQUESTS_TO_SEED; i++) {
-        if (allPrivatePhotoIdsWithOwner.length === 0) break;
+        if (privatePhotos.length === 0) break;
 
-        const randomPhotoIndex = getRandomInt(0, allPrivatePhotoIdsWithOwner.length - 1);
-        const { photoId, ownerId } = allPrivatePhotoIdsWithOwner[randomPhotoIndex];
+        const randomPhotoIndex = getRandomInt(0, privatePhotos.length - 1);
+        const { photoId, ownerId } = privatePhotos[randomPhotoIndex];
 
-        // Get the owner details to match appropriate requesters
-        const owner = createdUsers.find(u => u._id.toString() === ownerId);
-
-        if (!owner || !owner.details || !owner.details.iAm) {
-          continue; // Skip if owner details missing
-        }
-
-        // Find potential requesters based on what type the owner is and who might be interested
-        let potentialRequesters = [];
-
-        if (owner.details.iAm === 'woman') {
-          // Women's photos might be requested by men, couples, and some women
-          potentialRequesters = [
-            ...usersByType.man,
-            ...usersByType.couple,
-            ...usersByType.woman.filter(() => Math.random() < 0.3) // Only some women request from women
-          ];
-        } else if (owner.details.iAm === 'man') {
-          // Men's photos might be requested by women, couples, and some men
-          potentialRequesters = [
-            ...usersByType.woman,
-            ...usersByType.couple,
-            ...usersByType.man.filter(() => Math.random() < 0.3) // Only some men request from men
-          ];
-        } else { // couple
-          // Couple photos might be requested by everyone
-          potentialRequesters = [...createdUserIds];
-        }
-
-        // Remove duplicates and the owner from potential requesters
-        potentialRequesters = [...new Set(potentialRequesters)].filter(id => id !== ownerId);
+        // Find potential requesters (anyone except the owner)
+        const potentialRequesters = createdUserIds.filter(id => id !== ownerId);
 
         if (potentialRequesters.length === 0) {
           continue; // Skip if no valid requesters
@@ -578,29 +474,16 @@ const seedDatabase = async () => {
           });
 
           if (!existingRequest) {
-            // Determine a random status with appropriate weighting
-            const statusOptions = ['pending', 'approved', 'rejected'];
-            const statusWeights = [0.5, 0.3, 0.2]; // 50% pending, 30% approved, 20% rejected
-
-            const randomValue = Math.random();
-            let status;
-            let cumulativeWeight = 0;
-
-            for (let i = 0; i < statusOptions.length; i++) {
-              cumulativeWeight += statusWeights[i];
-              if (randomValue <= cumulativeWeight) {
-                status = statusOptions[i];
-                break;
-              }
-            }
+            // Random status with appropriate weighting
+            const status = getRandomElement(['pending', 'approved', 'rejected', 'pending', 'pending']); // More pending
 
             const newRequest = new PhotoPermission({
               photo: photoId,
               requestedBy: requesterId,
               photoOwnerId: ownerId,
               status,
-              createdAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 20)),
-              updatedAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 10))
+              createdAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 10)),
+              updatedAt: new Date(Date.now() - getRandomInt(0, 1000 * 60 * 60 * 24 * 5))
             });
 
             await newRequest.save();
@@ -611,15 +494,69 @@ const seedDatabase = async () => {
             logger.error(`Error creating photo permission request: ${error.message}`);
           }
         }
-
-        if (requestsCreated > 0 && requestsCreated % 50 === 0) {
-          logger.info(`Seeded ${requestsCreated} photo requests so far...`);
-        }
       }
 
       logger.info(`Seeded ${requestsCreated} unique photo permission requests.`);
     } else {
       logger.warn('Skipping photo request seeding: Not enough users or no private photos found.');
+    }
+
+    // Create one test user with fixed credentials
+    try {
+      // Delete the test user if it exists
+      await User.deleteOne({ email: 'test@example.com' });
+      
+      // Create a new test user
+      const testUser = new User({
+        nickname: 'Test User',
+        username: 'testuser',
+        email: 'test@example.com',
+        password: await bcrypt.hash('password123', SALT_ROUNDS),
+        role: 'user',
+        accountTier: 'PAID',
+        details: {
+          age: 30,
+          gender: 'male',
+          location: 'Tel Aviv',
+          interests: ['Dating', 'Fitness', 'Music'],
+          iAm: 'man',
+          lookingFor: ['women', 'couples'],
+          intoTags: ['Meetups', 'Online fun', 'Photography'],
+          turnOns: ['Intelligence', 'Confidence', 'Creativity'],
+          maritalStatus: 'Single',
+          bio: 'This is a test user account with predictable login credentials.'
+        },
+        isOnline: true,
+        lastActive: new Date(),
+        isVerified: true,
+        active: true,
+      });
+      
+      // Add photos to test user with new schema format
+      const testUserPhotos = [];
+      for (let i = 0; i < 2; i++) {
+        testUserPhotos.push({
+          url: placeholderImages[i],
+          isProfile: i === 0,
+          privacy: i === 0 ? 'public' : 'private',
+          isDeleted: false,
+          uploadedAt: new Date(),
+          metadata: {
+            filename: `test_photo_${i}.jpg`,
+            size: 123456,
+            mimeType: 'image/jpeg',
+            width: 1000,
+            height: 1000
+          }
+        });
+      }
+      
+      testUser.photos = testUserPhotos;
+      await testUser.save();
+      
+      logger.info('Created test user with email: test@example.com and password: password123');
+    } catch (error) {
+      logger.error(`Error creating test user: ${error.message}`);
     }
 
     logger.info('Enhanced database seeding completed successfully!');

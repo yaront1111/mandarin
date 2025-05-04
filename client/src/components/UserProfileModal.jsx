@@ -30,8 +30,8 @@ import { useNavigate } from "react-router-dom"
 // Import common components
 import { Modal, Button, Avatar, LoadingSpinner } from "./common"
 // Import hooks and utilities
-import { useApi, useMounted } from "../hooks"
-import { formatDate, logger, markUrlAsFailed, normalizePhotoUrl } from "../utils"
+import { useApi, useMounted, usePhotoManagement } from "../hooks"
+import { formatDate, logger } from "../utils"
 
 /**
  * UserProfileModal component displays a user's profile information
@@ -118,6 +118,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   const navigate = useNavigate();
   const api = useApi();
   const { isMounted } = useMounted();
+  const { normalizePhotoUrl, handlePhotoLoadError, clearCache } = usePhotoManagement();
 
   // Create contextual logger
   const log = logger.create('UserProfileModal');
@@ -647,15 +648,15 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       [photoId]: true,
     }));
 
-    // Mark any unsplash URLs as failed to prevent retries
+    // Use the shared photo management hook to handle failed URLs
     const failedImage = profileUser?.photos?.find(p => p._id === photoId);
-    if (failedImage && failedImage.url && (
-      failedImage.url.includes('unsplash.com') ||
-      !failedImage.url.startsWith(window.location.origin)
-    )) {
-      markUrlAsFailed(failedImage.url);
+    if (failedImage && failedImage.url) {
+      handlePhotoLoadError(photoId, failedImage.url);
     }
-  }, [profileUser, log]);
+    
+    // Force refresh of the avatar components
+    clearCache();
+  }, [profileUser, log, handlePhotoLoadError, clearCache]);
 
   // Handle liking/unliking users
   const handleLike = useCallback(async () => {
@@ -949,7 +950,8 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               <div className={styles.galleryContainer}>
                 <div className={styles.gallery}>
                   {profileUser.photos[activePhotoIndex] &&
-                  profileUser.photos[activePhotoIndex].isPrivate &&
+                  (profileUser.photos[activePhotoIndex].privacy === 'private' || 
+                   (profileUser.photos[activePhotoIndex].isPrivate && !profileUser.photos[activePhotoIndex].privacy)) &&
                   !canViewPrivatePhotos ? (
                     <div className={styles.privatePhoto}>
                       <FaLock className={styles.lockIcon} />
@@ -1027,7 +1029,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                         className={`${styles.thumbnail} ${index === activePhotoIndex ? styles.thumbnailActive : ""}`}
                         onClick={() => setActivePhotoIndex(index)}
                       >
-                        {photo.isPrivate && !canViewPrivatePhotos ? (
+                        {((photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) && !canViewPrivatePhotos) ? (
                           <div className={styles.privateThumbnail}>
                             <FaLock />
                             {userPhotoAccess.status && (
@@ -1054,10 +1056,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             ) : (
               <div className={styles.gallery}>
                 <Avatar
+                  user={profileUser}
                   size="xlarge"
-                  placeholder={normalizePhotoUrl("/default-avatar.png")}
                   alt={profileUser.nickname}
                   status={profileUser.isOnline ? "online" : null}
+                  showOnlineStatus={true}
                 />
                 <p>{t('userProfile.noPhotosAvailable')}</p>
               </div>

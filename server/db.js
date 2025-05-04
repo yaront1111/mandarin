@@ -9,10 +9,15 @@ import logger from './logger.js';
  */
 const connectDB = async () => {
   try {
-    // Connection options for modern MongoDB driver
+    // Connection options for modern MongoDB driver with increased timeouts
     const connection = await mongoose.connect(config.MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
+      serverSelectionTimeoutMS: 30000, // Increased from 5000 to 30000
+      socketTimeoutMS: 60000, // Increased from 45000 to 60000
+      connectTimeoutMS: 30000, // Added explicit connect timeout
+      heartbeatFrequencyMS: 10000, // Added heartbeat frequency
+      maxPoolSize: 20, // Added connection pool size
+      minPoolSize: 5, // Added minimum pool size
+      maxIdleTimeMS: 60000, // Close idle connections after 1 minute
     });
 
     // Set up connection event handlers

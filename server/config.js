@@ -62,8 +62,13 @@ const config = {
   // Database settings
   MONGODB_URI: process.env.MONGODB_URI || "mongodb://localhost:27017/mandarin",
   MONGODB_OPTIONS: {
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
+    serverSelectionTimeoutMS: 30000,
+    socketTimeoutMS: 60000,
+    connectTimeoutMS: 30000,
+    heartbeatFrequencyMS: 10000,
+    maxPoolSize: 20,
+    minPoolSize: 5,
+    maxIdleTimeMS: 60000,
   },
 
   // Authentication settings

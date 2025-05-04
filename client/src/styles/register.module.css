@@ -583,7 +583,56 @@
 }
 
 .photoUploadContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   margin-bottom: 2rem;
+}
+
+.uploadProgressContainer {
+  width: 100%;
+  max-width: 300px;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1rem;
+}
+
+:global(.dark) .uploadProgressContainer {
+  background-color: rgba(30, 41, 59, 0.5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.uploadProgressBar {
+  width: 100%;
+  height: 8px;
+  background-color: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+:global(.dark) .uploadProgressBar {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.uploadProgressFill {
+  height: 100%;
+  background-color: var(--primary, #6366f1);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.uploadProgressText {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+:global(.dark) .uploadProgressText {
+  color: var(--text-secondary-dark, #cbd5e1);
 }
 
 .photoUploadArea {
