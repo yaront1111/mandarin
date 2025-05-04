@@ -4,7 +4,6 @@
 
 // UI Components
 export { default as Avatar } from './Avatar';
-export { default as AvatarTest } from './AvatarTest';
 export { default as Button } from './Button';
 export { default as Card } from './Card';
 export { default as ErrorMessage } from './ErrorMessage';
@@ -19,5 +18,3 @@ export { default as Modal } from './Modal';
 export { default as withErrorBoundary, withErrorBoundary as WithErrorBoundary } from './withErrorBoundary';
 export { default as withSuspense, withSuspense as WithSuspense } from './withSuspense';
 export { default as withMemo, withMemo as WithMemo } from './withMemo';
-
-
