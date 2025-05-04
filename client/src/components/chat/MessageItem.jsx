@@ -5,7 +5,7 @@ import {
     FaCheckDouble, FaCheck, FaSpinner, FaVideo, FaExclamationCircle
 } from 'react-icons/fa';
 import { formatMessageTime, getFileIcon, classNames } from './chatUtils.jsx';
-import styles from '../../styles/Messages.module.css';
+import defaultStyles from '../../styles/Messages.module.css';
 import { logger } from '../../utils/logger.js';
 
 // Create a named logger for this component
@@ -14,8 +14,11 @@ const log = logger.create('MessageItem');
 const MessageItem = React.memo(({
     message,
     currentUserId,
-    isSending = false
+    isSending = false,
+    customStyles = null
 }) => {
+    // Use custom styles if provided, otherwise use default styles
+    const styles = customStyles || defaultStyles;
     // Basic validation
     if (!message || (!message._id && !message.tempId)) {
         log.warn("Invalid message object passed to MessageItem:", message);
@@ -60,12 +63,12 @@ const MessageItem = React.memo(({
     const renderTextContent = () => (
         <>
             {isFailed ? (
-                <div className={styles.errorMessageContent}>
+                <div className={styles.errorMessageContent || styles.messageContent}>
                     <span className={styles.errorIcon} aria-hidden="true">!</span>
                     <span>{message.content || "Failed to send"}</span>
                 </div>
             ) : (
-                <div className={styles.messageContent}>{message.content || ""}</div>
+                <p className={styles.messageContent}>{message.content || ""}</p>
             )}
         </>
     );
@@ -503,7 +506,7 @@ const MessageItem = React.memo(({
         <div className={styles.messageWrapper}>
             <div
                 className={classNames(
-                    styles.messageBubble, 
+                    styles.messageBubble || styles.message, 
                     isSentByMe ? styles.sent : styles.received,
                     isSystem ? styles.systemMessage : "", 
                     isFailed ? styles.error : "",
@@ -571,6 +574,7 @@ MessageItem.propTypes = {
     }).isRequired,
     currentUserId: PropTypes.string.isRequired,
     isSending: PropTypes.bool,
+    customStyles: PropTypes.object,
 };
 
 export default MessageItem;

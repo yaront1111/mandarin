@@ -6,7 +6,7 @@ import {
 } from 'react-icons/fa';
 import { COMMON_EMOJIS, ACCOUNT_TIER } from './chatConstants.js';
 import { classNames } from './chatUtils.jsx';
-import styles from '../../styles/Messages.module.css';
+import defaultStyles from '../../styles/Messages.module.css';
 
 const ChatInput = React.memo(({
     messageValue,
@@ -23,7 +23,10 @@ const ChatInput = React.memo(({
     isUserBlocked = false,
     inputRef,
     placeholderText = "Type a message...",
+    customStyles = null,
 }) => {
+    // Use custom styles if provided, otherwise use default styles
+    const styles = customStyles || defaultStyles;
     const [showEmojis, setShowEmojis] = useState(false);
     const emojiPickerRef = useRef(null);
 
@@ -220,6 +223,7 @@ ChatInput.propTypes = {
         PropTypes.shape({ current: PropTypes.instanceOf(Element) })
     ]),
     placeholderText: PropTypes.string,
+    customStyles: PropTypes.object,
 };
 
 export default ChatInput;

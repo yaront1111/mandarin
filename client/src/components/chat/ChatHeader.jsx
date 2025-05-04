@@ -1,7 +1,7 @@
 // src/components/chat/ChatHeader.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { FaArrowLeft, FaVideo, FaEllipsisH, FaBan, FaFlag, FaUser, FaExclamationTriangle } from 'react-icons/fa';
+import { FaArrowLeft, FaVideo, FaEllipsisH, FaBan, FaFlag, FaUser, FaExclamationTriangle, FaExclamationCircle, FaSpinner, FaLock } from 'react-icons/fa';
 import Avatar from '../common/Avatar.jsx';
 import styles from '../../styles/Messages.module.css';
 
@@ -16,8 +16,16 @@ const ChatHeader = ({
   onProfileClick,
   onBlockUser,
   onReportUser,
-  userTier
+  userTier,
+  customStyles,
+  pendingPhotoRequests,
+  isApprovingRequests,
+  onApprovePhotoRequests,
+  isActionDisabled,
+  isConnected
 }) => {
+  // Use custom styles if provided, otherwise use default styles
+  const useStyles = customStyles || styles;
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
   const moreButtonRef = useRef(null);
@@ -70,10 +78,10 @@ const ChatHeader = ({
   
   return (
     <>
-      <div className={styles.chatHeader}>
+      <div className={useStyles.chatHeader}>
         {isMobile && (
           <button 
-            className={styles.backButton} 
+            className={useStyles.backButton} 
             onClick={onBackClick}
             aria-label="Back to conversations"
             type="button"
@@ -83,7 +91,7 @@ const ChatHeader = ({
         )}
       
       <div 
-        className={styles.conversationInfo} 
+        className={useStyles.conversationInfo} 
         onClick={onProfileClick}
         role="button" 
         tabIndex={0}
@@ -99,32 +107,51 @@ const ChatHeader = ({
           size="medium" 
           status={user.online ? 'online' : 'offline'} 
         />
-        <div className={styles.userInfo}>
-          <h3 className={styles.userName}>
+        <div className={useStyles.userInfo}>
+          <h3 className={useStyles.userName}>
             {displayName}
-            {user.isBlocked && <span className={styles.blockedTag}>Blocked</span>}
+            {user.isBlocked && <span className={useStyles.blockedTag}>Blocked</span>}
           </h3>
-          <span className={`${styles.userStatus} ${user.isBlocked ? styles.blockedStatus : ''}`}>
+          <span className={`${useStyles.userStatus} ${user.isBlocked ? useStyles.blockedStatus : ''}`}>
             {user.isBlocked ? 'Blocked' : (user.online ? 'Online' : 'Offline')}
           </span>
+          {isConnected === false && (
+            <span className={useStyles.connectionStatus} title="Connection lost">
+              <FaExclamationCircle className={useStyles.statusIcon} />
+              <span>Disconnected</span>
+            </span>
+          )}
         </div>
       </div>
       
-      <div className={styles.chatActions}>
+      <div className={useStyles.chatActions}>
+        {pendingPhotoRequests > 0 && onApprovePhotoRequests && (
+          <button
+            className={useStyles.chatHeaderBtn || useStyles.videoCallButton}
+            onClick={onApprovePhotoRequests}
+            title={`Approve ${pendingPhotoRequests} photo request(s)`}
+            aria-label="Approve photo requests"
+            disabled={isApprovingRequests}
+            type="button"
+          >
+            {isApprovingRequests ? <FaSpinner className="fa-spin" /> : <FaLock />}
+          </button>
+        )}
+        
         <button 
-          className={styles.videoCallButton} 
+          className={useStyles.videoCallButton} 
           onClick={onStartVideoCall}
           aria-label="Start video call"
           title="Start video call"
           type="button"
-          disabled={userTier === 'FREE'}
+          disabled={userTier === 'FREE' || (isActionDisabled !== undefined ? isActionDisabled : false)}
         >
           <FaVideo />
         </button>
         
         <button 
           ref={moreButtonRef}
-          className={styles.moreOptionsButton} 
+          className={useStyles.moreOptionsButton} 
           onClick={toggleDropdown}
           aria-label="More options"
           title="More options"
@@ -134,23 +161,23 @@ const ChatHeader = ({
         </button>
         
         {showDropdown && (
-          <div ref={dropdownRef} className={styles.headerDropdown}>
+          <div ref={dropdownRef} className={useStyles.headerDropdown}>
             <button 
-              className={styles.dropdownItem} 
+              className={useStyles.dropdownItem} 
               onClick={handleViewProfile}
               type="button"
             >
               <FaUser /> View Profile
             </button>
             <button 
-              className={styles.dropdownItem} 
+              className={useStyles.dropdownItem} 
               onClick={handleBlockUser}
               type="button"
             >
               <FaBan /> {user.isBlocked ? 'Unblock User' : 'Block User'}
             </button>
             <button 
-              className={styles.dropdownItem} 
+              className={useStyles.dropdownItem} 
               onClick={handleReportUser}
               type="button"
             >
@@ -162,13 +189,13 @@ const ChatHeader = ({
       </div>
       
       {user.isBlocked && (
-        <div className={styles.blockedUserBanner} role="alert">
+        <div className={useStyles.blockedUserBanner} role="alert">
           <div>
             <FaExclamationTriangle />
             You have blocked this user. They will not receive any messages from you.
           </div>
           <button
-            className={styles.unblockButton}
+            className={useStyles.unblockButton}
             onClick={handleBlockUser}
             type="button"
           >
@@ -184,11 +211,13 @@ ChatHeader.propTypes = {
   conversation: PropTypes.shape({
     user: PropTypes.shape({
       _id: PropTypes.string.isRequired,
-      username: PropTypes.string.isRequired,
+      username: PropTypes.string,
       nickname: PropTypes.string,
       photo: PropTypes.string,
       online: PropTypes.bool,
+      isBlocked: PropTypes.bool,
     }).isRequired,
+    pendingPhotoRequests: PropTypes.number,
   }),
   isMobile: PropTypes.bool,
   onBackClick: PropTypes.func.isRequired,
@@ -197,6 +226,12 @@ ChatHeader.propTypes = {
   onBlockUser: PropTypes.func,
   onReportUser: PropTypes.func,
   userTier: PropTypes.string,
+  customStyles: PropTypes.object,
+  pendingPhotoRequests: PropTypes.number,
+  isApprovingRequests: PropTypes.bool,
+  onApprovePhotoRequests: PropTypes.func,
+  isActionDisabled: PropTypes.bool,
+  isConnected: PropTypes.bool
 };
 
 export default React.memo(ChatHeader);

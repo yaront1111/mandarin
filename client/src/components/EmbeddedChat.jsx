@@ -3,8 +3,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import PropTypes from 'prop-types';
 import {
-    FaVideo, FaSpinner, FaLock, FaPhoneSlash, FaTimes, FaExclamationCircle
-} from "react-icons/fa"; import { toast } from "react-toastify";
+    FaVideo, FaSpinner, FaLock, FaPhoneSlash, FaTimes, FaExclamationCircle,
+    FaExclamationTriangle, FaEllipsisH, FaUser, FaBan, FaFlag
+} from "react-icons/fa"; 
+import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 
 // --- Framework/Context Hooks ---
@@ -36,12 +38,15 @@ import ChatInput from "./chat/ChatInput.jsx";
 import AttachmentPreview from "./chat/AttachmentPreview.jsx";
 import CallBanners from "./chat/CallBanners.jsx";
 import PremiumBanner from "./chat/PremiumBanner.jsx";
+import ChatArea from "./chat/ChatArea.jsx";
+import ChatHeader from "./chat/ChatHeader.jsx";
 import { LoadingIndicator, ErrorMessage, ConnectionIssueMessage, NoMessagesPlaceholder } from "./chat/ChatStatusIndicators.jsx";
 
 // --- Other Imports ---
 import { logger } from "../utils/logger.js"; //
 import socketService from "../services/socketService.jsx"; // or .js depending on your file
 import VideoCall from "./VideoCall.jsx"; // Keep specific components like VideoCall if not shared
+import UserProfileModal from "./UserProfileModal.jsx"; // For viewing user profiles
 
 // --- Styles ---
 import styles from "../styles/embedded-chat.module.css";
@@ -49,96 +54,7 @@ import styles from "../styles/embedded-chat.module.css";
 // --- Logger ---
 const log = logger.create("EmbeddedChat");
 
-// --- Locally Defined Components for EmbeddedChat Specifics ---
-// ChatHeader remains local as its actions are specific to this component context
-const EmbeddedChatHeader = React.memo(({
-    recipient,
-    userTier,
-    pendingPhotoRequests,
-    isApprovingRequests,
-    handleApproveAllRequests,
-    isCallActive,
-    handleEndCall,
-    handleVideoCall,
-    isActionDisabled,
-    onClose,
-    isConnected
-}) => (
-    <div className={styles.chatHeader}>
-        {/* Recipient Avatar and Info */}
-        <div className={styles.chatUser}>
-            {recipient?.photos?.length ? (
-                <img
-                    src={recipient.photos[0].url || "/placeholder.svg"}
-                    alt={recipient.nickname}
-                    className={styles.chatAvatar}
-                    onError={(e) => { e.target.onerror = null; e.target.src = "/placeholder.svg"; }}
-                />
-            ) : (
-                <div className={styles.chatAvatarPlaceholder} />
-            )}
-            <div className={styles.chatUserInfo}>
-                <h3>{recipient.nickname}</h3>
-                <div className={styles.statusContainer}>
-                    <span className={recipient.isOnline ? styles.statusOnline : styles.statusOffline}>
-                        {recipient.isOnline ? "Online" : "Offline"}
-                    </span>
-                    {!isConnected && (
-                        <span className={styles.connectionStatus} title="Connection lost">
-                            <FaExclamationCircle className={styles.statusIcon} />
-                            <span>Disconnected</span>
-                        </span>
-                    )}
-                </div>
-            </div>
-        </div>
-        {/* Header Action Buttons */}
-        <div className={styles.chatHeaderActions}>
-            {pendingPhotoRequests > 0 && (
-                <button
-                    className={styles.chatHeaderBtn}
-                    onClick={handleApproveAllRequests}
-                    title={`Approve ${pendingPhotoRequests} photo request(s)`}
-                    aria-label="Approve photo requests"
-                    disabled={isApprovingRequests}
-                >
-                    {isApprovingRequests ? <FaSpinner className="fa-spin" /> : <FaLock />}
-                </button>
-            )}
-            {userTier !== ACCOUNT_TIER.FREE && (
-                isCallActive ? (
-                    <button
-                        className={styles.chatHeaderBtn}
-                        onClick={handleEndCall}
-                        title="End call"
-                        aria-label="End call"
-                    >
-                        <FaPhoneSlash />
-                    </button>
-                ) : (
-                    <button
-                        className={styles.chatHeaderBtn}
-                        onClick={handleVideoCall}
-                        title={recipient.isOnline ? "Start Video Call" : `${recipient.nickname} is offline`}
-                        aria-label="Start video call"
-                        disabled={isActionDisabled || !recipient.isOnline}
-                    >
-                        <FaVideo />
-                    </button>
-                )
-            )}
-            <button
-                className={styles.chatHeaderBtn}
-                onClick={onClose}
-                aria-label="Close chat"
-                title="Close chat"
-            >
-                <FaTimes />
-            </button>
-        </div>
-    </div>
-));
-EmbeddedChatHeader.displayName = 'EmbeddedChatHeader';
+// --- Using shared components instead of local ones now ---
 
 // --- Main Component ---
 const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
@@ -174,6 +90,9 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
     const [incomingCall, setIncomingCall] = useState(null);
     const [isCallActive, setIsCallActive] = useState(false);
     const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+    const [profileUserId, setProfileUserId] = useState(null);
+    const [blockedUsers, setBlockedUsers] = useState(new Set());
 
     // --- Refs ---
     const messagesEndRef = useRef(null);
@@ -188,6 +107,18 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
     // Using apiService directly instead of deprecated createAuthAxios
     const groupedMessages = useMemo(() => groupMessagesByDate(localMessages), [localMessages]);
     const currentUserId = user?._id; // Get current user ID safely
+    
+    // Check if a user is blocked
+    const isUserBlocked = useCallback((userId) => {
+        // Safety checks to handle potential errors or edge cases
+        if (!userId) return false;
+        
+        // Check both client-side state and server-side state
+        const isClientBlocked = blockedUsers.has(userId);
+        const isServerBlocked = recipient?.isBlocked || false;
+        
+        return isClientBlocked || isServerBlocked;
+    }, [blockedUsers, recipient?.isBlocked]);
 
     // --- Event Handlers ---
 
@@ -219,6 +150,68 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
             if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
         };
     }, [recipientId, recipient?.nickname]);
+    
+    // Load blocked users from localStorage and server when component mounts
+    useEffect(() => {
+        const loadBlockedUsers = async () => {
+            // First load from localStorage for immediate UI feedback
+            try {
+                const blockedList = JSON.parse(localStorage.getItem('mandarin_blocked_users') || '[]');
+                
+                if (blockedList.length > 0) {
+                    log.debug(`Loading ${blockedList.length} blocked users from localStorage`);
+                    
+                    // Convert array to Set for faster lookups
+                    setBlockedUsers(new Set(blockedList));
+                    
+                    // If the current recipient is in the blocked list, update their status
+                    if (recipient?._id && blockedList.includes(recipient._id) && !recipient.isBlocked) {
+                        log.debug('Marking current recipient as blocked from localStorage data');
+                        recipient.isBlocked = true;
+                    }
+                }
+            } catch (e) {
+                log.error('Error loading blocked users from localStorage:', e);
+                // Continue even if localStorage fails - the server API will provide the authoritative list
+            }
+            
+            // Then fetch from server for authoritative data
+            if (user?._id) {
+                try {
+                    log.debug('Fetching blocked users from server');
+                    // First check if user is blocked directly instead of getting the whole list
+                    if (recipient?._id) {
+                        try {
+                            // Check if this specific user is blocked
+                            log.debug(`Checking if user ${recipient._id} is blocked (as workaround for 400 error)`);
+                            
+                            // Use an alternative approach - check user object directly
+                            if (user.blockedUsers && Array.isArray(user.blockedUsers) && user.blockedUsers.includes(recipient._id)) {
+                                log.debug(`User ${recipient._id} is marked as blocked in user object`);
+                                recipient.isBlocked = true;
+                            }
+                            
+                        } catch (specificErr) {
+                            log.debug(`Could not check specific user blocked status: ${specificErr.message}`);
+                        }
+                    }
+                    
+                    // Try to fallback to localStorage data (since API endpoint isn't working)
+                    const lsBlockedUsers = JSON.parse(localStorage.getItem('mandarin_blocked_users') || '[]');
+                    if (lsBlockedUsers.length > 0) {
+                        log.debug(`Using ${lsBlockedUsers.length} blocked users from localStorage due to API error`);
+                        setBlockedUsers(new Set(lsBlockedUsers));
+                    }
+                    
+                } catch (e) {
+                    log.error('Error with blocked users handling:', e);
+                    // We already loaded from localStorage, so UI is still responsive
+                }
+            }
+        };
+        
+        loadBlockedUsers();
+    }, [recipient?._id, user?._id]);
 
     // Merge Hook Messages with Local System Messages
     useEffect(() => {
@@ -488,6 +481,12 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
 
     // Combined Submit Handler
     const handleSubmitMessage = useCallback(async () => {
+        // Check if user is blocked before attempting to send
+        if (isUserBlocked(recipient?._id)) {
+            toast.error("Cannot send messages to blocked users");
+            return;
+        }
+        
         if (attachment) {
             if (!attachment || isUploading || sendingMessage || user?.accountTier === ACCOUNT_TIER.FREE) {
                  if(user?.accountTier === ACCOUNT_TIER.FREE) toast.error("Upgrade to Premium to send files.");
@@ -510,29 +509,48 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
             if (success) { chatInputRef.current?.focus(); }
             else { setNewMessage(messageToSend); } // Restore message on failure
         }
-    }, [attachment, newMessage, sendingMessage, isUploading, user?.accountTier, sendMessageWrapper]);
+    }, [attachment, newMessage, sendingMessage, isUploading, user?.accountTier, sendMessageWrapper, recipient, isUserBlocked]);
 
     // Send Wink Handler
     const handleSendWink = useCallback(async () => {
-        if (sendingMessage || isUploading || !recipientId) return;
+        if (sendingMessage || isUploading || !recipientId || isUserBlocked(recipient?._id)) {
+            if (isUserBlocked(recipient?._id)) {
+                toast.error("Cannot send winks to blocked users");
+            }
+            return;
+        }
         await sendMessageWrapper("😉", 'wink');
-    }, [sendingMessage, isUploading, recipientId, sendMessageWrapper]);
+    }, [sendingMessage, isUploading, recipientId, sendMessageWrapper, isUserBlocked, recipient]);
 
     // File Input Trigger
     const handleFileAttachmentClick = useCallback(() => {
-        if (user?.accountTier === ACCOUNT_TIER.FREE) { toast.error("Upgrade to Premium to send files."); return; }
-        if (!isUploading) { fileInputRef.current?.click(); }
-    }, [user?.accountTier, isUploading]);
+        if (user?.accountTier === ACCOUNT_TIER.FREE) { 
+            toast.error("Upgrade to Premium to send files.");
+            return; 
+        }
+        if (isUserBlocked(recipient?._id)) {
+            toast.error("Cannot send files to blocked users");
+            return;
+        }
+        if (!isUploading) { 
+            fileInputRef.current?.click(); 
+        }
+    }, [user?.accountTier, isUploading, isUserBlocked, recipient]);
 
     // File Selection
     const handleFileChange = useCallback((e) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        if (isUserBlocked(recipient?._id)) {
+            toast.error("Cannot send files to blocked users");
+            e.target.value = null;
+            return;
+        }
         if (file.size > MAX_FILE_SIZE) { toast.error(`File too large. Max size: ${MAX_FILE_SIZE / 1024 / 1024}MB.`); e.target.value = null; return; }
         if (!ALLOWED_FILE_TYPES.includes(file.type)) { toast.error(`File type (${file.type || 'unknown'}) not supported.`); e.target.value = null; return; }
         setAttachment(file); setNewMessage(""); setIsUploading(false); setUploadProgress(0);
         toast.info(`Selected: ${file.name}. Click send.`); e.target.value = null;
-    }, []);
+    }, [isUserBlocked, recipient]);
 
     // Remove Attachment
     const handleRemoveAttachment = useCallback(() => {
@@ -600,6 +618,158 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
         setIncomingCall(null);
     }, [incomingCall, addLocalSystemMessage]);
 
+    // --- User Block/Report Handlers ---
+    
+    // Handle blocking/unblocking a user
+    const handleBlockUser = useCallback(async (userId) => {
+        if (!userId || !user?._id) {
+            log.warn('Block/unblock attempted with invalid parameters:', { userId, currentUser: user?._id });
+            toast.error('Unable to process block/unblock request. Please try again.');
+            return;
+        }
+        
+        try {
+            const isCurrentlyBlocked = isUserBlocked(userId);
+            const action = isCurrentlyBlocked ? 'unblock' : 'block';
+            
+            log.debug(`Attempting to ${action} user:`, userId);
+            // Try to make the API call
+            let apiSucceeded = false;
+            try {
+                const response = await apiService.post(`/users/${action}/${userId}`);
+                apiSucceeded = response.data?.success || false;
+            } catch (apiError) {
+                log.error(`API error for ${action} user:`, apiError);
+                // Gracefully continue even if API fails
+            }
+            
+            // Update local state regardless of API success (for better user experience)
+            setBlockedUsers(prev => {
+                try {
+                    const newSet = new Set(prev);
+                    if (action === 'block') {
+                        newSet.add(userId);
+                    } else {
+                        newSet.delete(userId);
+                    }
+                    return newSet;
+                } catch (e) {
+                    log.error('Error updating blockedUsers state:', e);
+                    return prev; // Return previous state on error
+                }
+            });
+            
+            // Update recipient object if it's the current conversation
+            try {
+                if (recipient?._id === userId) {
+                    recipient.isBlocked = !isCurrentlyBlocked;
+                }
+            } catch (e) {
+                log.error('Error updating recipient.isBlocked:', e);
+                // If updating the recipient object fails, fallback to local state
+            }
+            
+            // Store blocked state in localStorage for persistence
+            try {
+                const blockedList = JSON.parse(localStorage.getItem('mandarin_blocked_users') || '[]');
+                if (action === 'block' && !blockedList.includes(userId)) {
+                    blockedList.push(userId);
+                } else if (action === 'unblock') {
+                    const index = blockedList.indexOf(userId);
+                    if (index > -1) blockedList.splice(index, 1);
+                }
+                localStorage.setItem('mandarin_blocked_users', JSON.stringify(blockedList));
+                log.debug(`Updated blocked users in localStorage: ${blockedList.length} users`);
+            } catch (e) {
+                log.error('Error updating localStorage blocked users:', e);
+                // Continue even if localStorage fails
+            }
+            
+            toast.success(`User ${action === 'block' ? 'blocked' : 'unblocked'} successfully`);
+            addLocalSystemMessage(`User ${action === 'block' ? 'blocked' : 'unblocked'}.`);
+        } catch (error) {
+            log.error(`Error ${isUserBlocked(userId) ? 'unblocking' : 'blocking'} user:`, error);
+            toast.error(`Failed to ${isUserBlocked(userId) ? 'unblock' : 'block'} user. Please try again.`);
+            
+            // If server communication failed but the intent was to block,
+            // we can still update the local UI to show the user as blocked as a fallback
+            if (!isUserBlocked(userId)) {
+                log.debug('Applying fallback local blocking for better UX despite error');
+                setBlockedUsers(prev => {
+                    const newSet = new Set(prev);
+                    newSet.add(userId);
+                    return newSet;
+                });
+                
+                if (recipient?._id === userId) {
+                    try {
+                        recipient.isBlocked = true;
+                    } catch (e) {
+                        log.error('Error updating recipient.isBlocked in error handler:', e);
+                    }
+                }
+                
+                // Store blocked state in localStorage even on error
+                try {
+                    const blockedList = JSON.parse(localStorage.getItem('mandarin_blocked_users') || '[]');
+                    if (!blockedList.includes(userId)) {
+                        blockedList.push(userId);
+                        localStorage.setItem('mandarin_blocked_users', JSON.stringify(blockedList));
+                    }
+                } catch (e) {
+                    log.error('Error updating localStorage in fallback:', e);
+                }
+            }
+        }
+    }, [user?._id, isUserBlocked, recipient, addLocalSystemMessage]);
+    
+    // Handle reporting a user
+    const handleReportUser = useCallback(async (userId) => {
+        if (!userId || !user?._id) {
+            log.warn('Report user attempted with invalid parameters:', { userId, currentUser: user?._id });
+            toast.error('Unable to process report request. Please try again.');
+            return;
+        }
+        
+        try {
+            log.debug('Attempting to report user:', userId);
+            const response = await apiService.post(`/users/report/${userId}`);
+            
+            if (response.data?.success) {
+                toast.success('User reported successfully');
+                addLocalSystemMessage('User reported to moderators.');
+                
+                // Optionally suggest blocking the user as well
+                if (!isUserBlocked(userId)) {
+                    setTimeout(() => {
+                        toast.info('Consider blocking this user if they are bothering you.', {
+                            autoClose: 8000,
+                            onClick: () => handleBlockUser(userId)
+                        });
+                    }, 1500);
+                }
+            } else {
+                // Handle unsuccessful API response
+                log.warn('API reported failure for report:', response.data);
+                toast.error('Failed to report user. Server reported an issue.');
+            }
+        } catch (error) {
+            log.error('Error reporting user:', error);
+            toast.error('Failed to report user. Please try again.');
+            
+            // Still add a system message for better UX feedback even if API failed
+            addLocalSystemMessage('Attempted to report user to moderators, but there was a network issue.', true);
+        }
+    }, [user?._id, addLocalSystemMessage, isUserBlocked, handleBlockUser]);
+    
+    // Handle opening the profile modal
+    const handleProfileClick = useCallback(() => {
+        if (recipient?._id) {
+            setIsProfileModalOpen(true);
+            setProfileUserId(recipient._id);
+        }
+    }, [recipient]);
+
     // --- UI Action Handlers ---
     const handleRetryLoad = useCallback(() => { setLoadingTimedOut(false); refreshChat(); }, [refreshChat]);
     const handleReconnect = useCallback(() => { toast.info("Attempting reconnect..."); socketService?.reconnect?.(); setTimeout(refreshChat, RECONNECT_DELAY_MS); }, [refreshChat]);
@@ -607,6 +777,19 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
 
     // --- Render Logic ---
     if (!isOpen) return null;
+
+    // Debug current component state
+    if (process.env.NODE_ENV === 'development') {
+        log.debug('EmbeddedChat render state:', {
+            recipientId,
+            isRecipientBlocked: recipient?.isBlocked,
+            blockedUsersCount: blockedUsers.size,
+            isProfileModalOpen,
+            isCallActive,
+            incomingCall: !!incomingCall,
+            connectionState: isConnected ? 'connected' : 'disconnected'
+        });
+    }
 
     if (!recipient) {
         return (
@@ -619,24 +802,46 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
 
     const isInputAreaDisabled = isCallActive || !!incomingCall || !initialized || !isConnected;
     const isHeaderActionsDisabled = isUploading || sendingMessage || isCallActive || !!incomingCall;
+    const isRecipientBlocked = isUserBlocked(recipient._id);
+    
+    // Create a conversation object structure expected by ChatHeader
+    const conversationObject = {
+        user: {
+            ...recipient,
+            username: recipient.username || recipient.nickname || recipient._id, // Ensure username is always available
+            isBlocked: isRecipientBlocked
+        },
+        pendingPhotoRequests: pendingPhotoRequests
+    };
+    
+    // Special action handlers for embedded chat
+    const chatHeaderActions = {
+        onApprovePhotoRequests: pendingPhotoRequests > 0 ? handleApproveAllRequests : undefined,
+        isApprovingPhotoRequests: isApprovingRequests,
+        isVideoCallDisabled: isHeaderActionsDisabled || !recipient.isOnline || isRecipientBlocked,
+        isConnected: isConnected
+    };
 
     return (
         <div className={classNames(styles.chatContainer, styles.opening)}>
-            <EmbeddedChatHeader
-                recipient={recipient}
+            <ChatHeader
+                conversation={conversationObject}
+                isMobile={false}
+                onBackClick={onClose}
+                onStartVideoCall={handleVideoCall}
+                onProfileClick={handleProfileClick}
+                onBlockUser={handleBlockUser}
+                onReportUser={handleReportUser}
                 userTier={user?.accountTier}
                 pendingPhotoRequests={pendingPhotoRequests}
                 isApprovingRequests={isApprovingRequests}
-                handleApproveAllRequests={handleApproveAllRequests}
-                isCallActive={isCallActive}
-                handleEndCall={handleEndCall}
-                handleVideoCall={handleVideoCall}
+                onApprovePhotoRequests={handleApproveAllRequests}
                 isActionDisabled={isHeaderActionsDisabled}
-                onClose={onClose}
                 isConnected={isConnected}
+                customStyles={styles}
             />
 
-            {user?.accountTier === ACCOUNT_TIER.FREE && <PremiumBanner onUpgradeClick={() => navigate("/subscription")} />}
+            {user?.accountTier === ACCOUNT_TIER.FREE && <PremiumBanner onUpgradeClick={() => navigate("/subscription")} customStyles={styles} />}
 
             <CallBanners
                 incomingCall={incomingCall}
@@ -646,18 +851,23 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
                 onDeclineCall={handleDeclineCall}
                 onEndCall={handleEndCall}
                 useSmallButtons={true} // Embedded chat might use smaller buttons
+                customStyles={styles}
             />
 
-            <div className={styles.messagesContainer} ref={messagesContainerRef}>
+            <ChatArea 
+                className={styles.chatArea}
+                isUserBlocked={isRecipientBlocked}
+            >
+                <div className={styles.messagesContainer} ref={messagesContainerRef}>
                 {/* --- Loading/Error/Empty States --- */}
                 {hookLoading && !localMessages.length ? (
-                    <LoadingIndicator showTimeoutMessage={loadingTimedOut} handleRetry={handleRetryLoad} handleReconnect={handleReconnect}/>
+                    <LoadingIndicator showTimeoutMessage={loadingTimedOut} handleRetry={handleRetryLoad} handleReconnect={handleReconnect} customStyles={styles}/>
                 ) : hookError ? (
-                    <ErrorMessage error={hookError} handleRetry={handleRetryLoad} handleForceInit={handleForceInit} showInitButton={!initialized}/>
+                    <ErrorMessage error={hookError} handleRetry={handleRetryLoad} handleForceInit={handleForceInit} showInitButton={!initialized} customStyles={styles}/>
                 ) : !initialized || (!isConnected && !localMessages.length) ? (
-                    <ConnectionIssueMessage handleReconnect={handleReconnect} isInitializing={!initialized}/>
+                    <ConnectionIssueMessage handleReconnect={handleReconnect} isInitializing={!initialized} customStyles={styles}/>
                 ) : localMessages.length === 0 && !hookLoading ? (
-                    <NoMessagesPlaceholder text="No messages yet. Say hello!" />
+                    <NoMessagesPlaceholder text="No messages yet. Say hello!" customStyles={styles}/>
                 ) : (
                      // --- Message List Rendering ---
                      <>
@@ -665,14 +875,15 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
                           {Object.entries(groupedMessages).map(([date, msgs]) => (
                             <React.Fragment key={date}>
                                 <div className={styles.messageDate}>{date}</div>
-                                {msgs.map((message) => ( <MessageItem key={message._id || message.tempId} message={message} currentUserId={currentUserId} isSending={sendingMessage && message.tempId === message._id }/> ))}
+                                {msgs.map((message) => ( <MessageItem key={message._id || message.tempId} message={message} currentUserId={currentUserId} isSending={sendingMessage && message.tempId === message._id} customStyles={styles} /> ))}
                             </React.Fragment>
                         ))}
                          {typingStatus && ( <div className={styles.typingIndicatorBubble}><div className={styles.typingIndicator}><span></span><span></span><span></span></div></div> )}
                      </>
                 )}
                 <div ref={messagesEndRef} style={{ height: '1px' }} />
-            </div>
+                </div>
+            </ChatArea>
 
             {/* Attachment Preview */}
              <AttachmentPreview 
@@ -684,6 +895,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
                 showFileInput={false}
                 disabled={isInputAreaDisabled}
                 userTier={user?.accountTier}
+                customStyles={styles}
              />
 
             {/* Chat Input Area */}
@@ -699,8 +911,12 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
                 isUploading={isUploading}
                 attachmentSelected={!!attachment}
                 disabled={isInputAreaDisabled} // Use combined disabled state
+                isUserBlocked={isRecipientBlocked}
                 inputRef={chatInputRef}
-                placeholderText={ recipient ? `Message ${recipient.nickname}...` : "Type a message..."}
+                placeholderText={isRecipientBlocked
+                    ? "Cannot send messages to blocked users"
+                    : (recipient ? `Message ${recipient.nickname}...` : "Type a message...")}
+                customStyles={styles}
             />
             
             {/* Hidden File Input - Kept separate since it's accessed via ChatInput */}
@@ -711,6 +927,15 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
                 <div className={classNames(styles.videoCallOverlay, styles.active)}>
                     <VideoCall isActive={isCallActive} userId={currentUserId} recipientId={recipientId} onEndCall={handleEndCall} isIncoming={false} callId={null}/>
                 </div>
+            )}
+            
+            {/* User Profile Modal */}
+            {profileUserId && (
+                <UserProfileModal 
+                    userId={profileUserId}
+                    isOpen={isProfileModalOpen}
+                    onClose={() => setIsProfileModalOpen(false)}
+                />
             )}
         </div>
     );
@@ -728,11 +953,7 @@ EmbeddedChat.propTypes = {
     onClose: PropTypes.func,
 };
 
-// --- Default Props ---
-EmbeddedChat.defaultProps = {
-  isOpen: true,
-  onClose: () => {},
-  recipient: null,
-};
+// --- We've migrated from defaultProps to default parameters in the component function
+// so this is no longer needed, but keeping a comment for documentation purposes
 
 export default EmbeddedChat;

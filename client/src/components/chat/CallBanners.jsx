@@ -3,7 +3,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { FaVideo, FaTimes, FaPhoneSlash } from 'react-icons/fa';
 import { classNames } from './chatUtils.jsx';
-import styles from '../../styles/Messages.module.css';
+import defaultStyles from '../../styles/Messages.module.css';
 
 const CallBanners = React.memo(({
     incomingCall = null,
@@ -12,8 +12,11 @@ const CallBanners = React.memo(({
     onAcceptCall,
     onDeclineCall,
     onEndCall,
-    useSmallButtons = false
+    useSmallButtons = false,
+    customStyles = null
 }) => {
+    // Use custom styles if provided, otherwise use default styles
+    const styles = customStyles || defaultStyles;
     const declineButtonClass = useSmallButtons ? styles.declineCallBtnSmall : styles.declineCallBtn;
     const acceptButtonClass = useSmallButtons ? styles.acceptCallBtnSmall : styles.acceptCallBtn;
 
@@ -80,6 +83,7 @@ CallBanners.propTypes = {
     onDeclineCall: PropTypes.func.isRequired,
     onEndCall: PropTypes.func.isRequired,
     useSmallButtons: PropTypes.bool,
+    customStyles: PropTypes.object,
 };
 
 export default CallBanners;

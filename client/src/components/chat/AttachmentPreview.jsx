@@ -4,7 +4,7 @@ import PropTypes from 'prop-types';
 import { FaTimes, FaPaperclip } from 'react-icons/fa';
 import { getFileIcon, classNames } from './chatUtils.jsx';
 import { MAX_FILE_SIZE, ALLOWED_FILE_TYPES } from './chatConstants.js';
-import styles from '../../styles/Messages.module.css';
+import defaultStyles from '../../styles/Messages.module.css';
 import { logger } from '../../utils/logger.js';
 
 // Create a named logger for this component
@@ -17,11 +17,11 @@ const log = logger.create('AttachmentPreview');
 const AttachmentPreview = React.memo(({
     // Attachment data
     attachment,
-    isUploading,
-    uploadProgress,
+    isUploading = false,
+    uploadProgress = 0,
     
     // Callback functions
-    onRemoveAttachment,
+    onRemoveAttachment = () => {},
     onFileSelected,
     onAttachmentClick,
     
@@ -30,10 +30,14 @@ const AttachmentPreview = React.memo(({
     disabled = false,
     userTier = null,
     showFileInput = true,
-    fileInputAccept = ALLOWED_FILE_TYPES.join(',')
+    fileInputAccept = ALLOWED_FILE_TYPES.join(','),
+    customStyles = null
 }) => {
     // Reference to hidden file input
     const fileInputRef = useRef(null);
+    
+    // Use custom styles if provided, otherwise use default styles
+    const styles = customStyles || defaultStyles;
     
     // Format file size for display
     const fileSizeDisplay = attachment?.size 
@@ -187,16 +191,10 @@ AttachmentPreview.propTypes = {
     disabled: PropTypes.bool,
     userTier: PropTypes.string,
     showFileInput: PropTypes.bool,
-    fileInputAccept: PropTypes.string
+    fileInputAccept: PropTypes.string,
+    customStyles: PropTypes.object
 };
 
-// Set default props to avoid errors if some are not provided
-AttachmentPreview.defaultProps = {
-    isUploading: false,
-    uploadProgress: 0,
-    onRemoveAttachment: () => {},
-    showFileInput: true,
-    disabled: false
-};
+// We've moved from defaultProps to default parameters in the component function
 
 export default AttachmentPreview;

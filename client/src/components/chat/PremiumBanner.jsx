@@ -2,9 +2,11 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { FaCrown } from 'react-icons/fa';
-import styles from '../../styles/Messages.module.css';
+import defaultStyles from '../../styles/Messages.module.css';
 
-const PremiumBanner = React.memo(({ onUpgradeClick }) => {
+const PremiumBanner = React.memo(({ onUpgradeClick, customStyles = null }) => {
+    // Use custom styles if provided, otherwise use default styles
+    const styles = customStyles || defaultStyles;
     return (
         <div 
             className={styles.premiumBanner}
@@ -31,6 +33,7 @@ PremiumBanner.displayName = 'PremiumBanner';
 
 PremiumBanner.propTypes = {
     onUpgradeClick: PropTypes.func.isRequired,
+    customStyles: PropTypes.object,
 };
 
 export default PremiumBanner;

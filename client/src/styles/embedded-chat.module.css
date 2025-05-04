@@ -49,59 +49,94 @@
   padding: var(--space-sm) var(--space-md);
   background: var(--gradient-primary);
   color: white;
-  cursor: pointer;
   min-height: 52px;
   user-select: none;
+  position: relative;
+  width: 100%;
 }
 
-.chatUser {
+/* Back button for mobile view */
+.backButton {
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  cursor: pointer;
+  margin-right: var(--space-xs);
+}
+
+/* User info section */
+.conversationInfo {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
   gap: var(--space-sm);
   max-width: calc(100% - 80px);
+  overflow: hidden;
 }
 
-.chatAvatar {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-full);
-  object-fit: cover;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  flex-shrink: 0;
-}
-
-.chatAvatarPlaceholder {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-full);
-  background-color: rgba(255, 255, 255, 0.2);
-  flex-shrink: 0;
-}
-
-.chatUserInfo {
+.userInfo {
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.chatUserInfo h3 {
+.userName {
   margin: 0;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.statusContainer {
+.blockedTag {
+  font-size: 0.65rem;
+  background-color: var(--danger);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  animation: pulseBg 2s infinite;
+}
+
+@keyframes pulseBg {
+  0% { background-color: var(--danger); }
+  50% { background-color: rgba(var(--danger-rgb), 0.8); }
+  100% { background-color: var(--danger); }
+}
+
+.userStatus {
+  font-size: var(--font-size-2xs);
+  opacity: 0.8;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.statusOnline, .statusOffline {
+.blockedStatus {
+  color: var(--danger);
+  font-weight: var(--font-weight-medium);
+}
+
+.statusOnline, .statusOffline, .statusBlocked {
   font-size: var(--font-size-2xs);
   opacity: 0.8;
+}
+
+.statusBlocked {
+  color: var(--danger);
+  font-weight: var(--font-weight-medium);
 }
 
 .connectionStatus {
@@ -113,18 +148,21 @@
   padding: 2px 6px;
   border-radius: var(--radius-full);
   color: white;
+  margin-left: var(--space-sm);
 }
 
 .statusIcon {
   font-size: 8px;
 }
 
-.chatHeaderActions {
+/* Header actions */
+.chatActions {
   display: flex;
   gap: var(--space-xs);
+  align-items: center;
 }
 
-.chatHeaderBtn {
+.chatHeaderBtn, .videoCallButton, .moreOptionsButton {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -138,8 +176,87 @@
   transition: background-color var(--transition-fast);
 }
 
-.chatHeaderBtn:hover {
+.chatHeaderBtn:hover, .videoCallButton:hover, .moreOptionsButton:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+/* Dropdown Menu */
+.headerDropdown {
+  position: absolute;
+  top: 50px;
+  right: 10px;
+  background-color: var(--white);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  width: 160px;
+  z-index: var(--z-dropdown);
+  overflow: hidden;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  width: 100%;
+  text-align: left;
+  font-size: var(--font-size-sm);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-dark);
+  transition: background-color 0.2s;
+}
+
+.dropdownItem:hover {
+  background-color: var(--hover-overlay);
+}
+
+/* Blocked User Banner */
+.blockedUserBanner {
+  display: flex;
+  align-items: center;
+  background-color: rgba(var(--danger-rgb), 0.1);
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  margin: 0 8px 8px 8px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--danger);
+  font-weight: 500;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.blockedUserBanner div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.unblockButton {
+  background-color: var(--danger);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.unblockButton:hover {
+  background-color: var(--danger-dark);
 }
 
 /* Premium Banner */
@@ -152,12 +269,19 @@
   border-bottom: 1px solid var(--border-color);
   font-size: var(--font-size-xs);
   color: var(--text-medium);
+  width: 100%;
 }
 
 .premiumIcon {
   color: gold;
   margin-right: var(--space-2xs);
   flex-shrink: 0;
+}
+
+.premiumText {
+  flex: 1;
+  font-size: var(--font-size-xs);
+  margin: 0;
 }
 
 .upgradeBtn {
@@ -171,6 +295,7 @@
   cursor: pointer;
   transition: all var(--transition-fast);
   flex-shrink: 0;
+  margin-left: var(--space-sm);
 }
 
 .upgradeBtn:hover {
@@ -357,18 +482,20 @@
   display: flex;
   flex-direction: column;
   margin-bottom: var(--space-xs);
-  max-width: 85%;
+  max-width: 75%;
   align-self: flex-start;
+  width: auto !important;
 }
 
 /* For browsers that support :has() selector */
 .messageWrapper:has(.sent) {
-  align-self: flex-end;
+  align-self: flex-end !important;
 }
 
 /* Fallback for browsers that don't support :has() */
 .sent {
-  align-self: flex-end;
+  align-self: flex-end !important;
+  margin-left: auto !important;
 }
 
 .message {
@@ -390,16 +517,38 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-.message.sent {
+.message.sent, .messageBubble.sent {
   align-self: flex-end;
-  background-color: var(--primary);
-  color: white;
-  border-bottom-right-radius: var(--radius-sm);
+  background-color: #ff6b9d !important; /* Pink color for sent messages */
+  color: white !important;
+  border-radius: 18px !important;
+  border-bottom-right-radius: 4px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
+  transition: all 0.2s ease;
+  background-image: none !important; /* Override any gradient from the default styles */
+  border: none !important;
+  padding: 10px 14px !important;
+  max-width: 100% !important;
+  margin-bottom: 2px !important;
 }
 
-.message.received {
-  align-self: flex-start;
-  border-bottom-left-radius: var(--radius-sm);
+.message.sent:hover, .messageBubble.sent:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15) !important;
+  transform: translateY(-1px);
+}
+
+.message.received, .messageBubble.received {
+  align-self: flex-start !important;
+  border-radius: 18px !important;
+  border-bottom-left-radius: 4px !important;
+  background-color: var(--white) !important;
+  color: var(--text-dark) !important;
+  border: 1px solid var(--neutral-200) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+  padding: 10px 14px !important;
+  max-width: 100% !important;
+  margin-bottom: 2px !important;
+  margin-right: auto !important;
 }
 
 .messageContent {
@@ -425,6 +574,12 @@
 
 .metaSent {
   justify-content: flex-end;
+}
+
+/* Add compatibility with Messages.module.css */
+.messageTime {
+  font-size: 0.7rem;
+  opacity: 0.7;
 }
 
 .messageTime {
@@ -829,11 +984,65 @@
   font-weight: var(--font-weight-medium);
 }
 
-/* Message Input */
-.messageInput {
+/* Blocked User Banner */
+.blockedUserBanner {
+  display: flex;
+  align-items: center;
+  background-color: rgba(var(--danger-rgb), 0.1);
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  margin: 0 8px 8px 8px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--danger);
+  font-weight: 500;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.blockedUserBanner div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.unblockButton {
+  background-color: var(--danger);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.unblockButton:hover {
+  background-color: var(--danger-dark);
+}
+
+/* Blocked Chat Area */
+.chatArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.blockedChatArea {
+  position: relative;
+  border-left: 4px solid var(--danger);
+}
+
+/* ChatInput Styles */
+.inputWrapper {
   padding: var(--space-xs) var(--space-sm);
   background-color: var(--white);
   border-top: 1px solid var(--border-color);
+  width: 100%;
 }
 
 .inputArea {
@@ -844,9 +1053,12 @@
   width: 100%;
 }
 
-.messageInput input, .textInput {
+/* Text Input */
+.messageInput {
   flex: 1;
-  padding: 7px 12px;
+  min-height: 36px;
+  max-height: 120px;
+  padding: 8px 12px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-full);
   font-size: var(--font-size-sm);
@@ -855,20 +1067,33 @@
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   resize: none;
   line-height: 1.4;
+  width: 100%;
+  overflow-y: auto;
 }
 
-.messageInput input:focus, .textInput:focus {
+.messageInput:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px var(--primary-subtle);
 }
 
-.messageInput button {
+.blockedInput {
+  background-color: rgba(var(--danger-rgb), 0.05) !important;
+  border-color: rgba(var(--danger-rgb), 0.3) !important;
+  color: var(--danger) !important;
+}
+
+/* Buttons */
+.emojiButton, 
+.attachButton, 
+.winkButton, 
+.sendButton {
   background: none;
   border: none;
   color: var(--text-medium);
   font-size: var(--font-size-md);
   width: 30px;
   height: 30px;
+  min-width: 30px;
   padding: 0;
   cursor: pointer;
   border-radius: var(--radius-full);
@@ -878,48 +1103,91 @@
   transition: all var(--transition-fast);
 }
 
-.messageInput button:hover {
+.emojiButton:hover,
+.attachButton:hover,
+.sendButton:hover {
   color: var(--primary);
   background-color: var(--primary-subtle);
 }
 
-.messageInput button:disabled {
+.emojiButton:disabled,
+.attachButton:disabled,
+.winkButton:disabled,
+.sendButton:disabled,
+.disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.inputSend, .inputEmoji, .inputAttach, .inputWink {
+.sendButton {
+  color: var(--primary);
+}
+
+.sending {
+  animation: rotate 1s linear infinite;
+}
+
+.winkButton {
+  color: var(--danger);
+}
+
+.winkButton:hover {
+  color: var(--danger);
+  background-color: rgba(var(--danger-rgb), 0.1);
+}
+
+/* Emoji Picker */
+.emojiPicker {
+  position: absolute;
+  bottom: 60px;
+  left: 10px;
+  background-color: var(--white);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  width: 240px;
+  z-index: var(--z-dropdown);
+}
+
+.emojiHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.emojiHeader h4 {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-dark);
+}
+
+.emojiList {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--space-2xs);
+  padding: var(--space-sm);
+}
+
+.emojiList button {
+  font-size: var(--font-size-lg);
+  padding: var(--space-2xs);
+  border-radius: var(--radius-sm);
   background: none;
   border: none;
-  color: var(--text-medium);
-  font-size: var(--font-size-md);
-  width: 30px;
-  height: 30px;
-  padding: 0;
   cursor: pointer;
-  border-radius: var(--radius-full);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transition: all var(--transition-fast);
 }
 
-.inputSend:hover, .inputEmoji:hover, .inputAttach:hover {
-  color: var(--primary);
-  background-color: var(--primary-subtle);
+.emojiList button:hover {
+  background-color: var(--hover-overlay);
+  transform: scale(1.1);
 }
 
-.inputSend {
-  color: var(--primary) !important;
-}
-
-.inputWink {
-  color: var(--danger) !important;
-}
-
-.inputWink:hover {
-  color: var(--danger);
-  background-color: rgba(var(--danger-rgb), 0.1);
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Emoji Picker */
@@ -1012,19 +1280,100 @@
   border-color: var(--border-color);
 }
 
+/* Dark mode header */
+:global(.dark) .chatHeader {
+  background: var(--gradient-dark);
+}
+
+:global(.dark) .backButton,
+:global(.dark) .chatHeaderBtn, 
+:global(.dark) .videoCallButton, 
+:global(.dark) .moreOptionsButton {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+:global(.dark) .backButton:hover,
+:global(.dark) .chatHeaderBtn:hover, 
+:global(.dark) .videoCallButton:hover, 
+:global(.dark) .moreOptionsButton:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+:global(.dark) .headerDropdown {
+  background-color: var(--dark);
+  border-color: var(--border-color);
+}
+
+:global(.dark) .dropdownItem {
+  color: var(--text-light);
+}
+
+:global(.dark) .dropdownItem:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+:global(.dark) .blockedUserBanner {
+  background-color: rgba(var(--danger-rgb), 0.15);
+  border-color: rgba(var(--danger-rgb), 0.3);
+}
+
+/* Dark mode premium banner */
+:global(.dark) .premiumBanner {
+  background-color: rgba(255, 215, 0, 0.05);
+  border-color: rgba(255, 215, 0, 0.2);
+  color: var(--text-light);
+}
+
+:global(.dark) .upgradeBtn {
+  background-color: #d4af37; /* Darker gold */
+  color: var(--dark);
+}
+
+:global(.dark) .upgradeBtn:hover {
+  background-color: gold;
+}
+
+/* Dark mode messages */
 :global(.dark) .messagesContainer {
   background-color: var(--dark);
 }
 
-:global(.dark) .message {
+:global(.dark) .message, :global(.dark) .messageBubble {
   background-color: var(--neutral-800);
   color: var(--text-light);
   box-shadow: var(--shadow-xs);
 }
 
-:global(.dark) .message.sent {
-  background-color: var(--primary);
-  color: white;
+:global(.dark) .message.received, :global(.dark) .messageBubble.received {
+  align-self: flex-start !important;
+  border-radius: 18px !important;
+  border-bottom-left-radius: 4px !important;
+  background-color: var(--neutral-800) !important;
+  color: var(--text-light) !important;
+  border: 1px solid var(--neutral-700) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+  padding: 10px 14px !important;
+  max-width: 100% !important;
+  margin-bottom: 2px !important;
+  margin-right: auto !important;
+}
+
+:global(.dark) .message.sent, :global(.dark) .messageBubble.sent {
+  background-color: #ff6b9d !important; /* Same pink color in dark mode */
+  color: white !important;
+  border-radius: 18px !important;
+  border-bottom-right-radius: 4px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+  background-image: none !important; /* Override any gradient from the default styles */
+  border: none !important;
+  padding: 10px 14px !important;
+  max-width: 100% !important;
+  margin-bottom: 2px !important;
+}
+
+:global(.dark) .message.sent:hover, :global(.dark) .messageBubble.sent:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+  transform: translateY(-1px);
 }
 
 :global(.dark) .messageTime {
@@ -1049,26 +1398,52 @@
   background-color: var(--text-light);
 }
 
-:global(.dark) .messageInput,
-:global(.dark) .inputArea {
+/* Dark mode input */
+:global(.dark) .inputWrapper {
   background-color: var(--medium);
   border-color: var(--border-color);
 }
 
-:global(.dark) .messageInput input {
+:global(.dark) .inputArea {
+  border-color: var(--border-color);
+}
+
+:global(.dark) .messageInput {
   background-color: var(--dark);
   border-color: var(--border-color);
   color: var(--text-light);
 }
 
-:global(.dark) .messageInput input:focus {
+:global(.dark) .messageInput:focus {
   border-color: var(--primary);
 }
 
-:global(.dark) .messageInput button {
+:global(.dark) .messageInput.blockedInput {
+  background-color: rgba(var(--danger-rgb), 0.08) !important;
+  border-color: rgba(var(--danger-rgb), 0.2) !important;
+}
+
+:global(.dark) .emojiButton, 
+:global(.dark) .attachButton, 
+:global(.dark) .sendButton {
   color: var(--text-light);
 }
 
+:global(.dark) .emojiButton:hover, 
+:global(.dark) .attachButton:hover, 
+:global(.dark) .sendButton:hover {
+  background-color: rgba(var(--primary-rgb), 0.15);
+}
+
+:global(.dark) .winkButton {
+  color: rgba(var(--danger-rgb), 0.8);
+}
+
+:global(.dark) .winkButton:hover {
+  background-color: rgba(var(--danger-rgb), 0.15);
+}
+
+/* Dark mode attachment */
 :global(.dark) .attachmentPreview {
   background-color: var(--dark);
   border-color: var(--border-color);
@@ -1087,6 +1462,7 @@
   background-color: var(--neutral-700);
 }
 
+/* Dark mode emoji picker */
 :global(.dark) .emojiPicker {
   background-color: var(--medium);
   border-color: var(--border-color);
