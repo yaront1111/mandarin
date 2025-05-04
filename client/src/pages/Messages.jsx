@@ -2462,9 +2462,8 @@ const Messages = () => {
                 onSubmit={attachment ? handleSendAttachment : handleSendMessage}
                 onWinkSend={handleSendWink}
                 onFileAttachClick={handleFileAttachment}
-                disabled={activeConversation?.user?.isBlocked || (activeConversation?.user?._id && isUserBlocked(activeConversation.user._id))}
+                disabled={!!incomingCall || isCallActive || activeConversation?.user?.isBlocked || (activeConversation?.user?._id && isUserBlocked(activeConversation.user._id))}
                 isUserBlocked={activeConversation?.user?.isBlocked || (activeConversation?.user?._id && isUserBlocked(activeConversation.user._id))}
-                placeholderText={activeConversation?.user?.isBlocked ? "You have blocked this user" : "Type a message..."}
                 onEmojiClick={(emoji) => {
                   setMessageInput((prev) => prev + emoji);
                   setShowEmojis(false);
@@ -2477,12 +2476,13 @@ const Messages = () => {
                 isSending={isSending}
                 isUploading={isUploading}
                 attachmentSelected={!!attachment}
-                disabled={!!incomingCall || isCallActive}
                 inputRef={messageInputRef}
                 placeholderText={
-                  currentUser?.accountTier === ACCOUNT_TIER.FREE 
-                    ? "Send a wink instead (Free Account)" 
-                    : `Message ${activeConversation?.user?.nickname || ''}...`
+                  activeConversation?.user?.isBlocked ? 
+                    "You have blocked this user" : 
+                    (currentUser?.accountTier === ACCOUNT_TIER.FREE 
+                      ? "Send a wink instead (Free Account)" 
+                      : `Message ${activeConversation?.user?.nickname || ''}...`)
                 }
               />
               
