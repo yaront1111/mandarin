@@ -19,8 +19,8 @@ export const ThemeProvider = ({ children }) => {
       return "dark"
     }
 
-    // Default to light theme
-    return "light"
+    // Default to dark theme
+    return "dark"
   })
 
   // Apply theme class to document

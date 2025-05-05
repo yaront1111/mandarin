@@ -11,7 +11,7 @@ import styles from '../../styles/Messages.module.css';
  */
 const ConversationItem = ({
   conversation,
-  isActive,
+  isActive = false, // Provide default value to avoid PropType warning
   currentUserId,
   onClick,
 }) => {
@@ -21,6 +21,11 @@ const ConversationItem = ({
   }
 
   const { user, lastMessage, unreadCount = 0 } = conversation;
+  // Ensure the user object has a username property
+  if (!user.username) {
+    console.warn("User missing username property in ConversationItem:", user._id);
+    user.username = user.nickname || "Unknown User";
+  }
   const hasUnread = unreadCount > 0;
   
   return (

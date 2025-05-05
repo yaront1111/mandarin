@@ -7,13 +7,18 @@ import styles from '../../styles/Messages.module.css';
 /**
  * ChatArea component to encapsulate the chat area and handle blocked status styling
  */
-const ChatArea = ({ children, isUserBlocked = false, className, ...rest }) => {
+const ChatArea = ({ children, isUserBlocked = false, className = '', ...rest }) => {
+  // Ensure className is always a string
+  const normalizedClassName = typeof className === 'boolean' 
+    ? (className ? 'active' : '') // Convert boolean to appropriate string
+    : (className || ''); // Use empty string as fallback if null/undefined
+    
   return (
     <div 
       className={classNames(
         styles.chatArea,
         isUserBlocked && styles.blockedChatArea,
-        className
+        normalizedClassName
       )} 
       {...rest}
     >

@@ -45,6 +45,11 @@ class SocketService {
       // Pass environment-specific server URL based on environment
       const isDev = process.env.NODE_ENV === 'development'
       options.serverUrl = isDev ? 'http://localhost:5000' : 'https://flirtss.com'
+      
+      // Add additional options to ensure proper connectivity
+      options.rejectUnauthorized = false; // Ignore self-signed certificates
+      options.secure = true; // Use secure connection
+      options.upgrade = true; // Try to upgrade to websocket
 
       this.socket.init(userId, token, options)
       this.initialized = true
@@ -103,19 +108,11 @@ class SocketService {
       // 2. Not currently connected
       // 3. Not in cooldown mode (reconnectAttempts >= maxReconnectAttempts)
       // 4. Not currently reconnecting
-      // Check if socket is in fallback mode
-      const isFallbackMode = this.socket && this.socket.socket && 
-                            this.socket.socket.io && 
-                            this.socket.socket.io.engine && 
-                            this.socket.socket.io.engine.transport && 
-                            this.socket.socket.io.engine.transport.name === 'none';
-      
       if (
         this.initialized &&
         this.connectionState !== "connected" &&
         this.reconnectAttempts < this.maxReconnectAttempts &&
-        this.connectionState !== "reconnecting" &&
-        !isFallbackMode
+        this.connectionState !== "reconnecting"
       ) {
         this._log(`Connection monitor: Socket is ${this.connectionState}, attempting reconnect`)
         this.reconnect()
@@ -152,18 +149,6 @@ class SocketService {
       this._log("Socket already connected, no need to reconnect")
       this.reconnectAttempts = 0
       return true
-    }
-
-    // Check if socket is in fallback mode
-    const isFallbackMode = this.socket && this.socket.socket && 
-                          this.socket.socket.io && 
-                          this.socket.socket.io.engine && 
-                          this.socket.socket.io.engine.transport && 
-                          this.socket.socket.io.engine.transport.name === 'none';
-                          
-    if (isFallbackMode) {
-      this._log("Socket in fallback mode, skipping reconnection attempt", "warn")
-      return false;
     }
 
     // Prevent excessive reconnection attempts

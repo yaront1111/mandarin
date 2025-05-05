@@ -235,6 +235,47 @@ app.use(
 
 // --- Diagnostic Endpoints (Keep or remove based on environment) ---
 
+// Socket.IO status diagnostic endpoint
+app.get("/api/socket-status", (req, res) => {
+  const io = req.app.get('io');
+  
+  if (!io) {
+    return res.status(503).json({
+      success: false,
+      status: "unavailable",
+      message: "Socket.IO server not initialized",
+      diagnostics: {
+        serverRunning: true,
+        ioAvailable: false,
+        port: process.env.PORT || config.PORT || 5000,
+        environment: process.env.NODE_ENV || "development"
+      }
+    });
+  }
+  
+  const socketIds = Array.from(io.sockets.sockets.keys());
+  const connectedClients = socketIds.length;
+  
+  return res.json({
+    success: true,
+    status: "available",
+    message: "Socket.IO server is running",
+    diagnostics: {
+      serverRunning: true,
+      ioAvailable: true,
+      connectedClients,
+      connectionCount: connectedClients,
+      namespaces: io.namespaces ? Object.keys(io.namespaces).length : 'unknown',
+      engineOpts: io.engine ? {
+        path: io.engine.path,
+        transports: io.opts ? io.opts.transports : 'unknown'
+      } : 'unknown',
+      port: process.env.PORT || config.PORT || 5000,
+      environment: process.env.NODE_ENV || "development"
+    }
+  });
+});
+
 // Enhanced diagnostic endpoint to check file existence
 app.get("/api/check-file", (req, res) => {
   // Consider adding 'protect' middleware if this reveals sensitive info

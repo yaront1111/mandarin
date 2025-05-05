@@ -21,13 +21,20 @@ const pendingRequests = new Map();
  * Get all stories with caching to prevent excessive API calls
  * @returns {Promise<Object>} Response with stories data
  */
+// Track the last time we logged about cached stories to reduce noise
+let lastCacheLogTime = 0;
+
 export const getAllStories = async () => {
   try {
     const now = Date.now();
 
     // Return cached stories if available and not expired
     if (cachedStories && now - lastFetchTime < CACHE_DURATION) {
-      log.debug("Returning cached stories");
+      // Only log cache usage once per 10 seconds to reduce log spam
+      if (now - lastCacheLogTime > 10000) {
+        log.debug("Returning cached stories");
+        lastCacheLogTime = now;
+      }
       return cachedStories;
     }
 

@@ -97,11 +97,28 @@ const Avatar = ({
         return;
       }
       
-      // Add cache busting for profile photos to ensure we always have the latest version
-      const processedSrc = user && user.photos?.length > 0 ? 
-        normalizePhotoUrl(src, true) : // Use cache busting for user profile photos
-        (src || defaultAvatarPath);
-        
+      // Cache busting strategy:
+      // 1. Only add cache busting on first load of the component
+      // 2. Only for user profile photos
+      // 3. Store the processed URL in the srcCacheRef to prevent multiple cache busting on re-renders
+      const isUserPhoto = user && user.photos?.length > 0;
+      const isCached = srcCacheRef.current.has(src);
+      
+      // Apply cache busting only on first load of user profile photos
+      let processedSrc;
+      if (isUserPhoto && !isCached) {
+        // Use cache busting only for the initial load
+        processedSrc = normalizePhotoUrl(src, true);
+        // Store in cache to prevent applying cache busting again on re-renders
+        srcCacheRef.current.set(src, { processed: processedSrc, error: false });
+      } else if (isCached && !srcCacheRef.current.get(src).error) {
+        // Use the cached version if it exists and doesn't have an error
+        processedSrc = srcCacheRef.current.get(src).processed;
+      } else {
+        // Otherwise, just normalize without cache busting
+        processedSrc = normalizePhotoUrl(src, false);
+      }
+      
       setImgSrc(processedSrc);
       setImageError(false);
       
@@ -149,10 +166,10 @@ const Avatar = ({
   // Normalize URL with better error handling
   let normalizedSrc;
   try {
-    // Always use the shared normalizePhotoUrl function
-    normalizedSrc = normalizePhotoUrl(imgSrc, user && user.photos?.length > 0);
+    // Use the image source that's already been processed correctly
+    normalizedSrc = imgSrc;
   } catch (err) {
-    log.error(`Error normalizing URL: ${err.message}`, { src: imgSrc });
+    log.error(`Error with image source: ${err.message}`, { src: imgSrc });
     normalizedSrc = defaultAvatarPath;
   }
   

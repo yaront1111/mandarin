@@ -204,10 +204,12 @@ export const normalizePhotoUrl = (url, bustCache = false) => {
     }
   }
   
-  // Add cache busting parameter if requested
+  // Add cache busting parameter if requested, but use a more stable timestamp
   if (bustCache && result) {
+    // Use a timestamp that changes maximum once per minute
+    const cacheVersion = Math.floor(Date.now() / 60000) * 60000;
     const separator = result.includes('?') ? '&' : '?';
-    result = `${result}${separator}_t=${Date.now()}`;
+    result = `${result}${separator}_v=${cacheVersion}`;
   }
 
   // Cache the normalized URL to avoid future processing

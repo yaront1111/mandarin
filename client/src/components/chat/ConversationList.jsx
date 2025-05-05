@@ -70,6 +70,18 @@ const ConversationList = ({
               return null; // Skip rendering this item
             }
             
+            // Ensure the user object has a username property
+            if (!convo.user.username) {
+              console.warn("User missing username property in conversation:", convo.user._id);
+              convo = {
+                ...convo,
+                user: {
+                  ...convo.user,
+                  username: convo.user.nickname || "Unknown User"
+                }
+              };
+            }
+            
             return (
               <ConversationItem
                 key={convo.user._id}

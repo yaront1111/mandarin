@@ -45,57 +45,6 @@ class SocketClient {
 
     // Save user ID for reconnection
     this.userId = userId
-
-    // TEMPORARY SOLUTION: Detect connection issues and provide graceful fallback
-    // Look for a URL parameter or localStorage flag to enable/disable sockets
-    const socketDisabled = window.localStorage?.getItem('socket_disabled') === 'true' ||
-                          new URLSearchParams(window.location.search).get('disable_socket') === 'true';
-    
-    if (socketDisabled) {
-      log.warn("Socket.IO connections are temporarily disabled - using fallback mode");
-      this.socket = {
-        // Create a mock socket object with dummy methods
-        on: (event, callback) => {},
-        off: (event, callback) => {},
-        emit: (event, data) => { 
-          log.debug(`[Socket Mock] Would emit ${event}`, data);
-          return true; 
-        },
-        disconnect: () => {
-          log.debug('[Socket Mock] Would disconnect');
-          return true;
-        },
-        close: () => {
-          log.debug('[Socket Mock] Would close');
-          return true;
-        },
-        io: { engine: { transport: { name: 'none' } } },
-        connected: false
-      };
-      
-      // Set connection state
-      this.connected = false;
-      
-      // Add method to re-enable sockets
-      this.enableSockets = function() {
-        window.localStorage?.removeItem('socket_disabled');
-        toast.success("Real-time features enabled. Refresh the page to apply changes.", 
-          { autoClose: 5000 });
-        log.info("Socket.IO has been re-enabled. Refresh to apply.");
-      };
-      
-      // Add method to get current socket status
-      this.getStatus = function() {
-        return {
-          enabled: false,
-          connectionAttempts: this.connectionAttempts,
-          lastError: "Socket disabled by user or due to persistent connection issues"
-        };
-      };
-      
-      // Skip the rest of initialization
-      return this.socket;
-    }
     
     // Determine correct server URL based on environment
     const isDev = process.env.NODE_ENV === 'development'
@@ -119,8 +68,10 @@ class SocketClient {
         autoConnect: true,
         forceNew: true, // Force new connection attempt
         withCredentials: true, // Enable sending credentials with cross-origin requests
-        // Removed extraHeaders causing CORS issues
-        extraHeaders: {}
+        extraHeaders: {},
+        rejectUnauthorized: false, // Ignore self-signed certificates
+        secure: true, // Use secure connection
+        upgrade: true, // Try to upgrade to websocket
       })
 
       // Set up core socket event handlers
@@ -144,10 +95,6 @@ class SocketClient {
    * @returns {boolean} - Socket connection status
    */
   isConnected() {
-    // Check if socket is in fallback mode
-    if (this.socket?.io?.engine?.transport?.name === 'none') {
-      return false;
-    }
     return this.socket && this.connected
   }
 
@@ -216,26 +163,9 @@ class SocketClient {
         // Show error toast only after multiple failed attempts
         if (this.connectionAttempts === this.maxReconnectAttempts) {
           toast.error(
-            "Failed to connect to the chat server. Switching to offline mode.",
+            "Failed to connect to the chat server.",
             { autoClose: 5000 }
           );
-          
-          // Auto-disable socket connections after persistent failures
-          try {
-            // Store a flag in localStorage to disable sockets
-            window.localStorage?.setItem('socket_disabled', 'true');
-            log.warn("Socket connections have been temporarily disabled due to connection issues");
-            
-            // Notify user that a refresh is needed with the new setting
-            setTimeout(() => {
-              toast.info(
-                "Please refresh the page to apply offline mode settings",
-                { autoClose: false }
-              );
-            }, 2000);
-          } catch (err) {
-            log.error("Failed to set socket disabled flag:", err);
-          }
         }
       }
 
@@ -515,6 +445,16 @@ class SocketClient {
     const lastPong = this.lastPong || 0
     const timeSinceLastPong = now - lastPong
 
+    // Extra debugging info about socket state
+    log.debug(`Socket health check - Connected: ${this.connected}, Time since last heartbeat: ${timeSinceLastPong/1000}s`)
+
+    // Check if socket object is valid
+    if (!this.socket || typeof this.socket.emit !== "function") {
+      log.warn("Invalid socket object, attempting to reconnect...")
+      this.enhancedReconnect()
+      return false
+    }
+
     // Check if it's been too long since last pong
     if (timeSinceLastPong > SOCKET.CONNECTION.HEARTBEAT_TIMEOUT) {
       log.warn(`No socket response in the last ${SOCKET.CONNECTION.HEARTBEAT_TIMEOUT / 1000} seconds, reconnecting for notifications...`)
@@ -642,12 +582,6 @@ class SocketClient {
   enhancedReconnect() {
     if (this.reconnecting) {
       log.info("Already attempting reconnection, skipping duplicate request");
-      return;
-    }
-
-    // Check if socket is in fallback mode
-    if (this.socket?.io?.engine?.transport?.name === 'none') {
-      log.warn("Socket in fallback mode, cannot reconnect");
       return;
     }
 

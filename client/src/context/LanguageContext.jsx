@@ -52,12 +52,68 @@ export function LanguageProvider({ children }) {
 
   // Initialize language on component mount
   useEffect(() => {
-    // Set initial language from localStorage or browser preference
+    // Set initial language from localStorage, geolocation, or browser preference
     const savedLanguage = localStorage.getItem('language');
-    const browserLanguage = navigator.language.split('-')[0];
-    const initialLanguage = savedLanguage || (browserLanguage === 'he' ? 'he' : 'en');
     
-    changeLanguage(initialLanguage);
+    // If user has a saved preference, respect it
+    if (savedLanguage) {
+      changeLanguage(savedLanguage);
+      return;
+    }
+    
+    // Attempt to detect Israel users by timezone, language, and geolocation API
+    const detectIsraeliUser = async () => {
+      try {
+        // Check timezone - Israel's timezone is typically 'Asia/Jerusalem'
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const isIsraeliTimeZone = timeZone === 'Asia/Jerusalem';
+        
+        // Check browser language
+        const browserLanguage = navigator.language.split('-')[0];
+        const isHebrewLanguage = browserLanguage === 'he' || navigator.language === 'he-IL';
+        
+        // Check if country code is in URL parameters (could be added by your server)
+        const urlParams = new URLSearchParams(window.location.search);
+        const countryParam = urlParams.get('country');
+        const isIsraeliParam = countryParam === 'IL' || countryParam === 'Israel';
+        
+        // Use IP geolocation if available - this relies on a variable that might be set server-side
+        // or by a previous API call
+        const isIsraeliIP = window.__userCountry === 'IL' || window.__userCountry === 'Israel';
+        
+        // Determine if user is likely from Israel
+        const isLikelyFromIsrael = isIsraeliTimeZone || isHebrewLanguage || isIsraeliParam || isIsraeliIP;
+        
+        log.info('Israeli user detection:', { 
+          timeZone, 
+          isIsraeliTimeZone, 
+          browserLanguage, 
+          isHebrewLanguage, 
+          countryParam, 
+          isIsraeliParam,
+          isIsraeliIP,
+          result: isLikelyFromIsrael
+        });
+        
+        // Set language based on detection
+        if (isLikelyFromIsrael) {
+          changeLanguage('he');
+        } else {
+          // Default to browser language if supported, otherwise English
+          const defaultLang = browserLanguage === 'he' ? 'he' : 'en';
+          changeLanguage(defaultLang);
+        }
+      } catch (error) {
+        log.error('Error detecting user location:', error);
+        // Fallback to browser language or English
+        const browserLanguage = navigator.language.split('-')[0];
+        const fallbackLang = browserLanguage === 'he' ? 'he' : 'en';
+        changeLanguage(fallbackLang);
+      }
+    };
+    
+    // Run the detection
+    detectIsraeliUser();
   }, []);
 
   // Helper function to get supported languages
