@@ -194,6 +194,10 @@ export const normalizePhotoUrl = (url, bustCache = false) => {
   else if (/^\d+-\d+.*\.(jpg|jpeg|png|gif|webp)$/i.test(url)) {
     // This is likely a direct filename from the server, treat as image in uploads
     result = `${window.location.origin}/uploads/images/${url}`;
+    
+    // Always add cache busting for these specific filename patterns
+    // as they are likely newly uploaded images
+    bustCache = true;
   }
   else {
     // Make sure all URLs are absolute

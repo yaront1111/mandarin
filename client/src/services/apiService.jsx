@@ -315,8 +315,18 @@ class ApiService {
     return this.api.delete(url, opts);
   }
   upload(url, formData, onProgress, opts) {
+    // Get token and add to headers if it exists
+    const token = getToken();
+    const headers = { 
+      "Content-Type": "multipart/form-data" 
+    };
+    
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    
     return this.api.post(url, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers,
       onUploadProgress: onProgress,
       ...opts,
     });

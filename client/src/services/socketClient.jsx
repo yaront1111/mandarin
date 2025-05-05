@@ -48,8 +48,18 @@ class SocketClient {
     
     // Determine correct server URL based on environment
     const isDev = process.env.NODE_ENV === 'development'
-    // Use config values for server URLs
-    const serverUrl = isDev ? SOCKET.URLS.DEV : SOCKET.URLS.PROD
+    
+    // Use the current page's origin as the socket server URL in production
+    // This ensures the connection uses the same domain as the page
+    let serverUrl;
+    if (isDev) {
+      serverUrl = SOCKET.URLS.DEV;
+    } else {
+      // Use window.location.origin to get the current domain
+      // This avoids hardcoding domains and works with any custom domain
+      serverUrl = window.location.origin;
+      log.info(`Using current origin for socket connection: ${serverUrl}`);
+    }
     
     log.info(`Connecting to socket server at ${serverUrl}`)
 
@@ -64,13 +74,13 @@ class SocketClient {
         reconnectionDelayMax: SOCKET.RECONNECT.DELAY_MAX,
         timeout: SOCKET.CONNECTION.TIMEOUT,
         path: "/socket.io/", // Explicitly specify path for more reliability
-        transports: SOCKET.TRANSPORT.DEFAULT,
+        transports: ["polling", "websocket"], // Always try both transports
         autoConnect: true,
         forceNew: true, // Force new connection attempt
         withCredentials: true, // Enable sending credentials with cross-origin requests
-        extraHeaders: {},
-        rejectUnauthorized: false, // Ignore self-signed certificates
-        secure: true, // Use secure connection
+        extraHeaders: {}, // Leave empty to avoid CORS issues
+        rejectUnauthorized: false, // Ignore self-signed certificates for secure connections  
+        secure: window.location.protocol === 'https:', // Match page protocol
         upgrade: true, // Try to upgrade to websocket
       })
 

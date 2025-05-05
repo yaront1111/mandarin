@@ -61,21 +61,40 @@ const Avatar = ({
     setRenderTimestamp(Date.now());
   };
   
-  // Listen for global avatar refresh events
+  // Listen for global avatar refresh events and image load
   useEffect(() => {
     const handleAvatarRefresh = (event) => {
       // Update the timestamp to trigger a re-render
       setRenderTimestamp(event.detail.timestamp || Date.now());
+      
+      // Clear local image cache on refresh events
+      srcCacheRef.current.clear();
+      
+      // Clear image error state to attempt reload
+      setImageError(false);
     };
     
-    // Add event listener
+    // Add event listener for avatar refresh
     window.addEventListener('avatar:refresh', handleAvatarRefresh);
+    
+    // Define a listener for the "loadeddata" document event 
+    // to refresh avatars when navigating between pages
+    const handleDocumentLoad = () => {
+      // Only force refresh if there was a previous error
+      if (imageError) {
+        forceRefresh();
+      }
+    };
+    
+    // Listen for page fully loaded event
+    window.addEventListener('load', handleDocumentLoad);
     
     // Clean up
     return () => {
       window.removeEventListener('avatar:refresh', handleAvatarRefresh);
+      window.removeEventListener('load', handleDocumentLoad);
     };
-  }, []);
+  }, [imageError]);
 
   React.useEffect(() => {
     // Only reset if src actually changes to avoid infinite loop
@@ -129,18 +148,59 @@ const Avatar = ({
     }
   }, [src, defaultAvatarPath, imgSrc, imageError, normalizePhotoUrl, user, renderTimestamp]);
   
+  // Track retry attempts for each image
+  const retryAttemptsRef = React.useRef(new Map());
+  
   const handleError = (e) => {
     // Collect error information for debugging
     const failedSrc = e.target.src;
     setDebugInfo(`Failed to load image: ${failedSrc}`);
     
-    // Don't log Unsplash errors, they're expected due to rate limiting
-    if (!failedSrc.includes('unsplash.com')) {
-      log.error(`Image failed to load: ${failedSrc}`, { originalSrc: src });
+    // Check if this is a newly uploaded image by checking the timestamp pattern
+    const isNewlyUploaded = typeof src === 'string' && /\d+-\d+\.(jpg|jpeg|png|gif|webp)$/i.test(src);
+    
+    // Initialize retry counter if needed
+    if (!retryAttemptsRef.current.has(src)) {
+      retryAttemptsRef.current.set(src, 0);
     }
     
-    // Only update if we haven't already fallen back
-    if (!imageError && showFallback) {
+    // Get current retry attempts
+    const attempts = retryAttemptsRef.current.get(src);
+    
+    // Allow more retries for newly uploaded images (they might be still processing)
+    const maxRetries = isNewlyUploaded ? 3 : 1;
+    
+    // Don't log Unsplash errors, they're expected due to rate limiting
+    if (!failedSrc.includes('unsplash.com')) {
+      log.error(`Image failed to load: ${failedSrc}`, { originalSrc: src, attempt: attempts + 1, maxRetries });
+    }
+    
+    // If we haven't reached max retries for this image, try again with cache busting
+    if (attempts < maxRetries) {
+      retryAttemptsRef.current.set(src, attempts + 1);
+      
+      // For newly uploaded images, add a longer delay between retries
+      const retryDelay = isNewlyUploaded ? 1500 : 500;
+      
+      // Try again with forced cache busting for newly uploaded images
+      setTimeout(() => {
+        // Clear the source cache for this image
+        srcCacheRef.current.delete(src);
+        
+        // Generate a new timestamp for cache busting
+        const timestamp = Date.now();
+        const bustingSrc = normalizePhotoUrl(src, true) + `&retry=${timestamp}`;
+        
+        log.debug(`Retrying image load (${attempts + 1}/${maxRetries}): ${bustingSrc}`);
+        setImgSrc(bustingSrc);
+        setRenderTimestamp(timestamp);
+      }, retryDelay);
+      
+      return;
+    }
+    
+    // Only update if we've exhausted retries and need to fall back
+    if (showFallback) {
       // Use local default avatar instead of external service
       const fallbackImg = defaultAvatarPath;
       

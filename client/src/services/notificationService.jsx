@@ -129,6 +129,13 @@ class NotificationService {
     this.settings = { ...defaults, ...(userSettings.notifications || {}) };
     this.settings._init = true;
 
+    // Check if token exists before initializing services
+    const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+    if (!token) {
+      log.debug("No authentication token, notification service in limited mode");
+      return;
+    }
+
     this._setupSocket();
     this.fetchNotifications();
     this._managePolling();
@@ -154,6 +161,14 @@ class NotificationService {
   _managePolling() {
     if (!this.settings._init) return;
     
+    // Check if token exists before starting polling
+    const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+    if (!token) {
+      this._clearPoller(); // Clear any existing poller
+      log.debug("No authentication token, polling disabled");
+      return;
+    }
+    
     // Use socketService to check connection
     const connected = socketService.isConnected();
     
@@ -176,6 +191,14 @@ class NotificationService {
    */
   async fetchNotifications() {
     if (!this.settings._init || this.fetching) return;
+    
+    // Check if token exists before attempting to fetch
+    const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+    if (!token) {
+      log.debug("No authentication token, skipping notification fetch");
+      return;
+    }
+    
     this.fetching = true;
     this.loading = true;
     this._notify();
@@ -427,6 +450,12 @@ class NotificationService {
     socketService.off("connect");
     socketService.off("disconnect");
     
+    // Cancel any in-flight request
+    if (this._abortController) {
+      this._abortController.abort();
+      this._abortController = null;
+    }
+    
     this._clearPoller();
     if (this.bc) this.bc.close();
     this.listeners.clear();
@@ -434,6 +463,9 @@ class NotificationService {
     this._sorted = [];
     this.unreadCount = 0;
     this.settings._init = false;
+    this._retryAttempts = 0;
+    this.fetching = false;
+    this.loading = false;
   }
 }
 

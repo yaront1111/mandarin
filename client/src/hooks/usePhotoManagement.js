@@ -129,6 +129,18 @@ const usePhotoManagement = () => {
       // Clear cache to ensure all avatars are refreshed
       clearCache();
       
+      // Dispatch a global avatar refresh event to notify all components
+      if (typeof window !== 'undefined') {
+        // Wait a short delay to dispatch event (helps with race conditions)
+        setTimeout(() => {
+          log.debug('Dispatching avatar refresh event after successful upload');
+          const refreshEvent = new CustomEvent('avatar:refresh', {
+            detail: { timestamp: Date.now() }
+          });
+          window.dispatchEvent(refreshEvent);
+        }, 200);
+      }
+      
       if (response && response.success && response.data) {
         return response.data;
       } else if (response && response.photo) {

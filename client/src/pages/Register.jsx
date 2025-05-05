@@ -443,8 +443,12 @@ const Register = () => {
         // If there's a profile photo File object, upload it using the centralized hook
         if (formData.profilePhoto instanceof File) {
           try {
+            // Wait a short delay to ensure token is properly set and processed
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
             // Use the centralized hook with 'public' privacy setting for profile photos
-            const photoResult = await uploadPhoto(formData.profilePhoto, 'public');
+            // Set shouldSetAsProfile to true to automatically set it as profile photo
+            const photoResult = await uploadPhoto(formData.profilePhoto, 'public', null, true);
 
             if (photoResult) {
               toast.success(t('profile.photoUploadSuccess', "Profile photo uploaded successfully"));
@@ -457,13 +461,24 @@ const Register = () => {
             }
           } catch (photoErr) {
             logger.error("Error uploading photo via hook:", photoErr);
-            toast.error(t('errors.photoUploadFailed', "Failed to upload profile photo:") + " " + (photoErr.message || ""));
+            
+            // Don't show error to user if already navigating to dashboard
+            // This prevents the error toast from showing after the success message
+            if (document.visibilityState === 'visible') {
+              toast.error(t('errors.photoUploadFailed', "Failed to upload profile photo:") + " " + (photoErr.message || ""));
+            }
           }
         }
 
         // --- Step 3: Final Success Message and Navigation ---
+        // Show success message
         toast.success(t('auth.registerSuccess', "Welcome to Mandarin! Your account has been created successfully."));
-        navigate("/dashboard");
+        
+        // Delay navigation slightly to allow photo upload to complete in the background
+        // This ensures the token is fully processed before any navigation happens
+        setTimeout(() => {
+          navigate("/dashboard");
+        }, 800);
 
       }
       // If register didn't return a token or threw an error, it's handled by the catch block below
@@ -556,7 +571,7 @@ const Register = () => {
         </label>
         <div className={styles.inputWrapper}>
           <FaLock className={styles.inputIcon} />
-          <input type={showPassword ? "text" : "password"} id="password" name="password" placeholder={t('register.createPassword', 'Create a password')} className={styles.input} value={formData.password} onChange={handleChange} />
+          <input type={showPassword ? "text" : "password"} id="password" name="password" placeholder={t('register.createPassword', 'Create a password')} className={styles.input} value={formData.password} onChange={handleChange} autoComplete="new-password" />
           <button type="button" className={styles.togglePassword} onClick={togglePasswordVisibility} tabIndex={-1} aria-label={showPassword ? t('common.hidePassword', "Hide password") : t('common.showPassword', "Show password")}>
             {showPassword ? <FaEyeSlash /> : <FaEye />}
           </button>
@@ -569,7 +584,7 @@ const Register = () => {
         </label>
         <div className={styles.inputWrapper}>
           <FaLock className={styles.inputIcon} />
-          <input type={showPassword ? "text" : "password"} id="confirmPassword" name="confirmPassword" placeholder={t('register.confirmPassword', 'Confirm password')} className={styles.input} value={formData.confirmPassword} onChange={handleChange} />
+          <input type={showPassword ? "text" : "password"} id="confirmPassword" name="confirmPassword" placeholder={t('register.confirmPassword', 'Confirm password')} className={styles.input} value={formData.confirmPassword} onChange={handleChange} autoComplete="new-password" />
         </div>
         {formErrors.confirmPassword && (<p className={styles.errorMessage}><FaExclamationTriangle /> {formErrors.confirmPassword}</p>)}
       </div>

@@ -84,7 +84,7 @@ export const SOCKET = {
   },
   URLS: {
     DEV: 'http://localhost:5000',
-    PROD: 'https://flirtss.com'
+    PROD: window?.location?.origin || 'https://flirtss.com'
   },
   EVENTS: {
     // Chat events
