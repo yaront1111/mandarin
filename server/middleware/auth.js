@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { User } from "../models/index.js";
 import config from "../config.js";
 import logger from "../logger.js";
+import { normalizeIdToString, normalizeIdToObjectId, extractUserIdFromToken, createStandardUserObject } from "../utils/idUtils.js";
 
 /**
  * Generate JWT token
@@ -10,18 +11,16 @@ import logger from "../logger.js";
  * @param {string} expiresIn - Expiration time
  */
 const generateToken = (payload, expiresIn = config.JWT_EXPIRE) => {
-  // Ensure both id and _id fields are included for maximum compatibility
+  // Standardize the ID field in a consistent way
+  const idString = normalizeIdToString(payload);
+  
+  // Ensure all ID fields are included for maximum compatibility
   const tokenPayload = {
-    id: payload._id || payload.id,       // Keep id for backward compatibility
-    _id: payload._id || payload.id,      // Keep _id for newer code
-    userId: payload._id || payload.id,   // Include userId as well
+    id: idString,      // Keep id for backward compatibility
+    _id: idString,     // Keep _id for newer code
+    userId: idString,  // Include userId as well
     ...payload,
   };
-
-  // Make sure ids are properly stringified
-  if (tokenPayload.id) tokenPayload.id = tokenPayload.id.toString();
-  if (tokenPayload._id) tokenPayload._id = tokenPayload._id.toString();
-  if (tokenPayload.userId) tokenPayload.userId = tokenPayload.userId.toString();
 
   return jwt.sign(tokenPayload, config.JWT_SECRET, { expiresIn });
 };
@@ -30,20 +29,18 @@ const generateToken = (payload, expiresIn = config.JWT_EXPIRE) => {
  * Generate a socket-specific token
  */
 const generateSocketToken = (payload) => {
-  // Ensure both id and _id fields are included for maximum compatibility
+  // Standardize the ID field in a consistent way
+  const idString = normalizeIdToString(payload);
+  
+  // Ensure all ID fields are included for maximum compatibility
   const socketPayload = {
-    id: payload._id || payload.id,       // Keep id for socket auth
-    _id: payload._id || payload.id,      // Keep _id for newer code
-    userId: payload._id || payload.id,   // Include userId as well
+    id: idString,      // Keep id for socket auth
+    _id: idString,     // Keep _id for newer code
+    userId: idString,  // Include userId as well
     ...payload,
     purpose: "socket",
     iat: Math.floor(Date.now() / 1000),
   };
-
-  // Make sure ids are properly stringified
-  if (socketPayload.id) socketPayload.id = socketPayload.id.toString();
-  if (socketPayload._id) socketPayload._id = socketPayload._id.toString();
-  if (socketPayload.userId) socketPayload.userId = socketPayload.userId.toString();
 
   return jwt.sign(socketPayload, config.JWT_SECRET, {
     expiresIn: config.SOCKET_TOKEN_EXPIRE || "24h",
@@ -113,16 +110,16 @@ const authenticateSocket = async (socket, data) => {
   if (!verification.success) return verification;
 
   const decoded = verification.data;
-  // Check all possible ID field names for maximum compatibility
-  let userId = decoded.id || decoded._id || decoded.userId ||
-              (decoded.user && (decoded.user._id || decoded.user.id));
+  // Use standardized extraction of user ID from token
+  const userId = extractUserIdFromToken(decoded);
+  const userObjectId = normalizeIdToObjectId(userId);
 
-  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+  if (!userObjectId) {
     logger.debug(`Socket auth invalid ID: ${userId}, decoded: ${JSON.stringify(decoded)}`);
     return { success: false, error: "Invalid token format", code: "INVALID_TOKEN_FORMAT" };
   }
 
-  const user = await User.findById(userId).select("+version");
+  const user = await User.findById(userObjectId).select("+version");
   if (!user) {
     logger.debug(`Socket auth user not found: ${userId}`);
     return { success: false, error: "User not found", code: "USER_NOT_FOUND" };
@@ -132,16 +129,19 @@ const authenticateSocket = async (socket, data) => {
     return { success: false, error: "Session no longer valid", code: "TOKEN_REVOKED" };
   }
 
+  // Create standardized user object for response
+  const standardUser = {
+    _id: normalizeIdToString(user._id),
+    id: normalizeIdToString(user._id),
+    userId: normalizeIdToString(user._id),
+    email: user.email,
+    nickname: user.nickname || user.name,
+    role: user.role,
+  };
+
   return {
     success: true,
-    user: {
-      _id: user._id.toString(),
-      id: user._id.toString(),  // Include both id and _id for compatibility
-      userId: user._id.toString(), // Include userId as well
-      email: user.email,
-      nickname: user.nickname || user.name,
-      role: user.role,
-    },
+    user: standardUser,
   };
 };
 
@@ -193,23 +193,21 @@ const protect = async (req, res, next) => {
     return res.status(401).json({ success: false, error: "Invalid token", code: "INVALID_TOKEN" });
   }
 
-  // Check all possible ID field names for maximum compatibility
-  let userId = decoded._id || decoded.id || decoded.userId ||
-              (decoded.user && (decoded.user._id || decoded.user.id));
+  // Use standardized extraction of user ID from token
+  const userId = extractUserIdFromToken(decoded);
+  const userObjectId = normalizeIdToObjectId(userId);
 
-  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+  if (!userObjectId) {
     logger.debug(`Token missing or invalid user ID: ${userId}`);
     return res.status(401).json({ success: false, error: "Invalid token format", code: "INVALID_TOKEN_FORMAT" });
   }
 
   try {
-    // Fix proper ObjectId creation - using new keyword
-    const validId = new mongoose.Types.ObjectId(userId);
     if (isBlockedEndpoint) {
-      logger.debug(`[DEBUG] User ID parsed: ${validId}`);
+      logger.debug(`[DEBUG] User ID parsed: ${userObjectId}`);
     }
 
-    const user = await User.findById(validId).select("+version");
+    const user = await User.findById(userObjectId).select("+version");
     if (!user) {
       logger.debug(`User not found from token, ID: ${userId}`);
       return res.status(401).json({ success: false, error: "User not found", code: "USER_NOT_FOUND" });
@@ -220,13 +218,11 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, error: "Session no longer valid", code: "TOKEN_REVOKED" });
     }
 
-    // Make sure _id is properly stringified
-    const userIdStr = user._id.toString();
-
+    // Create standardized user object with consistent ID fields
     req.user = {
-      _id: userIdStr,
-      id: userIdStr,  // Include id for backward compatibility
-      userId: userIdStr, // Include userId as well
+      _id: normalizeIdToString(user._id),
+      id: normalizeIdToString(user._id),
+      userId: normalizeIdToString(user._id),
       email: user.email,
       nickname: user.nickname,
       role: user.role,

@@ -181,12 +181,30 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         await new Promise(resolve => setTimeout(resolve, 50));
 
         // Use getUser from context but don't add it to dependencies
-        const userData = await getUser(userId);
+        // Force cache clear by passing true as second parameter
+        const userData = await api.get(`/users/${userId}`, {}, { 
+          useCache: false, 
+          headers: { 
+            'x-no-cache': 'true',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          } 
+        });
 
         if (!isMounted()) return;
 
-        log.debug("User data received:", userData);
-        setUser(userData);
+        log.debug("User data received:", userData?.data?.user || userData?.data || userData);
+        
+        // Extract user data from response based on structure
+        const userDataExtracted = userData?.data?.user || userData?.data || userData;
+        
+        // Set the local user state AND update the context user
+        setUser(userDataExtracted);
+        
+        // Also update the context user to ensure latest data is available
+        if (getUser && typeof getUser === 'function') {
+          getUser(userId);
+        }
       } catch (error) {
         if (isMounted()) {
           log.error("Error fetching user:", error);
@@ -211,7 +229,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     };
   // Explicitly exclude getUser from deps since it might change between renders
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, isOpen, isMounted]);
+  }, [userId, isOpen, isMounted, api]);
 
   // IMPORTANT: We're not using this callback anymore - it's replaced with a direct API call
   // in the useEffect to prevent loops. Keep this here just for reference and documentation.
@@ -495,20 +513,22 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
   // Handle liking/unliking users
   const handleLike = useCallback(async () => {
-    if (!profileUser || isLiking) return;
+    // Use local user state if context user is not available
+    const targetUser = profileUser || user;
+    if (!targetUser || isLiking) return;
 
     // Add tactile feedback for mobile users
     if (isTouch) {
-      provideTactileFeedback(isUserLiked && isUserLiked(profileUser._id) ? 'wink' : 'send');
+      provideTactileFeedback(isUserLiked && isUserLiked(targetUser._id) ? 'wink' : 'send');
     }
 
     setIsLiking(true);
 
     try {
-      if (isUserLiked && isUserLiked(profileUser._id)) {
-        await unlikeUser(profileUser._id, profileUser.nickname);
+      if (isUserLiked && isUserLiked(targetUser._id)) {
+        await unlikeUser(targetUser._id, targetUser.nickname);
       } else {
-        await likeUser(profileUser._id, profileUser.nickname);
+        await likeUser(targetUser._id, targetUser.nickname);
       }
     } catch (error) {
       // Add error feedback for mobile
@@ -522,7 +542,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         setIsLiking(false);
       }
     }
-  }, [profileUser, isLiking, isUserLiked, unlikeUser, likeUser, isMounted, log, isTouch]);
+  }, [profileUser, user, isLiking, isUserLiked, unlikeUser, likeUser, isMounted, log, isTouch]);
 
   // Handle blocking a user
   const handleBlock = useCallback(async () => {
@@ -606,10 +626,12 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
   // Photo navigation
   const nextPhoto = useCallback(() => {
-    if (profileUser?.photos && activePhotoIndex < profileUser.photos.length - 1) {
+    // Use the displayUser variable which is defined later in the component
+    const photos = (profileUser || user)?.photos;
+    if (photos && activePhotoIndex < photos.length - 1) {
       setActivePhotoIndex(activePhotoIndex + 1);
     }
-  }, [profileUser, activePhotoIndex]);
+  }, [profileUser, user, activePhotoIndex]);
 
   const prevPhoto = useCallback(() => {
     if (activePhotoIndex > 0) {
@@ -745,7 +767,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     );
   }
 
-  if (!profileUser) {
+  // Use either the user from context (profileUser) or the locally fetched user state
+  const displayUser = profileUser || user;
+  
+  if (!displayUser) {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="small">
         <div className={styles.notFoundContainer}>
@@ -782,20 +807,20 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             {userStories && userStories.length > 0 && (
               <div className={styles.storiesThumbnail}>
                 <StoryThumbnail
-                  user={profileUser}
-                  hasUnviewedStories={hasUnviewedStories && hasUnviewedStories(profileUser._id)}
+                  user={displayUser}
+                  hasUnviewedStories={hasUnviewedStories && hasUnviewedStories(displayUser._id)}
                   onClick={handleViewStories}
                 />
               </div>
             )}
 
             {/* Photo Gallery */}
-            {profileUser && profileUser.photos && profileUser.photos.length > 0 ? (
+            {displayUser && displayUser.photos && displayUser.photos.length > 0 ? (
               <div className={styles.galleryContainer}>
                 <div className={styles.gallery}>
-                  {profileUser.photos[activePhotoIndex] &&
-                  (profileUser.photos[activePhotoIndex].privacy === 'private' || 
-                   (profileUser.photos[activePhotoIndex].isPrivate && !profileUser.photos[activePhotoIndex].privacy)) &&
+                  {displayUser.photos[activePhotoIndex] &&
+                  (displayUser.photos[activePhotoIndex].privacy === 'private' || 
+                   (displayUser.photos[activePhotoIndex].isPrivate && !displayUser.photos[activePhotoIndex].privacy)) &&
                   !canViewPrivatePhotos ? (
                     <div className={styles.privatePhoto}>
                       <FaLock className={styles.lockIcon} />
@@ -803,7 +828,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
                       <button
                         className={styles.requestAccessBtn}
-                        onClick={() => handleAllowPrivatePhotos(profileUser._id)}
+                        onClick={() => handleAllowPrivatePhotos(displayUser._id)}
                         disabled={userPhotoAccess.isLoading}
                       >
                         {userPhotoAccess.isLoading ? <FaSpinner className={styles.spinner} /> : <FaEye />}
@@ -811,20 +836,20 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       </button>
                     </div>
                   ) : (
-                    profileUser.photos[activePhotoIndex] && (
+                    displayUser.photos[activePhotoIndex] && (
                       <div className={styles.imageContainer}>
                         <img
-                          src={normalizePhotoUrl(profileUser.photos[activePhotoIndex].url)}
-                          alt={`${profileUser.nickname}'s photo`}
+                          src={normalizePhotoUrl(displayUser.photos[activePhotoIndex].url, true)} // Add cache busting
+                          alt={`${displayUser.nickname}'s photo`}
                           className={styles.galleryImage}
-                          onError={() => handleImageError(profileUser.photos[activePhotoIndex]._id)}
+                          onError={() => handleImageError(displayUser.photos[activePhotoIndex]._id)}
                         />
                       </div>
                     )
                   )}
 
                   {/* Online badge */}
-                  {profileUser.isOnline && (
+                  {displayUser.isOnline && (
                     <div className={styles.onlineBadge}>
                       <span className={styles.pulse}></span>
                       {t('userProfile.onlineNow')}
@@ -832,7 +857,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   )}
 
                   {/* Gallery navigation */}
-                  {profileUser.photos.length > 1 && (
+                  {displayUser.photos.length > 1 && (
                     <>
                       <button
                         className={`${styles.nav} ${styles.navPrev}`}
@@ -845,7 +870,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       <button
                         className={`${styles.nav} ${styles.navNext}`}
                         onClick={nextPhoto}
-                        disabled={activePhotoIndex === profileUser.photos.length - 1}
+                        disabled={activePhotoIndex === displayUser.photos.length - 1}
                         aria-label={t('userProfile.next')}
                       >
                         <FaChevronRight />
@@ -855,9 +880,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 </div>
 
                 {/* Photo thumbnails */}
-                {profileUser.photos.length > 1 && (
+                {displayUser.photos.length > 1 && (
                   <div className={styles.thumbnails}>
-                    {profileUser.photos.map((photo, index) => (
+                    {displayUser.photos.map((photo, index) => (
                       <div
                         key={photo._id || index}
                         className={`${styles.thumbnail} ${index === activePhotoIndex ? styles.thumbnailActive : ""}`}
@@ -876,8 +901,8 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                           </div>
                         ) : (
                           <img
-                            src={normalizePhotoUrl(photo.url)}
-                            alt={`${profileUser.nickname} ${index + 1}`}
+                            src={normalizePhotoUrl(photo.url, true)} // Add cache busting
+                            alt={`${displayUser.nickname} ${index + 1}`}
                             className={styles.thumbnailImg}
                             onError={() => handleImageError(photo._id)}
                           />
@@ -890,10 +915,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             ) : (
               <div className={styles.gallery}>
                 <Avatar
-                  user={profileUser}
+                  user={displayUser}
                   size="xlarge"
-                  alt={profileUser.nickname}
-                  status={profileUser.isOnline ? "online" : null}
+                  alt={displayUser.nickname}
+                  status={displayUser.isOnline ? "online" : null}
                   showOnlineStatus={true}
                 />
                 <p>{t('userProfile.noPhotosAvailable')}</p>
@@ -905,12 +930,12 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               {!isOwnProfile && (
                 <>
                   <button
-                    className={`${styles.actionBtn} ${isUserLiked && isUserLiked(profileUser._id) ? styles.likedBtn : styles.likeBtn}`}
+                    className={`${styles.actionBtn} ${isUserLiked && isUserLiked(displayUser._id) ? styles.likedBtn : styles.likeBtn}`}
                     onClick={handleLike}
                     disabled={isLiking}
                   >
                     {isLiking ? <FaSpinner className={styles.spinner} /> : <FaHeart />}
-                    {isUserLiked && isUserLiked(profileUser._id) ? t('userProfile.liked') : t('userProfile.like')}
+                    {isUserLiked && isUserLiked(displayUser._id) ? t('userProfile.liked') : t('userProfile.like')}
                   </button>
                   <button
                     className={`${styles.actionBtn} ${styles.messageBtn}`}
@@ -957,9 +982,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             {/* User headline */}
             <div className={styles.headline}>
               <h1 className={styles.headlineTitle}>
-                {profileUser.nickname}, {profileUser.details?.age || "?"}
+                {displayUser.nickname}, {displayUser.details?.age || "?"}
               </h1>
-              {profileUser.role === "premium" && (
+              {displayUser.role === "premium" && (
                 <div className={styles.premiumBadge}>
                   <FaTrophy /> {t('userProfile.premium', 'Premium')}
                 </div>
@@ -969,9 +994,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             {/* User location */}
             <div className={styles.location}>
               <FaMapMarkerAlt className={styles.icon} />
-              <span>{profileUser.details?.location || t('userProfile.unknownLocation')}</span>
-              <div className={`${styles.onlineStatus} ${profileUser.isOnline ? styles.isOnline : ""} ${theme === 'dark' ? styles.darkOnlineStatus : ''}`}>
-                {profileUser.isOnline ? translations.onlineNow : translations.offline}
+              <span>{displayUser.details?.location || t('userProfile.unknownLocation')}</span>
+              <div className={`${styles.onlineStatus} ${displayUser.isOnline ? styles.isOnline : ""} ${theme === 'dark' ? styles.darkOnlineStatus : ''}`}>
+                {displayUser.isOnline ? translations.onlineNow : translations.offline}
               </div>
             </div>
 
@@ -980,14 +1005,14 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               <div className={styles.activityItem}>
                 <FaRegClock className={styles.icon} />
                 <span>
-                  {profileUser.isOnline
+                  {displayUser.isOnline
                     ? translations.onlineNow
-                    : `${translations.lastActive} ${formatDate(profileUser.lastActive, { showTime: false })}`}
+                    : `${translations.lastActive} ${formatDate(displayUser.lastActive, { showTime: false })}`}
                 </span>
               </div>
               <div className={styles.activityItem}>
                 <FaCalendarAlt className={styles.icon} />
-                <span>{translations.memberSince} {formatDate(profileUser.createdAt, { showTime: false })}</span>
+                <span>{translations.memberSince} {formatDate(displayUser.createdAt, { showTime: false })}</span>
               </div>
             </div>
 
@@ -1077,40 +1102,40 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             )}
 
             {/* User details sections */}
-            {profileUser.details?.bio && (
+            {displayUser.details?.bio && (
                 <div className={styles.section}>
                   <h2 className={styles.sectionTitle}>{translations.aboutMe}</h2>
-                  <p className={styles.aboutText}>{profileUser.details.bio}</p>
+                  <p className={styles.aboutText}>{displayUser.details.bio}</p>
                 </div>
             )}
 
-            {profileUser.details?.iAm && (
+            {displayUser.details?.iAm && (
                 <div className={styles.section}>
                   <h2 className={styles.sectionTitle}>{translations.iAm}</h2>
                   <div className={styles.tagsContainer}>
                   <span className={`${styles.tag} ${styles.identityTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkIdentityTag : ''}`}>
-                    {capitalize(translateTag(profileUser.details.iAm))}
+                    {capitalize(translateTag(displayUser.details.iAm))}
                   </span>
                   </div>
                 </div>
             )}
 
-            {profileUser.details?.maritalStatus && (
+            {displayUser.details?.maritalStatus && (
                 <div className={styles.section}>
                   <h2 className={styles.sectionTitle}>{translations.maritalStatus}</h2>
                   <div className={styles.tagsContainer}>
                   <span className={`${styles.tag} ${styles.statusTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkStatusTag : ''}`}>
-                    {translateTag(profileUser.details.maritalStatus)}
+                    {translateTag(displayUser.details.maritalStatus)}
                   </span>
                   </div>
                 </div>
             )}
 
-            {profileUser.details?.lookingFor && profileUser.details.lookingFor.length > 0 && (
+            {displayUser.details?.lookingFor && displayUser.details.lookingFor.length > 0 && (
                 <div className={styles.section}>
                   <h2 className={styles.sectionTitle}>{translations.lookingFor}</h2>
                   <div className={styles.tagsContainer}>
-                    {profileUser.details.lookingFor.map((item, index) => (
+                    {displayUser.details.lookingFor.map((item, index) => (
                         <span key={index} className={`${styles.tag} ${styles.lookingForTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkLookingForTag : ''}`}>
                       {translateTag(item)}
                     </span>
@@ -1119,11 +1144,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               </div>
             )}
 
-            {profileUser.details?.intoTags && profileUser.details.intoTags.length > 0 && (
+            {displayUser.details?.intoTags && displayUser.details.intoTags.length > 0 && (
               <div className={styles.section}>
                 <h2 className={styles.sectionTitle}>{translations.imInto}</h2>
                 <div className={styles.tagsContainer}>
-                  {profileUser.details.intoTags.map((item, index) => (
+                  {displayUser.details.intoTags.map((item, index) => (
                     <span key={index} className={`${styles.tag} ${styles.intoTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkIntoTag : ''}`}>
                       {translateTag(item)}
                     </span>
@@ -1132,11 +1157,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               </div>
             )}
 
-            {profileUser.details?.turnOns && profileUser.details.turnOns.length > 0 && (
+            {displayUser.details?.turnOns && displayUser.details.turnOns.length > 0 && (
               <div className={styles.section}>
                 <h2 className={styles.sectionTitle}>{translations.itTurnsMeOn}</h2>
                 <div className={styles.tagsContainer}>
-                  {profileUser.details.turnOns.map((item, index) => (
+                  {displayUser.details.turnOns.map((item, index) => (
                     <span key={index} className={`${styles.tag} ${styles.turnOnTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkTurnOnTag : ''}`}>
                       {translateTag(item)}
                     </span>
@@ -1146,13 +1171,13 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             )}
 
             {/* Interests section */}
-            {profileUser.details?.interests?.length > 0 && (
+            {displayUser.details?.interests?.length > 0 && (
               <div className={styles.section}>
                 <h2 className={styles.sectionTitle}>{translations.interests}</h2>
                 <div className={styles.interestsTags}>
                   {(showAllInterests
-                    ? profileUser.details.interests
-                    : profileUser.details.interests.slice(0, 8)
+                    ? displayUser.details.interests
+                    : displayUser.details.interests.slice(0, 8)
                   ).map((interest) => (
                     <span
                       key={interest}
@@ -1167,12 +1192,12 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       {commonInterests.includes(interest) && <FaCheck className={`${styles.commonIcon} ${theme === 'dark' ? styles.darkCommonIcon : ''}`} />}
                     </span>
                   ))}
-                  {!showAllInterests && profileUser.details.interests.length > 8 && (
+                  {!showAllInterests && displayUser.details.interests.length > 8 && (
                     <button
                       className={`${styles.showMoreBtn} ${theme === 'dark' ? styles.darkShowMoreBtn : ''}`}
                       onClick={() => setShowAllInterests(true)}
                     >
-                      +{profileUser.details.interests.length - 8} {t('userProfile.showMore')}
+                      +{displayUser.details.interests.length - 8} {t('userProfile.showMore')}
                     </button>
                   )}
                 </div>
@@ -1185,12 +1210,12 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         {showChat && (
           <>
             <div className={styles.chatOverlay} onClick={handleCloseChat}></div>
-            <EmbeddedChat recipient={profileUser} isOpen={showChat} onClose={handleCloseChat} />
+            <EmbeddedChat recipient={displayUser} isOpen={showChat} onClose={handleCloseChat} />
           </>
         )}
 
         {/* Stories Viewer */}
-        {showStories && <StoriesViewer userId={profileUser._id} onClose={handleCloseStories} />}
+        {showStories && <StoriesViewer userId={displayUser._id} onClose={handleCloseStories} />}
         
       </div>
     </Modal>

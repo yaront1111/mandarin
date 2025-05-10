@@ -14,6 +14,7 @@ import { protect, enhancedProtect } from "../middleware/auth.js";
 import { canLikeUser } from "../middleware/permissions.js";
 import logger from "../logger.js";
 import { uploadPhoto } from "../middleware/upload.js";
+import jwt from "jsonwebtoken";
 
 const router = express.Router();
 
@@ -820,47 +821,12 @@ router.delete(
  */
 router.get(
   "/blocked",
+  protect, // Use the standard protect middleware
   asyncHandler(async (req, res) => {
     try {
-      // Check authentication
-      if (!req.headers.authorization || !req.headers.authorization.startsWith('Bearer ')) {
-        return res.status(401).json({ success: false, error: "Authentication required" });
-      }
-      
-      // Extract token
-      const token = req.headers.authorization.split(' ')[1];
-      if (!token) {
-        return res.status(401).json({ success: false, error: "No token provided" });
-      }
-      
-      // Verify token and extract user ID (handle both id and _id formats)
-      const decoded = jwt.verify(token, config.JWT_SECRET);
-      logger.debug(`Decoded token for blocked users: ${JSON.stringify(decoded)}`);
-      
-      // Extract user ID from token (standardize on _id)
-      const userIdStr = decoded._id || decoded.id || 
-                       (decoded.user && (decoded.user._id || decoded.user.id));
-      
-      if (!userIdStr) {
-        logger.error(`No user ID found in token: ${JSON.stringify(decoded)}`);
-        return res.status(401).json({ success: false, error: "Invalid token format - no user ID" });
-      }
-      
-      logger.debug(`User ID from token: ${userIdStr}`);
-      
-      // Convert to proper ObjectId
-      let userId;
-      try {
-        if (mongoose.Types.ObjectId.isValid(userIdStr)) {
-          userId = new mongoose.Types.ObjectId(userIdStr);
-        } else {
-          logger.error(`Invalid ObjectId format: ${userIdStr}`);
-          return res.status(400).json({ success: false, error: "Invalid user ID format" });
-        }
-      } catch (err) {
-        logger.error(`Failed to create ObjectId: ${err.message}`);
-        return res.status(400).json({ success: false, error: "Failed to process user ID" });
-      }
+      // User ID is already available from the protect middleware
+      const userId = req.user._id;
+      logger.debug(`Getting blocked users for user ID: ${userId}`);
       
       // Find user and blocked users
       const user = await User.findById(userId).select("blockedUsers");
@@ -899,19 +865,11 @@ router.get(
         data: blockedUsers
       });
     } catch (err) {
-      // Handle specific JWT errors
-      if (err.name === 'JsonWebTokenError') {
-        return res.status(401).json({ success: false, error: "Invalid token format" });
-      } else if (err.name === 'TokenExpiredError') {
-        return res.status(401).json({ success: false, error: "Token expired" });
-      }
-      
-      // Log error but respond with success and empty array for client experience
+      // Log error but respond with a proper error message
       logger.error(`Blocked users error: ${err.message}`);
-      return res.json({
-        success: true,
-        count: 0,
-        data: []
+      return res.status(500).json({
+        success: false,
+        error: "Failed to retrieve blocked users"
       });
     }
   })

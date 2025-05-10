@@ -9,6 +9,7 @@ export * from "./errorHandler.js"
 export * from "./validation.js"
 export * from "./dbHelpers.js"
 export * from "./responseHandler.js"
+export * from "./idUtils.js" // Export the new ID utilities
 
 /**
  * Safe parse JSON with error handling

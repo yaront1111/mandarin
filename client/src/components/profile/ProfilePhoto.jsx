@@ -4,7 +4,7 @@ import PropTypes from 'prop-types';
 import { useTranslation } from 'react-i18next';
 import { FaLock, FaUserCircle, FaUsers } from 'react-icons/fa';
 import { normalizePhotoUrl, translate, translateProfile } from '../../utils';
-import styles from '../../styles/photo-management.module.css';
+import styles from '../../styles/photo-gallery-consolidated.module.css';
 import logger from '../../utils/logger';
 
 const log = logger.create('ProfilePhoto');

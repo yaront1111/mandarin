@@ -42,12 +42,12 @@ import {
   MessageList,
   PremiumBanner,
   TypingIndicator,
-  
+
   // Utils
   groupMessagesByDate,
   formatMessagePreview,
   generateLocalUniqueId,
-  
+
   // Constants
   ACCOUNT_TIER
 } from "../components/chat";
@@ -75,6 +75,7 @@ const Messages = () => {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [error, setError] = useState(null);
   const [typingUser, setTypingUser] = useState(null);
+
   // Use our custom hook for mobile detection instead of manual window width check
   const isMobile = useIsMobile();
   const { isTouch, isIOS, isAndroid } = useMobileDetect();
@@ -94,7 +95,7 @@ const Messages = () => {
   const [touchStartX, setTouchStartX] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
   const [swipeDirection, setSwipeDirection] = useState(null);
-  
+
   // Profile modal state
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileUserId, setProfileUserId] = useState(null);
@@ -109,9 +110,76 @@ const Messages = () => {
   const messagesContainerRef = useRef(null);
   const loadedConversationRef = useRef(null);
   const refreshIndicatorRef = useRef(null);
+  const messagesRef = useRef([]); // Track current messages to help detect duplicates
 
   // Common emojis for the emoji picker
   const commonEmojis = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"];
+  
+  // Keep messagesRef in sync with messages state
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+  
+  // Add a throttle for wink messages to prevent sending multiple winks at once
+  const lastWinkSentRef = useRef(0);
+  const lastMessageSentRef = useRef({});
+  
+  // Global message tracker to prevent duplicates from any source
+  const seenMessagesRef = useRef(new Set());
+  const seenWinksRef = useRef([]); // Special handling for winks
+  
+  // Create a function to check if a message is a duplicate
+  const isDuplicateMessage = useCallback((message) => {
+    // Skip system messages
+    if (message.type === 'system') return false;
+    
+    const messageId = message._id || message.tempId;
+    if (!messageId) return false;
+    
+    // Check if we've seen this exact message ID
+    if (seenMessagesRef.current.has(messageId)) {
+      console.log("Duplicate message detected by ID:", messageId);
+      return true;
+    }
+    
+    // For winks, do additional content+time-based deduplication
+    if (message.type === 'wink' && message.content === "😉") {
+      // Check against recently seen winks from the same sender
+      const recentWinks = seenWinksRef.current.filter(wink => 
+        wink.sender === message.sender && 
+        Date.now() - wink.timestamp < 60000 // 60-second window for winks
+      );
+      
+      if (recentWinks.length > 0) {
+        console.log("Duplicate wink detected by time window");
+        return true;
+      }
+      
+      // Add to seen winks
+      seenWinksRef.current.push({
+        sender: message.sender,
+        recipient: message.recipient,
+        timestamp: Date.now(),
+        id: messageId
+      });
+      
+      // Clean up old winks (older than 5 minutes)
+      seenWinksRef.current = seenWinksRef.current.filter(wink => 
+        Date.now() - wink.timestamp < 300000
+      );
+    }
+    
+    // Add to seen messages
+    seenMessagesRef.current.add(messageId);
+    
+    // Clean up seen messages set if it gets too large
+    if (seenMessagesRef.current.size > 1000) {
+      const oldestMessages = Array.from(seenMessagesRef.current).slice(0, 500);
+      oldestMessages.forEach(id => seenMessagesRef.current.delete(id));
+    }
+    
+    return false;
+  }, []);
 
   // Handle PWA installation
   useEffect(() => {
@@ -159,7 +227,7 @@ const Messages = () => {
     } else if (activeConversation) {
       setShowSidebar(false);
     }
-    
+
     // Reset pull distances when screen size changes
     setPullDistance(0);
     setSwipeDirection(null);
@@ -174,14 +242,14 @@ const Messages = () => {
       }
       return;
     }
-    
+
     // Initialize file URL cache system if it doesn't exist
     if (typeof window !== 'undefined') {
       // Initialize ID-based cache
       if (!window.__fileMessages) {
         console.log("Initializing file URL caches");
         window.__fileMessages = {};
-        
+
         // Check localStorage for persisted file URLs by ID
         try {
           const persistedUrls = localStorage.getItem('mandarin_file_urls');
@@ -196,11 +264,11 @@ const Messages = () => {
           console.warn("Failed to load persisted file URLs by ID", e);
         }
       }
-      
+
       // Initialize hash-based cache
       if (!window.__fileMessagesByHash) {
         window.__fileMessagesByHash = {};
-        
+
         // Check localStorage for persisted file URLs by hash
         try {
           const persistedUrlsByHash = localStorage.getItem('mandarin_file_urls_by_hash');
@@ -214,7 +282,7 @@ const Messages = () => {
             // If no hash cache exists yet, build it from the ID-based cache
             if (window.__fileMessages && Object.keys(window.__fileMessages).length > 0) {
               console.log("Building hash-based cache from ID-based cache");
-              
+
               // Helper function to generate message hash
               const getMessageHash = (msgData) => {
                 if (!msgData) return '';
@@ -223,7 +291,7 @@ const Messages = () => {
                 // Use available data to create a semi-unique hash
                 return `${fileName}-${timeStamp}`;
               };
-              
+
               // Build hash-based cache
               Object.entries(window.__fileMessages).forEach(([msgId, msgData]) => {
                 if (msgData.url) {
@@ -237,7 +305,7 @@ const Messages = () => {
                   }
                 }
               });
-              
+
               // Persist the new hash-based cache
               try {
                 localStorage.setItem('mandarin_file_urls_by_hash', JSON.stringify(window.__fileMessagesByHash));
@@ -251,7 +319,7 @@ const Messages = () => {
           console.warn("Failed to load persisted file URLs by hash", e);
         }
       }
-      
+
       // Set up periodic cleanup of old entries
       if (!window.__fileUrlCleanupTimeout) {
         window.__fileUrlCleanupTimeout = setTimeout(() => {
@@ -261,22 +329,22 @@ const Messages = () => {
               const entries = Object.entries(window.__fileMessages);
               entries.sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0));
               window.__fileMessages = Object.fromEntries(entries.slice(0, 300));
-              
+
               // Update localStorage
               localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
               console.log(`Cleaned up file URL cache, kept ${Object.keys(window.__fileMessages).length} entries`);
             }
-            
+
             // Also clean up hash-based cache
             if (window.__fileMessagesByHash && Object.keys(window.__fileMessagesByHash).length > 300) {
               const entries = Object.entries(window.__fileMessagesByHash);
               entries.sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0));
               window.__fileMessagesByHash = Object.fromEntries(entries.slice(0, 300));
-              
+
               // Update localStorage
               localStorage.setItem('mandarin_file_urls_by_hash', JSON.stringify(window.__fileMessagesByHash));
             }
-            
+
             window.__fileUrlCleanupTimeout = null;
           } catch (e) {
             console.warn("Error during file URL cache cleanup", e);
@@ -304,9 +372,6 @@ const Messages = () => {
     };
 
     initChat();
-    // Disabling eslint exhaustive-deps because fetchConversations is called within initChat
-    // and including it would cause an infinite loop or unnecessary re-runs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, isAuthenticated, authLoading]);
 
   // Socket and notification event listeners
@@ -316,6 +381,12 @@ const Messages = () => {
     const handleMessageReceived = (newMessage) => {
       console.log("Message received:", newMessage);
       
+      // Skip processing if this is a duplicate message we've seen before
+      if (isDuplicateMessage(newMessage)) {
+        console.log("Skipping duplicate message in handleMessageReceived");
+        return;
+      }
+
       // Enhanced message hash function with more factors for better deduplication
       // This creates a unique signature for messages even if they have different IDs
       const createMessageHash = (msg) => {
@@ -324,8 +395,8 @@ const Messages = () => {
         // Use more content for a better hash - up to 200 chars
         const contentHash = (msg.content || '').substring(0, 200);
         // Include more precise timestamp info but still allow for small variations
-        const timestamp = msg.createdAt 
-          ? new Date(msg.createdAt).getTime().toString().substring(0, 11) 
+        const timestamp = msg.createdAt
+          ? new Date(msg.createdAt).getTime().toString().substring(0, 11)
           : '';
         const type = msg.type || '';
         // Add metadata fields for files/media
@@ -341,7 +412,7 @@ const Messages = () => {
           }
         }
         const metadataStr = metadataFields.length ? `:${metadataFields.join(':')}` : '';
-        
+
         // Create main fingerprint hash
         return `${sender}:${recipient}:${type}:${timestamp}:${contentHash}${metadataStr}`;
       };
@@ -351,25 +422,25 @@ const Messages = () => {
         const sender = msg.sender || '';
         const recipient = msg.recipient || '';
         // Use less content for fuzzy matching (just first 50 chars)
-        const contentKey = (msg.content || '').substring(0, 50); 
+        const contentKey = (msg.content || '').substring(0, 50);
         // Use truncated timestamp with 10-second precision
-        const roughTimestamp = msg.createdAt 
+        const roughTimestamp = msg.createdAt
           ? Math.floor(new Date(msg.createdAt).getTime() / 10000).toString()
           : '';
         const type = msg.type || '';
-        
+
         return `${sender}:${recipient}:${type}:${roughTimestamp}:${contentKey}`;
       };
 
       // New recovery function: attempts to fix partially corrupted messages
       const recoverMessageData = (msg) => {
         // If message looks complete, return as is
-        if (msg._id && msg.sender && msg.recipient && msg.createdAt && 
-            ((msg.content && msg.type === 'text') || 
+        if (msg._id && msg.sender && msg.recipient && msg.createdAt &&
+            ((msg.content && msg.type === 'text') ||
              (msg.type === 'file' && msg.metadata && (msg.metadata.url || msg.metadata.fileUrl)))) {
           return msg;
         }
-        
+
         // Create recovery hashes if we can
         let messageHash = null;
         let fuzzyHash = null;
@@ -379,7 +450,7 @@ const Messages = () => {
         } catch (e) {
           console.warn("Couldn't create recovery hashes for message:", e);
         }
-        
+
         // Try to recover file URLs for file messages
         if (msg.type === 'file' && msg._id && typeof window !== 'undefined' && window.__fileMessages) {
           // Try direct message ID lookup
@@ -388,7 +459,7 @@ const Messages = () => {
             if (!msg.metadata) msg.metadata = {};
             msg.metadata.url = window.__fileMessages[msg._id].url;
             msg.metadata.fileUrl = window.__fileMessages[msg._id].url;
-          } 
+          }
           // Try hash-based lookups if we have hashes
           else if (messageHash && window.__fileMessages[`hash:${messageHash}`]?.url) {
             console.log(`Recovered file URL for message using precise hash ${messageHash}`);
@@ -403,19 +474,19 @@ const Messages = () => {
             msg.metadata.fileUrl = window.__fileMessages[`fuzzy:${fuzzyHash}`].url;
           }
         }
-        
+
         // If still missing critical fields, use defaults where possible
         if (!msg.createdAt) msg.createdAt = new Date().toISOString();
         if (!msg.status) msg.status = 'sent';
-        
+
         return msg;
       };
 
       // Apply recovery to incoming message
       const recoveredMessage = recoverMessageData(newMessage);
-      
+
       // If the recovered message has significant improvements, use it instead
-      if (recoveredMessage.metadata?.url && !newMessage.metadata?.url || 
+      if (recoveredMessage.metadata?.url && !newMessage.metadata?.url ||
           recoveredMessage.metadata?.fileUrl && !newMessage.metadata?.fileUrl) {
         console.log("Using recovered version of message with repaired file URLs");
         newMessage = recoveredMessage;
@@ -450,7 +521,58 @@ const Messages = () => {
           // Generate both exact and fuzzy hashes for the new message
           const newMessageHash = createMessageHash(newMessage);
           const newMessageFuzzyHash = createFuzzyHash(newMessage);
-          
+
+          // Special handling for our own messages (typically from API calls)
+          // These are more likely to cause duplication issues from optimistic UI
+          if (newMessage.sender === currentUser._id) {
+            console.log("Checking own sent message for duplicates", newMessage);
+            
+            // Look for any matching optimistic updates (tempId-based messages)
+            // Find all optimistic messages that match this one
+            const optimisticMatches = prev.filter(msg => 
+              msg.tempId && 
+              msg.sender === currentUser._id && 
+              msg.type === newMessage.type &&
+              (
+                // For text messages, match on content
+                (msg.type === 'text' && msg.content === newMessage.content) ||
+                // For winks, match on content and type
+                (msg.type === 'wink' && msg.content === newMessage.content) ||
+                // For files, match on filename if available
+                (msg.type === 'file' && msg.metadata?.fileName === newMessage.metadata?.fileName)
+              ) &&
+              // Only match messages sent in the last 30 seconds (generous window for optimistic updates)
+              Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 30000
+            );
+            
+            if (optimisticMatches.length > 0) {
+              console.log("Found optimistic message matches:", optimisticMatches.length);
+              
+              // Replace the first optimistic message with the real one
+              // and remove any other duplicates
+              const firstMatchIndex = prev.findIndex(msg => msg.tempId === optimisticMatches[0].tempId);
+              
+              if (firstMatchIndex !== -1) {
+                console.log("Replacing optimistic message with server message");
+                // Make a new copy of the messages array
+                const newMessages = [...prev];
+                
+                // Replace the first match with the new message
+                newMessages[firstMatchIndex] = newMessage;
+                
+                // Remove any other optimistic messages that matched
+                if (optimisticMatches.length > 1) {
+                  const otherTempIds = optimisticMatches.slice(1).map(m => m.tempId);
+                  return newMessages
+                    .filter(msg => !msg.tempId || !otherTempIds.includes(msg.tempId))
+                    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                }
+                
+                return newMessages;
+              }
+            }
+          }
+
           // Multi-layer duplicate detection with multiple strategies
           let isDuplicate = prev.some(msg => {
             // Strategy 1: Check for exact ID or tempId match (fastest)
@@ -458,7 +580,7 @@ const Messages = () => {
               console.log("Exact ID match found, skipping duplicate");
               return true;
             }
-            
+
             // Strategy 2: Precise hash-based detection
             const existingHash = createMessageHash(msg);
             if (existingHash === newMessageHash) {
@@ -469,106 +591,65 @@ const Messages = () => {
               });
               return true;
             }
-            
-            // Strategy 3: Fuzzy hash for near-matches with slight variations
-            const existingFuzzyHash = createFuzzyHash(msg);
-            if (existingFuzzyHash === newMessageFuzzyHash) {
-              console.log("Fuzzy hash match detected, likely duplicate", {
-                existing: msg._id,
-                new: newMessage._id,
-                fuzzyHash: newMessageFuzzyHash
-              });
-              return true;
-            }
-            
-            // Strategy 4: Look for messages with identical content but different IDs
-            // that arrived within a short time window (5 seconds)
+
+            // Strategy 3: Look for messages with identical content but different IDs
+            // that arrived within a short time window (30 seconds for winks especially)
             if (msg.sender === newMessage.sender &&
                 msg.content === newMessage.content &&
                 msg.type === newMessage.type &&
-                Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 5000) {
+                Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 30000) {
               console.log("Content+time match detected, treating as duplicate", {
                 existing: msg._id,
                 new: newMessage._id
               });
               return true;
             }
-            
-            // Strategy 5: Attribute-based detection with smart tolerance
-            const contentMatch = msg.content && newMessage.content && 
-                                msg.content.length > 10 && 
-                                msg.content === newMessage.content;
-            
-            const timeMatch = msg.createdAt && newMessage.createdAt && 
-                             Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 10000; // 10s tolerance
-            
-            // Special handling for different message types
-            const typeSpecificMatch = (() => {
-              // For text messages, compare content and length
-              if (msg.type === 'text' && newMessage.type === 'text') {
-                return contentMatch;
-              }
-              
-              // For file messages, compare filenames and size if available
-              if (msg.type === 'file' && newMessage.type === 'file') {
-                const fileNameMatch = msg.metadata?.fileName === newMessage.metadata?.fileName;
-                const fileSizeMatch = msg.metadata?.fileSize === newMessage.metadata?.fileSize;
-                return (fileNameMatch && fileSizeMatch) || 
-                       (msg.metadata?.url === newMessage.metadata?.url);
-              }
-              
-              // For other message types, use basic comparison
-              return msg.type === newMessage.type && contentMatch;
-            })();
-            
-            // For messages with the same sender, same type, and close timestamps
-            const attributeMatch = msg.sender === newMessage.sender && 
-                                  timeMatch &&
-                                  typeSpecificMatch;
-                              
-            if (attributeMatch) {
-              console.log("Attribute match detected, treating as duplicate", {
-                existing: msg._id,
-                new: newMessage._id
-              });
+
+            // Strategy 4: Super strict check for wink messages (emoji based)
+            if (msg.type === 'wink' && newMessage.type === 'wink' &&
+                msg.sender === newMessage.sender &&
+                msg.content === newMessage.content &&
+                Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 60000) {
+              console.log("Wink duplicate detected (within 60s window)");
+              return true;
             }
-            
-            return attributeMatch;
+
+            return false;
           });
 
           // Handle file messages specially
           if (newMessage.type === 'file' && (newMessage.metadata?.url || newMessage.metadata?.fileUrl)) {
             console.log("Processing file message:", newMessage._id);
-            
+
             // First check for exact match by ID or hash to avoid duplicates
-            if (prev.some(msg => 
-                msg._id === newMessage._id || 
+            if (prev.some(msg =>
+                msg._id === newMessage._id ||
                 createMessageHash(msg) === newMessageHash ||
                 createFuzzyHash(msg) === newMessageFuzzyHash
             )) {
               console.log("Match found (ID or hash), skipping duplicate file message");
               return prev;
             }
-            
+
             // Next, check for placeholders that need to be replaced (our own uploads)
             if (newMessage.sender === currentUser._id) {
               // Look for a matching tempId or a file upload placeholder
-              const placeholderIndex = prev.findIndex(msg => 
+              const placeholderIndex = prev.findIndex(msg =>
                 (msg.tempId && msg.tempId === newMessage.tempId) ||
-                (msg.type === 'file' && 
-                 msg.metadata?.__localPlaceholder === true && 
+                (msg.type === 'file' &&
+                 msg.metadata?.__localPlaceholder === true &&
                  msg.sender === currentUser._id &&
                  Math.abs(new Date(msg.createdAt) - new Date(newMessage.createdAt)) < 60000 &&
-                 (msg.metadata?.fileName === newMessage.metadata?.fileName || 
+                 (msg.metadata?.fileName === newMessage.metadata?.fileName ||
                   msg.content === newMessage.content))
               );
-              
+
               if (placeholderIndex >= 0) {
                 console.log("Replacing placeholder with real file message:", newMessage._id);
-                
+
                 // Extract the definitive file URL
                 const serverUrl = newMessage.metadata.url || newMessage.metadata.fileUrl;
-                
+
                 // Create a proper normalized message with all needed fields
                 const updatedMessages = [...prev];
                 updatedMessages[placeholderIndex] = {
@@ -585,7 +666,7 @@ const Messages = () => {
                     __fuzzyHash: newMessageFuzzyHash // Add fuzzy hash for resilience
                   }
                 };
-                
+
                 // Revoke any blob URLs from the placeholder if present
                 const oldMsg = prev[placeholderIndex];
                 if (oldMsg.metadata?.fileUrl?.startsWith('blob:')) {
@@ -596,11 +677,11 @@ const Messages = () => {
                     console.warn("Error revoking URL:", e);
                   }
                 }
-                
+
                 // Save the URL to our persistent cache with multiple keys for redundancy
                 if (typeof window !== 'undefined' && serverUrl) {
                   if (!window.__fileMessages) window.__fileMessages = {};
-                  
+
                   // Store by message ID
                   if (newMessage._id) {
                     window.__fileMessages[newMessage._id] = {
@@ -610,20 +691,20 @@ const Messages = () => {
                       fuzzyHash: newMessageFuzzyHash
                     };
                   }
-                  
+
                   // Store by both precise and fuzzy hash for maximum recovery options
                   window.__fileMessages[`hash:${newMessageHash}`] = {
                     url: serverUrl,
                     timestamp: Date.now(),
                     messageId: newMessage._id
                   };
-                  
+
                   window.__fileMessages[`fuzzy:${newMessageFuzzyHash}`] = {
                     url: serverUrl,
                     timestamp: Date.now(),
                     messageId: newMessage._id
                   };
-                  
+
                   // Persist to localStorage
                   try {
                     localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
@@ -632,16 +713,16 @@ const Messages = () => {
                     console.warn("Failed to persist file URL to localStorage", e);
                   }
                 }
-                
+
                 console.log("Updated file message with actual server data");
                 return updatedMessages;
               }
             }
-            
-            // For completeness, handle the case of a totally new file message 
+
+            // For completeness, handle the case of a totally new file message
             // that wasn't created by the current user
             console.log("New file message received, adding to messages");
-            
+
             // Make sure it has all required metadata fields
             const normalizedNewMessage = {
               ...newMessage,
@@ -655,11 +736,11 @@ const Messages = () => {
                 __fuzzyHash: newMessageFuzzyHash // Store fuzzy hash as well
               }
             };
-            
+
             // Store in our list of known file messages for recovery purposes with hash redundancy
             if (typeof window !== 'undefined') {
               if (!window.__fileMessages) window.__fileMessages = {};
-              
+
               // Store by message ID
               if (normalizedNewMessage._id) {
                 window.__fileMessages[normalizedNewMessage._id] = {
@@ -669,20 +750,20 @@ const Messages = () => {
                   fuzzyHash: newMessageFuzzyHash
                 };
               }
-              
+
               // Store by both hash types for recovery
               window.__fileMessages[`hash:${newMessageHash}`] = {
                 url: normalizedNewMessage.metadata.fileUrl,
                 timestamp: Date.now(),
                 messageId: normalizedNewMessage._id
               };
-              
+
               window.__fileMessages[`fuzzy:${newMessageFuzzyHash}`] = {
                 url: normalizedNewMessage.metadata.fileUrl,
                 timestamp: Date.now(),
                 messageId: normalizedNewMessage._id
               };
-              
+
               // Cleanup old entries periodically
               if (Object.keys(window.__fileMessages).length > 150) {
                 // Keep only the 75 most recent entries
@@ -690,7 +771,7 @@ const Messages = () => {
                 entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
                 window.__fileMessages = Object.fromEntries(entries.slice(0, 75));
               }
-              
+
               // Persist file URLs to localStorage
               try {
                 localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
@@ -699,7 +780,7 @@ const Messages = () => {
                 console.warn("Failed to persist file URLs to localStorage", e);
               }
             }
-            
+
             // Add to messages
             return [...prev, normalizedNewMessage].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
           }
@@ -830,11 +911,7 @@ const Messages = () => {
       unsubscribeVideoHangup();
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
-    // Disabling eslint exhaustive-deps for handleEndCall as it's a stable function defined outside
-    // but used within the effect cleanup logic implicitly via handleCallHangup.
-    // Including it might cause complexity if its definition changes frequently.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConversation, currentUser?._id, isCallActive, isMobile]); // Added updateConversationList
+  }, [activeConversation, currentUser?._id, isCallActive, isMobile, isDuplicateMessage]);
 
 
   // Load conversation based on URL parameter
@@ -847,8 +924,6 @@ const Messages = () => {
         loadUserDetails(targetUserIdParam);
       }
     }
-  // Disabling exhaustive-deps for selectConversation & loadUserDetails as they are stable functions
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetUserIdParam, conversations, currentUser?._id, activeConversation, navigate]);
 
   // Load messages for the active conversation
@@ -865,7 +940,7 @@ const Messages = () => {
     }
 
     console.log(`Loading messages for user: ${activeConversation.user._id} (previous: ${loadedConversationRef.current})`);
-    
+
     // Set the ref early to prevent potential duplicate calls
     const currentConversationId = activeConversation.user._id;
     loadedConversationRef.current = currentConversationId;
@@ -878,15 +953,15 @@ const Messages = () => {
       try {
         // Load messages
         await loadMessages(currentConversationId);
-        
+
         // Only update URL if needed
         if (targetUserIdParam !== currentConversationId) {
           navigate(`/messages/${currentConversationId}`, { replace: true });
         }
-        
+
         // Mark conversation as read
         markConversationAsRead(currentConversationId);
-        
+
         // Focus input and update UI
         messageInputRef.current?.focus();
         if (isMobile) setShowSidebar(false);
@@ -907,7 +982,6 @@ const Messages = () => {
       // we don't want to update state for a conversation we've left
       console.log(`Cleanup for messages loading. Current: ${loadedConversationRef.current}`);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConversation?.user?._id, currentUser?._id]);
 
 
@@ -919,13 +993,13 @@ const Messages = () => {
     }, 100);
     return () => clearTimeout(timer);
   }, [messages]);
-  
+
   // Ensure active conversation has current blocked status
   useEffect(() => {
     if (activeConversation?.user?._id) {
       // Update the active conversation's blocked status whenever blocked users change
       const isBlocked = isUserBlocked(activeConversation.user._id);
-      
+
       if (isBlocked !== activeConversation.user.isBlocked) {
         setActiveConversation(prev => {
           if (!prev) return prev;
@@ -1063,17 +1137,17 @@ const Messages = () => {
     try {
       // Refresh blocked users list
       await fetchBlockedUsers();
-      
+
       // Get conversations
       const conversationsData = await chatService.getConversations();
       const filteredConversations = conversationsData.filter(
         (conversation) => conversation?.user?._id && conversation.user._id !== currentUser._id // Add null check for user
       );
-      
+
       // Mark blocked users
       const markedConversations = markBlockedUsers(filteredConversations);
       setConversations(markedConversations);
-      
+
       // Also update the active conversation if it exists
       if (activeConversation && activeConversation.user && activeConversation.user._id) {
         const updatedActiveConversation = markedConversations.find(c => c.user._id === activeConversation.user._id);
@@ -1095,8 +1169,6 @@ const Messages = () => {
       // setError("Failed to load conversations");
       toast.error("Failed to load conversations");
     }
-  // Disabling exhaustive-deps for loadUserDetails as it's a stable function
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?._id, targetUserIdParam]);
 
   const loadUserDetails = useCallback(async (idToLoad) => {
@@ -1208,7 +1280,7 @@ const Messages = () => {
      setMessages([]);
      return;
    }
-   
+
    // Validate user ID
    const isValidId = /^[0-9a-fA-F]{24}$/.test(partnerUserId);
    if (!isValidId) {
@@ -1218,46 +1290,46 @@ const Messages = () => {
      setError("Cannot load messages for this user (Invalid ID).");
      return;
    }
-   
+
    // Store the ID we're loading for so we can check it hasn't changed
    const loadingForUserId = partnerUserId;
-   
+
    try {
      console.log(`Fetching messages for ${partnerUserId}`);
      const messagesData = await chatService.getMessages(partnerUserId);
-     
+
      // Check we're still loading for the same user before updating state
      if (loadedConversationRef.current !== loadingForUserId) {
        console.log(`User changed during message fetch. Abandoning results for ${loadingForUserId}`);
        return;
      }
-     
+
      // Ensure messages are sorted correctly upon fetch
      console.log(`Loaded ${messagesData.length} messages for ${partnerUserId}`);
-     
+
      // Process messages to ensure file URLs are correctly set
      const processedMessages = messagesData.map(msg => {
        if (msg.type === 'file' && msg.metadata) {
          // Check if we have this file URL cached
          let cachedUrl = null;
-         
+
          if (typeof window !== 'undefined' && window.__fileMessages && msg._id && window.__fileMessages[msg._id]) {
            cachedUrl = window.__fileMessages[msg._id].url;
            console.log(`Found cached URL for file message ${msg._id}`);
          }
-         
+
          // Get the best URL from available sources
          const bestUrl = cachedUrl || msg.metadata.serverUrl || msg.metadata.url || msg.metadata.fileUrl;
-         
+
          // If we have a good URL but no cache entry, add it to our cache
          if (bestUrl && !cachedUrl && typeof window !== 'undefined' && msg._id) {
            if (!window.__fileMessages) window.__fileMessages = {};
-           window.__fileMessages[msg._id] = { 
-             url: bestUrl, 
-             timestamp: Date.now() 
+           window.__fileMessages[msg._id] = {
+             url: bestUrl,
+             timestamp: Date.now()
            };
            console.log(`Added URL for file message ${msg._id} to cache`);
-           
+
            // Also persist to localStorage
            try {
              localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
@@ -1265,7 +1337,7 @@ const Messages = () => {
              console.warn("Failed to persist file URLs to localStorage", e);
            }
          }
-         
+
          // Return a normalized message with consistent URL fields
          return {
            ...msg,
@@ -1281,7 +1353,7 @@ const Messages = () => {
        }
        return msg;
      });
-     
+
      // Set messages with processed file URLs
      setMessages(
        processedMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
@@ -1292,7 +1364,7 @@ const Messages = () => {
      if (loadedConversationRef.current !== loadingForUserId) {
        return;
      }
-     
+
      console.error("Error fetching messages:", err);
      const errorMsg = `Failed to load messages. ${err.message || "Server error"}`;
      toast.error(errorMsg);
@@ -1323,6 +1395,29 @@ const Messages = () => {
       toast.error("Free accounts can only send winks. Upgrade to send messages.");
       return;
     }
+    
+    // Add throttling and deduplication for identical text messages in rapid succession
+    const now = Date.now();
+    const messageKey = `text:${partnerId}:${trimmedMessage}`;
+    const lastSent = lastMessageSentRef.current[messageKey];
+    
+    if (lastSent && now - lastSent.timestamp < 5000) {
+      toast.info("Please wait a moment before sending the same message again");
+      return;
+    }
+    
+    // Track this message 
+    lastMessageSentRef.current[messageKey] = {
+      type: 'text',
+      content: trimmedMessage,
+      recipient: partnerId,
+      timestamp: now
+    };
+    
+    // Clean up old entries
+    const oldEntries = Object.keys(lastMessageSentRef.current)
+      .filter(key => now - lastMessageSentRef.current[key].timestamp > 60000);
+    oldEntries.forEach(key => delete lastMessageSentRef.current[key]);
 
     // Optimistic UI update (optional but improves perceived performance)
      const tempId = `temp-${Date.now()}`;
@@ -1355,14 +1450,35 @@ const Messages = () => {
 
     try {
       const sentMessage = await chatService.sendMessage(partnerId, trimmedMessage);
-      // Replace optimistic message with actual server response
-       setMessages((prev) =>
-         prev
-           .map((msg) => (msg.tempId === tempId ? { ...sentMessage, _id: sentMessage._id || tempId } : msg)) // Use tempId if _id missing in response?
-           .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
-       );
-       // Update conversation list again with actual message data (e.g., accurate timestamp)
-       updateConversationList(sentMessage);
+      
+      // Check if we've already received the real message from the server
+      const existingServerMessage = messagesRef.current.find(
+        msg => msg._id && !msg.tempId && 
+        msg.type === 'text' && 
+        msg.sender === currentUser._id && 
+        msg.recipient === partnerId && 
+        msg.content === trimmedMessage &&
+        Math.abs(new Date(msg.createdAt) - new Date(optimisticMessage.createdAt)) < 5000
+      );
+      
+      if (existingServerMessage) {
+        // If we already have a server message that matches this message, remove the optimistic one
+        console.log("Server text message already exists, removing optimistic message");
+        setMessages((prev) => 
+          prev.filter(msg => msg.tempId !== tempId)
+        );
+      } else {
+        // Replace optimistic message with actual server response
+        setMessages((prev) => {
+          // Filter out the optimistic message first
+          const filteredMessages = prev.filter(msg => msg.tempId !== tempId);
+          // Add the server-confirmed message
+          return [...filteredMessages, sentMessage].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        });
+      }
+      
+      // Update conversation list again with actual message data (e.g., accurate timestamp)
+      updateConversationList(sentMessage);
 
     } catch (err) {
       console.error("Error sending message:", err);
@@ -1395,6 +1511,32 @@ const Messages = () => {
      console.error("Attempted to send wink to invalid ID format:", partnerId);
      return;
    }
+   
+   // Add throttling to prevent multiple winks in quick succession
+   const now = Date.now();
+   const timeSinceLastWink = now - lastWinkSentRef.current;
+   if (timeSinceLastWink < 5000) { // 5 second throttle
+     toast.info("Please wait a moment before sending another wink");
+     return;
+   }
+   
+   // Update the last wink timestamp
+   lastWinkSentRef.current = now;
+   
+   // Track this message in our global tracking
+   const messageKey = `wink:${partnerId}:${now}`;
+   lastMessageSentRef.current[messageKey] = {
+     type: 'wink',
+     content: "😉",
+     recipient: partnerId,
+     timestamp: now
+   };
+   
+   // Cleanup old entries
+   const oldEntries = Object.keys(lastMessageSentRef.current)
+     .filter(key => now - lastMessageSentRef.current[key].timestamp > 60000);
+   oldEntries.forEach(key => delete lastMessageSentRef.current[key]);
+   
    setIsSending(true);
 
    // Optimistic UI update for wink
@@ -1420,12 +1562,32 @@ const Messages = () => {
 
    try {
      const sentMessage = await chatService.sendMessage(partnerId, "😉", "wink");
-     // Replace optimistic wink with actual server response
-     setMessages((prev) =>
-       prev
-         .map((msg) => (msg.tempId === tempId ? { ...sentMessage, _id: sentMessage._id || tempId } : msg))
-         .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+     
+     // Check if we've already received the real message from the server
+     const existingServerMessage = messagesRef.current.find(
+       msg => msg._id && !msg.tempId && 
+       msg.type === 'wink' && 
+       msg.sender === currentUser._id && 
+       msg.recipient === partnerId && 
+       Math.abs(new Date(msg.createdAt) - new Date(optimisticWink.createdAt)) < 5000
      );
+     
+     if (existingServerMessage) {
+       // If we already have a server message that matches this wink, remove the optimistic one
+       console.log("Server wink message already exists, removing optimistic message");
+       setMessages((prev) => 
+         prev.filter(msg => msg.tempId !== tempId)
+       );
+     } else {
+       // Replace optimistic wink with actual server response
+       setMessages((prev) => {
+         // Filter out the optimistic message first
+         const filteredMessages = prev.filter(msg => msg.tempId !== tempId);
+         // Add the server-confirmed message
+         return [...filteredMessages, sentMessage].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+       });
+     }
+     
      // Update conversation list again with actual message data
      updateConversationList(sentMessage);
    } catch (err) {
@@ -1446,7 +1608,7 @@ const Messages = () => {
     if (currentUser?.accountTier === "FREE") {
       return toast.error("Free accounts cannot send files. Upgrade to send files.");
     }
-    
+
     // Trigger file selection in the FileAttachmentHandler component
     const fileInput = document.querySelector('input[type="file"]');
     if (fileInput) {
@@ -1630,21 +1792,21 @@ const Messages = () => {
           fileName: attachment.name,
           timestamp: Date.now()
         };
-        
+
         // Clean up old references after a while
         setTimeout(() => {
           if (window.__lastUploadedFile && window.__lastUploadedFile.id === tempId) {
             window.__lastUploadedFile = null;
           }
         }, 60000); // 1 minute cleanup
-        
+
         // Also store in our persistent cache
         if (!window.__fileMessages) window.__fileMessages = {};
         window.__fileMessages[tempId] = {
           url: fileData.url,
           timestamp: Date.now()
         };
-        
+
         // And persist to localStorage
         try {
           localStorage.setItem('mandarin_file_urls', JSON.stringify(window.__fileMessages));
@@ -1653,38 +1815,63 @@ const Messages = () => {
           console.warn("Failed to persist file URL to localStorage", e);
         }
       }
-      
-      // Update the optimistic message with the real URL
-      // Keep both the local URL and real URL for a smooth transition
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.tempId === tempId
-            ? {
-                ...msg,
-                metadata: {
-                  ...msg.metadata,
-                  fileUrl: fileData.url, // Update with real URL
-                  url: fileData.url,
-                  __localPlaceholder: false, // Mark as no longer placeholder
-                  serverUrl: fileData.url, // Add a separate serverUrl field to track the permanent URL
-                },
-              }
-            : msg
-        )
+
+      // When message is received through socket, check if there's a server response
+      // First, check if we already received the real message from the server
+      const existingServerMessage = messagesRef.current?.find(
+        msg => msg._id && !msg.tempId && 
+        msg.type === 'file' && 
+        msg.sender === currentUser._id && 
+        msg.recipient === partnerId && 
+        Math.abs(new Date(msg.createdAt) - new Date(optimisticFileMessage.createdAt)) < 5000
       );
+
+      if (existingServerMessage) {
+        // If we already have a server message that matches this upload, remove the optimistic one
+        console.log("Server message already exists, replacing optimistic message");
+        setMessages((prev) => 
+          prev.filter(msg => msg.tempId !== tempId)
+        );
+      } else {
+        // Update the optimistic message with the real URL
+        // Keep both the local URL and real URL for a smooth transition
+        setMessages((prev) => {
+          // Filter out the optimistic message first to avoid duplicates
+          const filteredMessages = prev.filter(msg => 
+            // Keep messages that aren't temporary or have a different tempId
+            !msg.tempId || msg.tempId !== tempId
+          );
+          
+          // Add back the updated optimistic message with real URL
+          const updatedMessage = {
+            ...optimisticFileMessage,
+            metadata: {
+              ...optimisticFileMessage.metadata,
+              fileUrl: fileData.url, // Update with real URL
+              url: fileData.url,
+              __localPlaceholder: false, // Mark as no longer placeholder
+              serverUrl: fileData.url, // Add a separate serverUrl field to track the permanent URL
+            },
+          };
+          
+          return [...filteredMessages, updatedMessage].sort((a, b) => 
+            new Date(a.createdAt) - new Date(b.createdAt)
+          );
+        });
+      }
 
       // Update the conversation list with the new message including the file URL
       updateConversationList({
-        ...optimisticFileMessage, 
+        ...optimisticFileMessage,
         metadata: {
-          ...optimisticFileMessage.metadata, 
-          fileUrl: fileData.url, 
+          ...optimisticFileMessage.metadata,
+          fileUrl: fileData.url,
           url: fileData.url,
           serverUrl: fileData.url,
           __localPlaceholder: false
         }
       });
-      
+
       // Keep the blob URL alive until we're sure the message has been rendered with the real URL
       // We'll handle cleanup when the message is confirmed from the server
 
@@ -2022,19 +2209,19 @@ const Messages = () => {
       console.warn("Attempted to select invalid conversation", conversation);
       return;
     }
-    
+
     // Skip if it's the same conversation
     if (activeConversation && activeConversation.user._id === conversation.user._id) {
       console.log("Already on this conversation, skipping");
       return;
     }
-    
+
     // Can't message yourself
     if (conversation.user._id === currentUser?._id) {
       toast.warning("You cannot message yourself");
       return;
     }
-    
+
     // Validate ID format
     if (!/^[0-9a-fA-F]{24}$/.test(conversation.user._id)) {
       toast.error("Cannot select conversation: Invalid user ID.");
@@ -2049,7 +2236,7 @@ const Messages = () => {
     setAttachment(null); // Clear any attachment preview
     setTypingUser(null); // Clear typing indicator
     setError(null); // Clear any previous errors
-    
+
     // Clear messages first to avoid showing previous conversation's messages
     setMessages([]);
 
@@ -2059,7 +2246,7 @@ const Messages = () => {
 
     // Update active conversation state
     setActiveConversation(conversation);
-    
+
     // Navigate to the new conversation URL - use replace to avoid cluttering history
     navigate(`/messages/${conversation.user._id}`, { replace: true });
 
@@ -2079,26 +2266,26 @@ const Messages = () => {
       navigator.vibrate(15);
     }
   };
-  
+
   // Function to refresh conversations list
   const refreshConversations = useCallback(async () => {
     try {
       log.debug("Refreshing conversations list");
       setComponentLoading(true);
       const refreshedConversations = await chatService.getConversations();
-      
+
       if (refreshedConversations && Array.isArray(refreshedConversations)) {
         setConversations(refreshedConversations);
         log.debug(`Loaded ${refreshedConversations.length} conversations`);
       }
-      
+
       if (isMobile && "vibrate" in navigator) {
         navigator.vibrate([15, 30, 15]); // Vibration pattern for refresh success
       }
     } catch (err) {
       log.error("Error refreshing conversations:", err);
       toast.error("Failed to refresh conversations");
-      
+
       if (isMobile && "vibrate" in navigator) {
         navigator.vibrate([100, 50, 100]); // Vibration pattern for error
       }
@@ -2116,26 +2303,13 @@ const Messages = () => {
     // Placeholder for future scroll handling
     // For example, loading more messages when scrolling up
     const { scrollTop, scrollHeight, clientHeight } = e.target;
-    
+
     // Near the top - could load older messages
     if (scrollTop < 100) {
       // Placeholder for loading older messages
       // loadOlderMessages();
     }
   }, []);
-
-  // No longer needed - using the shared component getFileIcon function
-  // const getFileIcon = (fileType) => {
-  //   if (!fileType) return <FaFile />;
-  //   if (fileType.startsWith("image/")) return <FaImage />;
-  //   if (fileType.startsWith("video/")) return <FaFileVideo />;
-  //   if (fileType.startsWith("audio/")) return <FaFileAudio />;
-  //   if (fileType === "application/pdf") return <FaFilePdf />;
-  //   // Add more specific icons if needed
-  //   if (fileType.includes("word")) return <FaFileAlt />; // Simple check for Word
-  //   if (fileType.includes("spreadsheet") || fileType.includes("excel")) return <FaFileAlt />; // Placeholder
-  //   return <FaFileAlt />; // Default document icon
-  // };
 
   // --- Render Logic ---
 
@@ -2209,7 +2383,7 @@ const Messages = () => {
         </div>
 
         {/* Chat Area */}
-        <ChatArea 
+        <ChatArea
           className={(!showSidebar && isMobile) && styles.fullWidth}
           isUserBlocked={activeConversation?.user?.isBlocked || (activeConversation?.user?._id && isUserBlocked(activeConversation.user._id))}
         >
@@ -2229,7 +2403,7 @@ const Messages = () => {
                 onBlockUser={(userId) => {
                   // Check if the user is already blocked
                   const isBlocked = activeConversation?.user?.isBlocked;
-                  
+
                   if (isBlocked) {
                     // Handle unblocking
                     if (window.confirm("Are you sure you want to unblock this user? They will be able to send you messages again.")) {
@@ -2245,16 +2419,16 @@ const Messages = () => {
                         } catch (e) {
                           console.warn("Failed to update blocked users in localStorage:", e);
                         }
-                        
+
                         // Refresh blocked users list
                         fetchBlockedUsers().then(() => {
                           // Refresh conversations to update UI
                           fetchConversations();
                         });
                       });
-                      
+
                       toast.success("User unblocked successfully");
-                      
+
                       // Add a system message about unblocking
                       const systemMessage = {
                         _id: generateUniqueId(),
@@ -2264,7 +2438,7 @@ const Messages = () => {
                         sender: "system",
                         systemType: "unblock"
                       };
-                      
+
                       setMessages(prev => [...prev, systemMessage]);
                     }
                   } else {
@@ -2275,11 +2449,11 @@ const Messages = () => {
                         try {
                           const storedBlockedUsers = localStorage.getItem('blockedUsers');
                           let blockList = [];
-                          
+
                           if (storedBlockedUsers) {
                             blockList = JSON.parse(storedBlockedUsers);
                           }
-                          
+
                           // Only add if it's not already in the list
                           if (!blockList.includes(userId)) {
                             blockList.push(userId);
@@ -2288,16 +2462,16 @@ const Messages = () => {
                         } catch (e) {
                           console.warn("Failed to update blocked users in localStorage:", e);
                         }
-                        
+
                         // Refresh blocked users list
                         fetchBlockedUsers().then(() => {
                           // Refresh conversations to update UI
                           fetchConversations();
                         });
                       });
-                      
+
                       toast.success("User blocked successfully");
-                      
+
                       // Add a system message about blocking
                       const systemMessage = {
                         _id: generateUniqueId(),
@@ -2307,7 +2481,7 @@ const Messages = () => {
                         sender: "system",
                         systemType: "block"
                       };
-                      
+
                       setMessages(prev => [...prev, systemMessage]);
                     }
                   }
@@ -2383,8 +2557,8 @@ const Messages = () => {
 
               {/* Messages Area - Show appropriate status components */}
               {messagesLoading ? (
-                <LoadingIndicator 
-                  showTimeoutMessage={false} 
+                <LoadingIndicator
+                  showTimeoutMessage={false}
                   handleRetry={() => loadMessages(activeConversation.user._id)}
                   handleReconnect={() => chatService.reconnect?.()}
                 />
@@ -2399,7 +2573,7 @@ const Messages = () => {
                   showInitButton={true}
                 />
               ) : messages.length === 0 ? (
-                <NoMessagesPlaceholder 
+                <NoMessagesPlaceholder
                   text="No messages in this conversation yet."
                   hint={currentUser?.accountTier === ACCOUNT_TIER.FREE ? "Send a wink to start!" : "Say hello to start the conversation!"}
                 />
@@ -2426,11 +2600,11 @@ const Messages = () => {
                     toast.error(error);
                     return;
                   }
-                  
+
                   if (file) {
                     setAttachment(file);
                     toast.info(`Selected file: ${file.name}`);
-                    
+
                     if (isMobile && "vibrate" in navigator) {
                       navigator.vibrate(30);
                     }
@@ -2478,21 +2652,21 @@ const Messages = () => {
                 attachmentSelected={!!attachment}
                 inputRef={messageInputRef}
                 placeholderText={
-                  activeConversation?.user?.isBlocked ? 
-                    "You have blocked this user" : 
-                    (currentUser?.accountTier === ACCOUNT_TIER.FREE 
-                      ? "Send a wink instead (Free Account)" 
+                  activeConversation?.user?.isBlocked ?
+                    "You have blocked this user" :
+                    (currentUser?.accountTier === ACCOUNT_TIER.FREE
+                      ? "Send a wink instead (Free Account)"
                       : `Message ${activeConversation?.user?.nickname || ''}...`)
                 }
               />
-              
+
               {/* File Attachment Handler */}
               <FileAttachmentHandler
                 onFileSelected={(file) => {
                   if (file) {
                     setAttachment(file);
                     toast.info(`Selected file: ${file.name}`);
-                    
+
                     if (isMobile && "vibrate" in navigator) {
                       navigator.vibrate(30);
                     }
@@ -2538,9 +2712,9 @@ const Messages = () => {
           />
         </div>
       )}
-      
+
       {/* User Profile Modal */}
-      <UserProfileModal 
+      <UserProfileModal
         userId={profileUserId}
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}

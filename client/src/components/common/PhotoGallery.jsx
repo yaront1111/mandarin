@@ -15,7 +15,7 @@ import {
   FaUsers
 } from 'react-icons/fa';
 import { normalizePhotoUrl } from '../../utils';
-import styles from '../../styles/photo-management.module.css';
+import styles from '../../styles/photo-gallery-consolidated.module.css';
 import logger from '../../utils/logger';
 
 const log = logger.create('PhotoGallery');
