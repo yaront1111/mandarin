@@ -49,7 +49,7 @@ const PhotoGallery = ({
     return null;
   }
   
-  // Filter out deleted photos
+  // Filter out deleted photos and ensure we have valid photo objects
   const availablePhotos = photos.filter(photo => 
     photo && 
     typeof photo === 'object' && 
@@ -57,9 +57,18 @@ const PhotoGallery = ({
     !photo.isDeleted
   );
   
+  // If no photos are available after filtering, show an empty state message
   if (availablePhotos.length === 0) {
     log.debug("No available photos to display after filtering deleted photos");
-    return null;
+    return (
+      <div className={styles.photoGallery}>
+        <h3 className={styles.galleryTitle}>{t('profile.photos')}</h3>
+        <div className={styles.noPhotosMessage}>
+          <p>{t('profile.noPhotosAvailable')}</p>
+          <p className={styles.noPhotosSubtext}>{t('profile.photoPrivacyNote')}</p>
+        </div>
+      </div>
+    );
   }
   
   return (

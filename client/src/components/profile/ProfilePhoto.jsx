@@ -77,6 +77,9 @@ const ProfilePhoto = ({
   // Normal rendering with a valid photo
   log.debug("Rendering photo with URL:", photo.url);
   
+  // Check if photo is private
+  const isPrivatePhoto = photo.privacy === 'private' || (photo.isPrivate && !photo.privacy);
+  
   return (
     <div className={styles.profilePhotoContainer}>
       <div className={styles.profilePhotoWrapper}>
@@ -84,6 +87,9 @@ const ProfilePhoto = ({
           src={normalizePhotoUrl(photo.url) || "/placeholder.svg?height=100&width=100"}
           alt={t('profile.profilePhoto')}
           className={styles.profileImage}
+          style={{
+            opacity: isPrivatePhoto ? 0.7 : 1, // Add reduced opacity for private photos
+          }}
           onLoad={() => {
             log.debug(`Successfully loaded profile photo: ${photo._id}`);
             onImageLoad();

@@ -3,6 +3,26 @@
   /client/src/styles/photo-management.module.css
 */
 
+/* Private photo specific styles */
+.privatePhoto {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: var(--bg-light);
+}
+
+.privatePhoto img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
 /* Main container */
 .photoManagement {
   width: 100%;
@@ -147,26 +167,83 @@
 /* Photo Gallery */
 .photoGallery {
   width: 100%;
+  background-color: var(--bg-light, #ffffff);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  margin-bottom: 1.5rem;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.photoGallery:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
 }
 
 .galleryTitle {
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   font-weight: 600;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
   color: #333;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.05);
+}
+
+.galleryTitle::before {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 1.5rem;
+  background-color: #ff6b9d;
+  border-radius: 2px;
 }
 
 .galleryGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1.25rem;
   width: 100%;
+  margin-bottom: 1.5rem;
 }
 
 /* Mobile optimization */
 .mobileGallery .galleryGrid {
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 0.75rem;
+}
+
+/* Make sure photos fill the entire container with responsive grid */
+@media (min-width: 768px) {
+  .galleryGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 992px) {
+  .galleryGrid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 1200px) {
+  .galleryGrid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@keyframes fadeIn {
+  from { 
+    opacity: 0; 
+    transform: translateY(10px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Empty state message */
@@ -192,25 +269,92 @@
 .photoItem {
   position: relative;
   aspect-ratio: 1/1;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  cursor: pointer;
+  background-color: #f8f8f8;
+  will-change: transform, box-shadow;
+  transform-origin: center center;
+  border: 2px solid transparent;
 }
 
 .photoItem:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-4px) scale(1.03);
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15);
+  z-index: 2;
+}
+
+.photoItem:active {
+  transform: translateY(-2px) scale(1.01);
+  transition: all 0.1s ease;
 }
 
 .photoItem.profilePhotoItem {
-  border: 2px solid #ff6b9d;
+  border: 3px solid #ff6b9d;
+  position: relative;
+  box-shadow: 0 6px 12px rgba(255, 107, 157, 0.25);
+}
+
+.photoItem.profilePhotoItem::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 0.65rem;
+  box-shadow: 0 0 0 3px rgba(255, 107, 157, 0.5);
+  pointer-events: none;
+  animation: pulse-border 3s infinite;
+}
+
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 0 2px rgba(255, 107, 157, 0.5); }
+  50% { box-shadow: 0 0 0 4px rgba(255, 107, 157, 0.3); }
+  100% { box-shadow: 0 0 0 2px rgba(255, 107, 157, 0.5); }
 }
 
 .photoImage {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94), filter 0.3s ease;
+  display: block;
+  background-color: #f0f0f0;
+}
+
+.photoItem:hover .photoImage {
+  transform: scale(1.08);
+}
+
+/* Enhanced styles for private photos with better visual indication */
+.photoItem .photoImage[style*="opacity"] {
+  filter: grayscale(0.3) brightness(0.95);
+  position: relative;
+}
+
+.photoItem:hover .photoImage[style*="opacity"] {
+  filter: grayscale(0.2) brightness(1);
+}
+
+/* Add lock pattern overlay for private photos */
+.photoItem.hasPrivatePhoto::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.05) 0px,
+    rgba(0, 0, 0, 0.05) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.15;
+  border-radius: 0.75rem;
 }
 
 /* Controls */
@@ -219,42 +363,89 @@
   bottom: 0;
   left: 0;
   width: 100%;
-  padding: 0.5rem;
+  padding: 1rem 0.75rem 0.75rem;
   display: flex;
   justify-content: space-around;
-  background-color: rgba(0, 0, 0, 0.6);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.4), transparent);
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transform: translateY(10px);
+  z-index: 3;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
 
 .photoItem:hover .photoControls {
   opacity: 1;
+  transform: translateY(0);
+}
+
+.photoItem:focus-within .photoControls {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .photoControlButton {
-  background: none;
+  background: rgba(255, 255, 255, 0.18);
   border: none;
   color: white;
   cursor: pointer;
-  padding: 0.25rem;
+  padding: 0.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 0 0.2rem;
 }
 
 .photoControlButton:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-3px) scale(1.15);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.35);
+}
+
+.photoControlButton:active {
+  transform: translateY(-1px) scale(1.05);
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.3);
+  transition: all 0.1s ease;
+}
+
+.photoControlButton:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 2px;
 }
 
 .photoControlButton:disabled {
   color: #aaa;
+  background-color: rgba(255, 255, 255, 0.05);
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  border-color: transparent;
+  opacity: 0.5;
 }
 
 .controlIcon {
-  font-size: 1rem;
+  font-size: 1.2rem;
+  transition: all 0.3s ease;
+}
+
+.photoControlButton:hover .controlIcon {
+  transform: scale(1.2);
+  animation: wiggle 0.5s ease;
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-10deg); }
+  75% { transform: rotate(10deg); }
 }
 
 /* Indicators */
@@ -309,38 +500,92 @@
 
 .privacyOverlay {
   position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  background-color: rgba(0, 0, 0, 0.6);
+  top: 0.75rem;
+  right: 0.75rem;
+  background-color: rgba(0, 0, 0, 0.65);
   color: white;
-  width: 2rem;
-  height: 2rem;
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 2;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.photoItem:hover .privacyOverlay {
+  transform: scale(1.15) translateY(-2px);
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.3);
 }
 
 .overlayIcon {
-  font-size: 1rem;
+  font-size: 1.1rem;
+  transition: all 0.3s ease;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.photoItem:hover .overlayIcon {
+  transform: scale(1.15);
+  animation: pulse-opacity 2s infinite;
+}
+
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; }
 }
 
 .profileIndicator {
   position: absolute;
-  top: 0.5rem;
-  left: 0.5rem;
-  background-color: #ff6b9d;
+  top: 0.75rem;
+  left: 0.75rem;
+  background: linear-gradient(135deg, #ff6b9d, #ff4980);
   color: white;
-  width: 2rem;
-  height: 2rem;
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 2;
+  box-shadow: 0 3px 8px rgba(255, 107, 157, 0.4);
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: pulse-star 3s infinite;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+@keyframes pulse-star {
+  0% { box-shadow: 0 0 0 0 rgba(255, 107, 157, 0.7); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 107, 157, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 107, 157, 0); }
+}
+
+.photoItem:hover .profileIndicator {
+  transform: scale(1.15) translateY(-2px) rotate(5deg);
+  box-shadow: 0 6px 12px rgba(255, 107, 157, 0.5);
 }
 
 .profileStar {
-  font-size: 1rem;
+  font-size: 1.15rem;
+  transition: all 0.3s ease;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.photoItem:hover .profileStar {
+  transform: rotate(25deg) scale(1.1);
+  animation: star-spin 3s infinite ease-in-out;
+}
+
+@keyframes star-spin {
+  0% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(15deg) scale(1.15); }
+  50% { transform: rotate(0deg) scale(1.1); }
+  75% { transform: rotate(-15deg) scale(1.15); }
+  100% { transform: rotate(0deg) scale(1); }
 }
 
 /* Spinner */
@@ -368,6 +613,21 @@
 
 /* Dark Mode Styles */
 @media (prefers-color-scheme: dark) {
+  .photoGallery {
+    background-color: var(--bg-dark, #1a1a1a);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  
+  .galleryTitle {
+    color: #eee;
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .galleryTitle::before {
+    background-color: #ff4980;
+  }
+  
   .defaultProfilePhoto {
     background-color: #2a2a2a;
   }
@@ -378,10 +638,12 @@
   
   .uploadPhotoButton {
     background-color: #ff6b9d;
+    box-shadow: 0 3px 8px rgba(255, 107, 157, 0.3);
   }
   
   .uploadPhotoButton:hover {
     background-color: #ff4980;
+    box-shadow: 0 5px 12px rgba(255, 107, 157, 0.4);
   }
   
   .uploadProgressBar {
@@ -392,13 +654,90 @@
     color: #ccc;
   }
   
-  .galleryTitle {
-    color: #eee;
-  }
-  
   .noPhotosMessage {
     background-color: #2a2a2a;
     color: #ccc;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  
+  .photoItem {
+    background-color: #2a2a2a;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+    border-color: rgba(255, 255, 255, 0.03);
+  }
+  
+  .photoItem:hover {
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+  
+  .photoItem.profilePhotoItem {
+    box-shadow: 0 6px 12px rgba(255, 107, 157, 0.35);
+  }
+  
+  .photoItem.profilePhotoItem:hover {
+    box-shadow: 0 8px 16px rgba(255, 107, 157, 0.4);
+  }
+  
+  .photoImage {
+    background-color: #333;
+  }
+  
+  .photoItem .photoImage[style*="opacity"] {
+    filter: grayscale(0.4) brightness(0.8);
+  }
+  
+  .photoItem:hover .photoImage[style*="opacity"] {
+    filter: grayscale(0.3) brightness(0.9);
+  }
+  
+  .photoItem.hasPrivatePhoto::before {
+    background-image: repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.05) 0px,
+      rgba(255, 255, 255, 0.05) 4px,
+      transparent 4px,
+      transparent 8px
+    );
+    opacity: 0.1;
+  }
+  
+  .photoControls {
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.5), transparent);
+  }
+  
+  .photoControlButton {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+  
+  .photoControlButton:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+  
+  .photoControlButton:focus-visible {
+    outline-color: rgba(255, 255, 255, 0.8);
+  }
+  
+  .privacyOverlay {
+    background-color: rgba(0, 0, 0, 0.75);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .profileIndicator {
+    background: linear-gradient(135deg, #ff5a91, #ff3870);
+  }
+  
+  /* Add a subtle glow effect for dark mode */
+  .profileIndicator::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, rgba(255, 107, 157, 0.3) 0%, rgba(255, 107, 157, 0) 70%);
+    z-index: -1;
+    opacity: 0.6;
   }
 }
 

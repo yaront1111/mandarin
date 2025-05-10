@@ -67,10 +67,8 @@ const PhotoGallery = ({
   // Get the active photo
   const activePhoto = processedPhotos[activePhotoIndex] || null;
   
-  // Whether the current photo is private and can't be viewed
-  const isPrivateAndHidden = (activePhoto?.privacy === 'private' || 
-                             (activePhoto?.isPrivate && !activePhoto?.privacy)) && 
-                             !canViewPrivate;
+  // Whether the current photo is private (handled at the API level now)
+  const isPrivateAndHidden = false;
 
   // Handlers
   const handleFileSelection = async (e) => {
@@ -223,10 +221,9 @@ const PhotoGallery = ({
     }
   };
   
+  // Photo access is now handled at the API level - this function is no longer needed
   const handleRequestAccess = () => {
-    if (onRequestAccess && typeof onRequestAccess === 'function') {
-      onRequestAccess();
-    }
+    log.debug("Photo access is now handled at the API level");
   };
   
   // If no photos, show placeholder
@@ -293,9 +290,26 @@ const PhotoGallery = ({
         ) : (
           <>
             <img
-              src={activePhoto ? normalizePhotoUrl(activePhoto.url) : '/default-avatar.png'}
+              src={
+                // If it's a private photo and not the owner and not allowed to view, show placeholder
+                (activePhoto && 
+                 ((activePhoto.privacy === 'private' || activePhoto.isPrivate) && 
+                  !isOwner && 
+                  !canViewPrivate))
+                  ? `${window.location.origin}/private-photo.png`
+                  : activePhoto 
+                    ? normalizePhotoUrl(activePhoto.url) 
+                    : '/default-avatar.png'
+              }
               alt={t('common.photo', 'Photo')}
               className={styles.mainPhoto}
+              style={{
+                // Reduce opacity for own private photos
+                opacity: (activePhoto && 
+                         ((activePhoto.privacy === 'private' || activePhoto.isPrivate) && 
+                          isOwner)) 
+                         ? 0.7 : 1
+              }}
             />
             {(activePhoto?.privacy === 'private' || 
               (activePhoto?.isPrivate && !activePhoto?.privacy)) && (
@@ -351,11 +365,16 @@ const PhotoGallery = ({
               className={`${styles.thumbnail} ${index === activePhotoIndex ? styles.activeThumbnail : ''}`}
               onClick={() => setActivePhotoIndex(index)}
             >
-              {(photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) && !canViewPrivate ? (
+              {(photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) && !canViewPrivate && !isOwner ? (
                 <div className={styles.privateThumbnail}>
-                  <FaLock />
+                  <img 
+                    src={`${window.location.origin}/private-photo.png`}
+                    alt={t('common.privatePhoto', 'Private photo')}
+                    className={styles.thumbnailImage}
+                  />
+                  <FaLock className={styles.thumbnailLockIcon} />
                 </div>
-              ) : photo.privacy === 'friends_only' && !canViewPrivate ? (
+              ) : photo.privacy === 'friends_only' && !canViewPrivate && !isOwner ? (
                 <div className={styles.friendsThumbnail}>
                   <FaUsers />
                 </div>
@@ -364,6 +383,10 @@ const PhotoGallery = ({
                   src={normalizePhotoUrl(photo.url)}
                   alt={t('common.photoThumbnail', `Photo ${index + 1}`)}
                   className={styles.thumbnailImage}
+                  style={{
+                    // Reduce opacity for own private photos
+                    opacity: ((photo.privacy === 'private' || photo.isPrivate) && isOwner) ? 0.7 : 1
+                  }}
                 />
               )}
               {photo.isProfile && (

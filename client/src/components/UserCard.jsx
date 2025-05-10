@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { useTranslation } from "react-i18next";
@@ -11,8 +11,9 @@ import {
   FaChevronUp
 } from "react-icons/fa";
 import { withMemo } from "./common";
-import { useLanguage } from "../context";
-import { formatDate, normalizePhotoUrl, logger } from "../utils";
+import { useLanguage, useAuth } from "../context";
+import { formatDate, logger } from "../utils";
+import { usePhotoManagement } from "../hooks";
 import styles from "../styles/usercard.module.css";
 
 const log = logger.create("UserCard");
@@ -224,6 +225,22 @@ const UserCard = ({
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
+  const { user: currentUser } = useAuth();
+  const { normalizePhotoUrl, getProfilePhotoUrl, handlePhotoLoadError, refreshAllAvatars } = usePhotoManagement();
+  
+  // Listen for avatar refresh events
+  useEffect(() => {
+    const handleAvatarRefresh = () => {
+      // Force a re-render when avatar refresh event is triggered
+      log.debug(`Avatar refresh event received for user ${user.nickname}`);
+    };
+    
+    window.addEventListener('avatar:refresh', handleAvatarRefresh);
+    
+    return () => {
+      window.removeEventListener('avatar:refresh', handleAvatarRefresh);
+    };
+  }, [user.nickname]);
 
   // Event Handlers
   const handleCardClick = useCallback((e) => {
@@ -274,15 +291,57 @@ const UserCard = ({
     setShowMoreSections(prev => !prev);
   }, []);
 
-  // Memoized data
+  // Check if a photo is private (based on privacy setting or isPrivate flag)
+  const isPhotoPrivate = useCallback((photo) => {
+    if (!photo) return false;
+    
+    // Check for privacy status using new privacy enum
+    if (photo.privacy === 'private') return true;
+    
+    // Also check legacy isPrivate flag for backward compatibility
+    if (photo.isPrivate) return true;
+    
+    return false;
+  }, []);
+
+  // Check if the current user is the owner of the photo
+  const isOwnProfile = useMemo(() => {
+    return currentUser && user && currentUser._id === user._id;
+  }, [currentUser, user]);
+
+  // Determine photo URL based on privacy and ownership
   const profilePhotoUrl = useMemo(() => {
-    if (!user?.photos?.length) return "/default-avatar.png";
-
-    const url = user.photos[0]?.url;
-    if (!url) return "/default-avatar.png";
-
-    return normalizePhotoUrl(url);
-  }, [user?.photos]);
+    if (!user?.photos?.length) return `${window.location.origin}/default-avatar.png`;
+    
+    const profilePhoto = user.photos.find(p => p.isProfile) || user.photos[0];
+    
+    // If it's a private photo AND not the user's own profile
+    if (isPhotoPrivate(profilePhoto) && !isOwnProfile) {
+      // Use private photo placeholder for others' private photos
+      return `${window.location.origin}/private-photo.png`; 
+    }
+    
+    // For own private photos or public photos, use normal URL handling
+    return getProfilePhotoUrl(user);
+  }, [user, getProfilePhotoUrl, isPhotoPrivate, isOwnProfile]);
+  
+  // Need to create a CSS class for private images
+  useEffect(() => {
+    // Add CSS for private photos if it doesn't exist yet
+    if (!document.getElementById('private-photo-styles')) {
+      const styleEl = document.createElement('style');
+      styleEl.id = 'private-photo-styles';
+      styleEl.innerHTML = `
+        .private-photo-placeholder {
+          object-fit: cover !important;
+          width: 100% !important;
+          height: 100% !important;
+          border-radius: 4px !important;
+        }
+      `;
+      document.head.appendChild(styleEl);
+    }
+  }, []);
 
   const userDetails = useMemo(() => {
     if (!user?.details) {
@@ -478,14 +537,38 @@ const UserCard = ({
       >
         {/* User Photo */}
         <div className={styles.cardPhoto}>
-          <img
-            src={profilePhotoUrl}
-            alt={user.nickname}
-            onError={(e) => {
-              e.target.onerror = null;
-              e.target.src = "/default-avatar.png";
-            }}
-          />
+          {/* Get the primary photo to check privacy */}
+          {(() => {
+            const profilePhoto = user.photos?.find(p => p.isProfile) || user.photos?.[0];
+            const isPrivate = isPhotoPrivate(profilePhoto);
+            const opacity = isPrivate && isOwnProfile ? 0.7 : 1; // Reduce opacity for own private photos
+            
+            return (
+              <img
+                src={profilePhotoUrl}
+                alt={user.nickname}
+                loading="lazy"
+                crossOrigin="anonymous"
+                className={profilePhotoUrl.includes('private-photo.png') ? 'private-photo-placeholder' : ''}
+                style={{ 
+                  opacity,
+                  objectFit: 'cover',
+                  width: '100%',
+                  height: '100%'
+                }}
+                onError={(e) => {
+                  e.target.onerror = null;
+                  const fallbackUrl = `${window.location.origin}/default-avatar.png`;
+                  e.target.src = fallbackUrl;
+                  
+                  // Use the shared photo error handler to mark the URL as failed and refresh avatars
+                  if (profilePhoto?._id) {
+                    handlePhotoLoadError(profilePhoto._id, profilePhotoUrl);
+                  }
+                }}
+              />
+            );
+          })()}
           {user.isOnline && <span className={`${styles.statusIndicator} ${styles.online}`}></span>}
         </div>
 
@@ -532,15 +615,36 @@ const UserCard = ({
     <div className={styles.listItem} onClick={handleCardClick} data-userid={user._id}>
       {/* User Photo - List View */}
       <div className={styles.listPhotoContainer}>
-        <img
-          src={profilePhotoUrl}
-          alt={user.nickname}
-          onError={(e) => {
-            e.target.onerror = null;
-            e.target.src = "/default-avatar.png";
-          }}
-          className={styles.listPhoto}
-        />
+        {/* Get the primary photo to check privacy */}
+        {(() => {
+          const profilePhoto = user.photos?.find(p => p.isProfile) || user.photos?.[0];
+          const isPrivate = isPhotoPrivate(profilePhoto);
+          const opacity = isPrivate && isOwnProfile ? 0.7 : 1; // Reduce opacity for own private photos
+          
+          return (
+            <img
+              src={profilePhotoUrl}
+              alt={user.nickname}
+              loading="lazy"
+              crossOrigin="anonymous"
+              className={`${styles.listPhoto} ${profilePhotoUrl.includes('private-photo.png') ? 'private-photo-placeholder' : ''}`}
+              style={{ 
+                opacity,
+                objectFit: 'cover'
+              }}
+              onError={(e) => {
+                e.target.onerror = null;
+                const fallbackUrl = `${window.location.origin}/default-avatar.png`;
+                e.target.src = fallbackUrl;
+                
+                // Use the shared photo error handler to mark the URL as failed and refresh avatars
+                if (profilePhoto?._id) {
+                  handlePhotoLoadError(profilePhoto._id, profilePhotoUrl);
+                }
+              }}
+            />
+          );
+        })()}
         {user.isOnline && <span className={`${styles.statusIndicator} ${styles.online}`}></span>}
       </div>
 

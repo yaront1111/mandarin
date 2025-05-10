@@ -45,17 +45,23 @@ const PhotoItem = ({
   
   // Determine if this is a private photo
   const isPrivatePhoto = privacyLevel === 'private';
+  // Import useAuth from context - should be added at the top of the file
   // For the user's own profile, they always have permission to view their photos
   // For other users' profiles, check if this is a private photo that should be masked
-  const showPrivacyMask = false; // We now handle private photos at the API level
+  
+  // In Profile.jsx, it's always the user's own photos, but we'll leave this logic in place
+  // for future cases where this component might be used to display other users' photos
+  const isOwnPhoto = true; // In the profile view, it's always the user's own photos
+  
+  // If it's a private photo and not the owner's photo, mask it
+  // Currently always false in Profile view because isOwnPhoto is true
+  const showPrivacyMask = isPrivatePhoto && !isOwnPhoto;
   
   // Get icon and title based on privacy level
   const getPrivacyIcon = () => {
     switch(privacyLevel) {
       case 'private':
         return <FaLock className={styles.controlIcon} />;
-      case 'friends_only':
-        return <FaUsers className={styles.controlIcon} />;
       case 'public':
       default:
         return <FaLockOpen className={styles.controlIcon} />;
@@ -66,55 +72,40 @@ const PhotoItem = ({
     switch(privacyLevel) {
       case 'private':
         return t('profile.currentlyPrivate');
-      case 'friends_only':
-        return t('profile.currentlyFriendsOnly');
       case 'public':
       default:
         return t('profile.currentlyPublic');
     }
   };
   
-  // Handle privacy click - cycle through privacy levels
+  // Handle privacy click - toggle between public and private
   const handlePrivacyClick = (e) => {
     e.stopPropagation();
     
-    let newPrivacy;
-    switch(privacyLevel) {
-      case 'private':
-        newPrivacy = 'public';
-        break;
-      case 'public':
-        newPrivacy = 'friends_only';
-        break;
-      case 'friends_only':
-      default:
-        newPrivacy = 'private';
-        break;
-    }
-    
-    // Add confirmation for setting photo to private
-    if (newPrivacy === 'private' && privacyLevel !== 'private') {
-      const confirm = window.confirm(t('profile.confirmPrivate'));
-      if (!confirm) return;
-    }
+    // Simply toggle between public and private without confirmation
+    const newPrivacy = privacyLevel === 'private' ? 'public' : 'private';
     
     onSetPrivacy(photo._id, newPrivacy, e);
   };
   
   return (
     <div
-      className={`${styles.photoItem} ${isProfilePhoto ? styles.profilePhotoItem : ''}`}
+      className={`${styles.photoItem} 
+                 ${isProfilePhoto ? styles.profilePhotoItem : ''} 
+                 ${isPrivatePhoto ? styles.hasPrivatePhoto : ''}`}
       onClick={() => onSetProfilePhoto(photo._id)}
     >
       {/* Photo image with key for forced re-render */}
       {showPrivacyMask ? (
         // Show private photo placeholder with lock overlay
-        <img
-          key={`private-photo-${photo._id}`}
-          src="/private-photo.png"
-          alt={t('profile.privatePhoto')}
-          className={styles.photoImage}
-        />
+        <div className={styles.privatePhoto}>
+          <img
+            key={`private-photo-${photo._id}`}
+            src={`${window.location.origin}/private-photo.png`}
+            alt={t('profile.privatePhoto')}
+            className={styles.photoImage}
+          />
+        </div>
       ) : (
         // Show actual photo
         <img
@@ -122,9 +113,13 @@ const PhotoItem = ({
           src={`${normalizePhotoUrl(photo.url, true)}${window.__photo_refresh_timestamp ? `&_t=${window.__photo_refresh_timestamp}` : ''}&_k=${imageKey}`}
           alt={t('profile.photo')}
           className={styles.photoImage}
+          style={{
+            opacity: isPrivatePhoto ? 0.7 : 1, // Add reduced opacity for private photos
+            filter: isPrivatePhoto ? 'grayscale(0.3)' : 'none' // Add subtle grayscale for private photos
+          }}
           onError={(e) => {
             log.debug(`Failed to load photo: ${photo._id}`);
-            e.target.src = "/placeholder.svg?height=100&width=100";
+            e.target.src = `${window.location.origin}/placeholder.svg?height=100&width=100`;
           }}
         />
       )}
@@ -172,14 +167,10 @@ const PhotoItem = ({
         )}
       </div>
       
-      {/* Privacy indicator overlay */}
-      {privacyLevel !== 'public' && (
+      {/* Privacy indicator overlay - only show for private photos */}
+      {privacyLevel === 'private' && (
         <div className={styles.privacyOverlay}>
-          {privacyLevel === 'private' ? (
-            <FaLock className={styles.overlayIcon} />
-          ) : (
-            <FaUsers className={styles.overlayIcon} />
-          )}
+          <FaLock className={styles.overlayIcon} />
         </div>
       )}
       

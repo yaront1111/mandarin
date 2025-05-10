@@ -196,6 +196,7 @@ const userSchema = new Schema({
       showOnlineStatus: { type: Boolean, default: true },
       showReadReceipts: { type: Boolean, default: true },
       showLastSeen:     { type: Boolean, default: true },
+      allowPrivatePhotos: { type: Boolean, default: false },
       allowStoryReplies: {
         type:    String,
         enum:    ['everyone','friends','none'],

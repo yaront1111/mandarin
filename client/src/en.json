@@ -15,6 +15,7 @@
     "requestAccessPending": "Access Request Pending",
     "accessDenied": "Access Denied",
     "requestPhotoAccess": "Request Photo Access",
+    "allowPrivatePhotos": "Allow Private Photos",
     "noPhotosAvailable": "No photos available",
     "onlineNow": "Online now",
     "offline": "Offline",

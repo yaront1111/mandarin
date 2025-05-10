@@ -748,7 +748,7 @@ router.put("/settings/privacy", protect, async (req, res) => {
 
 /**
  * GET /api/users/:id/photo-access-status
- * Check overall access status for someone's private photos
+ * Check private photo access status
  */
 router.get(
   "/:id/photo-access-status",
@@ -757,36 +757,27 @@ router.get(
     const { id } = req.params;
     if (!isValidId(id)) return respondError(res, 400, "Invalid user ID");
 
-    const target = await User.findById(id).select("photos");
+    const target = await User.findById(id).select("photos settings");
     if (!target) return respondError(res, 404, "User not found");
 
     const privatePhotos = target.photos.filter((p) => p.privacy === 'private');
     if (!privatePhotos.length) {
       return res.json({ success: true, status: "approved", message: "No private photos" });
     }
+    
+    // Owner always has access
     if (req.user._id.toString() === id) {
       return res.json({ success: true, status: "approved", message: "Owner" });
     }
-
-    const requests = await PhotoPermission.find({
-      photo: { $in: privatePhotos.map((p) => p._id) },
-      requestedBy: req.user._id,
-    });
-
-    if (!requests.length) {
-      return res.json({ success: true, status: "none", message: "No requests" });
+    
+    // Check if user has allowed private photos
+    const allowPrivatePhotos = target.settings?.privacy?.allowPrivatePhotos;
+    
+    if (allowPrivatePhotos) {
+      return res.json({ success: true, status: "approved", message: "Access allowed" });
+    } else {
+      return res.json({ success: true, status: "none", message: "No access" });
     }
-    if (requests.some((r) => r.status === "approved")) {
-      return res.json({
-        success: true,
-        status: "approved",
-        message: "At least one approved",
-      });
-    }
-    if (requests.every((r) => r.status === "rejected")) {
-      return res.json({ success: true, status: "rejected", message: "All rejected" });
-    }
-    res.json({ success: true, status: "pending", message: "Requests pending" });
   })
 );
 
@@ -997,56 +988,37 @@ router.post(
 );
 
 /**
- * POST /api/users/:id/request-photo-access
- * Request access to all of someone's private photos
+ * POST /api/users/:id/allow-private-photos
+ * Allow access to private photos
  */
 router.post(
-  "/:id/request-photo-access",
+  "/:id/allow-private-photos",
   protect,
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     if (!isValidId(id)) return respondError(res, 400, "Invalid user ID");
-    if (req.user._id.toString() === id)
-      return respondError(res, 400, "Cannot request your own photos");
-
-    const owner = await User.findById(id).select("photos");
-    if (!owner) return respondError(res, 404, "User not found");
-
-    const privatePhotos = owner.photos.filter((p) => p.privacy === 'private');
-    if (!privatePhotos.length)
-      return res.json({
-        success: true,
-        message: "No private photos",
-        requests: [],
-      });
-
-    const results = [];
-    for (const p of privatePhotos) {
-      let reqDoc = await PhotoPermission.findOne({
-        photo: p._id,
-        requestedBy: req.user._id,
-      });
-      if (!reqDoc) {
-        reqDoc = new PhotoPermission({
-          photo: p._id,
-          requestedBy: req.user._id,
-          photoOwnerId: id,
-          status: "pending",
-          createdAt: new Date(),
-        });
-        await reqDoc.save();
-      } else if (reqDoc.status === "rejected") {
-        reqDoc.status = "pending";
-        reqDoc.updatedAt = new Date();
-        await reqDoc.save();
-      }
-      results.push(reqDoc);
+    
+    // Only the owner can allow private photos
+    if (req.user._id.toString() !== id) {
+      return respondError(res, 403, "Only the owner can allow private photos");
     }
+
+    // Update the user's privacy settings
+    const user = await User.findById(id);
+    if (!user) return respondError(res, 404, "User not found");
+    
+    // Ensure settings object exists
+    if (!user.settings) user.settings = {};
+    if (!user.settings.privacy) user.settings.privacy = {};
+    
+    // Set allowPrivatePhotos to true
+    user.settings.privacy.allowPrivatePhotos = true;
+    await user.save();
 
     res.json({
       success: true,
-      message: `Requested access to ${results.length} photos`,
-      requests: results,
+      message: "Private photos access allowed",
+      data: { allowPrivatePhotos: true }
     });
   })
 );
