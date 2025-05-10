@@ -1,0 +1,939 @@
+/* 
+  Consolidated Photo Gallery Styles
+  Combined from photo-gallery.module.css and photo-management.module.css
+*/
+
+/* Main container */
+.photoGallery {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  max-width: 800px;
+  margin: 0 auto;
+  background-color: var(--bg-light, #ffffff);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  margin-bottom: 1.5rem;
+  animation: fadeIn 0.5s ease-out;
+  overflow: hidden;
+}
+
+.photoGallery:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+.galleryTitle {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  color: var(--text-primary, #333);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.05);
+}
+
+.galleryTitle::before {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 1.5rem;
+  background-color: var(--primary, #ff6b9d);
+  border-radius: 2px;
+}
+
+/* Main photo display */
+.mainPhotoContainer {
+  position: relative;
+  width: 100%;
+  height: 400px;
+  overflow: hidden;
+  background-color: var(--bg-secondary, #f5f5f5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.mainPhoto {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: transform 0.3s ease;
+}
+
+/* Navigation buttons */
+.navButton {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
+  z-index: 10;
+}
+
+.navButton:hover {
+  opacity: 1;
+}
+
+.navButton:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.prevButton {
+  left: 16px;
+}
+
+.nextButton {
+  right: 16px;
+}
+
+/* Photo Grid View */
+.galleryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1.25rem;
+  width: 100%;
+  margin-bottom: 1.5rem;
+}
+
+/* Mobile optimization */
+.mobileGallery .galleryGrid {
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+
+/* Individual Photo Items */
+.photoItem {
+  position: relative;
+  aspect-ratio: 1/1;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  cursor: pointer;
+  background-color: var(--bg-secondary, #f8f8f8);
+  will-change: transform, box-shadow;
+  transform-origin: center center;
+  border: 2px solid transparent;
+}
+
+.photoItem:hover {
+  transform: translateY(-4px) scale(1.03);
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15);
+  z-index: 2;
+}
+
+.photoItem:active {
+  transform: translateY(-2px) scale(1.01);
+  transition: all 0.1s ease;
+}
+
+.photoItem.profilePhotoItem {
+  border: 3px solid var(--primary, #ff6b9d);
+  position: relative;
+  box-shadow: 0 6px 12px rgba(255, 107, 157, 0.25);
+}
+
+.photoItem.profilePhotoItem::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 0.65rem;
+  box-shadow: 0 0 0 3px rgba(255, 107, 157, 0.5);
+  pointer-events: none;
+  animation: pulse-border 3s infinite;
+}
+
+.photoImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94), filter 0.3s ease;
+  display: block;
+  background-color: var(--bg-secondary, #f0f0f0);
+}
+
+.photoItem:hover .photoImage {
+  transform: scale(1.08);
+}
+
+/* Enhanced styles for private photos with better visual indication */
+.photoItem .photoImage[style*="opacity"] {
+  filter: grayscale(0.3) brightness(0.95);
+  position: relative;
+}
+
+.photoItem:hover .photoImage[style*="opacity"] {
+  filter: grayscale(0.2) brightness(1);
+}
+
+/* Add lock pattern overlay for private photos */
+.photoItem.hasPrivatePhoto::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.05) 0px,
+    rgba(0, 0, 0, 0.05) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.15;
+  border-radius: 0.75rem;
+}
+
+/* Photo Controls */
+.photoControls {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 1rem 0.75rem 0.75rem;
+  display: flex;
+  justify-content: space-around;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.4), transparent);
+  opacity: 0;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transform: translateY(10px);
+  z-index: 3;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.photoItem:hover .photoControls {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.photoItem:focus-within .photoControls {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.photoControlButton {
+  background: rgba(255, 255, 255, 0.18);
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 0.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 0 0.2rem;
+}
+
+.photoControlButton:hover {
+  background-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-3px) scale(1.15);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.35);
+}
+
+.photoControlButton:active {
+  transform: translateY(-1px) scale(1.05);
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.3);
+  transition: all 0.1s ease;
+}
+
+.photoControlButton:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 2px;
+}
+
+.photoControlButton:disabled {
+  color: #aaa;
+  background-color: rgba(255, 255, 255, 0.05);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  border-color: transparent;
+  opacity: 0.5;
+}
+
+.controlIcon {
+  font-size: 1.2rem;
+  transition: all 0.3s ease;
+}
+
+.photoControlButton:hover .controlIcon {
+  transform: scale(1.2);
+  animation: wiggle 0.5s ease;
+}
+
+/* Private photo overlay */
+.privatePhoto {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-secondary, #f5f5f5);
+  color: var(--text-secondary, #555);
+  padding: 20px;
+  text-align: center;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.lockIcon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  color: var(--text-muted, #999);
+}
+
+.requestAccessButton {
+  margin-top: 16px;
+  padding: 8px 16px;
+  background-color: var(--primary, #007bff);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.requestAccessButton:hover {
+  background-color: var(--primary-dark, #0069d9);
+}
+
+/* Status indicators */
+.privateIndicator,
+.profileIndicator,
+.friendsIndicator {
+  position: absolute;
+  bottom: 0;
+  padding: 4px 8px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  border-top-right-radius: 4px;
+}
+
+.privateIndicator {
+  left: 0;
+}
+
+.profileIndicator {
+  right: 0;
+}
+
+.friendsIndicator {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Grid view profile indicator */
+.photoItem .profileIndicator {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  background: linear-gradient(135deg, #ff6b9d, #ff4980);
+  color: white;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  box-shadow: 0 3px 8px rgba(255, 107, 157, 0.4);
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: pulse-star 3s infinite;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  padding: 0;
+  bottom: auto;
+}
+
+.photoItem:hover .profileIndicator {
+  transform: scale(1.15) translateY(-2px) rotate(5deg);
+  box-shadow: 0 6px 12px rgba(255, 107, 157, 0.5);
+}
+
+.profileStar {
+  font-size: 1.15rem;
+  transition: all 0.3s ease;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.photoItem:hover .profileStar {
+  transform: rotate(25deg) scale(1.1);
+  animation: star-spin 3s infinite ease-in-out;
+}
+
+/* Privacy overlay for grid view */
+.privacyOverlay {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background-color: rgba(0, 0, 0, 0.65);
+  color: white;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.photoItem:hover .privacyOverlay {
+  transform: scale(1.15) translateY(-2px);
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.3);
+}
+
+.overlayIcon {
+  font-size: 1.1rem;
+  transition: all 0.3s ease;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.photoItem:hover .overlayIcon {
+  transform: scale(1.15);
+  animation: pulse-opacity 2s infinite;
+}
+
+/* Thumbnails section */
+.thumbnailsContainer {
+  padding: 16px;
+  background-color: var(--bg-card, white);
+}
+
+.thumbnails {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.thumbnail {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.3s ease;
+}
+
+.activeThumbnail {
+  border-color: var(--primary, #007bff);
+}
+
+.thumbnailImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.privateThumbnail {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-secondary, #f5f5f5);
+  color: var(--text-muted, #999);
+  position: relative;
+  overflow: hidden;
+}
+
+.thumbnailLockIcon {
+  position: absolute;
+  z-index: 2;
+  font-size: 1.2rem;
+  color: white;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 0.25rem;
+  border-radius: 50%;
+}
+
+.profileBadge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  color: var(--primary, #007bff);
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 2px;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Thumbnail controls */
+.thumbnailControls {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: space-around;
+  padding: 4px;
+  background-color: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.thumbnail:hover .thumbnailControls {
+  opacity: 1;
+}
+
+.controlButton {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.controlButton:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Add photo thumbnail */
+.addPhotoThumbnail {
+  width: 80px;
+  height: 80px;
+  border-radius: 4px;
+  border: 2px dashed var(--border-color, #ddd);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted, #999);
+  background-color: var(--bg-secondary, #f5f5f5);
+  transition: all 0.3s ease;
+}
+
+.addPhotoThumbnail:hover {
+  border-color: var(--primary, #007bff);
+  color: var(--primary, #007bff);
+}
+
+/* Upload section */
+.uploadPhotoSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 300px;
+  margin-top: 1rem;
+}
+
+.uploadPhotoButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background-color: var(--primary, #ff6b9d);
+  color: white;
+  border: none;
+  border-radius: 2rem;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.uploadPhotoButton:hover {
+  background-color: var(--primary-dark, #ff4980);
+  transform: translateY(-2px);
+}
+
+.uploadPhotoButton:active {
+  transform: translateY(0);
+}
+
+.uploadPhotoButton:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* Upload progress */
+.uploadProgressContainer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.uploadProgressBar,
+.progressBar {
+  width: 100%;
+  height: 0.5rem;
+  background-color: var(--bg-secondary, #eee);
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+.uploadProgressFill,
+.progressFill {
+  height: 100%;
+  background-color: var(--primary, #ff6b9d);
+  transition: width 0.3s ease;
+}
+
+.uploadProgressText,
+.progressText {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+  text-align: center;
+}
+
+.uploadProgress {
+  padding: 16px;
+  background-color: var(--bg-card, white);
+  border-top: 1px solid var(--border-color, #eee);
+}
+
+/* Empty gallery state */
+.noPhotosMessage,
+.emptyGallery {
+  text-align: center;
+  padding: 2rem;
+  background-color: var(--bg-secondary, #f9f9f9);
+  border-radius: 0.5rem;
+  margin-top: 1rem;
+  color: var(--text-secondary, #666);
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border-radius: 8px;
+}
+
+.placeholder {
+  text-align: center;
+  padding: 40px;
+}
+
+.placeholderIcon {
+  color: var(--text-muted, #ccc);
+  margin-bottom: 16px;
+}
+
+.placeholderText {
+  margin-bottom: 24px;
+  color: var(--text-secondary, #666);
+}
+
+/* Spinner animation for loading states */
+.spinner,
+.spinnerSmall {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin 1s linear infinite;
+}
+
+.spinnerSmall {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-width: 2px;
+}
+
+/* Dark Mode Styles */
+@media (prefers-color-scheme: dark) {
+  .photoGallery {
+    background-color: var(--bg-dark, #1a1a1a);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  
+  .galleryTitle {
+    color: var(--text-primary-dark, #eee);
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .galleryTitle::before {
+    background-color: #ff4980;
+  }
+  
+  .defaultProfilePhoto {
+    background-color: #2a2a2a;
+  }
+  
+  .defaultProfileIcon {
+    color: #444;
+  }
+  
+  .uploadPhotoButton {
+    background-color: #ff6b9d;
+    box-shadow: 0 3px 8px rgba(255, 107, 157, 0.3);
+  }
+  
+  .uploadPhotoButton:hover {
+    background-color: #ff4980;
+    box-shadow: 0 5px 12px rgba(255, 107, 157, 0.4);
+  }
+  
+  .uploadProgressBar,
+  .progressBar {
+    background-color: #333;
+  }
+  
+  .uploadProgressText,
+  .progressText {
+    color: #ccc;
+  }
+  
+  .noPhotosMessage,
+  .emptyGallery {
+    background-color: #2a2a2a;
+    color: #ccc;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  
+  .photoItem {
+    background-color: #2a2a2a;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+    border-color: rgba(255, 255, 255, 0.03);
+  }
+  
+  .photoItem:hover {
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+  
+  .photoItem.profilePhotoItem {
+    box-shadow: 0 6px 12px rgba(255, 107, 157, 0.35);
+  }
+  
+  .photoItem.profilePhotoItem:hover {
+    box-shadow: 0 8px 16px rgba(255, 107, 157, 0.4);
+  }
+  
+  .photoImage {
+    background-color: #333;
+  }
+  
+  .photoItem .photoImage[style*="opacity"] {
+    filter: grayscale(0.4) brightness(0.8);
+  }
+  
+  .photoItem:hover .photoImage[style*="opacity"] {
+    filter: grayscale(0.3) brightness(0.9);
+  }
+  
+  .photoItem.hasPrivatePhoto::before {
+    background-image: repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.05) 0px,
+      rgba(255, 255, 255, 0.05) 4px,
+      transparent 4px,
+      transparent 8px
+    );
+    opacity: 0.1;
+  }
+  
+  .photoControls {
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.5), transparent);
+  }
+  
+  .photoControlButton {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+  
+  .photoControlButton:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+  
+  .photoControlButton:focus-visible {
+    outline-color: rgba(255, 255, 255, 0.8);
+  }
+  
+  .privacyOverlay {
+    background-color: rgba(0, 0, 0, 0.75);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .profileIndicator {
+    background: linear-gradient(135deg, #ff5a91, #ff3870);
+  }
+  
+  /* Add a subtle glow effect for dark mode */
+  .profileIndicator::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, rgba(255, 107, 157, 0.3) 0%, rgba(255, 107, 157, 0) 70%);
+    z-index: -1;
+    opacity: 0.6;
+  }
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { 
+    opacity: 0; 
+    transform: translateY(10px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-10deg); }
+  75% { transform: rotate(10deg); }
+}
+
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 0 2px rgba(255, 107, 157, 0.5); }
+  50% { box-shadow: 0 0 0 4px rgba(255, 107, 157, 0.3); }
+  100% { box-shadow: 0 0 0 2px rgba(255, 107, 157, 0.5); }
+}
+
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse-star {
+  0% { box-shadow: 0 0 0 0 rgba(255, 107, 157, 0.7); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 107, 157, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 107, 157, 0); }
+}
+
+@keyframes star-spin {
+  0% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(15deg) scale(1.15); }
+  50% { transform: rotate(0deg) scale(1.1); }
+  75% { transform: rotate(-15deg) scale(1.15); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+
+/* Responsive adjustments */
+@media (min-width: 768px) {
+  .galleryGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 992px) {
+  .galleryGrid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 1200px) {
+  .galleryGrid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .mainPhotoContainer {
+    height: 300px;
+  }
+  
+  .thumbnail,
+  .addPhotoThumbnail {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .navButton {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .galleryGrid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .mainPhotoContainer {
+    height: 250px;
+  }
+  
+  .thumbnail,
+  .addPhotoThumbnail {
+    width: 50px;
+    height: 50px;
+  }
+  
+  .thumbnailControls {
+    padding: 2px;
+  }
+  
+  .navButton {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .galleryGrid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  }
+  
+  .uploadPhotoButton {
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+  }
+}
