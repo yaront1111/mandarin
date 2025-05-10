@@ -16,6 +16,8 @@ import { ThemeToggle } from "../components/theme-toggle.tsx"
 import { Navbar } from "../components/LayoutComponents"
 import { LanguageSelector } from "../components/common"
 import styles from "../styles/settings.module.css"
+import { useIsMobile, useMobileDetect } from "../hooks"
+import { enhanceScrolling, provideTactileFeedback } from "../utils/mobileGestures"
 
 // Create a named logger for this component
 const log = logger.create("Settings")
@@ -28,6 +30,13 @@ const Settings = () => {
   const { t } = useTranslation()
   const { language, changeLanguage, supportedLanguages, getLanguageDisplayName } = useLanguage()
   const previousUserRef = useRef(null);
+  
+  // Reference for mobile optimizations
+  const settingsContainerRef = useRef(null);
+  
+  // Mobile detection hooks
+  const isMobile = useIsMobile();
+  const { isTouch, isIOS, isAndroid } = useMobileDetect();
   
   // State for blocked users
   const [blockedUsers, setBlockedUsers] = useState([])
@@ -396,11 +405,30 @@ const Settings = () => {
     }
   }, [activeTab, loadBlockedUsers]);
   
+  // Add mobile optimizations
+  useEffect(() => {
+    // Enhance scrolling behavior on mobile devices
+    let cleanupScrolling = null;
+    if (isTouch && settingsContainerRef.current) {
+      cleanupScrolling = enhanceScrolling(settingsContainerRef.current);
+      log.debug('Mobile scroll enhancements applied to Settings');
+    }
+    
+    return () => {
+      if (cleanupScrolling) cleanupScrolling();
+    };
+  }, [isTouch]);
+  
   // Handle unblocking a user
   const handleUnblock = useCallback(async (userId, nickname) => {
     if (!userId) return;
     
     try {
+      // Add tactile feedback for mobile users
+      if (isTouch) {
+        provideTactileFeedback('selectConversation');
+      }
+      
       const success = await unblockUser(userId, nickname);
       if (success) {
         // Remove from local state for immediate UI update
@@ -408,9 +436,13 @@ const Settings = () => {
       }
     } catch (error) {
       log.error("Error unblocking user:", error);
+      // Add error feedback for mobile
+      if (isTouch) {
+        provideTactileFeedback('error');
+      }
       toast.error("Failed to unblock user");
     }
-  }, [unblockUser]);
+  }, [unblockUser, isTouch]);
 
   useEffect(() => {
     // Skip if settings aren't initialized yet or user hasn't loaded
@@ -820,7 +852,9 @@ const Settings = () => {
   }
 
   return (
-    <div className={styles.settingsPage}>
+    <div 
+      ref={settingsContainerRef}
+      className={`${styles.settingsPage} ${isMobile ? 'mobile-optimized' : ''}`}>
       <Navbar />
       <div className={styles.settingsContent}>
         <div className={styles.settingsContainer}>

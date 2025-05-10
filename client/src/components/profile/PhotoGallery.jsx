@@ -23,9 +23,26 @@ const PhotoGallery = ({
 }) => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const forceUpdateRef = React.useRef(0);
+  
+  // Listen for avatar refresh events
+  React.useEffect(() => {
+    const handleAvatarRefresh = () => {
+      log.debug("Avatar refresh event received, updating PhotoGallery");
+      forceUpdateRef.current = Date.now();
+      // Force a re-render
+      setForceUpdate(Date.now());
+    };
+    
+    window.addEventListener('avatar:refresh', handleAvatarRefresh);
+    return () => window.removeEventListener('avatar:refresh', handleAvatarRefresh);
+  }, []);
+  
+  // State to force re-render when refreshed
+  const [forceUpdate, setForceUpdate] = React.useState(0);
   
   // Add debugging but use our logger
-  log.debug("Rendering gallery with photo count:", photos?.length);
+  log.debug("Rendering gallery with photo count:", photos?.length, "forceUpdate:", forceUpdate);
   
   if (!photos || photos.length === 0) {
     log.debug("No photos to display in gallery");

@@ -16,6 +16,7 @@ import "./styles/stories.module.css";
 import "./styles/modal.css"; // Modal component styling
 import "./styles/home.css"; // Home page specific styling
 import "./styles/policy-pages.css"; // Policy pages styling
+import "./styles/form-mobile.css"; // Mobile-specific form enhancements
 import "./styles/mobile.css"; // Mobile-specific enhancements (should be last to override)
 
 // Polyfill for global if needed (keep as is)

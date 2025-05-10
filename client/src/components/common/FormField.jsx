@@ -1,8 +1,10 @@
 import React from 'react';
 import PropTypes from 'prop-types';
+import { useIsMobile, useMobileDetect } from '../../hooks';
 
 /**
  * Reusable form field component for consistent form layouts
+ * Enhanced with mobile-specific optimizations
  */
 const FormField = ({
   id,
@@ -17,6 +19,10 @@ const FormField = ({
   hideLabel = false,
   labelPosition = 'top'
 }) => {
+  // Mobile detection
+  const isMobile = useIsMobile();
+  const { isTouch } = useMobileDetect();
+  
   const fieldId = id || `field-${Math.random().toString(36).substring(2, 9)}`;
   const hasError = !!error;
   
@@ -28,12 +34,15 @@ const FormField = ({
     hidden: 'form-field--label-hidden'
   };
   
+  // On mobile, prefer top layout for better usability
+  const effectiveLabelPosition = isMobile ? 'top' : labelPosition;
+  
   const layoutClass = hideLabel 
     ? layoutClasses.hidden 
-    : layoutClasses[labelPosition] || layoutClasses.top;
+    : layoutClasses[effectiveLabelPosition] || layoutClasses.top;
   
   return (
-    <div className={`form-field ${layoutClass} ${hasError ? 'has-error' : ''} ${className}`}>
+    <div className={`form-field ${layoutClass} ${hasError ? 'has-error' : ''} ${isMobile ? 'mobile-field' : ''} ${isTouch ? 'touch-optimized' : ''} ${className}`}>
       {!hideLabel && label && (
         <label 
           htmlFor={fieldId} 

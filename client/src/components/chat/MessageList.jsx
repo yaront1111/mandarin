@@ -92,7 +92,7 @@ MessageList.propTypes = {
   messagesEndRef: PropTypes.oneOfType([
     PropTypes.func, 
     PropTypes.shape({ current: PropTypes.any })
-  ]),
+  ])
 };
 
 export default React.memo(MessageList);

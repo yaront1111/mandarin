@@ -1,0 +1,101 @@
+/**
+ * Mobile-specific form styling
+ * These styles enhance form usability on mobile devices
+ */
+
+/* Mobile form fields */
+.mobile-field {
+  margin-bottom: 16px;
+}
+
+.mobile-field .form-field__label {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.mobile-field input,
+.mobile-field select,
+.mobile-field textarea {
+  font-size: 16px !important; /* Prevent iOS zoom */
+  padding: 12px;
+  border-radius: 8px;
+  width: 100%;
+  min-height: 44px; /* Better touch targets */
+}
+
+.mobile-field select {
+  padding-right: 30px; /* Space for dropdown arrow */
+  background-position: right 10px center;
+}
+
+/* Better touch targets for checkboxes and radio buttons */
+.mobile-field input[type="checkbox"],
+.mobile-field input[type="radio"] {
+  min-width: 22px;
+  min-height: 22px;
+  margin-right: 8px;
+}
+
+.mobile-field .form-field__error {
+  margin-top: 4px;
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Improve buttons on mobile */
+.mobile-field button,
+.touch-optimized button {
+  min-height: 44px;
+  padding: 10px 16px;
+  font-size: 16px;
+}
+
+/* Prevent fat-finger errors with better spacing */
+.touch-optimized .form-field__wrapper {
+  margin-bottom: 6px;
+}
+
+/* Add tap highlight effect that feels native */
+.touch-optimized input:active,
+.touch-optimized select:active,
+.touch-optimized textarea:active,
+.touch-optimized button:active {
+  opacity: 0.7;
+  transition: opacity 0.1s ease;
+}
+
+/* Improve form field focus states on mobile */
+.touch-optimized input:focus,
+.touch-optimized select:focus,
+.touch-optimized textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.5);
+}
+
+/* Fix for iOS date inputs */
+.touch-optimized input[type="date"],
+.touch-optimized input[type="time"],
+.touch-optimized input[type="datetime-local"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+}
+
+/* Prevent zoom on focused inputs */
+@media screen and (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px !important; 
+  }
+}
+
+/* Improved error messages on mobile */
+@media screen and (max-width: 767px) {
+  .form-field__error {
+    padding: 8px;
+    margin-top: 6px;
+    border-radius: 6px;
+    font-weight: 500;
+  }
+}

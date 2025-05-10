@@ -126,20 +126,13 @@ const usePhotoManagement = () => {
         }
       });
       
-      // Clear cache to ensure all avatars are refreshed
-      clearCache();
+      // Clear cache and trigger a global refresh
+      // This will force immediate refresh across all components
+      refreshAllAvatars();
       
-      // Dispatch a global avatar refresh event to notify all components
-      if (typeof window !== 'undefined') {
-        // Wait a short delay to dispatch event (helps with race conditions)
-        setTimeout(() => {
-          log.debug('Dispatching avatar refresh event after successful upload');
-          const refreshEvent = new CustomEvent('avatar:refresh', {
-            detail: { timestamp: Date.now() }
-          });
-          window.dispatchEvent(refreshEvent);
-        }, 200);
-      }
+      // Wait a short delay before refreshing user data
+      // This helps with race conditions
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       if (response && response.success && response.data) {
         return response.data;
@@ -195,9 +188,12 @@ const usePhotoManagement = () => {
       // Handle both cases
       const responseData = updateResponse?.data || updateResponse;
       
+      // Force global refresh by dispatching refresh event
+      refreshAllAvatars();
+      
       // Refresh user data to update the UI
       if (userId) {
-        await refreshUserData(userId);
+        await refreshUserData(userId, true); // Force immediate refresh
       }
       
       return responseData;
@@ -295,9 +291,12 @@ const usePhotoManagement = () => {
       // Clear URL cache for all images to ensure they're refreshed throughout the app
       clearCache();
       
+      // Force global refresh by dispatching refresh event
+      refreshAllAvatars();
+      
       // Refresh user data to update the UI
       if (userId) {
-        await refreshUserData(userId);
+        await refreshUserData(userId, true); // Force immediate refresh
       }
       
       return responseData; // Returns the full photos array
@@ -347,9 +346,12 @@ const usePhotoManagement = () => {
         throw new Error(response.error || 'Failed to delete photo');
       }
       
+      // Force global refresh by dispatching refresh event
+      refreshAllAvatars();
+      
       // Refresh user data to update the UI
       if (userId) {
-        await refreshUserData(userId);
+        await refreshUserData(userId, true); // Force immediate refresh
       }
       
       return true;
@@ -500,21 +502,47 @@ const usePhotoManagement = () => {
   }, []);
 
   /**
-   * Force refresh all avatars application-wide
+   * Force refresh all avatars application-wide with an option for extreme refresh
    * This is a utility function that can be called when you know a profile photo
    * has changed but you don't have access to specific avatar instances
    */
-  const refreshAllAvatars = useCallback(() => {
+  const refreshAllAvatars = useCallback((forcePageRefresh = false) => {
     // Clear all photo caches
     clearCache();
     
-    // Dispatch a custom event that avatar components can listen for
+    // Most aggressive solution - actual page refresh if requested
+    if (forcePageRefresh && typeof window !== 'undefined') {
+      log.debug('Forcing complete page refresh by reloading the window');
+      window.location.reload();
+      return; // Stop here since we're reloading
+    }
+    
+    // Dispatch a custom event that components can listen for
     if (typeof window !== 'undefined') {
+      // Add a more aggressive cache busting using a single random value for the entire page
+      window.__photo_refresh_timestamp = Date.now();
+      
+      // Create and dispatch refresh event
       const refreshEvent = new CustomEvent('avatar:refresh', {
-        detail: { timestamp: Date.now() }
+        detail: { timestamp: window.__photo_refresh_timestamp }
       });
       window.dispatchEvent(refreshEvent);
-      log.debug('Avatar refresh event dispatched');
+      
+      // Force a CSS class change on body to trigger repaints
+      document.body.classList.add('photo-refreshed');
+      setTimeout(() => {
+        document.body.classList.remove('photo-refreshed');
+      }, 100);
+      
+      // Force repaint on browser by triggering a layout recalculation
+      const scrollPosition = window.scrollY;
+      document.body.style.zoom = '99.99%';
+      setTimeout(() => {
+        document.body.style.zoom = '100%';
+        window.scrollTo(0, scrollPosition);
+      }, 50);
+      
+      log.debug('Avatar refresh event dispatched with timestamp:', window.__photo_refresh_timestamp);
     }
   }, [clearCache]);
 

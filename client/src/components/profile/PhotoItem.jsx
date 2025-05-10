@@ -23,6 +23,18 @@ const PhotoItem = ({
   isUploading = false
 }) => {
   const { t } = useTranslation();
+  const [imageKey, setImageKey] = React.useState(Date.now());
+  
+  // Listen for avatar refresh events to force reload of images
+  React.useEffect(() => {
+    const handleAvatarRefresh = () => {
+      log.debug(`Refreshing PhotoItem ${photo._id}`);
+      setImageKey(Date.now());
+    };
+    
+    window.addEventListener('avatar:refresh', handleAvatarRefresh);
+    return () => window.removeEventListener('avatar:refresh', handleAvatarRefresh);
+  }, [photo._id]);
   
   
   // Ensure photo object exists
@@ -30,6 +42,12 @@ const PhotoItem = ({
   
   // Handle both new privacy model and legacy isPrivate property
   const privacyLevel = photo.privacy || (photo.isPrivate ? 'private' : 'public');
+  
+  // Determine if this is a private photo
+  const isPrivatePhoto = privacyLevel === 'private';
+  // For the user's own profile, they always have permission to view their photos
+  // For other users' profiles, check if this is a private photo that should be masked
+  const showPrivacyMask = false; // We now handle private photos at the API level
   
   // Get icon and title based on privacy level
   const getPrivacyIcon = () => {
@@ -74,6 +92,12 @@ const PhotoItem = ({
         break;
     }
     
+    // Add confirmation for setting photo to private
+    if (newPrivacy === 'private' && privacyLevel !== 'private') {
+      const confirm = window.confirm(t('profile.confirmPrivate'));
+      if (!confirm) return;
+    }
+    
     onSetPrivacy(photo._id, newPrivacy, e);
   };
   
@@ -82,16 +106,28 @@ const PhotoItem = ({
       className={`${styles.photoItem} ${isProfilePhoto ? styles.profilePhotoItem : ''}`}
       onClick={() => onSetProfilePhoto(photo._id)}
     >
-      {/* Photo image */}
-      <img
-        src={normalizePhotoUrl(photo.url, true) || "/placeholder.svg?height=100&width=100"}
-        alt={t('profile.photo')}
-        className={styles.photoImage}
-        onError={(e) => {
-          log.debug(`Failed to load photo: ${photo._id}`);
-          e.target.src = "/placeholder.svg?height=100&width=100";
-        }}
-      />
+      {/* Photo image with key for forced re-render */}
+      {showPrivacyMask ? (
+        // Show private photo placeholder with lock overlay
+        <img
+          key={`private-photo-${photo._id}`}
+          src="/private-photo.png"
+          alt={t('profile.privatePhoto')}
+          className={styles.photoImage}
+        />
+      ) : (
+        // Show actual photo
+        <img
+          key={`photo-${photo._id}-${imageKey}`}
+          src={`${normalizePhotoUrl(photo.url, true)}${window.__photo_refresh_timestamp ? `&_t=${window.__photo_refresh_timestamp}` : ''}&_k=${imageKey}`}
+          alt={t('profile.photo')}
+          className={styles.photoImage}
+          onError={(e) => {
+            log.debug(`Failed to load photo: ${photo._id}`);
+            e.target.src = "/placeholder.svg?height=100&width=100";
+          }}
+        />
+      )}
       
       {/* Photo controls */}
       <div className={styles.photoControls}>

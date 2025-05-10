@@ -26,20 +26,27 @@ import { Navbar } from "../components/LayoutComponents"
 import styles from "../styles/profile.module.css"
 
 // Import hooks and components
-import { usePhotoManagement } from "../hooks"
+import { usePhotoManagement, useMobileDetect, useIsMobile } from "../hooks"
 import PhotoGallery from "../components/profile/PhotoGallery"
 
 // Import the normalizePhotoUrl utility
 import { normalizePhotoUrl } from "../utils/index.js"
 import logger from "../utils/logger"
+import { enhanceScrolling, provideTactileFeedback } from "../utils/mobileGestures"
 
 const log = logger.create("Profile")
 
 const Profile = () => {
+  // Reference to the profile container for mobile optimizations
+  const profileContainerRef = useRef(null);
   const { user } = useAuth()
   const { updateProfile, refreshUserData } = useUser() // Removed uploadPhoto since we'll use the hook version
   const { t } = useTranslation()
   const { isRTL } = useLanguage()
+  
+  // Use mobile detection hooks
+  const isMobile = useIsMobile()
+  const { isTouch, isIOS, isAndroid, isPWA } = useMobileDetect()
   
   // Use the centralized photo management hook
   const {
@@ -51,7 +58,8 @@ const Profile = () => {
     uploadProgress,
     isProcessingPhoto,
     processPhotos,
-    clearCache
+    clearCache,
+    refreshAllAvatars
   } = usePhotoManagement()
 
   const [isEditing, setIsEditing] = useState(false)
@@ -214,6 +222,20 @@ const Profile = () => {
       }
     }
   }, [])
+  
+  // Setup mobile optimizations
+  useEffect(() => {
+    // Enhance scrolling behavior on mobile devices
+    let cleanupScrolling = null;
+    if (isTouch && profileContainerRef.current) {
+      cleanupScrolling = enhanceScrolling(profileContainerRef.current);
+      log.debug('Mobile scroll enhancements applied to Profile');
+    }
+    
+    return () => {
+      if (cleanupScrolling) cleanupScrolling();
+    };
+  }, [isTouch]);
 
   const [formData, setFormData] = useState({
     nickname: "",
@@ -450,6 +472,11 @@ const Profile = () => {
     const file = e.target.files[0]
     if (!file) return
     
+    // Add tactile feedback for mobile users
+    if (isTouch) {
+      provideTactileFeedback('sendFile');
+    }
+    
     // No need to duplicate validation logic from the hook
     try {
       // Default to private for new uploads
@@ -486,8 +513,18 @@ const Profile = () => {
     e?.stopPropagation()
     
     try {
+      // Show loading indicator
+      toast.info(t('profile.updatingPhotoPrivacy'), { autoClose: 1000 });
+      
       // The hook handles all validation and error processing
       await setPhotoPrivacy(photoId, newPrivacy, user?._id)
+      
+      // Use the most aggressive refresh option - force a page reload
+      // This is the simplest and most reliable way to ensure everything updates
+      refreshAllAvatars(true); // Pass true to force a page refresh
+      
+      // The code below won't execute because the page will refresh
+      // but we'll keep it as a fallback
       
       // Clear URL cache to ensure photo is displayed with updated privacy
       clearCache();
@@ -514,17 +551,36 @@ const Profile = () => {
   // Updated to use the centralized hook's setProfilePhoto method
   const handleSetProfilePhoto = async (photoId) => {
     try {
+      // Add tactile feedback for mobile users
+      if (isTouch) {
+        provideTactileFeedback('selectConversation');
+      }
+      
+      // Show loading indicator
+      toast.info(t('profile.updatingProfilePhoto'), { autoClose: 1000 });
+      
       // The hook handles all validation and processing
-      await setProfilePhoto(photoId, user?._id)
+      await setProfilePhoto(photoId, user?._id);
       
-      // Clear URL cache to ensure the profile photo updates are visible
-      clearCache();
+      // Use the most aggressive refresh option - force a page reload
+      // This is the simplest and most reliable way to ensure everything updates
+      refreshAllAvatars(true); // Pass true to force a page refresh
       
-      // Update timestamp to force re-rendering
-      setPhotosUpdateTimestamp(Date.now());
+      // The code below won't execute because the page will refresh
+      // but we'll keep it as a fallback
+      
+      // Force immediate UI update with new timestamp 
+      window.__photo_refresh_timestamp = Date.now();
+      setPhotosUpdateTimestamp(window.__photo_refresh_timestamp);
+      
+      // Wait briefly to let the server process the update
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       // Force immediate refresh of user data to update UI without page reload
-      await refreshUserData(user?._id, true)
+      await refreshUserData(user?._id, true);
+      
+      // Force a component re-render after everything is updated
+      setPhotosUpdateTimestamp(Date.now());
       
       toast.success(t('profile.profilePhotoUpdated'))
     } catch (error) {
@@ -661,7 +717,9 @@ const Profile = () => {
   // Replace the profile rendering with this
   
   return (
-    <div className={`${styles.profilePage} min-vh-100 w-100 overflow-hidden bg-light-subtle transition-all ${isRTL ? 'rtl-layout' : ''}`}>
+    <div 
+      ref={profileContainerRef}
+      className={`${styles.profilePage} min-vh-100 w-100 overflow-hidden bg-light-subtle transition-all ${isRTL ? 'rtl-layout' : ''} ${isMobile ? 'mobile-optimized' : ''}`}>
       {/* Use Navbar from LayoutComponents */}
       <Navbar />
 
@@ -688,7 +746,7 @@ const Profile = () => {
                         <>
                           <img
                             key={`profile-photo-${photosUpdateTimestamp}`}
-                            src={normalizePhotoUrl(profilePhoto.url, true) || "/placeholder.svg?height=200&width=200"}
+                            src={`${normalizePhotoUrl(profilePhoto.url, true)}${window.__photo_refresh_timestamp ? `&_t=${window.__photo_refresh_timestamp}` : ''}&_updateTime=${photosUpdateTimestamp}`}
                             alt={t('profile.profilePhoto')}
                             className={`${styles.profilePhoto} w-300px h-300px object-cover rounded-circle shadow-lg border-4 border-white transform-gpu transition-transform hover-scale`}
                           />

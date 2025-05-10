@@ -13,6 +13,7 @@ export { default as LanguageSection } from './LanguageSection';
 export { default as LoadingSpinner } from './LoadingSpinner';
 export { default as LoadingState } from './LoadingState';
 export { default as Modal } from './Modal';
+export { default as MobileGestureWrapper } from './MobileGestureWrapper';
 
 // Higher-Order Components
 export { default as withErrorBoundary, withErrorBoundary as WithErrorBoundary } from './withErrorBoundary';

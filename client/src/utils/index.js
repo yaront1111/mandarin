@@ -134,9 +134,13 @@ if (typeof window !== 'undefined') {
  * Normalize photo URLs consistently across the app with cache busting
  * @param {string} url - Photo URL to normalize
  * @param {boolean} bustCache - Whether to add a cache-busting parameter
+ * @param {Object} options - Additional options
+ * @param {boolean} options.isPrivate - Whether this is a private photo that requires permission
+ * @param {boolean} options.hasPermission - Whether the viewer has permission to view this private photo
  * @returns {string} Normalized URL
  */
 export const normalizePhotoUrl = (url, bustCache = false) => {
+  
   if (!url) return `${window.location.origin}/placeholder.svg`;
 
   // Create a cache key that includes the bustCache parameter
@@ -208,10 +212,13 @@ export const normalizePhotoUrl = (url, bustCache = false) => {
     }
   }
   
-  // Add cache busting parameter if requested, but use a more stable timestamp
+  // Add cache busting parameter if requested
   if (bustCache && result) {
-    // Use a timestamp that changes maximum once per minute
-    const cacheVersion = Math.floor(Date.now() / 60000) * 60000;
+    // Use the globally stored timestamp if available for consistent cache busting
+    // Or fall back to a per-request timestamp
+    const cacheVersion = (typeof window !== 'undefined' && window.__photo_refresh_timestamp) 
+      ? window.__photo_refresh_timestamp 
+      : Date.now();
     const separator = result.includes('?') ? '&' : '?';
     result = `${result}${separator}_v=${cacheVersion}`;
   }

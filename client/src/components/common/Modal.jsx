@@ -1,13 +1,18 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { createPortal } from 'react-dom';
 import { FaTimes } from 'react-icons/fa';
-import { useClickOutside } from '../../hooks';
+import { useClickOutside, useIsMobile, useMobileDetect } from '../../hooks';
 import { useLanguage } from '../../context';
+import logger from '../../utils/logger';
 
 /**
  * Reusable modal component
+ * Enhanced with mobile-specific features like bottom sheet behavior
  */
+
+// Create logger for this component
+const log = logger.create('Modal');
 const Modal = ({
   isOpen,
   onClose,
@@ -23,10 +28,20 @@ const Modal = ({
   headerClassName = '',
   bodyClassName = '',
   footerClassName = '',
-  modalRoot = document.body
+  modalRoot = document.body,
+  bottomSheetOnMobile = true // New prop to control bottom sheet behavior
 }) => {
   const modalRef = useRef(null);
   const previousFocusRef = useRef(null);
+  
+  // Mobile detection
+  const isMobile = useIsMobile();
+  const { isTouch } = useMobileDetect();
+  
+  // State for bottom sheet dragging
+  const [dragStartY, setDragStartY] = useState(null);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   
   // Get language settings, with fallbacks in case context isn't available
   const { language = 'en', isRTL = false } = useLanguage() || {};
@@ -34,12 +49,59 @@ const Modal = ({
   // Fallback to check document direction if context is not available
   const actualIsRTL = isRTL || document.documentElement.dir === 'rtl' || document.documentElement.lang === 'he';
   
+  // Determine if we should use bottom sheet behavior
+  const useBottomSheet = bottomSheetOnMobile && isMobile;
+  
   // Close when clicking outside
   const closeModalRef = useClickOutside(() => {
     if (closeOnClickOutside && isOpen) {
       onClose();
     }
   });
+  
+  // Handle touch events for bottom sheet behavior
+  const handleTouchStart = (e) => {
+    if (!useBottomSheet) return;
+    
+    // Only enable dragging from the header or drag indicator
+    const target = e.target;
+    const isHeader = target.closest('.modal-header') || target.classList.contains('modal-drag-indicator');
+    
+    if (isHeader) {
+      setDragStartY(e.touches[0].clientY);
+      setIsDragging(true);
+    }
+  };
+  
+  const handleTouchMove = (e) => {
+    if (!isDragging || dragStartY === null) return;
+    
+    const currentY = e.touches[0].clientY;
+    const newOffset = currentY - dragStartY;
+    
+    // Only allow dragging downward (positive offset)
+    if (newOffset > 0) {
+      setDragOffset(newOffset);
+      e.preventDefault(); // Prevent scrolling while dragging
+    }
+  };
+  
+  const handleTouchEnd = () => {
+    if (!isDragging) return;
+    
+    // If dragged more than 100px or 30% of modal height, close it
+    const modalHeight = modalRef.current?.offsetHeight || 0;
+    const dismissThreshold = Math.min(100, modalHeight * 0.3);
+    
+    if (dragOffset > dismissThreshold) {
+      onClose();
+    }
+    
+    // Reset drag state
+    setIsDragging(false);
+    setDragStartY(null);
+    setDragOffset(0);
+  };
   
   // Set up keyboard listeners
   useEffect(() => {
@@ -138,10 +200,14 @@ const Modal = ({
   ) : null;
   
   const modalContent = (
-    <div className={`modal-overlay ${isOpen ? 'open' : ''}`} onClick={closeOnClickOutside ? onClose : undefined}>
+    <div 
+      className={`modal-overlay ${isOpen ? 'open' : ''} ${useBottomSheet ? 'mobile-modal-overlay' : ''}`} 
+      onClick={closeOnClickOutside ? onClose : undefined}
+    >
       {rtlStyleBlock}
       <div 
-        className={`modal ${sizeClasses[size] || ''} ${className} ${actualIsRTL ? 'rtl-layout' : ''}`}
+        className={`modal ${sizeClasses[size] || ''} ${className} ${actualIsRTL ? 'rtl-layout' : ''} 
+          ${useBottomSheet ? 'mobile-modal bottom-sheet' : ''} ${isDragging ? 'is-dragging' : ''}`}
         ref={(el) => {
           modalRef.current = el;
           if (closeModalRef) {
@@ -149,12 +215,17 @@ const Modal = ({
           }
         }}
         onClick={(e) => e.stopPropagation()} 
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? "modal-title" : undefined}
         dir={actualIsRTL ? "rtl" : "ltr"}
         data-language={language}
+        style={isDragging ? { transform: `translateY(${dragOffset}px)` } : {}}
       >
+        {useBottomSheet && <div className="modal-drag-indicator"></div>}
         <div className={`modal-header ${headerClassName} ${actualIsRTL ? 'rtl-layout' : ''}`}>
           {title && <h2 className="modal-title" id="modal-title">{title}</h2>}
           {showCloseButton && (
@@ -199,7 +270,8 @@ Modal.propTypes = {
   headerClassName: PropTypes.string,
   bodyClassName: PropTypes.string,
   footerClassName: PropTypes.string,
-  modalRoot: PropTypes.object
+  modalRoot: PropTypes.object,
+  bottomSheetOnMobile: PropTypes.bool // New prop for mobile behavior
 };
 
 export default Modal;

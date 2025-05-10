@@ -1,5 +1,5 @@
 // client/src/pages/Home.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   FaArrowRight,
@@ -19,6 +19,8 @@ import { useLanguage } from "../context";              // your LanguageContext
 import { ThemeToggle } from "../components/theme-toggle";
 import { SEO } from "../components";
 import { createLogger } from "../utils/logger";
+import { useIsMobile, useMobileDetect } from "../hooks";
+import { enhanceScrolling, provideTactileFeedback } from "../utils/mobileGestures";
 import "../styles/home.css";
 
 const logger = createLogger('Home');
@@ -87,11 +89,21 @@ const Home = () => {
   const { t } = useTranslation();
   const { language, changeLanguage, dir } = useLanguage();
   const navigate = useNavigate();
-
+  
+  // Mobile detection
+  const isMobile = useIsMobile();
+  const { isTouch, isIOS, isAndroid } = useMobileDetect();
+  
+  // Refs for scroll optimization and touch gestures
+  const homeContainerRef = useRef(null);
+  const usersGridRef = useRef(null);
+  const currentCardIndex = useRef(0);
+  
   const [email, setEmail] = useState("");
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [displayError, setDisplayError] = useState(null);
+  const [swipeDirection, setSwipeDirection] = useState(null);
 
   // Fetch the list of online users
   useEffect(() => {
@@ -130,15 +142,111 @@ const Home = () => {
       isMounted = false;
     };
   }, [t]);
+  
+  // Mobile optimizations
+  useEffect(() => {
+    // Enhance scrolling behavior on mobile
+    let cleanupScrolling = null;
+    if (isTouch && homeContainerRef.current) {
+      cleanupScrolling = enhanceScrolling(homeContainerRef.current);
+      logger.debug('Mobile scroll enhancements applied to Home');
+    }
+    
+    return () => {
+      if (cleanupScrolling) cleanupScrolling();
+    };
+  }, [isTouch]);
+  
+  // Setup touch gestures for the user cards grid
+  useEffect(() => {
+    if (!isTouch || !usersGridRef.current) return;
+    
+    let touchStartX = 0;
+    let touchEndX = 0;
+    
+    const handleTouchStart = (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+    };
+    
+    const handleTouchEnd = (e) => {
+      touchEndX = e.changedTouches[0].screenX;
+      handleSwipe();
+    };
+    
+    const handleSwipe = () => {
+      const swipeThreshold = 50;
+      if (touchEndX - touchStartX > swipeThreshold) {
+        // Right swipe
+        setSwipeDirection('right');
+        if (isTouch) provideTactileFeedback('selectConversation');
+        
+        // Find the currently visible card and "like" it
+        const visibleCardIndex = Math.min(
+          Math.max(currentCardIndex.current - 1, 0), 
+          onlineUsers.length - 1
+        );
+        currentCardIndex.current = visibleCardIndex;
+        
+        // Animate the "like" button for the visible card
+        const cards = usersGridRef.current.querySelectorAll('.online-user-card');
+        if (cards[visibleCardIndex]) {
+          const likeBtn = cards[visibleCardIndex].querySelector('.like-btn');
+          if (likeBtn) {
+            likeBtn.classList.add('swiped-right');
+            setTimeout(() => likeBtn.classList.remove('swiped-right'), 500);
+          }
+        }
+        
+      } else if (touchStartX - touchEndX > swipeThreshold) {
+        // Left swipe
+        setSwipeDirection('left');
+        if (isTouch) provideTactileFeedback('selectConversation');
+        
+        // Find the currently visible card and show "next"
+        const visibleCardIndex = Math.min(
+          Math.max(currentCardIndex.current + 1, 0), 
+          onlineUsers.length - 1
+        );
+        currentCardIndex.current = visibleCardIndex;
+        
+        // Animate the card transition
+        const cards = usersGridRef.current.querySelectorAll('.online-user-card');
+        if (cards.length > 0) {
+          cards.forEach(card => card.classList.add('swiped-left'));
+          setTimeout(() => {
+            cards.forEach(card => card.classList.remove('swiped-left'));
+          }, 300);
+        }
+      }
+    };
+    
+    const gridElement = usersGridRef.current;
+    gridElement.addEventListener('touchstart', handleTouchStart, { passive: true });
+    gridElement.addEventListener('touchend', handleTouchEnd, { passive: true });
+    
+    return () => {
+      gridElement.removeEventListener('touchstart', handleTouchStart);
+      gridElement.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isTouch, onlineUsers.length]);
 
   const handleEmailSubmit = (e) => {
     e.preventDefault();
+    // Add tactile feedback for mobile devices
+    if (isTouch) provideTactileFeedback('send');
     navigate("/register", { state: { email } });
   };
-  const handleStartNow = () => navigate("/register");
+  
+  const handleStartNow = () => {
+    // Add tactile feedback for mobile devices
+    if (isTouch) provideTactileFeedback('selectConversation');
+    navigate("/register");
+  };
 
   const handleToggleLanguage = () => {
     const next = language === "en" ? "he" : "en";
+    // Add tactile feedback for mobile devices
+    if (isTouch) provideTactileFeedback('selectConversation');
     changeLanguage(next);
   };
 
@@ -190,7 +298,10 @@ const Home = () => {
   };
 
   return (
-    <div className="modern-home-page w-100 overflow-hidden" dir={dir}>
+    <div 
+      ref={homeContainerRef}
+      className={`modern-home-page w-100 overflow-hidden ${isMobile ? 'mobile-optimized' : ''}`} 
+      dir={dir}>
       <SEO 
         title="Find Your Perfect Connection" 
         description="Discover genuine connections in a safe, discreet environment designed for adults seeking meaningful relationships."
@@ -260,7 +371,9 @@ const Home = () => {
           ) : displayError ? (
             <div className="alert alert-danger">{displayError}</div>
           ) : (
-            <div className="online-users-grid">
+            <div 
+              ref={usersGridRef}
+              className={`online-users-grid ${isMobile ? 'swipe-enabled' : ''}`}>
               {onlineUsers.map((user, index) => (
                 <div
                   key={user._id}

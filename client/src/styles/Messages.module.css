@@ -160,7 +160,7 @@
   font-weight: 500;
 }
 
-.videoCallButton, .moreOptionsButton {
+.videoCallButton, .moreOptionsButton, .chatHeaderBtn {
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -175,8 +175,12 @@
   position: relative;
 }
 
-.videoCallButton:hover, .moreOptionsButton:hover {
+.videoCallButton:hover, .moreOptionsButton:hover, .chatHeaderBtn:hover {
   background-color: var(--primary-light);
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
 }
 
 .videoCallButton[disabled] {
@@ -1567,6 +1571,7 @@
   background-color: var(--neutral-900);
   border-color: var(--neutral-700);
 }
+
 
 :global(.dark) .conversationItem {
   border-color: var(--neutral-800);

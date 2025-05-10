@@ -30,8 +30,9 @@ import { useNavigate } from "react-router-dom"
 // Import common components
 import { Modal, Button, Avatar, LoadingSpinner } from "./common"
 // Import hooks and utilities
-import { useApi, useMounted, usePhotoManagement } from "../hooks"
+import { useApi, useMounted, usePhotoManagement, useIsMobile, useMobileDetect } from "../hooks"
 import { formatDate, logger } from "../utils"
+import { provideTactileFeedback } from "../utils/mobileGestures"
 
 /**
  * UserProfileModal component displays a user's profile information
@@ -45,6 +46,10 @@ import { formatDate, logger } from "../utils"
 const UserProfileModal = ({ userId, isOpen, onClose }) => {
   // Auth context
   const { user: currentUser } = useAuth();
+
+  // Mobile detection
+  const isMobile = useIsMobile();
+  const { isTouch, isIOS, isAndroid } = useMobileDetect();
 
   // User context
   const {
@@ -107,6 +112,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     status: null, // Can be null, "pending", "approved", or "rejected"
     isLoading: false
   });
+  
 
   // Refs
   const profileRef = useRef(null);
@@ -214,101 +220,12 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     // No-op
   }, []);
 
-  // Fetch pending photo access requests
+  // Photo permission system has been removed
+  // This function is kept as a placeholder for compatibility
   const fetchPendingRequests = useCallback(async () => {
-    // Skip if no currentUser, already loading, or component unmounted
-    if (!currentUser || requestsLoadingRef.current || !isMounted()) {
-      return;
-    }
-
-    // Set loading state
-    requestsLoadingRef.current = true;
-    setIsLoadingRequests(true);
-
-    try {
-      log.debug("Fetching pending photo access requests");
-      const response = await api.get("/users/photos/permissions?status=pending");
-
-      // If component unmounted during the request, bail out
-      if (!isMounted()) return;
-
-      // Process valid response data
-      if (response && response.success) {
-        // Get the data array, handling different response formats
-        const requestsData = Array.isArray(response) ? response :
-                           (Array.isArray(response.data) ? response.data : null);
-
-        if (requestsData) {
-          // Group requests by user
-          const requestsByUser = {};
-
-          requestsData.forEach((request) => {
-            if (request && request.requestedBy && request.requestedBy._id) {
-              const userId = request.requestedBy._id;
-
-              if (!requestsByUser[userId]) {
-                requestsByUser[userId] = {
-                  user: request.requestedBy,
-                  requests: [],
-                };
-              }
-
-              requestsByUser[userId].requests.push(request);
-            }
-          });
-
-          // Convert to array
-          const groupedRequests = Object.values(requestsByUser);
-
-          // Only update state if it actually changed
-          setPendingRequests(prevRequests => {
-            // Simple length check first
-            if (prevRequests.length !== groupedRequests.length) {
-              return groupedRequests;
-            }
-
-            // Deep comparison using JSON stringify
-            try {
-              const prevJson = JSON.stringify(prevRequests);
-              const newJson = JSON.stringify(groupedRequests);
-              return prevJson === newJson ? prevRequests : groupedRequests;
-            } catch (err) {
-              // If JSON stringify fails, just return the new data
-              log.warn("JSON comparison failed:", err);
-              return groupedRequests;
-            }
-          });
-
-          log.debug(`Processed ${groupedRequests.length} pending request groups`);
-        } else {
-          log.warn("No valid requests data in response:", response);
-          // Only update if we don't already have an empty array
-          setPendingRequests(prev => prev.length > 0 ? [] : prev);
-        }
-      } else {
-        log.warn("Failed to fetch pending requests:", response);
-        // Only update if we don't already have an empty array
-        setPendingRequests(prev => prev.length > 0 ? [] : prev);
-      }
-    } catch (error) {
-      // Skip if component unmounted during the request
-      if (!isMounted()) return;
-
-      log.error("Error fetching pending requests:", error);
-      // Only show error toast if this is a true network error, not just empty data
-      if (error.message && !error.message.includes("no pending requests")) {
-        toast.error("Failed to load photo access requests");
-      }
-      // Only update if we don't already have an empty array
-      setPendingRequests(prev => prev.length > 0 ? [] : prev);
-    } finally {
-      // Skip if component unmounted during the request
-      if (isMounted()) {
-        setIsLoadingRequests(false);
-        requestsLoadingRef.current = false;
-      }
-    }
-  }, [currentUser, api, isMounted]);
+    log.debug("Photo permission system has been removed");
+    return;
+  }, []);
 
   // Track whether we've loaded data for this userId and whether the component is mounted
   const dataLoadedRef = useRef(false);
@@ -487,157 +404,75 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     }
   }, [userId, loadUserStories, currentUser, isOpen, isMounted, api, fetchPendingRequests]);
 
-  // Request access to all photos
-  const handleRequestAccessToAllPhotos = async () => {
-    // Prevent multiple requests
-    if (!profileUser || !profileUser._id || userPhotoAccess.isLoading) {
-      log.warn("Cannot request photo access: missing user ID or already loading");
+  // Simple function to allow viewing private photos
+  const handleAllowPrivatePhotos = async (userId) => {
+    if (!userId || !profileUser || userPhotoAccess.isLoading) {
+      log.warn("Cannot allow private photos: missing user ID or already loading");
       return;
     }
 
-    // Track request in progress to prevent duplicate requests
-    const requestInProgress = userPhotoAccess.isLoading;
-    if (requestInProgress) return;
+    // Add tactile feedback for mobile users
+    if (isTouch) {
+      provideTactileFeedback('send');
+    }
 
-    // Update loading state
+    // Set loading state
     setUserPhotoAccess(prev => ({
       ...prev,
       isLoading: true
     }));
 
     try {
-      log.debug(`Requesting photo access for user ${profileUser._id}`);
+      log.debug(`Allowing private photos access for user ${userId}`);
+      
+      // Make API call to update user's privacy settings
+      const response = await api.post(`/users/${userId}/allow-private-photos`);
 
-      // ALWAYS set UI to pending state for better UX
-      setUserPhotoAccess({
-        status: "pending",
-        isLoading: false
-      });
-      toast.success("Access to photos requested");
+      if (!isMounted()) return;
 
-      try {
-        // Make a single API call to request access to all photos (but don't block UI)
-        const response = await api.post(`/users/${profileUser._id}/request-photo-access`);
-
-        if (!isMounted()) return;
-
-        if (response && response.success) {
-          log.debug("Photo access request successful:", response.message || "Request processed");
-        } else if (response) {
-          // Log the partial success or warning
-          log.info("Photo access request partially successful:", response);
-        } else {
-          // Log empty response but don't change the UI
-          log.warn("Photo access request returned empty response but UI shows success");
-        }
-      } catch (apiError) {
-        // Log but don't affect UI - user already sees success toast
-        log.error("Backend error in photo access request (UI unaffected):", apiError);
+      if (response && response.success) {
+        // Update local state to reflect the change
+        setUserPhotoAccess({
+          status: "approved",
+          isLoading: false
+        });
+        
+        toast.success("Private photos access allowed");
+        log.debug("Private photos access allowed successfully");
+        
+        // Force refresh of photos
+        clearCache();
+        window.dispatchEvent(new CustomEvent('avatar:refresh'));
+      } else {
+        log.warn("Failed to allow private photos access:", response);
+        setUserPhotoAccess({
+          status: null,
+          isLoading: false
+        });
+        toast.error("Failed to allow private photos access");
       }
     } catch (error) {
       if (!isMounted()) return;
-
-      log.error("Error in photo access request flow:", error);
-
-      // Always show success to user and set to pending state
+      
+      log.error("Error allowing private photos access:", error);
       setUserPhotoAccess({
-        status: "pending",
+        status: null,
         isLoading: false
       });
-      toast.success("Access to photos requested");
+      toast.error("Failed to allow private photos access");
     }
   };
 
-  // Handle approving all requests from a specific user
+  // Photo permission system has been removed
+  // These functions are kept as placeholders for compatibility
   const handleApproveAllRequests = async (userId, requests) => {
-    if (!userId || !isValidObjectId(userId) ||
-        !requests || !Array.isArray(requests) || requests.length === 0) {
-      log.warn("Invalid user ID or empty requests array for approval");
-      return;
-    }
-
-    if (isProcessingApproval) {
-      log.warn("Already processing approval/rejection request");
-      return;
-    }
-
-    setIsProcessingApproval(true);
-
-    try {
-      log.debug(`Approving all photo requests from user ${userId}`);
-      // Single API call to approve all requests from this user
-      const response = await api.put(`/users/${userId}/approve-photo-access`);
-
-      if (!isMounted()) return;
-
-      if (response && response.success) {
-        toast.success(`Approved all photo requests from this user`);
-        log.debug("Successfully approved photo requests");
-
-        // Remove this user from pending requests without refetching
-        setPendingRequests(prev => prev.filter(item =>
-          !item.user || item.user._id !== userId
-        ));
-      } else {
-        log.warn("Failed to approve photo requests:", response);
-        toast.error(response?.error || "Failed to approve photo requests");
-      }
-    } catch (error) {
-      if (!isMounted()) return;
-
-      log.error("Error approving requests:", error);
-      toast.error(error?.error || "Failed to approve photo requests");
-    } finally {
-      if (isMounted()) {
-        setIsProcessingApproval(false);
-      }
-    }
+    log.debug("Photo permission system has been removed");
+    return;
   };
 
-  // Handle rejecting all requests from a specific user
   const handleRejectAllRequests = async (userId, requests) => {
-    if (!userId || !isValidObjectId(userId) ||
-        !requests || !Array.isArray(requests) || requests.length === 0) {
-      log.warn("Invalid user ID or empty requests array for rejection");
-      return;
-    }
-
-    if (isProcessingApproval) {
-      log.warn("Already processing approval/rejection request");
-      return;
-    }
-
-    setIsProcessingApproval(true);
-
-    try {
-      log.debug(`Rejecting all photo requests from user ${userId}`);
-      // Single API call to reject all requests from this user
-      const response = await api.put(`/users/${userId}/reject-photo-access`);
-
-      if (!isMounted()) return;
-
-      if (response && response.success) {
-        toast.success(`Rejected all photo requests from this user`);
-        log.debug("Successfully rejected photo requests");
-
-        // Remove this user from pending requests without refetching
-        setPendingRequests(prev => prev.filter(item =>
-          !item.user || item.user._id !== userId
-        ));
-      } else {
-        log.warn("Failed to reject photo requests:", response);
-        toast.error(response?.error || "Failed to reject photo requests");
-      }
-    } catch (error) {
-      if (!isMounted()) return;
-
-      log.error("Error rejecting requests:", error);
-      toast.error(error?.error || "Failed to reject photo requests");
-    } finally {
-      if (isMounted()) {
-        setIsProcessingApproval(false);
-      }
-    }
+    log.debug("Photo permission system has been removed");
+    return;
   };
 
   // Handle image loading errors
@@ -662,6 +497,11 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   const handleLike = useCallback(async () => {
     if (!profileUser || isLiking) return;
 
+    // Add tactile feedback for mobile users
+    if (isTouch) {
+      provideTactileFeedback(isUserLiked && isUserLiked(profileUser._id) ? 'wink' : 'send');
+    }
+
     setIsLiking(true);
 
     try {
@@ -671,6 +511,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         await likeUser(profileUser._id, profileUser.nickname);
       }
     } catch (error) {
+      // Add error feedback for mobile
+      if (isTouch) {
+        provideTactileFeedback('error');
+      }
       log.error("Error toggling like:", error);
       toast.error("Failed to update like status");
     } finally {
@@ -678,39 +522,62 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         setIsLiking(false);
       }
     }
-  }, [profileUser, isLiking, isUserLiked, unlikeUser, likeUser, isMounted, log]);
+  }, [profileUser, isLiking, isUserLiked, unlikeUser, likeUser, isMounted, log, isTouch]);
 
   // Handle blocking a user
   const handleBlock = useCallback(async () => {
     if (!userId) return;
+
+    // Add tactile feedback for mobile users
+    if (isTouch) {
+      provideTactileFeedback('selectConversation');
+    }
 
     try {
       await blockUser(userId);
       toast.success("User blocked successfully");
       onClose();
     } catch (error) {
+      // Add error feedback for mobile
+      if (isTouch) {
+        provideTactileFeedback('error');
+      }
       log.error("Error blocking user:", error);
       toast.error("Failed to block user");
     }
-  }, [userId, blockUser, onClose, log]);
+  }, [userId, blockUser, onClose, log, isTouch]);
 
   // Handle reporting a user
   const handleReport = useCallback(async () => {
     if (!userId) return;
+
+    // Add tactile feedback for mobile users
+    if (isTouch) {
+      provideTactileFeedback('selectConversation');
+    }
 
     try {
       await reportUser(userId);
       toast.success("User reported successfully");
       onClose();
     } catch (error) {
+      // Add error feedback for mobile
+      if (isTouch) {
+        provideTactileFeedback('error');
+      }
       log.error("Error reporting user:", error);
       toast.error("Failed to report user");
     }
-  }, [userId, reportUser, onClose, log]);
+  }, [userId, reportUser, onClose, log, isTouch]);
 
   // Handle starting a chat
   const handleMessage = useCallback(async () => {
     if (!userId) return;
+
+    // Add tactile feedback for mobile users
+    if (isTouch) {
+      provideTactileFeedback('send');
+    }
 
     setIsChatInitiating(true);
 
@@ -719,6 +586,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       navigate("/messages");
       onClose();
     } catch (error) {
+      // Add error feedback for mobile
+      if (isTouch) {
+        provideTactileFeedback('error');
+      }
       log.error("Error sending message:", error);
       toast.error("Failed to start conversation");
     } finally {
@@ -726,7 +597,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         setIsChatInitiating(false);
       }
     }
-  }, [userId, sendMessage, navigate, onClose, isMounted, log]);
+  }, [userId, sendMessage, navigate, onClose, isMounted, log, isTouch]);
 
   // View and close story handlers
   const handleViewStories = useCallback(() => setShowStories(true), []);
@@ -893,43 +764,16 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      size="xlarge"
-      className={styles.modalContainer}
+      size={isMobile ? "fullscreen" : "xlarge"}
+      className={`${styles.modalContainer} ${isMobile ? styles.mobileModal : ''}`}
       showCloseButton={true}
+      bottomSheetOnMobile={isMobile}
       headerClassName={styles.modalHeader}
       bodyClassName="modern-user-profile"
       closeOnClickOutside={true}
     >
       <div className={styles.profileContent} ref={profileRef}>
-        {/* Pending requests notification */}
-        {!isOwnProfile && hasPendingRequestFromUser && currentUserRequests && (
-          <div className={styles.requestNotification}>
-            <div className={styles.notificationContent}>
-              <FaEye className={styles.notificationIcon} />
-              <p className={styles.notificationText}>
-                <strong>{profileUser.nickname}</strong> {t('userProfile.requestPhotoMessage')}
-              </p>
-            </div>
-            <div className={styles.notificationActions}>
-              <button
-                className={styles.approveBtn}
-                onClick={() => handleApproveAllRequests(profileUser._id, currentUserRequests.requests)}
-                disabled={isProcessingApproval}
-              >
-                {isProcessingApproval ? <FaSpinner className={styles.spinner} /> : <FaCheck />}
-                {t('userProfile.approve')}
-              </button>
-              <button
-                className={styles.rejectBtn}
-                onClick={() => handleRejectAllRequests(profileUser._id, currentUserRequests.requests)}
-                disabled={isProcessingApproval}
-              >
-                {isProcessingApproval ? <FaSpinner className={styles.spinner} /> : <FaBan />}
-                {t('userProfile.reject')}
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Pending requests notification removed */}
 
         <div className={styles.profileLayout}>
           {/* Left: Photos */}
@@ -957,24 +801,14 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       <FaLock className={styles.lockIcon} />
                       <p>{t('userProfile.privatePhoto')}</p>
 
-                      {userPhotoAccess.status === "pending" && (
-                        <p className={`${styles.permissionStatus} ${styles.pending}`}>{t('userProfile.requestAccessPending')}</p>
-                      )}
-
-                      {userPhotoAccess.status === "rejected" && (
-                        <p className={`${styles.permissionStatus} ${styles.rejected}`}>{t('userProfile.accessDenied')}</p>
-                      )}
-
-                      {(!userPhotoAccess.status || userPhotoAccess.status === "none") && (
-                        <button
-                          className={styles.requestAccessBtn}
-                          onClick={handleRequestAccessToAllPhotos}
-                          disabled={userPhotoAccess.isLoading}
-                        >
-                          {userPhotoAccess.isLoading ? <FaSpinner className={styles.spinner} /> : null}
-                          {t('userProfile.requestPhotoAccess')}
-                        </button>
-                      )}
+                      <button
+                        className={styles.requestAccessBtn}
+                        onClick={() => handleAllowPrivatePhotos(profileUser._id)}
+                        disabled={userPhotoAccess.isLoading}
+                      >
+                        {userPhotoAccess.isLoading ? <FaSpinner className={styles.spinner} /> : <FaEye />}
+                        {t('userProfile.allowPrivatePhotos')}
+                      </button>
                     </div>
                   ) : (
                     profileUser.photos[activePhotoIndex] && (
@@ -1357,6 +1191,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
         {/* Stories Viewer */}
         {showStories && <StoriesViewer userId={profileUser._id} onClose={handleCloseStories} />}
+        
       </div>
     </Modal>
   );
