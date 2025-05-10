@@ -12,7 +12,7 @@ import {
 } from "react-icons/fa";
 import { withMemo } from "./common";
 import { useLanguage, useAuth } from "../context";
-import { formatDate, logger } from "../utils";
+import { formatDate, logger, translate, translateProfile, translateTag } from "../utils";
 import { usePhotoManagement } from "../hooks";
 import styles from "../styles/usercard.module.css";
 
@@ -28,80 +28,12 @@ const TAG_TYPES = {
 
 /**
  * Safely gets a translation string, handling different translation formats and fallbacks
+ * @deprecated Use translate() from utils/i18n.js instead
  */
 const safeTranslate = (t, key, defaultValue = "") => {
-  try {
-    // For nested path keys, try flat format first
-    const flatKey = key.replace(/\./g, '_');
-    const parts = key.split('.');
-
-    // Try various formats
-    if (parts.length > 1) {
-      // Try direct access from parent object
-      try {
-        const parentKey = parts[0];
-        const childPath = parts.slice(1);
-        const parent = t(parentKey, { returnObjects: true });
-
-        if (typeof parent === 'object' && parent !== null) {
-          let value = parent;
-          for (const pathPart of childPath) {
-            if (value && typeof value === 'object' && pathPart in value) {
-              value = value[pathPart];
-            } else {
-              value = null;
-              break;
-            }
-          }
-
-          if (typeof value === 'string') {
-            return value;
-          }
-        }
-      } catch (e) { /* Continue with other methods */ }
-
-      // Try flat key format
-      try {
-        const flatTranslation = t(flatKey);
-        if (typeof flatTranslation === 'string' && flatTranslation !== flatKey) {
-          return flatTranslation;
-        }
-      } catch (e) { /* Continue with other methods */ }
-
-      // For three-level nesting, try two-level format
-      if (parts.length > 2) {
-        try {
-          const twoLevelKey = `${parts[0]}_${parts[1]}_${parts[2]}`;
-          const twoLevelTranslation = t(twoLevelKey);
-          if (typeof twoLevelTranslation === 'string' && twoLevelTranslation !== twoLevelKey) {
-            return twoLevelTranslation;
-          }
-        } catch (e) { /* Continue with other methods */ }
-      }
-    }
-
-    // Try direct translation
-    const translated = t(key);
-
-    // If it's a string and not just returning the key, use it
-    if (typeof translated === 'string' && translated !== key) {
-      return translated;
-    }
-
-    // For objects, try to get a string representation
-    if (typeof translated === 'object' && translated !== null) {
-      if (translated.toString && typeof translated.toString === 'function' &&
-          translated.toString() !== '[object Object]') {
-        return translated.toString();
-      }
-      return defaultValue;
-    }
-
-    return translated || defaultValue;
-  } catch (error) {
-    log.error(`Translation error for key '${key}':`, error);
-    return defaultValue;
-  }
+  log.debug("Using deprecated safeTranslate, consider switching to translate from utils/i18n");
+  // Use our new centralized translation function
+  return translate(key, t, defaultValue);
 };
 
 /**
@@ -135,6 +67,14 @@ const TagGroup = ({ title, tags, tagType, translationNamespace, t, showAll, togg
   const getTranslatedTag = (namespace, tag) => {
     if (!tag) return "";
 
+    // Extract the tag type from the namespace (e.g., 'profile.intoTags' -> 'intoTags')
+    const tagType = namespace.split('.').pop();
+
+    // Use our centralized translateTag function from utils/i18n.js
+    const translated = translateTag(tagType, tag, t);
+    if (translated) return translated;
+
+    // If translateTag doesn't find a match, we'll try legacy paths
     // Format key for translation patterns
     const nestedKey = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
     const prefixKey = namespace === 'profile.intoTags'
@@ -145,37 +85,18 @@ const TagGroup = ({ title, tags, tagType, translationNamespace, t, showAll, togg
       ? `profile.interests${tag.charAt(0).toUpperCase() + tag.slice(1).replace(/\s+/g, '_')}`
       : null;
 
-    const flatKey = nestedKey.replace(/\./g, '_');
-
-    // Try each translation pattern
+    // Try each translation pattern using our centralized translate function
     if (prefixKey) {
-      try {
-        const prefixTranslation = t(prefixKey);
-        if (typeof prefixTranslation === 'string' && prefixTranslation !== prefixKey) {
-          return prefixTranslation;
-        }
-      } catch (e) { /* Continue with other methods */ }
+      const prefixTranslation = translate(prefixKey, t);
+      if (prefixTranslation && prefixTranslation !== prefixKey) {
+        return prefixTranslation;
+      }
     }
 
-    const safeResult = safeTranslate(t, nestedKey, null);
-    if (safeResult && safeResult !== nestedKey) {
-      return safeResult;
+    const nestedTranslation = translate(nestedKey, t);
+    if (nestedTranslation && nestedTranslation !== nestedKey) {
+      return nestedTranslation;
     }
-
-    try {
-      const flatTranslation = t(flatKey);
-      if (typeof flatTranslation === 'string' && flatTranslation !== flatKey) {
-        return flatTranslation;
-      }
-    } catch (e) { /* Continue with other methods */ }
-
-    try {
-      const directTagTranslation = t(tag.toLowerCase().replace(/\s+/g, '_'));
-      if (typeof directTagTranslation === 'string' &&
-          directTagTranslation !== tag.toLowerCase().replace(/\s+/g, '_')) {
-        return directTagTranslation;
-      }
-    } catch (e) { /* Continue with other methods */ }
 
     // Fallback: Clean up and return the tag
     return tag.charAt(0).toUpperCase() + tag.slice(1).replace(/_/g, ' ');
@@ -370,7 +291,7 @@ const UserCard = ({
 
     return {
       age,
-      location: location || safeTranslate(t, 'profile.unknownLocation', 'Unknown location'),
+      location: location || translate('profile.unknownLocation', t, 'Unknown location'),
       identity: iAm || null,
       status: maritalStatus || null,
       tags: {
@@ -384,9 +305,9 @@ const UserCard = ({
   // Last active formatting
   const lastActiveText = useMemo(() => {
     // If user is currently online, show "Active now"
-    if (user?.isOnline) return safeTranslate(t, 'common.activeNow', 'Active now');
+    if (user?.isOnline) return translate('common.activeNow', t, 'Active now');
 
-    if (!user?.lastActive) return safeTranslate(t, 'common.neverActive', 'Never active');
+    if (!user?.lastActive) return translate('common.neverActive', t, 'Never active');
 
     return formatDate(user.lastActive, {
       showRelative: true,
@@ -408,8 +329,8 @@ const UserCard = ({
       >
         <FaHeart />
         {isLiked
-          ? safeTranslate(t, 'common.liked', 'Liked')
-          : safeTranslate(t, 'common.like', 'Like')}
+          ? translate('common.liked', t, 'Liked')
+          : translate('common.like', t, 'Like')}
       </button>
       <button
         onClick={handleMessageClick}
@@ -417,7 +338,7 @@ const UserCard = ({
         className={`${styles.actionBtn} ${styles.messageBtn}`}
       >
         <FaComment />
-        {safeTranslate(t, 'common.message', 'Message')}
+        {translate('common.message', t, 'Message')}
       </button>
     </>
   );
@@ -446,10 +367,10 @@ const UserCard = ({
         {userDetails.identity && (
           <div className={styles.detailItem}>
             <span className={styles.detailLabel}>
-              {safeTranslate(t, 'profile.iAm', 'I am')}:
+              {translateProfile('iAm', t, 'I am')}:
             </span>
             <span className={getTagClassName(TAG_TYPES.IDENTITY, userDetails.identity)}>
-              {safeTranslate(t, `profile.identity.${userDetails.identity.toLowerCase().replace(/\s+/g, '_')}`, userDetails.identity)}
+              {translateTag('identity', userDetails.identity, t)}
             </span>
           </div>
         )}
@@ -457,10 +378,10 @@ const UserCard = ({
         {userDetails.tags.lookingFor.length > 0 && (
           <div className={styles.detailItem}>
             <span className={styles.detailLabel}>
-              {safeTranslate(t, 'profile.lookingFor', 'Looking for')}:
+              {translateProfile('lookingFor', t, 'Looking for')}:
             </span>
             <span className={getTagClassName(TAG_TYPES.LOOKING_FOR, userDetails.tags.lookingFor[0])}>
-              {safeTranslate(t, `profile.lookingFor.${userDetails.tags.lookingFor[0].toLowerCase().replace(/\s+/g, '_')}`, userDetails.tags.lookingFor[0])}
+              {translateTag('lookingFor', userDetails.tags.lookingFor[0], t)}
             </span>
             {userDetails.tags.lookingFor.length > 1 && (
               <span className={styles.moreCount}>
@@ -482,15 +403,15 @@ const UserCard = ({
         renderTagsToggle({
           isShowingMore: showMoreSections,
           onToggle: toggleShowMoreSections,
-          showMoreText: safeTranslate(t, 'common.viewMore', 'View more'),
-          showLessText: safeTranslate(t, 'common.viewLess', 'View less')
+          showMoreText: translate('common.viewMore', t, 'View more'),
+          showLessText: translate('common.viewLess', t, 'View less')
         })
       )}
 
       {showMoreSections && (
         <>
           <TagGroup
-            title={safeTranslate(t, 'profile.interests', 'Interests')}
+            title={translateProfile('interests', t, 'Interests')}
             tags={userDetails.tags.interests}
             tagType={TAG_TYPES.INTEREST}
             translationNamespace="profile.interests"
@@ -501,7 +422,7 @@ const UserCard = ({
           />
 
           <TagGroup
-            title={safeTranslate(t, 'profile.preferences', 'Preferences')}
+            title={translateProfile('preferences', t, 'Preferences')}
             tags={userDetails.tags.into}
             tagType={TAG_TYPES.INTO}
             translationNamespace="profile.intoTags"
@@ -518,8 +439,8 @@ const UserCard = ({
             renderTagsToggle({
               isShowingMore: showAllTags,
               onToggle: toggleShowAllTags,
-              showMoreText: safeTranslate(t, 'common.showAllTags', 'Show all tags'),
-              showLessText: safeTranslate(t, 'common.showLessTags', 'Show less tags')
+              showMoreText: translate('common.showAllTags', t, 'Show all tags'),
+              showLessText: translate('common.showLessTags', t, 'Show less tags')
             })
           )}
         </>

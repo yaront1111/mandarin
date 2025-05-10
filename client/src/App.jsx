@@ -25,14 +25,14 @@ import {
   LanguageProvider,
   ModalProvider
 } from "./context";
-import { ChatConnectionProvider } from "./context/ChatConnectionContext";
+import { ChatProvider } from "./context/ChatContext";
 
 // --- Hooks & Services ---
 import { useNotificationNavigation } from "./services/notificationService";
 
 // --- Layout & Core Components ---
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import PrivateRoute from "./components/PrivateRoute.jsx";
+import { PrivateRoute } from "./components";
 import VerificationBanner from "./components/VerificationBanner.jsx";
 import { Navbar } from "./components/LayoutComponents";
 import Footer from "./components/Footer";
@@ -142,7 +142,7 @@ function App() {
           <LanguageProvider>
             <AuthProvider>
               <UserProvider>
-                <ChatConnectionProvider>
+                <ChatProvider>
                   <StoriesProvider>
                     <ModalProvider>
                       <NotificationProvider>
@@ -167,27 +167,27 @@ function App() {
                               <Route path="/privacy" element={<Privacy />} />
                               <Route
                                 path="/dashboard"
-                                element={<PrivateRoute><Dashboard /></PrivateRoute>}
+                                element={<PrivateRoute useNavigateHook={false}><Dashboard /></PrivateRoute>}
                               />
                               <Route
                                 path="/profile"
-                                element={<PrivateRoute><Profile /></PrivateRoute>}
+                                element={<PrivateRoute useNavigateHook={false}><Profile /></PrivateRoute>}
                               />
                               <Route
                                 path="/messages"
-                                element={<PrivateRoute><Messages /></PrivateRoute>}
+                                element={<PrivateRoute useNavigateHook={false}><Messages /></PrivateRoute>}
                               />
                               <Route
                                 path="/messages/:userId"
-                                element={<PrivateRoute><Messages /></PrivateRoute>}
+                                element={<PrivateRoute useNavigateHook={false}><Messages /></PrivateRoute>}
                               />
                               <Route
                                 path="/settings"
-                                element={<PrivateRoute><Settings /></PrivateRoute>}
+                                element={<PrivateRoute useNavigateHook={false}><Settings /></PrivateRoute>}
                               />
                               <Route
                                 path="/subscription"
-                                element={<PrivateRoute><Subscription /></PrivateRoute>}
+                                element={<PrivateRoute useNavigateHook={false}><Subscription /></PrivateRoute>}
                               />
                               <Route path="*" element={<NotFound />} />
                             </Routes>
@@ -217,7 +217,7 @@ function App() {
                       </NotificationProvider>
                     </ModalProvider>
                   </StoriesProvider>
-                </ChatConnectionProvider>
+                </ChatProvider>
               </UserProvider>
             </AuthProvider>
           </LanguageProvider>

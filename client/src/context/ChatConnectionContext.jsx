@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * @deprecated This context is deprecated in favor of the new ChatContext.
+ * Please use ChatContext/ChatProvider instead which provides a more centralized
+ * and comprehensive chat state management solution.
+ */
+
 import {
   createContext,
   useContext,
@@ -85,6 +91,9 @@ function extractUserId(user, token) {
   return null
 }
 
+/**
+ * @deprecated Use ChatProvider from ChatContext.jsx instead
+ */
 export function ChatConnectionProvider({ children }) {
   const { user, isAuthenticated, token } = useAuth()
   const [state, dispatch] = useReducer(reducer, initialState)
@@ -184,9 +193,16 @@ export function ChatConnectionProvider({ children }) {
   )
 }
 
+/**
+ * @deprecated Use useChat from ChatContext.jsx instead
+ */
 export const useChatConnection = () => {
   const ctx = useContext(ChatConnectionContext)
   if (!ctx) throw new Error("useChatConnection must be used within ChatConnectionProvider")
+  
+  // Log deprecation warning
+  log.warn("useChatConnection is deprecated. Please use useChat from ChatContext instead");
+  
   return ctx
 }
 

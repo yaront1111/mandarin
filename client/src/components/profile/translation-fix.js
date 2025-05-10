@@ -1,6 +1,11 @@
-// This file provides direct translation key mappings for the photo management system
-// Import this file in components that need the translated strings
+// DEPRECATED: This file is deprecated and maintained only for backward compatibility.
+// All translations have been moved to the main translation files.
 
+import logger from '../../utils/logger';
+
+const log = logger.create('translation-fix-deprecated');
+
+// Translations have been moved to main translation files, but kept here for reference
 const photoTranslations = {
   // English translations
   en: {
@@ -31,40 +36,12 @@ const photoTranslations = {
   }
 };
 
-// Function to add translations to i18next instance
+// DEPRECATED: This function is deprecated. Translations are now included in the main files.
 export const addPhotoTranslations = (i18n) => {
-  // Add English translations
-  i18n.addResources('en', 'translation', {
-    profile: {
-      photos: photoTranslations.en["profile.photos"],
-      photo: photoTranslations.en["profile.photo"],
-      currentlyPrivate: photoTranslations.en["profile.currentlyPrivate"],
-      currentlyPublic: photoTranslations.en["profile.currentlyPublic"],
-      currentlyFriendsOnly: photoTranslations.en["profile.currentlyFriendsOnly"],
-      makePublic: photoTranslations.en["profile.makePublic"],
-      makePrivate: photoTranslations.en["profile.makePrivate"],
-      makeFriendsOnly: photoTranslations.en["profile.makeFriendsOnly"],
-      setAsProfilePhoto: photoTranslations.en["profile.setAsProfilePhoto"],
-      deletePhoto: photoTranslations.en["profile.deletePhoto"]
-    }
-  });
+  log.warn('addPhotoTranslations is deprecated and will be removed in a future version.');
+  log.warn('Translations are now included directly in the main translation files via i18n.js.');
   
-  // Add Hebrew translations
-  i18n.addResources('he', 'translation', {
-    profile: {
-      photos: photoTranslations.he["profile.photos"],
-      photo: photoTranslations.he["profile.photo"],
-      currentlyPrivate: photoTranslations.he["profile.currentlyPrivate"],
-      currentlyPublic: photoTranslations.he["profile.currentlyPublic"],
-      currentlyFriendsOnly: photoTranslations.he["profile.currentlyFriendsOnly"],
-      makePublic: photoTranslations.he["profile.makePublic"],
-      makePrivate: photoTranslations.he["profile.makePrivate"],
-      makeFriendsOnly: photoTranslations.he["profile.makeFriendsOnly"],
-      setAsProfilePhoto: photoTranslations.he["profile.setAsProfilePhoto"],
-      deletePhoto: photoTranslations.he["profile.deletePhoto"]
-    }
-  });
-  
+  // Function body kept for backward compatibility but doesn't do anything
   return i18n;
 };
 

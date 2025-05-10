@@ -1,5 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { useTranslation } from 'react-i18next';
+import { useIsMobile } from '../../hooks';
+import { usePhotoManagement } from '../../hooks';
 import { 
   FaCamera, 
   FaLock, 
@@ -11,64 +14,100 @@ import {
   FaChevronRight,
   FaUsers
 } from 'react-icons/fa';
-import { usePhotoManagement } from '../../hooks';
-import PropTypes from 'prop-types';
+import { normalizePhotoUrl } from '../../utils';
+import styles from '../../styles/photo-management.module.css';
 import logger from '../../utils/logger';
 
-// Import CSS module - we'll create this file later
-import styles from '../../styles/photo-gallery.module.css';
-
-const log = logger.create("PhotoGallery");
+const log = logger.create('PhotoGallery');
 
 /**
- * A reusable component for displaying and managing photos
+ * Enhanced PhotoGallery component that combines features from both versions
+ * Renders a grid of user photos with controls and optional gallery view
  * 
  * @param {Object} props Component props
- * @param {Array} props.photos Array of photo objects with _id, url, isPrivate, isProfile
+ * @param {Array} props.photos Array of photo objects with _id, url, privacy/isPrivate, isProfile
  * @param {Function} props.onPhotoChange Callback when photos are added, removed, or changed
- * @param {boolean} props.canEdit Whether the user can edit photos (add, remove, make profile)
+ * @param {Function} props.onSetProfilePhoto Function to set a photo as profile photo
+ * @param {Function} props.onSetPrivacy Function to set photo privacy
+ * @param {Function} props.onDeletePhoto Function to delete a photo
+ * @param {boolean} props.canEdit Whether the user can edit photos
  * @param {boolean} props.canTogglePrivacy Whether the user can toggle photo privacy
- * @param {string} props.userId The ID of the user whose photos are being displayed (for refreshing data)
+ * @param {string} props.userId The ID of the user whose photos are being displayed
  * @param {boolean} props.isOwner Whether the current user is the owner of these photos
  * @param {boolean} props.canViewPrivate Whether the user can view private photos
- * @param {Function} props.onRequestAccess Callback to request access to private photos
+ * @param {boolean} props.isProcessing Whether the component is currently processing a photo operation
+ * @param {boolean} props.isUploading Whether a photo is currently being uploaded
+ * @param {number} props.uploadProgress Upload progress percentage
+ * @param {boolean} props.gridView Use grid view instead of gallery view
  */
 const PhotoGallery = ({
   photos = [],
   onPhotoChange,
+  onSetProfilePhoto,
+  onSetPrivacy,
+  onDeletePhoto,
   canEdit = false,
   canTogglePrivacy = false,
   userId,
-  isOwner = false,
+  isOwner = true,
   canViewPrivate = false,
-  onRequestAccess,
+  isProcessing = false,
+  isUploading = false,
+  uploadProgress = 0,
+  gridView = false,
 }) => {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
+  const forceUpdateRef = useRef(0);
   const {
-    isUploading,
-    uploadProgress,
-    isProcessingPhoto,
+    isUploading: photoManagementUploading,
+    uploadProgress: photoManagementProgress,
+    isProcessingPhoto: photoManagementProcessing,
     uploadPhoto,
     togglePhotoPrivacy,
     setProfilePhoto,
     deletePhoto,
-    normalizePhotoUrl
   } = usePhotoManagement();
+
+  // Combine props with hook values
+  const combinedIsUploading = isUploading || photoManagementUploading;
+  const combinedUploadProgress = uploadProgress || photoManagementProgress;
+  const combinedIsProcessing = isProcessing || photoManagementProcessing;
 
   // State for the gallery
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [imageKey, setImageKey] = useState(Date.now());
   
   // Refs
   const fileInputRef = useRef(null);
 
-  // Safety check for valid photos array
-  const processedPhotos = Array.isArray(photos) ? photos : [];
+  // Listen for avatar refresh events
+  useEffect(() => {
+    const handleAvatarRefresh = () => {
+      log.debug("Avatar refresh event received, updating PhotoGallery");
+      forceUpdateRef.current = Date.now();
+      setImageKey(Date.now());
+      // Force a re-render
+      setForceUpdate(Date.now());
+    };
+    
+    window.addEventListener('avatar:refresh', handleAvatarRefresh);
+    return () => window.removeEventListener('avatar:refresh', handleAvatarRefresh);
+  }, []);
   
-  // Get the active photo
+  // State to force re-render when refreshed
+  const [forceUpdate, setForceUpdate] = useState(0);
+
+  // Safety check for valid photos array and filter deleted photos
+  const processedPhotos = Array.isArray(photos) ? photos.filter(photo => 
+    photo && 
+    typeof photo === 'object' && 
+    photo._id && 
+    !photo.isDeleted
+  ) : [];
+  
+  // Get the active photo for gallery view
   const activePhoto = processedPhotos[activePhotoIndex] || null;
-  
-  // Whether the current photo is private (handled at the API level now)
-  const isPrivateAndHidden = false;
 
   // Handlers
   const handleFileSelection = async (e) => {
@@ -76,7 +115,8 @@ const PhotoGallery = ({
     if (!file) return;
     
     try {
-      const newPhoto = await uploadPhoto(file, false);
+      // Default to private for new uploads
+      const newPhoto = await uploadPhoto(file, 'private');
       
       if (newPhoto && onPhotoChange) {
         onPhotoChange([...processedPhotos.filter(p => !p._id.startsWith('temp-')), newPhoto]);
@@ -93,7 +133,7 @@ const PhotoGallery = ({
   
   const handleTogglePrivacy = async (photoId, e) => {
     e?.stopPropagation();
-    if (isProcessingPhoto) return;
+    if (combinedIsProcessing) return;
     
     try {
       // Get the current photo
@@ -103,53 +143,65 @@ const PhotoGallery = ({
       // Determine current privacy
       const currentPrivacy = photo.privacy || (photo.isPrivate ? 'private' : 'public');
       
-      // Cycle to next privacy level
+      // Cycle to next privacy level or use direct setting
       let newPrivacy;
-      switch(currentPrivacy) {
-        case 'private':
-          newPrivacy = 'public';
-          break;
-        case 'public':
-          newPrivacy = 'friends_only';
-          break;
-        case 'friends_only':
-        default:
-          newPrivacy = 'private';
-      }
-      
-      // Update via API
-      await togglePhotoPrivacy(photoId, userId, newPrivacy);
-      
-      // Update local state optimistically
-      if (onPhotoChange) {
-        const updatedPhotos = processedPhotos.map(p => 
-          p._id === photoId 
-            ? { ...p, privacy: newPrivacy, isPrivate: newPrivacy === 'private' }
-            : p
-        );
-        onPhotoChange(updatedPhotos);
+      if (typeof onSetPrivacy === 'function') {
+        // Simple toggle between public and private if onSetPrivacy is provided
+        newPrivacy = currentPrivacy === 'private' ? 'public' : 'private';
+        await onSetPrivacy(photoId, newPrivacy, e);
+      } else {
+        // Use the more complex privacy cycle otherwise
+        switch(currentPrivacy) {
+          case 'private':
+            newPrivacy = 'public';
+            break;
+          case 'public':
+            newPrivacy = 'friends_only';
+            break;
+          case 'friends_only':
+          default:
+            newPrivacy = 'private';
+        }
+        
+        // Update via API
+        await togglePhotoPrivacy(photoId, userId, newPrivacy);
+        
+        // Update local state optimistically
+        if (onPhotoChange) {
+          const updatedPhotos = processedPhotos.map(p => 
+            p._id === photoId 
+              ? { ...p, privacy: newPrivacy, isPrivate: newPrivacy === 'private' }
+              : p
+          );
+          onPhotoChange(updatedPhotos);
+        }
       }
     } catch (error) {
       log.error('Failed to update photo privacy:', error);
     }
   };
   
-  const handleSetAsProfile = async (photoId) => {
-    if (isProcessingPhoto) return;
+  const handleSetAsProfile = async (photoId, e) => {
+    e?.stopPropagation();
+    if (combinedIsProcessing) return;
     
     try {
-      await setProfilePhoto(photoId, userId);
-      
-      // Update local state optimistically
-      if (onPhotoChange) {
-        const updatedPhotos = processedPhotos.map(photo => ({
-          ...photo,
-          isProfile: photo._id === photoId
-        }));
-        onPhotoChange(updatedPhotos);
+      if (typeof onSetProfilePhoto === 'function') {
+        await onSetProfilePhoto(photoId);
+      } else {
+        await setProfilePhoto(photoId, userId);
+        
+        // Update local state optimistically
+        if (onPhotoChange) {
+          const updatedPhotos = processedPhotos.map(photo => ({
+            ...photo,
+            isProfile: photo._id === photoId
+          }));
+          onPhotoChange(updatedPhotos);
+        }
       }
       
-      // Set the selected photo as active
+      // Set the selected photo as active in gallery view
       const newIndex = processedPhotos.findIndex(p => p._id === photoId);
       if (newIndex !== -1) {
         setActivePhotoIndex(newIndex);
@@ -161,7 +213,7 @@ const PhotoGallery = ({
   
   const handleDeletePhoto = async (photoId, e) => {
     e?.stopPropagation();
-    if (isProcessingPhoto) return;
+    if (combinedIsProcessing) return;
     
     // For temporary photos, just remove them from state
     if (typeof photoId === 'string' && photoId.startsWith('temp-')) {
@@ -184,18 +236,22 @@ const PhotoGallery = ({
     }
     
     try {
-      await deletePhoto(photoId, userId);
-      
-      // Update local state
-      if (onPhotoChange) {
-        const updatedPhotos = processedPhotos.filter(p => p._id !== photoId);
-        onPhotoChange(updatedPhotos);
+      if (typeof onDeletePhoto === 'function') {
+        await onDeletePhoto(photoId, e);
+      } else {
+        await deletePhoto(photoId, userId);
         
-        // Adjust active index if needed
-        if (photoIndex <= activePhotoIndex && activePhotoIndex > 0) {
-          setActivePhotoIndex(activePhotoIndex - 1);
-        } else if (updatedPhotos.length === 0) {
-          setActivePhotoIndex(0);
+        // Update local state
+        if (onPhotoChange) {
+          const updatedPhotos = processedPhotos.filter(p => p._id !== photoId);
+          onPhotoChange(updatedPhotos);
+          
+          // Adjust active index if needed
+          if (photoIndex <= activePhotoIndex && activePhotoIndex > 0) {
+            setActivePhotoIndex(activePhotoIndex - 1);
+          } else if (updatedPhotos.length === 0) {
+            setActivePhotoIndex(0);
+          }
         }
       }
     } catch (error) {
@@ -220,42 +276,186 @@ const PhotoGallery = ({
       setActivePhotoIndex(activePhotoIndex - 1);
     }
   };
-  
-  // Photo access is now handled at the API level - this function is no longer needed
-  const handleRequestAccess = () => {
-    log.debug("Photo access is now handled at the API level");
-  };
-  
+
   // If no photos, show placeholder
   if (processedPhotos.length === 0) {
     return (
-      <div className={styles.emptyGallery}>
-        <div className={styles.placeholder}>
-          <div className={styles.placeholderIcon}>
-            <FaCamera size={48} />
+      <div className={styles.photoGallery}>
+        <h3 className={styles.galleryTitle}>{t('profile.photos')}</h3>
+        <div className={styles.noPhotosMessage}>
+          <div className={styles.placeholder}>
+            <div className={styles.placeholderIcon}>
+              <FaCamera size={48} />
+            </div>
+            <p className={styles.placeholderText}>
+              {t('common.noPhotos', 'No photos available')}
+            </p>
+            {canEdit && (
+              <>
+                <button 
+                  className={styles.uploadPhotoButton}
+                  onClick={triggerFileInput}
+                  disabled={combinedIsUploading}
+                >
+                  {combinedIsUploading ? (
+                    <>
+                      <FaSpinner className={styles.spinner} />
+                      {t('common.uploading', 'Uploading...')}
+                    </>
+                  ) : (
+                    <>
+                      <FaCamera />
+                      {t('common.addPhoto', 'Add Photo')}
+                    </>
+                  )}
+                </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelection}
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                />
+              </>
+            )}
           </div>
-          <p className={styles.placeholderText}>
-            {t('common.noPhotos', 'No photos available')}
-          </p>
-          {canEdit && (
-            <>
-              <button 
-                className={styles.uploadButton}
-                onClick={triggerFileInput}
-                disabled={isUploading}
+        </div>
+      </div>
+    );
+  }
+
+  // Render grid view (like the profile version)
+  if (gridView) {
+    return (
+      <div className={`${styles.photoGallery} ${isMobile ? styles.mobileGallery : ''}`}>
+        <h3 className={styles.galleryTitle}>{t('profile.photos')}</h3>
+        
+        <div className={styles.galleryGrid}>
+          {processedPhotos.map((photo) => {
+            // Handle both new privacy model and legacy isPrivate property
+            const privacyLevel = photo.privacy || (photo.isPrivate ? 'private' : 'public');
+            
+            // Determine if this is a private photo
+            const isPrivatePhoto = privacyLevel === 'private';
+            
+            // If it's a private photo and not the owner's photo, mask it
+            const showPrivacyMask = isPrivatePhoto && !isOwner && !canViewPrivate;
+            
+            return (
+              <div
+                key={photo._id}
+                className={`${styles.photoItem} 
+                          ${photo.isProfile ? styles.profilePhotoItem : ''} 
+                          ${isPrivatePhoto ? styles.hasPrivatePhoto : ''}`}
+                onClick={(e) => handleSetAsProfile(photo._id, e)}
               >
-                {isUploading ? (
-                  <>
-                    <FaSpinner className={styles.spinner} />
-                    {t('common.uploading', 'Uploading...')}
-                  </>
+                {/* Photo image with key for forced re-render */}
+                {showPrivacyMask ? (
+                  // Show private photo placeholder with lock overlay
+                  <div className={styles.privatePhoto}>
+                    <img
+                      key={`private-photo-${photo._id}`}
+                      src={`${window.location.origin}/private-photo.png`}
+                      alt={t('profile.privatePhoto')}
+                      className={styles.photoImage}
+                    />
+                  </div>
                 ) : (
-                  <>
-                    <FaCamera />
-                    {t('common.addPhoto', 'Add Photo')}
-                  </>
+                  // Show actual photo
+                  <img
+                    key={`photo-${photo._id}-${imageKey}`}
+                    src={`${normalizePhotoUrl(photo.url, true)}${window.__photo_refresh_timestamp ? `&_t=${window.__photo_refresh_timestamp}` : ''}&_k=${imageKey}`}
+                    alt={t('profile.photo')}
+                    className={styles.photoImage}
+                    style={{
+                      opacity: isPrivatePhoto ? 0.7 : 1, // Add reduced opacity for private photos
+                      filter: isPrivatePhoto ? 'grayscale(0.3)' : 'none' // Add subtle grayscale for private photos
+                    }}
+                    onError={(e) => {
+                      log.debug(`Failed to load photo: ${photo._id}`);
+                      e.target.src = `${window.location.origin}/placeholder.svg?height=100&width=100`;
+                    }}
+                  />
                 )}
-              </button>
+                
+                {/* Photo controls */}
+                {(canEdit || canTogglePrivacy) && (
+                  <div className={styles.photoControls}>
+                    {/* Privacy toggle button */}
+                    {canTogglePrivacy && (
+                      <button
+                        onClick={(e) => handleTogglePrivacy(photo._id, e)}
+                        className={styles.photoControlButton}
+                        title={
+                          privacyLevel === 'private' 
+                            ? t('profile.makePublic') 
+                            : t('profile.makePrivate')
+                        }
+                        disabled={combinedIsProcessing}
+                        aria-label={
+                          privacyLevel === 'private' 
+                            ? t('profile.makePublic') 
+                            : t('profile.makePrivate')
+                        }
+                      >
+                        {privacyLevel === 'private' ? 
+                          <FaLockOpen className={styles.controlIcon} /> : 
+                          <FaLock className={styles.controlIcon} />}
+                      </button>
+                    )}
+                    
+                    {/* Set as profile button - only show if not already profile */}
+                    {canEdit && !photo.isProfile && (
+                      <button
+                        onClick={(e) => handleSetAsProfile(photo._id, e)}
+                        className={styles.photoControlButton}
+                        title={t('profile.setAsProfilePhoto')}
+                        disabled={combinedIsProcessing}
+                        aria-label={t('profile.setAsProfilePhoto')}
+                      >
+                        <FaStar className={styles.controlIcon} />
+                      </button>
+                    )}
+                    
+                    {/* Delete button - don't show for profile photos */}
+                    {canEdit && !photo.isProfile && (
+                      <button
+                        onClick={(e) => handleDeletePhoto(photo._id, e)}
+                        className={styles.photoControlButton}
+                        title={t('profile.deletePhoto')}
+                        disabled={combinedIsProcessing}
+                        aria-label={t('profile.deletePhoto')}
+                      >
+                        <FaTrash className={styles.controlIcon} />
+                      </button>
+                    )}
+                  </div>
+                )}
+                
+                {/* Privacy indicator overlay - only show for private photos */}
+                {privacyLevel === 'private' && (
+                  <div className={styles.privacyOverlay}>
+                    <FaLock className={styles.overlayIcon} />
+                  </div>
+                )}
+                
+                {/* Profile photo indicator */}
+                {photo.isProfile && (
+                  <div className={styles.profileIndicator}>
+                    <FaStar className={styles.profileStar} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          
+          {/* Add photo button */}
+          {canEdit && (
+            <div 
+              className={styles.addPhotoThumbnail}
+              onClick={triggerFileInput}
+            >
+              <FaCamera />
               <input
                 type="file"
                 ref={fileInputRef}
@@ -263,75 +463,93 @@ const PhotoGallery = ({
                 accept="image/*"
                 style={{ display: 'none' }}
               />
-            </>
+            </div>
           )}
         </div>
+        
+        {/* Upload progress */}
+        {combinedIsUploading && (
+          <div className={styles.uploadProgressContainer}>
+            <div className={styles.uploadProgressBar}>
+              <div 
+                className={styles.uploadProgressFill}
+                style={{ width: `${combinedUploadProgress}%` }}
+              ></div>
+            </div>
+            <p className={styles.uploadProgressText}>
+              {t('common.uploading', 'Uploading...')} {combinedUploadProgress}%
+            </p>
+          </div>
+        )}
       </div>
     );
   }
   
+  // Default: Render gallery view (like the common version)
   return (
     <div className={styles.photoGallery}>
+      <h3 className={styles.galleryTitle}>{t('profile.photos')}</h3>
+      
       {/* Main photo display */}
       <div className={styles.mainPhotoContainer}>
-        {isPrivateAndHidden ? (
-          <div className={styles.privatePhoto}>
-            <FaLock className={styles.lockIcon} />
-            <p>{t('common.privatePhoto', 'This photo is private')}</p>
-            {!isOwner && (
-              <button 
-                className={styles.requestAccessButton}
-                onClick={handleRequestAccess}
-              >
-                {t('common.requestAccess', 'Request Access')}
-              </button>
-            )}
-          </div>
-        ) : (
-          <>
-            <img
-              src={
-                // If it's a private photo and not the owner and not allowed to view, show placeholder
-                (activePhoto && 
-                 ((activePhoto.privacy === 'private' || activePhoto.isPrivate) && 
-                  !isOwner && 
-                  !canViewPrivate))
-                  ? `${window.location.origin}/private-photo.png`
-                  : activePhoto 
-                    ? normalizePhotoUrl(activePhoto.url) 
-                    : '/default-avatar.png'
-              }
-              alt={t('common.photo', 'Photo')}
-              className={styles.mainPhoto}
-              style={{
-                // Reduce opacity for own private photos
-                opacity: (activePhoto && 
-                         ((activePhoto.privacy === 'private' || activePhoto.isPrivate) && 
-                          isOwner)) 
-                         ? 0.7 : 1
-              }}
-            />
-            {(activePhoto?.privacy === 'private' || 
-              (activePhoto?.isPrivate && !activePhoto?.privacy)) && (
-              <div className={styles.privateIndicator}>
-                <FaLock />
-                {t('common.private', 'Private')}
-              </div>
-            )}
-            {activePhoto?.privacy === 'friends_only' && (
-              <div className={styles.friendsIndicator}>
-                <FaUsers />
-                {t('common.friendsOnly', 'Friends Only')}
-              </div>
-            )}
-            {activePhoto?.isProfile && (
-              <div className={styles.profileIndicator}>
-                <FaStar />
-                {t('common.profilePhoto', 'Profile')}
-              </div>
-            )}
-          </>
-        )}
+        {(() => {
+          if (!activePhoto) return null;
+          
+          // Handle both new privacy model and legacy isPrivate property
+          const privacyLevel = activePhoto.privacy || (activePhoto.isPrivate ? 'private' : 'public');
+          
+          // If it's a private photo and not the owner and can't view private, show placeholder
+          const showPrivacyMask = 
+            privacyLevel === 'private' && 
+            !isOwner && 
+            !canViewPrivate;
+            
+          return showPrivacyMask ? (
+            <div className={styles.privatePhoto}>
+              <FaLock className={styles.lockIcon} />
+              <p>{t('common.privatePhoto', 'This photo is private')}</p>
+            </div>
+          ) : (
+            <>
+              <img
+                key={`main-photo-${activePhoto._id}-${imageKey}`}
+                src={normalizePhotoUrl(activePhoto.url, true)}
+                alt={t('common.photo', 'Photo')}
+                className={styles.mainPhoto}
+                style={{
+                  // Reduce opacity for own private photos
+                  opacity: (privacyLevel === 'private' && isOwner) ? 0.7 : 1,
+                  filter: (privacyLevel === 'private' && isOwner) ? 'grayscale(0.3)' : 'none'
+                }}
+                onError={(e) => {
+                  log.debug(`Failed to load main photo: ${activePhoto._id}`);
+                  e.target.src = `${window.location.origin}/placeholder.svg`;
+                }}
+              />
+              
+              {privacyLevel === 'private' && (
+                <div className={styles.privateIndicator}>
+                  <FaLock />
+                  {t('common.private', 'Private')}
+                </div>
+              )}
+              
+              {privacyLevel === 'friends_only' && (
+                <div className={styles.friendsIndicator}>
+                  <FaUsers />
+                  {t('common.friendsOnly', 'Friends Only')}
+                </div>
+              )}
+              
+              {activePhoto.isProfile && (
+                <div className={styles.profileIndicator}>
+                  <FaStar />
+                  {t('common.profilePhoto', 'Profile')}
+                </div>
+              )}
+            </>
+          );
+        })()}
         
         {/* Navigation arrows */}
         {processedPhotos.length > 1 && (
@@ -359,97 +577,105 @@ const PhotoGallery = ({
       {/* Thumbnails */}
       <div className={styles.thumbnailsContainer}>
         <div className={styles.thumbnails}>
-          {processedPhotos.map((photo, index) => (
-            <div
-              key={photo._id || `photo-${index}`}
-              className={`${styles.thumbnail} ${index === activePhotoIndex ? styles.activeThumbnail : ''}`}
-              onClick={() => setActivePhotoIndex(index)}
-            >
-              {(photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) && !canViewPrivate && !isOwner ? (
-                <div className={styles.privateThumbnail}>
-                  <img 
-                    src={`${window.location.origin}/private-photo.png`}
-                    alt={t('common.privatePhoto', 'Private photo')}
-                    className={styles.thumbnailImage}
-                  />
-                  <FaLock className={styles.thumbnailLockIcon} />
-                </div>
-              ) : photo.privacy === 'friends_only' && !canViewPrivate && !isOwner ? (
-                <div className={styles.friendsThumbnail}>
-                  <FaUsers />
-                </div>
-              ) : (
-                <img
-                  src={normalizePhotoUrl(photo.url)}
-                  alt={t('common.photoThumbnail', `Photo ${index + 1}`)}
-                  className={styles.thumbnailImage}
-                  style={{
-                    // Reduce opacity for own private photos
-                    opacity: ((photo.privacy === 'private' || photo.isPrivate) && isOwner) ? 0.7 : 1
-                  }}
-                />
-              )}
-              {photo.isProfile && (
-                <div className={styles.profileBadge}>
-                  <FaStar />
-                </div>
-              )}
+          {processedPhotos.map((photo, index) => {
+            // Handle both new privacy model and legacy isPrivate property
+            const privacyLevel = photo.privacy || (photo.isPrivate ? 'private' : 'public');
+            
+            // If it's a private photo and not the owner and can't view private, mask thumbnail
+            const showPrivacyMask = 
+              privacyLevel === 'private' && 
+              !isOwner && 
+              !canViewPrivate;
               
-              {/* Photo controls */}
-              {(canEdit || canTogglePrivacy) && (
-                <div className={styles.thumbnailControls}>
-                  {canTogglePrivacy && (
-                    <button
-                      onClick={(e) => handleTogglePrivacy(photo._id, e)}
-                      className={styles.controlButton}
-                      aria-label={
-                        (photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) 
-                          ? t('common.makePublic', 'Make public') 
-                          : photo.privacy === 'friends_only'
-                            ? t('common.makePrivate', 'Make private')
-                            : t('common.makeFriendsOnly', 'Make friends only')
-                      }
-                      title={
-                        (photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) 
-                          ? t('common.makePublic', 'Make public') 
-                          : photo.privacy === 'friends_only'
-                            ? t('common.makePrivate', 'Make private')
-                            : t('common.makeFriendsOnly', 'Make friends only')
-                      }
-                    >
-                      {(photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) 
-                        ? <FaLockOpen /> 
-                        : photo.privacy === 'friends_only'
-                          ? <FaLock />
-                          : <FaUsers />}
-                    </button>
-                  )}
-                  
-                  {canEdit && !photo.isProfile && (
-                    <button
-                      onClick={() => handleSetAsProfile(photo._id)}
-                      className={styles.controlButton}
-                      aria-label={t('common.setAsProfile', 'Set as profile photo')}
-                      title={t('common.setAsProfile', 'Set as profile photo')}
-                    >
-                      <FaStar />
-                    </button>
-                  )}
-                  
-                  {canEdit && !photo.isProfile && (
-                    <button
-                      onClick={(e) => handleDeletePhoto(photo._id, e)}
-                      className={styles.controlButton}
-                      aria-label={t('common.deletePhoto', 'Delete photo')}
-                      title={t('common.deletePhoto', 'Delete photo')}
-                    >
-                      <FaTrash />
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+            return (
+              <div
+                key={photo._id || `photo-${index}`}
+                className={`${styles.thumbnail} ${index === activePhotoIndex ? styles.activeThumbnail : ''}`}
+                onClick={() => setActivePhotoIndex(index)}
+              >
+                {showPrivacyMask ? (
+                  <div className={styles.privateThumbnail}>
+                    <img 
+                      src={`${window.location.origin}/private-photo.png`}
+                      alt={t('common.privatePhoto', 'Private photo')}
+                      className={styles.thumbnailImage}
+                    />
+                    <FaLock className={styles.thumbnailLockIcon} />
+                  </div>
+                ) : (
+                  <img
+                    key={`thumbnail-${photo._id}-${imageKey}`}
+                    src={normalizePhotoUrl(photo.url, true)}
+                    alt={t('common.photoThumbnail', `Photo ${index + 1}`)}
+                    className={styles.thumbnailImage}
+                    style={{
+                      // Reduce opacity for own private photos
+                      opacity: (privacyLevel === 'private' && isOwner) ? 0.7 : 1,
+                      filter: (privacyLevel === 'private' && isOwner) ? 'grayscale(0.3)' : 'none'
+                    }}
+                    onError={(e) => {
+                      log.debug(`Failed to load thumbnail: ${photo._id}`);
+                      e.target.src = `${window.location.origin}/placeholder.svg?height=60&width=60`;
+                    }}
+                  />
+                )}
+                
+                {photo.isProfile && (
+                  <div className={styles.profileBadge}>
+                    <FaStar />
+                  </div>
+                )}
+                
+                {/* Photo controls */}
+                {(canEdit || canTogglePrivacy) && (
+                  <div className={styles.thumbnailControls}>
+                    {canTogglePrivacy && (
+                      <button
+                        onClick={(e) => handleTogglePrivacy(photo._id, e)}
+                        className={styles.controlButton}
+                        aria-label={
+                          privacyLevel === 'private'
+                            ? t('common.makePublic', 'Make public') 
+                            : t('common.makePrivate', 'Make private')
+                        }
+                        title={
+                          privacyLevel === 'private'
+                            ? t('common.makePublic', 'Make public') 
+                            : t('common.makePrivate', 'Make private')
+                        }
+                      >
+                        {privacyLevel === 'private'
+                          ? <FaLockOpen /> 
+                          : <FaLock />}
+                      </button>
+                    )}
+                    
+                    {canEdit && !photo.isProfile && (
+                      <button
+                        onClick={(e) => handleSetAsProfile(photo._id, e)}
+                        className={styles.controlButton}
+                        aria-label={t('common.setAsProfile', 'Set as profile photo')}
+                        title={t('common.setAsProfile', 'Set as profile photo')}
+                      >
+                        <FaStar />
+                      </button>
+                    )}
+                    
+                    {canEdit && !photo.isProfile && (
+                      <button
+                        onClick={(e) => handleDeletePhoto(photo._id, e)}
+                        className={styles.controlButton}
+                        aria-label={t('common.deletePhoto', 'Delete photo')}
+                        title={t('common.deletePhoto', 'Delete photo')}
+                      >
+                        <FaTrash />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
           
           {/* Add photo button */}
           {canEdit && (
@@ -471,16 +697,16 @@ const PhotoGallery = ({
       </div>
       
       {/* Upload progress */}
-      {isUploading && (
+      {combinedIsUploading && (
         <div className={styles.uploadProgress}>
           <div className={styles.progressBar}>
             <div 
               className={styles.progressFill}
-              style={{ width: `${uploadProgress}%` }}
+              style={{ width: `${combinedUploadProgress}%` }}
             ></div>
           </div>
           <p className={styles.progressText}>
-            {t('common.uploading', 'Uploading...')} {uploadProgress}%
+            {t('common.uploading', 'Uploading...')} {combinedUploadProgress}%
           </p>
         </div>
       )}
@@ -500,12 +726,18 @@ PhotoGallery.propTypes = {
     })
   ),
   onPhotoChange: PropTypes.func,
+  onSetProfilePhoto: PropTypes.func,
+  onSetPrivacy: PropTypes.func,
+  onDeletePhoto: PropTypes.func,
   canEdit: PropTypes.bool,
   canTogglePrivacy: PropTypes.bool,
   userId: PropTypes.string,
   isOwner: PropTypes.bool,
   canViewPrivate: PropTypes.bool,
-  onRequestAccess: PropTypes.func,
+  isProcessing: PropTypes.bool,
+  isUploading: PropTypes.bool,
+  uploadProgress: PropTypes.number,
+  gridView: PropTypes.bool,
 };
 
-export default PhotoGallery;
+export default React.memo(PhotoGallery);

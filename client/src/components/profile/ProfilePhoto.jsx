@@ -3,7 +3,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { useTranslation } from 'react-i18next';
 import { FaLock, FaUserCircle, FaUsers } from 'react-icons/fa';
-import { normalizePhotoUrl } from '../../utils';
+import { normalizePhotoUrl, translate, translateProfile } from '../../utils';
 import styles from '../../styles/photo-management.module.css';
 import logger from '../../utils/logger';
 
@@ -37,7 +37,7 @@ const ProfilePhoto = ({
             <div className={styles.spinner}></div>
           </div>
           <div className={styles.profilePhotoLabel}>
-            {t('profile.loading')}
+            {translateProfile('loading', t, 'Loading...')}
           </div>
         </div>
       </div>
@@ -53,7 +53,7 @@ const ProfilePhoto = ({
           <FaUserCircle className={styles.defaultProfileIcon} />
         </div>
         <div className={styles.profilePhotoLabel}>
-          {t('profile.profilePhoto')}
+          {translateProfile('profilePhoto', t, 'Profile Photo')}
         </div>
       </div>
     );
@@ -68,7 +68,7 @@ const ProfilePhoto = ({
           <FaUserCircle className={styles.defaultProfileIcon} />
         </div>
         <div className={styles.profilePhotoLabel}>
-          {t('profile.profilePhoto')}
+          {translateProfile('profilePhoto', t, 'Profile Photo')}
         </div>
       </div>
     );
@@ -85,7 +85,7 @@ const ProfilePhoto = ({
       <div className={styles.profilePhotoWrapper}>
         <img
           src={normalizePhotoUrl(photo.url) || "/placeholder.svg?height=100&width=100"}
-          alt={t('profile.profilePhoto')}
+          alt={translateProfile('profilePhoto', t, 'Profile Photo')}
           className={styles.profileImage}
           style={{
             opacity: isPrivatePhoto ? 0.7 : 1, // Add reduced opacity for private photos
@@ -115,7 +115,7 @@ const ProfilePhoto = ({
         
         {/* Profile photo label */}
         <div className={styles.profilePhotoLabel}>
-          {t('profile.profilePhoto')}
+          {translateProfile('profilePhoto', t, 'Profile Photo')}
         </div>
       </div>
     </div>

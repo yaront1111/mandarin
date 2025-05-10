@@ -1,8 +1,10 @@
 // src/components/chat/ChatHeader.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import PropTypes from 'prop-types';
+import { useTranslation } from 'react-i18next';
 import { FaArrowLeft, FaVideo, FaEllipsisH, FaBan, FaFlag, FaUser, FaExclamationTriangle, FaExclamationCircle, FaSpinner, FaLock } from 'react-icons/fa';
 import Avatar from '../common/Avatar.jsx';
+import { translate } from '../../utils';
 import styles from '../../styles/Messages.module.css';
 
 /**
@@ -29,6 +31,7 @@ const ChatHeader = ({
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
   const moreButtonRef = useRef(null);
+  const { t } = useTranslation();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -111,15 +114,19 @@ const ChatHeader = ({
         <div className={useStyles.userInfo}>
           <h3 className={useStyles.userName}>
             {displayName}
-            {user.isBlocked && <span className={useStyles.blockedTag}>Blocked</span>}
+            {user.isBlocked && <span className={useStyles.blockedTag}>{translate('common.blocked', t, 'Blocked')}</span>}
           </h3>
           <span className={`${useStyles.userStatus} ${user.isBlocked ? useStyles.blockedStatus : ''}`}>
-            {user.isBlocked ? 'Blocked' : (user.online ? 'Online' : 'Offline')}
+            {user.isBlocked 
+              ? translate('common.blocked', t, 'Blocked') 
+              : (user.online 
+                  ? translate('common.online', t, 'Online') 
+                  : translate('common.offline', t, 'Offline'))}
           </span>
           {isConnected === false && (
-            <span className={useStyles.connectionStatus} title="Connection lost">
+            <span className={useStyles.connectionStatus} title={translate('chat.connectionLost', t, 'Connection lost')}>
               <FaExclamationCircle className={useStyles.statusIcon} />
-              <span>Disconnected</span>
+              <span>{translate('chat.disconnected', t, 'Disconnected')}</span>
             </span>
           )}
         </div>
@@ -130,8 +137,8 @@ const ChatHeader = ({
           <button
             className={useStyles.chatHeaderBtn || useStyles.videoCallButton}
             onClick={onApprovePhotoRequests}
-            title={`Approve ${pendingPhotoRequests} photo request(s)`}
-            aria-label="Approve photo requests"
+            title={translate('chat.approvePhotoRequests', t, `Approve ${pendingPhotoRequests} photo request(s)`)}
+            aria-label={translate('chat.approvePhotoRequests', t, "Approve photo requests")}
             disabled={isApprovingRequests}
             type="button"
           >
@@ -142,8 +149,8 @@ const ChatHeader = ({
         <button 
           className={useStyles.videoCallButton} 
           onClick={onStartVideoCall}
-          aria-label="Start video call"
-          title="Start video call"
+          aria-label={translate('chat.startVideoCall', t, "Start video call")}
+          title={translate('chat.startVideoCall', t, "Start video call")}
           type="button"
           disabled={userTier === 'FREE' || (isActionDisabled !== undefined ? isActionDisabled : false)}
         >
@@ -154,8 +161,8 @@ const ChatHeader = ({
           ref={moreButtonRef}
           className={useStyles.moreOptionsButton} 
           onClick={toggleDropdown}
-          aria-label="More options"
-          title="More options"
+          aria-label={translate('common.moreOptions', t, "More options")}
+          title={translate('common.moreOptions', t, "More options")}
           type="button"
         >
           <FaEllipsisH />
@@ -168,21 +175,23 @@ const ChatHeader = ({
               onClick={handleViewProfile}
               type="button"
             >
-              <FaUser /> View Profile
+              <FaUser /> {translate('common.viewProfile', t, "View Profile")}
             </button>
             <button 
               className={useStyles.dropdownItem} 
               onClick={handleBlockUser}
               type="button"
             >
-              <FaBan /> {user.isBlocked ? 'Unblock User' : 'Block User'}
+              <FaBan /> {user.isBlocked 
+                ? translate('common.unblockUser', t, "Unblock User") 
+                : translate('common.blockUser', t, "Block User")}
             </button>
             <button 
               className={useStyles.dropdownItem} 
               onClick={handleReportUser}
               type="button"
             >
-              <FaFlag /> Report User
+              <FaFlag /> {translate('common.reportUser', t, "Report User")}
             </button>
           </div>
         )}
@@ -193,14 +202,14 @@ const ChatHeader = ({
         <div className={useStyles.blockedUserBanner} role="alert">
           <div>
             <FaExclamationTriangle />
-            You have blocked this user. They will not receive any messages from you.
+            {translate('chat.blockedUserMessage', t, "You have blocked this user. They will not receive any messages from you.")}
           </div>
           <button
             className={useStyles.unblockButton}
             onClick={handleBlockUser}
             type="button"
           >
-            Unblock
+            {translate('common.unblock', t, "Unblock")}
           </button>
         </div>
       )}

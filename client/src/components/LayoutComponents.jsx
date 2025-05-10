@@ -343,48 +343,4 @@ export const Alert = ({ type, message, onClose, actions }) => {
   )
 }
 
-// Private Route Component
-export const PrivateRoute = ({ children }) => {
-  const { isAuthenticated, loading, error } = useAuth()
-  const navigate = useNavigate()
-
-  useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      navigate("/login", {
-        replace: true,
-        state: { from: window.location.pathname },
-      })
-    }
-  }, [isAuthenticated, loading, navigate])
-
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="spinner spinner-dark"></div>
-        <p className="loading-text">Loading...</p>
-      </div>
-    )
-  }
-
-  if (error) {
-    const errorMessage =
-      typeof error === "object" && error !== null
-        ? error.message || JSON.stringify(error)
-        : String(error || "Authentication error")
-
-    return (
-      <div className="auth-error">
-        <div className="auth-error-content">
-          <FaExclamationTriangle className="auth-error-icon" />
-          <h3>Authentication Error</h3>
-          <p>{errorMessage}</p>
-          <button onClick={() => navigate("/login")} className="btn btn-primary">
-            Go to Login
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return isAuthenticated ? children : null
-}
+// PrivateRoute component has been moved to components/common/PrivateRoute.jsx

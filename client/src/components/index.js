@@ -2,7 +2,7 @@
 // Import all components and re-export them for easier imports throughout the app
 
 // Layout Components
-import { Navbar, Alert, PrivateRoute as LayoutPrivateRoute } from "./LayoutComponents"
+import { Navbar, Alert } from "./LayoutComponents"
 
 // User card
 import UserCard from "./UserCard.jsx"
@@ -19,8 +19,8 @@ import StoryThumbnail from "./Stories/StoryThumbnail"
 // Error Boundary
 import ErrorBoundary from "./ErrorBoundary"
 
-// Import from PrivateRoute.jsx which is our main implementation
-import PrivateRoute from "./PrivateRoute.jsx"
+// Import consolidated PrivateRoute implementation
+import PrivateRoute from "./common/PrivateRoute.jsx"
 
 // Theme Toggle
 import { ThemeToggle } from "./theme-toggle.tsx"
@@ -35,7 +35,6 @@ export {
   // Layout Components
   Navbar,
   Alert,
-  LayoutPrivateRoute,
   // Chat Components
   EmbeddedChat,
 

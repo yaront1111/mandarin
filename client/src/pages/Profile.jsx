@@ -27,7 +27,7 @@ import styles from "../styles/profile.module.css"
 
 // Import hooks and components
 import { usePhotoManagement, useMobileDetect, useIsMobile } from "../hooks"
-import PhotoGallery from "../components/profile/PhotoGallery"
+import PhotoGallery from "../components/common/PhotoGallery"
 
 // Import the normalizePhotoUrl utility
 import { normalizePhotoUrl } from "../utils/index.js"
@@ -812,7 +812,7 @@ const Profile = () => {
                 </div>
               </div>
 
-              {/* Photo Gallery Section - Using the new PhotoGallery component */}
+              {/* Photo Gallery Section - Using the consolidated PhotoGallery component */}
               {user?.photos && user.photos.length > 0 && (
                 <>
                   <PhotoGallery
@@ -823,6 +823,13 @@ const Profile = () => {
                     onDeletePhoto={handleDeletePhoto}
                     isProcessing={isProcessingPhoto}
                     isUploading={isUploading}
+                    uploadProgress={uploadProgress}
+                    canEdit={true}
+                    canTogglePrivacy={true}
+                    userId={user?._id}
+                    isOwner={true}
+                    canViewPrivate={true}
+                    gridView={true} // Use grid view for the profile page
                   />
                   
                   {/* Add Photo Button - Keep outside the gallery for better positioning */}

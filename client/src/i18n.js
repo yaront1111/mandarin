@@ -4,21 +4,51 @@ import LanguageDetector from "i18next-browser-languagedetector";
 import logger from "./utils/logger";
 
 // Import the translation files
-// Adjust the path if your JSON files are not in a 'locales' subfolder
 import enTranslations from './en.json';
 import heTranslations from './he.json';
-
-// Import photo management translations
-import { addPhotoTranslations } from './components/profile/translation-fix';
 
 // Initialize i18next with all required modules
 i18n
   .use(LanguageDetector)
   .use(initReactI18next);
-  
-// After initializing, we'll add photo translations manually
 
 const log = logger.create('i18n');
+
+// Consolidated photo translations (migrated from translation-fix.js)
+// These are now part of the main translation files and added here for backward compatibility
+const photoTranslations = {
+  // English translations
+  en: {
+    profile: {
+      photos: "Photos",
+      photo: "Photo",
+      currentlyPrivate: "Currently private",
+      currentlyPublic: "Currently public",
+      currentlyFriendsOnly: "Currently visible to friends only",
+      makePublic: "Make public",
+      makePrivate: "Make private",
+      makeFriendsOnly: "Make friends only",
+      setAsProfilePhoto: "Set as profile photo",
+      deletePhoto: "Delete photo"
+    }
+  },
+  
+  // Hebrew translations
+  he: {
+    profile: {
+      photos: "תמונות",
+      photo: "תמונה",
+      currentlyPrivate: "כרגע פרטי",
+      currentlyPublic: "כרגע ציבורי",
+      currentlyFriendsOnly: "כרגע גלוי לחברים בלבד",
+      makePublic: "הפוך לציבורי",
+      makePrivate: "הפוך לפרטי",
+      makeFriendsOnly: "הפוך לחברים בלבד",
+      setAsProfilePhoto: "הגדר כתמונת פרופיל",
+      deletePhoto: "מחק תמונה"
+    }
+  }
+};
 
 // --- Initialize i18next ---
 i18n.init({
@@ -26,10 +56,24 @@ i18n.init({
   // Load translations from the imported JSON files
   resources: {
     en: {
-      translation: enTranslations, // Use imported English JSON
+      translation: {
+        ...enTranslations,
+        // Ensure photo translations are available in the main bundle
+        profile: {
+          ...enTranslations.profile,
+          ...photoTranslations.en.profile
+        }
+      },
     },
     he: {
-      translation: heTranslations, // Use imported Hebrew JSON
+      translation: {
+        ...heTranslations,
+        // Ensure photo translations are available in the main bundle
+        profile: {
+          ...heTranslations.profile,
+          ...photoTranslations.he.profile
+        }
+      },
     },
   },
 
@@ -104,9 +148,11 @@ i18n.init({
   debug: process.env.NODE_ENV === "development",
 });
 
-// No need for reloadResources if resources are imported directly and passed to init
-
-// Add photo management translations
-addPhotoTranslations(i18n);
+// Deprecated: This function is no longer needed as translations are now directly included
+// in the main translation resources. It's kept here for backward compatibility.
+export const addPhotoTranslations = (i18nInstance) => {
+  log.info("addPhotoTranslations is deprecated. Translations are now in the main resources.");
+  return i18nInstance;
+};
 
 export default i18n;
