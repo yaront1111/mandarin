@@ -224,14 +224,14 @@ const PhotoGallery = ({
     }
     
     // Confirm deletion
-    if (!window.confirm(t('common.confirmDeletePhoto', 'Are you sure you want to delete this photo?'))) {
+    if (!window.confirm(t('confirmDeletePhoto', 'Are you sure you want to delete this photo?'))) {
       return;
     }
     
     // Check if it's a profile photo
     const photoIndex = processedPhotos.findIndex(p => p._id === photoId);
     if (photoIndex !== -1 && processedPhotos[photoIndex].isProfile) {
-      alert(t('common.cannotDeleteProfilePhoto', 'You cannot delete your profile photo. Please set another photo as your profile photo first.'));
+      alert(t('cannotDeleteProfilePhoto', 'You cannot delete your profile photo. Please set another photo as your profile photo first.'));
       return;
     }
     
@@ -281,14 +281,14 @@ const PhotoGallery = ({
   if (processedPhotos.length === 0) {
     return (
       <div className={styles.photoGallery}>
-        <h3 className={styles.galleryTitle}>{t('profile.photos')}</h3>
+        <h3 className={styles.galleryTitle}>{t('photos')}</h3>
         <div className={styles.noPhotosMessage}>
           <div className={styles.placeholder}>
             <div className={styles.placeholderIcon}>
               <FaCamera size={48} />
             </div>
             <p className={styles.placeholderText}>
-              {t('common.noPhotos', 'No photos available')}
+              {t('noPhotos', 'No photos available')}
             </p>
             {canEdit && (
               <>
@@ -300,12 +300,12 @@ const PhotoGallery = ({
                   {combinedIsUploading ? (
                     <>
                       <FaSpinner className={styles.spinner} />
-                      {t('common.uploading', 'Uploading...')}
+                      {t('uploading', 'Uploading...')}
                     </>
                   ) : (
                     <>
                       <FaCamera />
-                      {t('common.addPhoto', 'Add Photo')}
+                      {t('addPhoto', 'Add Photo')}
                     </>
                   )}
                 </button>
@@ -328,7 +328,7 @@ const PhotoGallery = ({
   if (gridView) {
     return (
       <div className={`${styles.photoGallery} ${isMobile ? styles.mobileGallery : ''}`}>
-        <h3 className={styles.galleryTitle}>{t('profile.photos')}</h3>
+        <h3 className={styles.galleryTitle}>{t('photos')}</h3>
         
         <div className={styles.galleryGrid}>
           {processedPhotos.map((photo) => {
@@ -356,7 +356,7 @@ const PhotoGallery = ({
                     <img
                       key={`private-photo-${photo._id}`}
                       src={`${window.location.origin}/private-photo.png`}
-                      alt={t('profile.privatePhoto')}
+                      alt={t('privatePhoto')}
                       className={styles.photoImage}
                     />
                   </div>
@@ -365,7 +365,7 @@ const PhotoGallery = ({
                   <img
                     key={`photo-${photo._id}-${imageKey}`}
                     src={`${normalizePhotoUrl(photo.url, true)}${window.__photo_refresh_timestamp ? `&_t=${window.__photo_refresh_timestamp}` : ''}&_k=${imageKey}`}
-                    alt={t('profile.photo')}
+                    alt={t('photo')}
                     className={styles.photoImage}
                     style={{
                       opacity: isPrivatePhoto ? 0.7 : 1, // Add reduced opacity for private photos
@@ -387,15 +387,15 @@ const PhotoGallery = ({
                         onClick={(e) => handleTogglePrivacy(photo._id, e)}
                         className={styles.photoControlButton}
                         title={
-                          privacyLevel === 'private' 
-                            ? t('profile.makePublic') 
-                            : t('profile.makePrivate')
+                          privacyLevel === 'private'
+                            ? t('makePublic')
+                            : t('makePrivate')
                         }
                         disabled={combinedIsProcessing}
                         aria-label={
-                          privacyLevel === 'private' 
-                            ? t('profile.makePublic') 
-                            : t('profile.makePrivate')
+                          privacyLevel === 'private'
+                            ? t('makePublic')
+                            : t('makePrivate')
                         }
                       >
                         {privacyLevel === 'private' ? 
@@ -409,9 +409,9 @@ const PhotoGallery = ({
                       <button
                         onClick={(e) => handleSetAsProfile(photo._id, e)}
                         className={styles.photoControlButton}
-                        title={t('profile.setAsProfilePhoto')}
+                        title={t('setAsProfilePhoto')}
                         disabled={combinedIsProcessing}
-                        aria-label={t('profile.setAsProfilePhoto')}
+                        aria-label={t('setAsProfilePhoto')}
                       >
                         <FaStar className={styles.controlIcon} />
                       </button>
@@ -422,9 +422,9 @@ const PhotoGallery = ({
                       <button
                         onClick={(e) => handleDeletePhoto(photo._id, e)}
                         className={styles.photoControlButton}
-                        title={t('profile.deletePhoto')}
+                        title={t('deletePhoto')}
                         disabled={combinedIsProcessing}
-                        aria-label={t('profile.deletePhoto')}
+                        aria-label={t('deletePhoto')}
                       >
                         <FaTrash className={styles.controlIcon} />
                       </button>
@@ -477,7 +477,7 @@ const PhotoGallery = ({
               ></div>
             </div>
             <p className={styles.uploadProgressText}>
-              {t('common.uploading', 'Uploading...')} {combinedUploadProgress}%
+              {t('uploading', 'Uploading...')} {combinedUploadProgress}%
             </p>
           </div>
         )}
@@ -488,7 +488,7 @@ const PhotoGallery = ({
   // Default: Render gallery view (like the common version)
   return (
     <div className={styles.photoGallery}>
-      <h3 className={styles.galleryTitle}>{t('profile.photos')}</h3>
+      <h3 className={styles.galleryTitle}>{t('photos')}</h3>
       
       {/* Main photo display */}
       <div className={styles.mainPhotoContainer}>
@@ -507,14 +507,14 @@ const PhotoGallery = ({
           return showPrivacyMask ? (
             <div className={styles.privatePhoto}>
               <FaLock className={styles.lockIcon} />
-              <p>{t('common.privatePhoto', 'This photo is private')}</p>
+              <p>{t('privatePhoto', 'This photo is private')}</p>
             </div>
           ) : (
             <>
               <img
                 key={`main-photo-${activePhoto._id}-${imageKey}`}
                 src={normalizePhotoUrl(activePhoto.url, true)}
-                alt={t('common.photo', 'Photo')}
+                alt={t('photo', 'Photo')}
                 className={styles.mainPhoto}
                 style={{
                   // Reduce opacity for own private photos
@@ -530,21 +530,21 @@ const PhotoGallery = ({
               {privacyLevel === 'private' && (
                 <div className={styles.privateIndicator}>
                   <FaLock />
-                  {t('common.private', 'Private')}
+                  {t('private', 'Private')}
                 </div>
               )}
               
               {privacyLevel === 'friends_only' && (
                 <div className={styles.friendsIndicator}>
                   <FaUsers />
-                  {t('common.friendsOnly', 'Friends Only')}
+                  {t('friendsOnly', 'Friends Only')}
                 </div>
               )}
               
               {activePhoto.isProfile && (
                 <div className={styles.profileIndicator}>
                   <FaStar />
-                  {t('common.profilePhoto', 'Profile')}
+                  {t('profilePhoto', 'Profile')}
                 </div>
               )}
             </>
@@ -558,7 +558,7 @@ const PhotoGallery = ({
               className={`${styles.navButton} ${styles.prevButton}`}
               onClick={prevPhoto}
               disabled={activePhotoIndex === 0}
-              aria-label={t('common.previousPhoto', 'Previous photo')}
+              aria-label={t('previousPhoto', 'Previous photo')}
             >
               <FaChevronLeft />
             </button>
@@ -566,7 +566,7 @@ const PhotoGallery = ({
               className={`${styles.navButton} ${styles.nextButton}`}
               onClick={nextPhoto}
               disabled={activePhotoIndex === processedPhotos.length - 1}
-              aria-label={t('common.nextPhoto', 'Next photo')}
+              aria-label={t('nextPhoto', 'Next photo')}
             >
               <FaChevronRight />
             </button>
@@ -597,7 +597,7 @@ const PhotoGallery = ({
                   <div className={styles.privateThumbnail}>
                     <img 
                       src={`${window.location.origin}/private-photo.png`}
-                      alt={t('common.privatePhoto', 'Private photo')}
+                      alt={t('privatePhoto', 'Private photo')}
                       className={styles.thumbnailImage}
                     />
                     <FaLock className={styles.thumbnailLockIcon} />
@@ -606,7 +606,7 @@ const PhotoGallery = ({
                   <img
                     key={`thumbnail-${photo._id}-${imageKey}`}
                     src={normalizePhotoUrl(photo.url, true)}
-                    alt={t('common.photoThumbnail', `Photo ${index + 1}`)}
+                    alt={t('photoThumbnail', `Photo ${index + 1}`)}
                     className={styles.thumbnailImage}
                     style={{
                       // Reduce opacity for own private photos
@@ -635,13 +635,13 @@ const PhotoGallery = ({
                         className={styles.controlButton}
                         aria-label={
                           privacyLevel === 'private'
-                            ? t('common.makePublic', 'Make public') 
-                            : t('common.makePrivate', 'Make private')
+                            ? t('makePublic', 'Make public')
+                            : t('makePrivate', 'Make private')
                         }
                         title={
                           privacyLevel === 'private'
-                            ? t('common.makePublic', 'Make public') 
-                            : t('common.makePrivate', 'Make private')
+                            ? t('makePublic', 'Make public')
+                            : t('makePrivate', 'Make private')
                         }
                       >
                         {privacyLevel === 'private'
@@ -654,8 +654,8 @@ const PhotoGallery = ({
                       <button
                         onClick={(e) => handleSetAsProfile(photo._id, e)}
                         className={styles.controlButton}
-                        aria-label={t('common.setAsProfile', 'Set as profile photo')}
-                        title={t('common.setAsProfile', 'Set as profile photo')}
+                        aria-label={t('setAsProfile', 'Set as profile photo')}
+                        title={t('setAsProfile', 'Set as profile photo')}
                       >
                         <FaStar />
                       </button>
@@ -665,8 +665,8 @@ const PhotoGallery = ({
                       <button
                         onClick={(e) => handleDeletePhoto(photo._id, e)}
                         className={styles.controlButton}
-                        aria-label={t('common.deletePhoto', 'Delete photo')}
-                        title={t('common.deletePhoto', 'Delete photo')}
+                        aria-label={t('deletePhoto', 'Delete photo')}
+                        title={t('deletePhoto', 'Delete photo')}
                       >
                         <FaTrash />
                       </button>
@@ -706,7 +706,7 @@ const PhotoGallery = ({
             ></div>
           </div>
           <p className={styles.progressText}>
-            {t('common.uploading', 'Uploading...')} {combinedUploadProgress}%
+            {t('uploading', 'Uploading...')} {combinedUploadProgress}%
           </p>
         </div>
       )}

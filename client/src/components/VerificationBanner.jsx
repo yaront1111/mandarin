@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { FaExclamationTriangle, FaEnvelope, FaTimes } from "react-icons/fa"
 import { useAuth } from "../context"
-import { translate } from "../utils"
 import logger from "../utils/logger"
 
 const log = logger.create("VerificationBanner")
@@ -77,28 +76,28 @@ const VerificationBanner = () => {
       <div className="container">
         <div className="banner-content">
           <FaExclamationTriangle className="banner-icon" />
-          <p>{translate('auth.verificationNeeded', t, 'Your email is not verified. Please verify your email address to unlock all features.')}</p>
+          <p>{t('verificationNeeded') || 'Your email is not verified. Please verify your email address to unlock all features.'}</p>
           <div className="banner-actions">
             <button
               className="resend-btn"
               onClick={handleResendEmail}
               disabled={resending || cooldown > 0}
-              aria-label={translate('auth.resendVerificationEmail', t, 'Resend verification email')}
+              aria-label={t('resendVerificationEmail') || 'Resend verification email'}
             >
               {resending ? (
-                <>{translate('common.sending', t, 'Sending...')}</>
+                <>{t('sending') || 'Sending...'}</>
               ) : cooldown > 0 ? (
-                translate('auth.resendEmailCooldown', t, `Resend Email (${cooldown}m)`)
+                (t('resendEmailCooldown', {cooldown: cooldown}) || `Resend Email (${cooldown}m)`)
               ) : (
                 <>
-                  <FaEnvelope /> {translate('auth.resendEmail', t, 'Resend Email')}
+                  <FaEnvelope /> {t('resendEmail') || 'Resend Email'}
                 </>
               )}
             </button>
-            <button 
-              className="dismiss-btn" 
-              onClick={handleDismiss} 
-              aria-label={translate('common.dismiss', t, 'Dismiss banner')}
+            <button
+              className="dismiss-btn"
+              onClick={handleDismiss}
+              aria-label={t('dismiss') || 'Dismiss banner'}
             >
               <FaTimes />
             </button>

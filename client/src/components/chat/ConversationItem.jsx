@@ -23,7 +23,7 @@ const ConversationItem = ({
   const { user, lastMessage, unreadCount = 0 } = conversation;
   // Ensure the user object has a username property
   if (!user.username) {
-    console.warn("User missing username property in ConversationItem:", user._id);
+    console.debug(`Applying username fallback in ConversationItem for user ${user._id}`);
     user.username = user.nickname || "Unknown User";
   }
   const hasUnread = unreadCount > 0;

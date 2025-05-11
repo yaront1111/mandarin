@@ -17,7 +17,7 @@ const LanguageSection = ({ className = '' }) => {
 
   return (
     <div className={`language-settings-section ${className}`}>
-      <h3 className="settings-heading">{t('settings.language')}</h3>
+      <h3 className="settings-heading">{t('language')}</h3>
       <div className="settings-content language-settings">
         <div className="language-options">
           <div 
@@ -26,7 +26,7 @@ const LanguageSection = ({ className = '' }) => {
           >
             <div className="language-flag">🇺🇸</div>
             <div className="language-info">
-              <div className="language-name">{t('settings.languageEnglish', 'English')}</div>
+              <div className="language-name">{t('english', 'English')}</div>
               <div className="language-native">English</div>
             </div>
             {language === 'en' && <div className="language-active-indicator">✓</div>}
@@ -38,7 +38,7 @@ const LanguageSection = ({ className = '' }) => {
           >
             <div className="language-flag">🇮🇱</div>
             <div className="language-info">
-              <div className="language-name">{t('settings.languageHebrew', 'Hebrew')}</div>
+              <div className="language-name">{t('hebrew', 'Hebrew')}</div>
               <div className="language-native">עברית</div>
             </div>
             {language === 'he' && <div className="language-active-indicator">✓</div>}
@@ -46,7 +46,7 @@ const LanguageSection = ({ className = '' }) => {
         </div>
         
         <div className="language-notice">
-          {t('settings.currentlyUsing')}
+          {t('currentlyUsing')}
         </div>
       </div>
     </div>

@@ -10,9 +10,7 @@ export { default as logger, createLogger, LogLevel } from './logger';
 const log = logger.create("utils");
 export * from './chatUtils';
 
-// Export i18n utilities
-export { translate, translateTag, translateProfile } from './i18n';
-export { default as i18nUtils } from './i18n';
+// i18n utilities have been removed in favor of direct t() function usage
 
 // Export original mobile utilities functions from mobileInit
 export {

@@ -15,11 +15,11 @@ const Footer = () => {
 
         {/* Links */}
         <div className={styles.footerLinks}> {/* Use CSS Module class */}
-          <Link to="/about">{t("common.aboutUs", "About Us")}</Link>
-          <Link to="/safety">{t("common.safety", "Safety")}</Link> {/* Changed key slightly based on common usage */}
-          <Link to="/support">{t("common.contactSupport", "Support")}</Link>
-          <Link to="/terms">{t("common.termsOfService", "Terms")}</Link>
-          <Link to="/privacy">{t("common.privacyPolicy", "Privacy")}</Link> {/* Use more specific key */}
+          <Link to="/about">{t("aboutUs", "About Us")}</Link>
+          <Link to="/safety">{t("safety", "Safety")}</Link> {/* Changed key slightly based on common usage */}
+          <Link to="/support">{t("contactSupport", "Support")}</Link>
+          <Link to="/terms">{t("termsOfService", "Terms")}</Link>
+          <Link to="/privacy">{t("privacyPolicy", "Privacy")}</Link> {/* Use more specific key */}
         </div>
 
         {/* Social Icons (Example placeholders) */}
@@ -32,7 +32,7 @@ const Footer = () => {
       </div>
       <div className={styles.footerBottom}> {/* Use CSS Module class */}
         © {new Date().getFullYear()} Mandarin.{" "}
-        {t("common.allRightsReserved", "All rights reserved.")}
+        {t("allRightsReserved", "All rights reserved.")}
       </div>
     </footer>
   );

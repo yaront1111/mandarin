@@ -1,10 +1,12 @@
 // src/components/chat/MessageList.jsx
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import PropTypes from 'prop-types';
+import { useTranslation } from 'react-i18next';
 import { groupMessagesByDate, formatMessageDateSeparator } from './chatUtils.jsx';
 import MessageItem from './MessageItem.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
 import styles from '../../styles/Messages.module.css';
+// Direct translation without helper functions
 
 /**
  * Displays a list of messages grouped by date with date separators
@@ -20,6 +22,14 @@ const MessageList = ({
   messagesEndRef,
 }) => {
   const containerRef = useRef(null);
+  const { t } = useTranslation();
+
+  // Memoized translations using direct t() calls with fallbacks
+  const translations = useMemo(() => ({
+    messageConversation: t('messageConversation') || 'Message conversation',
+    loadingMessages: t('loadingMessages') || 'Loading messages',
+    typing: t('typing') || 'is typing'
+  }), [t]);
   
   // Keep scroll at bottom when new messages arrive
   useEffect(() => {
@@ -46,7 +56,7 @@ const MessageList = ({
       onScroll={onScroll}
       role="log"
       aria-live="polite"
-      aria-label="Message conversation"
+      aria-label={translations.messageConversation || "Message conversation"}
     >
       {Object.entries(groupedMessagesByDate).map(([date, dailyMessages]) => (
         <div key={date} className={styles.messageGroup}>

@@ -415,7 +415,7 @@ router.get(
           localField: "_id",
           foreignField: "_id",
           pipeline: [
-            { $project: { _id: 1, nickname: 1, photos: { $slice: ["$photos", 1] }, isOnline: 1, lastActive: 1 } },
+            { $project: { _id: 1, nickname: 1, username: 1, photos: { $slice: ["$photos", 1] }, isOnline: 1, lastActive: 1 } },
           ],
           as: "partnerInfo",
         },
@@ -428,6 +428,7 @@ router.get(
           user: {
             _id: "$partnerInfo._id",
             nickname: "$partnerInfo.nickname",
+            username: "$partnerInfo.username", // Add username field
             photo: { $ifNull: [{ $arrayElemAt: ["$partnerInfo.photos.url", 0] }, null] },
             isOnline: "$partnerInfo.isOnline",
             lastActive: "$partnerInfo.lastActive",

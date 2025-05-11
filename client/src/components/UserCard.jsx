@@ -12,7 +12,8 @@ import {
 } from "react-icons/fa";
 import { withMemo } from "./common";
 import { useLanguage, useAuth } from "../context";
-import { formatDate, logger, translate, translateProfile, translateTag } from "../utils";
+import { formatDate, logger } from "../utils";
+// No longer using translation utilities - using direct t() function
 import { usePhotoManagement } from "../hooks";
 import styles from "../styles/usercard.module.css";
 
@@ -26,15 +27,7 @@ const TAG_TYPES = {
   INTEREST: "interest",
 };
 
-/**
- * Safely gets a translation string, handling different translation formats and fallbacks
- * @deprecated Use translate() from utils/i18n.js instead
- */
-const safeTranslate = (t, key, defaultValue = "") => {
-  log.debug("Using deprecated safeTranslate, consider switching to translate from utils/i18n");
-  // Use our new centralized translation function
-  return translate(key, t, defaultValue);
-};
+// This function was deprecated and has been removed - using direct t() function
 
 /**
  * Returns the correct tag style class based on the tag type and content
@@ -67,39 +60,8 @@ const TagGroup = ({ title, tags, tagType, translationNamespace, t, showAll, togg
   const getTranslatedTag = (namespace, tag) => {
     if (!tag) return "";
 
-    // Extract the tag type from the namespace (e.g., 'profile.intoTags' -> 'intoTags')
-    const tagType = namespace.split('.').pop();
-
-    // Use our centralized translateTag function from utils/i18n.js
-    const translated = translateTag(tagType, tag, t);
-    if (translated) return translated;
-
-    // If translateTag doesn't find a match, we'll try legacy paths
-    // Format key for translation patterns
-    const nestedKey = `${namespace}.${tag.toLowerCase().replace(/\s+/g, '_')}`;
-    const prefixKey = namespace === 'profile.intoTags'
-      ? `profile.intoTag_${tag.toLowerCase().replace(/\s+/g, '_')}`
-      : namespace === 'profile.turnOns'
-      ? `profile.turnOn_${tag.toLowerCase().replace(/\s+/g, '_')}`
-      : namespace === 'profile.interests'
-      ? `profile.interests${tag.charAt(0).toUpperCase() + tag.slice(1).replace(/\s+/g, '_')}`
-      : null;
-
-    // Try each translation pattern using our centralized translate function
-    if (prefixKey) {
-      const prefixTranslation = translate(prefixKey, t);
-      if (prefixTranslation && prefixTranslation !== prefixKey) {
-        return prefixTranslation;
-      }
-    }
-
-    const nestedTranslation = translate(nestedKey, t);
-    if (nestedTranslation && nestedTranslation !== nestedKey) {
-      return nestedTranslation;
-    }
-
-    // Fallback: Clean up and return the tag
-    return tag.charAt(0).toUpperCase() + tag.slice(1).replace(/_/g, ' ');
+    // Simple translation approach - use direct t() function or fallback to original tag
+    return t(tag) || tag;
   };
 
   const visibleTags = showAll ? tags : tags.slice(0, maxVisible);
@@ -111,7 +73,7 @@ const TagGroup = ({ title, tags, tagType, translationNamespace, t, showAll, togg
       <div className={styles.tagsGroup}>
         {visibleTags.map((tag, idx) => (
           <span key={`${tagType}-${idx}`} className={getTagClassName(tagType, tag)}>
-            {getTranslatedTag(translationNamespace, tag)}
+            {getTranslatedTag("", tag)}
           </span>
         ))}
         {hasMoreTags && !showAll && (
@@ -148,6 +110,19 @@ const UserCard = ({
   const { isRTL } = useLanguage();
   const { user: currentUser } = useAuth();
   const { normalizePhotoUrl, getProfilePhotoUrl, handlePhotoLoadError, refreshAllAvatars } = usePhotoManagement();
+
+  // Memoized translations using direct t() function
+  const translations = useMemo(() => ({
+    like: t('like') || 'like',
+    liked: t('liked') || 'liked',
+    message: t('message') || 'message',
+    online: t('online') || 'online',
+    offline: t('offline') || 'offline',
+    lastActive: t('lastActive') || 'Last active',
+    viewProfile: t('view') || 'View',
+    showMore: t('showMore') || 'Show more',
+    showLess: t('showLess') || 'Show less'
+  }), [t]);
   
   // Listen for avatar refresh events
   useEffect(() => {
@@ -291,7 +266,7 @@ const UserCard = ({
 
     return {
       age,
-      location: location || translate('profile.unknownLocation', t, 'Unknown location'),
+      location: location || t('unknownLocation') || 'Unknown location',
       identity: iAm || null,
       status: maritalStatus || null,
       tags: {
@@ -305,16 +280,16 @@ const UserCard = ({
   // Last active formatting
   const lastActiveText = useMemo(() => {
     // If user is currently online, show "Active now"
-    if (user?.isOnline) return translate('common.activeNow', t, 'Active now');
+    if (user?.isOnline) return translations.online;
 
-    if (!user?.lastActive) return translate('common.neverActive', t, 'Never active');
+    if (!user?.lastActive) return t('inactive') || 'Never active';
 
     return formatDate(user.lastActive, {
       showRelative: true,
       showTime: false,
       showDate: false
     });
-  }, [user?.lastActive, user?.isOnline, t]);
+  }, [user?.lastActive, user?.isOnline, t, translations]);
 
   // Validation
   if (!user) return null;
@@ -329,8 +304,8 @@ const UserCard = ({
       >
         <FaHeart />
         {isLiked
-          ? translate('common.liked', t, 'Liked')
-          : translate('common.like', t, 'Like')}
+          ? translations.liked
+          : translations.like}
       </button>
       <button
         onClick={handleMessageClick}
@@ -338,7 +313,7 @@ const UserCard = ({
         className={`${styles.actionBtn} ${styles.messageBtn}`}
       >
         <FaComment />
-        {translate('common.message', t, 'Message')}
+        {translations.message}
       </button>
     </>
   );
@@ -349,11 +324,11 @@ const UserCard = ({
       <span className={styles.toggleBtn} onClick={onToggle}>
         {isShowingMore ? (
           <>
-            {showLessText} <FaChevronUp size={12} />
+            {showLessText || translations.showLess} <FaChevronUp size={12} />
           </>
         ) : (
           <>
-            {showMoreText} <FaChevronDown size={12} />
+            {showMoreText || translations.showMore} <FaChevronDown size={12} />
           </>
         )}
       </span>
@@ -367,10 +342,10 @@ const UserCard = ({
         {userDetails.identity && (
           <div className={styles.detailItem}>
             <span className={styles.detailLabel}>
-              {translateProfile('iAm', t, 'I am')}:
+              {t('iAm') || 'I am'}:
             </span>
             <span className={getTagClassName(TAG_TYPES.IDENTITY, userDetails.identity)}>
-              {translateTag('identity', userDetails.identity, t)}
+              {t(userDetails.identity) || userDetails.identity}
             </span>
           </div>
         )}
@@ -378,10 +353,10 @@ const UserCard = ({
         {userDetails.tags.lookingFor.length > 0 && (
           <div className={styles.detailItem}>
             <span className={styles.detailLabel}>
-              {translateProfile('lookingFor', t, 'Looking for')}:
+              {t('lookingFor') || 'Looking for'}:
             </span>
             <span className={getTagClassName(TAG_TYPES.LOOKING_FOR, userDetails.tags.lookingFor[0])}>
-              {translateTag('lookingFor', userDetails.tags.lookingFor[0], t)}
+              {t(userDetails.tags.lookingFor[0]) || userDetails.tags.lookingFor[0]}
             </span>
             {userDetails.tags.lookingFor.length > 1 && (
               <span className={styles.moreCount}>
@@ -403,18 +378,18 @@ const UserCard = ({
         renderTagsToggle({
           isShowingMore: showMoreSections,
           onToggle: toggleShowMoreSections,
-          showMoreText: translate('common.viewMore', t, 'View more'),
-          showLessText: translate('common.viewLess', t, 'View less')
+          showMoreText: translations.showMore,
+          showLessText: translations.showLess
         })
       )}
 
       {showMoreSections && (
         <>
           <TagGroup
-            title={translateProfile('interests', t, 'Interests')}
+            title={t('interests') || 'Interests'}
             tags={userDetails.tags.interests}
             tagType={TAG_TYPES.INTEREST}
-            translationNamespace="profile.interests"
+            translationNamespace=""
             t={t}
             showAll={showAllTags}
             toggleShowAll={toggleShowAllTags}
@@ -422,10 +397,10 @@ const UserCard = ({
           />
 
           <TagGroup
-            title={translateProfile('preferences', t, 'Preferences')}
+            title={t('preferences') || 'Preferences'}
             tags={userDetails.tags.into}
             tagType={TAG_TYPES.INTO}
-            translationNamespace="profile.intoTags"
+            translationNamespace=""
             t={t}
             showAll={showAllTags}
             toggleShowAll={toggleShowAllTags}
@@ -439,8 +414,8 @@ const UserCard = ({
             renderTagsToggle({
               isShowingMore: showAllTags,
               onToggle: toggleShowAllTags,
-              showMoreText: translate('common.showAllTags', t, 'Show all tags'),
-              showLessText: translate('common.showLessTags', t, 'Show less tags')
+              showMoreText: t('showMore') || 'Show more',
+              showLessText: t('showLess') || 'Show less'
             })
           )}
         </>

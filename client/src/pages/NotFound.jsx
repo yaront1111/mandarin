@@ -16,10 +16,10 @@ const NotFound = () => {
     >
       <h1 style={{ fontSize: '3rem', marginBottom: '16px' }}>404</h1>
       <p style={{ marginBottom: '24px' }}>
-        {t('errors.notFound')}
+        {t('notFound')}
       </p>
       <button className="btn btn-primary" onClick={() => navigate('/')}>
-        {t('errors.backToHome')}
+        {t('backToHome')}
       </button>
     </div>
   );

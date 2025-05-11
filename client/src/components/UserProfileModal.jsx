@@ -75,20 +75,20 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   
   // Memoize common translations to avoid unnecessary re-renders
   const translations = useMemo(() => ({
-    compatibilityTitle: t('userProfile.compatibility'),
-    location: t('userProfile.location'),
-    age: t('userProfile.age'),
-    interests: t('userProfile.interests'),
-    aboutMe: t('userProfile.aboutMe'),
-    iAm: t('userProfile.iAm'),
-    maritalStatus: t('userProfile.maritalStatus'),
-    lookingFor: t('userProfile.lookingFor'),
-    imInto: t('userProfile.imInto'),
-    itTurnsMeOn: t('userProfile.itTurnsMeOn'),
-    onlineNow: t('userProfile.onlineNow'),
-    offline: t('userProfile.offline'),
-    lastActive: t('userProfile.lastActive'),
-    memberSince: t('userProfile.memberSince')
+    compatibilityTitle: t('compatibility'),
+    location: t('location'),
+    age: t('age'),
+    interests: t('interests'),
+    aboutMe: t('aboutMe'),
+    iAm: t('identity'),
+    maritalStatus: t('maritalStatus'),
+    lookingFor: t('lookingFor'),
+    imInto: t('intoTags'),
+    itTurnsMeOn: t('turnOns'),
+    onlineNow: t('online'),
+    offline: t('offline'),
+    lastActive: t('lastActive'),
+    memberSince: t('memberSince')
   }), [t]);
 
   // State management
@@ -670,70 +670,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     if (!str || typeof str !== 'string') return '';
     return str.charAt(0).toUpperCase() + str.slice(1);
   };
-  
-  // Helper to translate tags - looks for translations first, falls back to original
-  const translateTag = useCallback((tag) => {
-    if (!tag) return '';
-    
-    // Normalize the tag - remove extra spaces, lowercase for lookup
-    const normalizedTag = tag.trim().toLowerCase();
-    
-    // Handle special case transformations
-    let lookupKey = normalizedTag
-      .replace(/[\/\\]/g, '_')     // Replace slashes with underscores
-      .replace(/\s+/g, '_')        // Replace spaces with underscores
-      .replace(/[&+]/g, 'and')     // Replace & or + with "and"
-      .replace(/[^\w_]/g, '');     // Remove other special chars
-    
-    // Special case mappings for tags that might have variations
-    const specialCaseMappings = {
-      'online': 'online_fun',
-      'camera': 'camera_chat',
-      'public': 'in_a_public_place',
-      'leather': 'leather_latex_clothing',
-      'latex': 'leather_latex_clothing',
-      'power': 'power_play',
-      'massage': 'sensual_massage',
-      'sensual': 'sensual_massage',
-      'risk': 'risktaking',
-      'taking risks': 'risktaking',
-      'talk': 'dirty_talk',
-      'dirty': 'dirty_talk',
-      'במקום ציבורי': 'in_a_public_place',
-      'דיבור מלוכלך': 'dirty_talk',
-      'מוזיקה': 'music',
-      'תחומי עניין': 'interests',
-      'אני אוהב/ת': 'imInto',
-      'מחפש/ת': 'lookingFor',
-      'מדליק אותי': 'itTurnsMeOn'
-    };
-    
-    // Check if it's a special case partial match
-    for (const [partial, fullKey] of Object.entries(specialCaseMappings)) {
-      if (normalizedTag.includes(partial)) {
-        lookupKey = fullKey;
-        break;
-      }
-    }
-    
-    // Handle special section headers that are tags themselves
-    if (lookupKey === 'interests' || lookupKey === 'imInto' || lookupKey === 'lookingFor' || lookupKey === 'itTurnsMeOn') {
-      return translations[lookupKey] || tag;
-    }
-    
-    // Try to find a translation using the normalized tag as a key
-    const translationKey = `userProfile.tags.${lookupKey}`;
-    const translated = t(translationKey);
-    
-    // If the translation key doesn't exist, it will return the key itself
-    // In that case, fall back to the original tag with proper capitalization
-    if (translationKey === translated) {
-      // Preserve original capitalization
-      return tag;
-    }
-    
-    return translated;
-  }, [t]);
+
 
   // Function to validate MongoDB ObjectId format
   const isValidObjectId = (id) => {
@@ -747,7 +684,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="large">
         <div className={styles.loadingContainer}>
-          <LoadingSpinner text={t('userProfile.loadingProfile')} size="large" centered />
+          <LoadingSpinner text={t('loadingProfile')} size="large" centered />
         </div>
       </Modal>
     );
@@ -757,10 +694,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="small">
         <div className={styles.errorContainer}>
-          <h3 className={styles.errorTitle}>{t('userProfile.errorTitle')}</h3>
+          <h3 className={styles.errorTitle}>{t('errorUnknown')}</h3>
           <p className={styles.errorText}>{error}</p>
           <Button variant="primary" onClick={onClose}>
-            {t('userProfile.close')}
+            {t('close')}
           </Button>
         </div>
       </Modal>
@@ -774,10 +711,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     return (
       <Modal isOpen={isOpen} onClose={onClose} size="small">
         <div className={styles.notFoundContainer}>
-          <h3 className={styles.notFoundTitle}>{t('userProfile.notFoundTitle')}</h3>
-          <p className={styles.notFoundText}>{t('userProfile.notFoundText')}</p>
+          <h3 className={styles.notFoundTitle}>{t('notFound')}</h3>
+          <p className={styles.notFoundText}>{t('userNotFound')}</p>
           <Button variant="primary" onClick={onClose}>
-            {t('userProfile.close')}
+            {t('close')}
           </Button>
         </div>
       </Modal>
@@ -824,7 +761,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   !canViewPrivatePhotos ? (
                     <div className={styles.privatePhoto}>
                       <FaLock className={styles.lockIcon} />
-                      <p>{t('userProfile.privatePhoto')}</p>
+                      <p>{t('privatePhoto')}</p>
 
                       <button
                         className={styles.requestAccessBtn}
@@ -832,7 +769,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                         disabled={userPhotoAccess.isLoading}
                       >
                         {userPhotoAccess.isLoading ? <FaSpinner className={styles.spinner} /> : <FaEye />}
-                        {t('userProfile.allowPrivatePhotos')}
+                        {t('allowPrivatePhotos')}
                       </button>
                     </div>
                   ) : (
@@ -852,7 +789,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   {displayUser.isOnline && (
                     <div className={styles.onlineBadge}>
                       <span className={styles.pulse}></span>
-                      {t('userProfile.onlineNow')}
+                      {t('online')}
                     </div>
                   )}
 
@@ -863,7 +800,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                         className={`${styles.nav} ${styles.navPrev}`}
                         onClick={prevPhoto}
                         disabled={activePhotoIndex === 0}
-                        aria-label={t('userProfile.previous')}
+                        aria-label={t('previous')}
                       >
                         <FaChevronLeft />
                       </button>
@@ -871,7 +808,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                         className={`${styles.nav} ${styles.navNext}`}
                         onClick={nextPhoto}
                         disabled={activePhotoIndex === displayUser.photos.length - 1}
-                        aria-label={t('userProfile.next')}
+                        aria-label={t('next')}
                       >
                         <FaChevronRight />
                       </button>
@@ -893,9 +830,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                             <FaLock />
                             {userPhotoAccess.status && (
                               <div className={`${styles.permissionStatus} ${styles[userPhotoAccess.status]}`}>
-                                {userPhotoAccess.status === "pending" && t('userProfile.requestAccessPending')}
-                                {userPhotoAccess.status === "approved" && t('userProfile.approve')}
-                                {userPhotoAccess.status === "rejected" && t('userProfile.reject')}
+                                {userPhotoAccess.status === "pending" && t('requestAccessPending')}
+                                {userPhotoAccess.status === "approved" && t('approve')}
+                                {userPhotoAccess.status === "rejected" && t('reject')}
                               </div>
                             )}
                           </div>
@@ -921,7 +858,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   status={displayUser.isOnline ? "online" : null}
                   showOnlineStatus={true}
                 />
-                <p>{t('userProfile.noPhotosAvailable')}</p>
+                <p>{t('noPhotosAvailable')}</p>
               </div>
             )}
 
@@ -935,7 +872,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     disabled={isLiking}
                   >
                     {isLiking ? <FaSpinner className={styles.spinner} /> : <FaHeart />}
-                    {isUserLiked && isUserLiked(displayUser._id) ? t('userProfile.liked') : t('userProfile.like')}
+                    {isUserLiked && isUserLiked(displayUser._id) ? t('liked') : t('like')}
                   </button>
                   <button
                     className={`${styles.actionBtn} ${styles.messageBtn}`}
@@ -943,7 +880,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     disabled={isChatInitiating}
                   >
                     {isChatInitiating ? <FaSpinner className={styles.spinner} /> : <FaComment />}
-                    {t('userProfile.message')}
+                    {t('message')}
                   </button>
                 </>
               )}
@@ -951,7 +888,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 <button
                   className={`${styles.toggleBtn} ${theme === 'dark' ? styles.darkToggleBtn : ''}`}
                   onClick={() => setShowActions(!showActions)}
-                  aria-label={t('userProfile.moreActions')}
+                  aria-label={t('moreActions')}
                 >
                   <FaEllipsisH />
                 </button>
@@ -962,14 +899,14 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       onClick={handleReport}
                     >
                       <FaFlag className={theme === 'dark' ? styles.darkDropdownIcon : ''} />
-                      {t('userProfile.reportUser')}
+                      {t('reportUser')}
                     </button>
                     <button
                       className={`${styles.dropdownItem} ${theme === 'dark' ? styles.darkDropdownItem : ''}`}
                       onClick={handleBlock}
                     >
                       <FaBan className={theme === 'dark' ? styles.darkDropdownIcon : ''} />
-                      {t('userProfile.blockUser')}
+                      {t('blockUser')}
                     </button>
                   </div>
                 )}
@@ -986,7 +923,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               </h1>
               {displayUser.role === "premium" && (
                 <div className={styles.premiumBadge}>
-                  <FaTrophy /> {t('userProfile.premium', 'Premium')}
+                  <FaTrophy /> {t('premium', 'Premium')}
                 </div>
               )}
             </div>
@@ -994,7 +931,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
             {/* User location */}
             <div className={styles.location}>
               <FaMapMarkerAlt className={styles.icon} />
-              <span>{displayUser.details?.location || t('userProfile.unknownLocation')}</span>
+              <span>{displayUser.details?.location || t('unknownLocation')}</span>
               <div className={`${styles.onlineStatus} ${displayUser.isOnline ? styles.isOnline : ""} ${theme === 'dark' ? styles.darkOnlineStatus : ''}`}>
                 {displayUser.isOnline ? translations.onlineNow : translations.offline}
               </div>
@@ -1059,7 +996,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   </div>
                   <div className={styles.compatibilityDetails}>
                     <div className={styles.compatibilityFactor}>
-                      <span className={`${styles.factorLabel} ${theme === 'dark' ? styles.darkFactorLabel : ''}`}>{t('userProfile.location')}</span>
+                      <span className={`${styles.factorLabel} ${theme === 'dark' ? styles.darkFactorLabel : ''}`}>{t('location')}</span>
                       <div className={`${styles.factorBar} ${theme === 'dark' ? styles.darkFactorBar : ''}`}>
                         <div
                             className={`${styles.factorFill} ${theme === 'dark' ? styles.darkFactorFill : ''}`}
@@ -1070,7 +1007,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       </div>
                     </div>
                     <div className={styles.compatibilityFactor}>
-                      <span className={`${styles.factorLabel} ${theme === 'dark' ? styles.darkFactorLabel : ''}`}>{t('userProfile.age')}</span>
+                      <span className={`${styles.factorLabel} ${theme === 'dark' ? styles.darkFactorLabel : ''}`}>{t('age')}</span>
                       <div className={`${styles.factorBar} ${theme === 'dark' ? styles.darkFactorBar : ''}`}>
                         <div
                             className={`${styles.factorFill} ${theme === 'dark' ? styles.darkFactorFill : ''}`}
@@ -1086,7 +1023,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       </div>
                     </div>
                     <div className={styles.compatibilityFactor}>
-                      <span className={`${styles.factorLabel} ${theme === 'dark' ? styles.darkFactorLabel : ''}`}>{t('userProfile.interests')}</span>
+                      <span className={`${styles.factorLabel} ${theme === 'dark' ? styles.darkFactorLabel : ''}`}>{t('interests')}</span>
                       <div className={`${styles.factorBar} ${theme === 'dark' ? styles.darkFactorBar : ''}`}>
                         <div
                             className={`${styles.factorFill} ${theme === 'dark' ? styles.darkFactorFill : ''}`}
@@ -1114,7 +1051,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   <h2 className={styles.sectionTitle}>{translations.iAm}</h2>
                   <div className={styles.tagsContainer}>
                   <span className={`${styles.tag} ${styles.identityTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkIdentityTag : ''}`}>
-                    {capitalize(translateTag(displayUser.details.iAm))}
+                    {t(displayUser.details.iAm) || capitalize(displayUser.details.iAm)}
                   </span>
                   </div>
                 </div>
@@ -1125,7 +1062,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   <h2 className={styles.sectionTitle}>{translations.maritalStatus}</h2>
                   <div className={styles.tagsContainer}>
                   <span className={`${styles.tag} ${styles.statusTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkStatusTag : ''}`}>
-                    {translateTag(displayUser.details.maritalStatus)}
+                    {t(displayUser.details.maritalStatus) || displayUser.details.maritalStatus}
                   </span>
                   </div>
                 </div>
@@ -1137,7 +1074,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   <div className={styles.tagsContainer}>
                     {displayUser.details.lookingFor.map((item, index) => (
                         <span key={index} className={`${styles.tag} ${styles.lookingForTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkLookingForTag : ''}`}>
-                      {translateTag(item)}
+                      {t(item) || item}
                     </span>
                   ))}
                 </div>
@@ -1150,7 +1087,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 <div className={styles.tagsContainer}>
                   {displayUser.details.intoTags.map((item, index) => (
                     <span key={index} className={`${styles.tag} ${styles.intoTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkIntoTag : ''}`}>
-                      {translateTag(item)}
+                      {t(item) || item}
                     </span>
                   ))}
                 </div>
@@ -1163,7 +1100,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 <div className={styles.tagsContainer}>
                   {displayUser.details.turnOns.map((item, index) => (
                     <span key={index} className={`${styles.tag} ${styles.turnOnTag} ${theme === 'dark' ? styles.darkTag + ' ' + styles.darkTurnOnTag : ''}`}>
-                      {translateTag(item)}
+                      {t(item) || item}
                     </span>
                   ))}
                 </div>
@@ -1182,13 +1119,13 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     <span
                       key={interest}
                       className={`
-                        ${styles.interestTag} 
-                        ${commonInterests.includes(interest) ? styles.commonTag : ""} 
+                        ${styles.interestTag}
+                        ${commonInterests.includes(interest) ? styles.commonTag : ""}
                         ${theme === 'dark' ? styles.darkInterestTag : ''}
                         ${theme === 'dark' && commonInterests.includes(interest) ? styles.darkCommonTag : ''}
                       `}
                     >
-                      {translateTag(interest)}
+                      {t(interest) || interest}
                       {commonInterests.includes(interest) && <FaCheck className={`${styles.commonIcon} ${theme === 'dark' ? styles.darkCommonIcon : ''}`} />}
                     </span>
                   ))}
@@ -1197,7 +1134,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       className={`${styles.showMoreBtn} ${theme === 'dark' ? styles.darkShowMoreBtn : ''}`}
                       onClick={() => setShowAllInterests(true)}
                     >
-                      +{displayUser.details.interests.length - 8} {t('userProfile.showMore')}
+                      +{displayUser.details.interests.length - 8} {t('showMore')}
                     </button>
                   )}
                 </div>

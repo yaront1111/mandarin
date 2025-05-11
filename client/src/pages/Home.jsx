@@ -253,32 +253,32 @@ const Home = () => {
   const ArrowIcon = dir === "rtl" ? FaArrowLeft : FaArrowRight;
   const langLabel =
     language === "en"
-      ? t("settings.languageHebrew", "עברית")
-      : t("settings.languageEnglish", "English");
+      ? t("languageHebrew", "עברית")
+      : t("languageEnglish", "English");
 
   // Feature cards data
   const features = [
     {
       icon: FaLock,
-      title: t("home.privacyTitle", "Privacy First"),
+      title: t("privacyFirst", "Privacy First"),
       desc: t(
-        "home.privacyDescription",
+        "privacyDescription",
         "Your privacy is our top priority. Control who sees your profile and what information you share."
       ),
     },
     {
       icon: FaShieldAlt,
-      title: t("home.secureTitle", "Secure Communication"),
+      title: t("secureTitle", "Secure Communication"),
       desc: t(
-        "home.secureCommDescription",
+        "secureCommDescription",
         "End‑to‑end encrypted messaging ensures your conversations remain private and secure."
       ),
     },
     {
       icon: FaUsers,
-      title: t("home.matchTitle", "Smart Matching"),
+      title: t("matchTitle", "Smart Matching"),
       desc: t(
-        "home.smartMatchingDescription",
+        "smartMatchingDescription",
         "Our advanced algorithm connects you with people who match your preferences and interests."
       ),
     },
@@ -317,11 +317,11 @@ const Home = () => {
         </div>
         <div className="hero-content mx-auto text-center p-4 max-w-lg position-relative z-2">
           <h1 className="animate-slide-up mb-4 text-shadow font-weight-bold gradient-hero-text">
-            {t("home.findYourConnection", "Find Your Perfect Connection")}
+            {t("findYourConnection", "Find Your Perfect Connection")}
           </h1>
           <p className="animate-slide-up delay-200 mb-4 text-md opacity-90 line-height-relaxed">
             {t(
-              "home.heroSubtitle",
+              "heroSubtitle",
               "Discover genuine connections in a safe, discreet environment designed for adults seeking meaningful encounters."
             )}
           </p>
@@ -331,7 +331,7 @@ const Home = () => {
           >
             <input
               type="email"
-              placeholder={t("home.emailPlaceholder", "Enter your email")}
+              placeholder={t("emailPlaceholder", "Enter your email")}
               className="form-control border-0 py-3 flex-grow-1"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -341,7 +341,7 @@ const Home = () => {
               type="submit"
               className="btn btn-primary btn-lg d-flex align-items-center gap-2 transition-transform hover-scale"
             >
-              <span>{t("home.getStarted", "Get Started")}</span> <ArrowIcon />
+              <span>{t("getStarted", "Get Started")}</span> <ArrowIcon />
             </button>
           </form>
         </div>
@@ -352,11 +352,11 @@ const Home = () => {
         <div className="container">
           <div className="section-header text-center mb-5">
             <h2 className="gradient-text animate-slide-up mb-3 d-flex align-items-center justify-content-center gap-2">
-              <FaUsers /> {t("home.peopleOnlineNow", "People Online Now")}
+              <FaUsers /> {t("peopleOnlineNow", "People Online Now")}
             </h2>
             <p className="section-subtitle animate-slide-up delay-100 text-opacity-80 max-w-md mx-auto">
               {t(
-                "home.onlineNowSubtitle",
+                "onlineNowSubtitle",
                 "Connect with these amazing people who are currently active on Mandarin"
               )}
             </p>
@@ -400,7 +400,7 @@ const Home = () => {
                       {user.nickname}, {user.details?.age || "?"}
                     </h3>
                     <p className="user-location text-sm mb-2 d-flex align-items-center gap-1 text-opacity-70">
-                      <FaMapMarkerAlt /> {user.details?.location || t("common.notSpecified", "Not specified")}
+                      <FaMapMarkerAlt /> {user.details?.location || t("notSpecified", "Not specified")}
                     </p>
                     <div className="user-actions d-flex gap-2 justify-content-end">
                       <button
@@ -409,7 +409,7 @@ const Home = () => {
                           e.stopPropagation();
                           handleStartNow();
                         }}
-                        aria-label={t("common.like", "Like")}
+                        aria-label={t("like", "Like")}
                       >
                         <FaRegHeart className="action-icon" />
                       </button>
@@ -419,7 +419,7 @@ const Home = () => {
                           e.stopPropagation();
                           handleStartNow();
                         }}
-                        aria-label={t("common.message", "Message")}
+                        aria-label={t("message", "Message")}
                       >
                         <FaComment className="action-icon" />
                       </button>
@@ -435,7 +435,7 @@ const Home = () => {
               className="btn btn-secondary btn-lg d-inline-flex align-items-center gap-2"
               onClick={handleStartNow}
             >
-              {t("home.joinToSeeMore", "Join to See More")} <ArrowIcon />
+              {t("joinToSeeMore", "Join to See More")} <ArrowIcon />
             </button>
           </div>
         </div>
@@ -445,7 +445,7 @@ const Home = () => {
       <section className="features-section animate-fade-in glass-effect py-5 my-4 mx-3">
         <div className="container">
           <h2 className="gradient-text animate-slide-up mb-5 text-center">
-            {t("home.featuresTitle", "Why Choose Mandarin")}
+            {t("featuresTitle", "Why Choose Mandarin")}
           </h2>
           <div className="features-grid">
             {features.map(({ icon: Icon, title, desc }, idx) => (

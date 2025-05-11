@@ -46,32 +46,32 @@ const Support = () => {
 
   const faqs = [
     {
-      question: t("support.faq1Question", "How do I create an account?"),
-      answer: t("support.faq1Answer", "To create an account, click on the 'Register' button on the homepage. Fill out your details, upload a profile photo, and set your preferences. Once you verify your email, your account will be activated."),
+      question: t("faq1Question", "How do I create an account?"),
+      answer: t("faq1Answer", "To create an account, click on the 'Register' button on the homepage. Fill out your details, upload a profile photo, and set your preferences. Once you verify your email, your account will be activated."),
     },
     {
-      question: t("support.faq2Question", "How can I change my account settings?"),
-      answer: t("support.faq2Answer", "Navigate to the 'Settings' page after logging in. There, you can update your profile information, notification preferences, privacy settings, and account details."),
+      question: t("faq2Question", "How can I change my account settings?"),
+      answer: t("faq2Answer", "Navigate to the 'Settings' page after logging in. There, you can update your profile information, notification preferences, privacy settings, and account details."),
     },
     {
-      question: t("support.faq3Question", "Is my personal information secure?"),
-      answer: t("support.faq3Answer", "Yes, we take security very seriously. We use encryption to protect your data and never share your personal information with third parties without your consent. For more details, please review our Privacy Policy."),
+      question: t("faq3Question", "Is my personal information secure?"),
+      answer: t("faq3Answer", "Yes, we take security very seriously. We use encryption to protect your data and never share your personal information with third parties without your consent. For more details, please review our Privacy Policy."),
     },
     {
-      question: t("support.faq4Question", "How do I cancel my subscription?"),
-      answer: t("support.faq4Answer", "To cancel your subscription, go to 'Settings > Subscription' and click on 'Cancel Subscription'. Your premium benefits will remain active until the end of your current billing period."),
+      question: t("faq4Question", "How do I cancel my subscription?"),
+      answer: t("faq4Answer", "To cancel your subscription, go to 'Settings > Subscription' and click on 'Cancel Subscription'. Your premium benefits will remain active until the end of your current billing period."),
     },
     {
-      question: t("support.faq5Question", "How can I report inappropriate behavior?"),
-      answer: t("support.faq5Answer", "If you encounter inappropriate behavior, use the 'Report' button on the user's profile or in the message thread. Our moderation team will review the report and take appropriate action within 24 hours."),
+      question: t("faq5Question", "How can I report inappropriate behavior?"),
+      answer: t("faq5Answer", "If you encounter inappropriate behavior, use the 'Report' button on the user's profile or in the message thread. Our moderation team will review the report and take appropriate action within 24 hours."),
     },
     {
-      question: t("support.faq6Question", "What should I do if I forget my password?"),
-      answer: t("support.faq6Answer", "On the login page, click 'Forgot Password'. Enter your email address, and we'll send you instructions to reset your password. For security reasons, the reset link expires after 24 hours."),
+      question: t("faq6Question", "What should I do if I forget my password?"),
+      answer: t("faq6Answer", "On the login page, click 'Forgot Password'. Enter your email address, and we'll send you instructions to reset your password. For security reasons, the reset link expires after 24 hours."),
     },
     {
-      question: t("support.faq7Question", "How do I delete my account?"),
-      answer: t("support.faq7Answer", "Go to 'Settings > Account' and scroll to the bottom where you'll find the 'Delete Account' option. Please note that account deletion is permanent and cannot be undone."),
+      question: t("faq7Question", "How do I delete my account?"),
+      answer: t("faq7Answer", "Go to 'Settings > Account' and scroll to the bottom where you'll find the 'Delete Account' option. Please note that account deletion is permanent and cannot be undone."),
     },
   ];
 
@@ -105,7 +105,7 @@ const Support = () => {
         <div className="row justify-content-center">
           <div className="col-12 col-lg-10">
             <div className="policy-card">
-              <h1 className="policy-title gradient-text">{t("support.title", "Support Center")}</h1>
+              <h1 className="policy-title gradient-text">{t("supportTitle", "Support Center")}</h1>
               
               {/* Support Tabs */}
               <div className="support-tabs mb-4">
@@ -114,14 +114,14 @@ const Support = () => {
                   onClick={() => setActiveTab("contact")}
                 >
                   <FaEnvelope className="tab-icon" />
-                  {t("support.contactUs", "Contact Us")}
+                  {t("contactUs", "Contact Us")}
                 </button>
                 <button 
                   className={`support-tab ${activeTab === "faq" ? "active" : ""}`}
                   onClick={() => setActiveTab("faq")}
                 >
                   <FaQuestionCircle className="tab-icon" />
-                  {t("support.faq", "FAQ")}
+                  {t("faq", "FAQ")}
                 </button>
               </div>
 
@@ -133,36 +133,36 @@ const Support = () => {
                       <div className="contact-method">
                         <FaEnvelope className="contact-icon" />
                         <div>
-                          <h3>{t("support.email", "Email")}</h3>
+                          <h3>{t("email", "Email")}</h3>
                           <p>support@mandarin.example.com</p>
                         </div>
                       </div>
                       <div className="contact-method">
                         <FaPhone className="contact-icon" />
                         <div>
-                          <h3>{t("support.phone", "Phone")}</h3>
+                          <h3>{t("phone", "Phone")}</h3>
                           <p>+972 12 345 6789</p>
                         </div>
                       </div>
                       <div className="contact-method">
                         <FaComments className="contact-icon" />
                         <div>
-                          <h3>{t("support.liveChat", "Live Chat")}</h3>
-                          <p>{t("support.liveChatHours", "Available 9AM-6PM IST")}</p>
+                          <h3>{t("liveChat", "Live Chat")}</h3>
+                          <p>{t("liveChatHours", "Available 9AM-6PM IST")}</p>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <h2 className="mb-4">{t("support.contactForm", "Send Us a Message")}</h2>
+                  <h2 className="mb-4">{t("contactForm", "Send Us a Message")}</h2>
                   {formSubmitted ? (
                     <div className="alert alert-success">
-                      {t("support.formSuccess", "Thank you! Your message has been sent. We'll get back to you soon.")}
+                      {t("formSuccess", "Thank you! Your message has been sent. We'll get back to you soon.")}
                     </div>
                   ) : (
                     <form onSubmit={handleSubmit} className="support-form">
                       <div className="form-group mb-3">
-                        <label htmlFor="name">{t("support.formName", "Your Name")}</label>
+                        <label htmlFor="name">{t("formName", "Your Name")}</label>
                         <input
                           type="text"
                           id="name"
@@ -174,7 +174,7 @@ const Support = () => {
                         />
                       </div>
                       <div className="form-group mb-3">
-                        <label htmlFor="email">{t("support.formEmail", "Email Address")}</label>
+                        <label htmlFor="email">{t("formEmail", "Email Address")}</label>
                         <input
                           type="email"
                           id="email"
@@ -186,7 +186,7 @@ const Support = () => {
                         />
                       </div>
                       <div className="form-group mb-3">
-                        <label htmlFor="subject">{t("support.formSubject", "Subject")}</label>
+                        <label htmlFor="subject">{t("formSubject", "Subject")}</label>
                         <input
                           type="text"
                           id="subject"
@@ -198,7 +198,7 @@ const Support = () => {
                         />
                       </div>
                       <div className="form-group mb-3">
-                        <label htmlFor="message">{t("support.formMessage", "Message")}</label>
+                        <label htmlFor="message">{t("formMessage", "Message")}</label>
                         <textarea
                           id="message"
                           name="message"
@@ -210,7 +210,7 @@ const Support = () => {
                         ></textarea>
                       </div>
                       <button type="submit" className="btn btn-primary">
-                        {t("support.formSubmit", "Send Message")}
+                        {t("formSubmit", "Send Message")}
                       </button>
                     </form>
                   )}
@@ -220,7 +220,7 @@ const Support = () => {
               {/* FAQ */}
               {activeTab === "faq" && (
                 <div className="support-content">
-                  <h2 className="mb-4">{t("support.frequentlyAskedQuestions", "Frequently Asked Questions")}</h2>
+                  <h2 className="mb-4">{t("frequentlyAskedQuestions", "Frequently Asked Questions")}</h2>
                   <div className="faq-list">
                     {faqs.map((faq, index) => (
                       <div key={index} className={`faq-item ${expandedFaq === index ? "expanded" : ""}`}>
@@ -240,11 +240,11 @@ const Support = () => {
               )}
 
               <div className="policy-footer">
-                <Link to="/" className="btn btn-outline-primary">{t("common.backToHome", "Back to Home")}</Link>
+                <Link to="/" className="btn btn-outline-primary">{t("backToHome", "Back to Home")}</Link>
                 <div className="policy-links">
-                  <Link to="/about">{t("common.aboutUs", "About Us")}</Link>
-                  <Link to="/privacy">{t("common.privacyPolicy", "Privacy Policy")}</Link>
-                  <Link to="/terms">{t("common.termsOfService", "Terms of Service")}</Link>
+                  <Link to="/about">{t("aboutUs", "About Us")}</Link>
+                  <Link to="/privacy">{t("privacyPolicy", "Privacy Policy")}</Link>
+                  <Link to="/terms">{t("termsOfService", "Terms of Service")}</Link>
                 </div>
               </div>
             </div>

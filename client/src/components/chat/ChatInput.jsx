@@ -1,12 +1,14 @@
 // src/components/chat/ChatInput.jsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import PropTypes from 'prop-types';
+import { useTranslation } from 'react-i18next';
 import {
     FaSmile, FaPaperPlane, FaPaperclip, FaTimes, FaHeart, FaSpinner
 } from 'react-icons/fa';
 import { COMMON_EMOJIS, ACCOUNT_TIER } from './chatConstants.js';
 import { classNames } from './chatUtils.jsx';
 import defaultStyles from '../../styles/Messages.module.css';
+// Direct translation without helper functions
 
 const ChatInput = React.memo(({
     messageValue,
@@ -29,6 +31,24 @@ const ChatInput = React.memo(({
     const styles = customStyles || defaultStyles;
     const [showEmojis, setShowEmojis] = useState(false);
     const emojiPickerRef = useRef(null);
+    const { t } = useTranslation();
+
+    // Memoized translations using direct t() calls with fallbacks
+    const translations = useMemo(() => ({
+        messagePlaceholder: t('messagePlaceholder') || 'Type a message...',
+        sendMessage: t('sendMessage') || 'Send Message',
+        sendFile: t('sendFile') || 'Send File',
+        attachFile: t('attachFile') || 'Attach File',
+        addEmoji: t('addEmoji') || 'Add Emoji',
+        closeEmojiPicker: t('closeEmojiPicker') || 'Close emoji picker',
+        selectEmoji: t('selectEmoji') || 'Select Emoji',
+        sendWink: t('sendWink') || 'Send Wink',
+        blockedUserMessage: t('blockedUserMessage') || 'Cannot send messages to blocked users',
+        upgradeToSendText: t('upgradeToSendText') || 'Upgrade to send text messages',
+        upgradeToSendFiles: t('upgradeToSendFiles') || 'Upgrade to send files',
+        freeAccountWink: t('freeAccountWink') || 'Send a wink instead (Free Account)',
+        messageInput: t('messageInput') || 'Message Input'
+    }), [t]);
 
     // Simple input change handler
     const handleTextAreaChange = (e) => {
@@ -74,8 +94,8 @@ const ChatInput = React.memo(({
                      !isSending && !isUploading && !disabled;
     
     const effectivePlaceholder = isFreeUserNoAttachment
-        ? "Send a wink instead (Free Account)"
-        : placeholderText;
+        ? (translations.freeAccountWink || "Send a wink instead (Free Account)")
+        : (placeholderText || translations.messagePlaceholder || "Type a message...");
         
     const inputDisabled = disabled || isSending || isUploading || isFreeUserNoAttachment;
     const attachDisabled = disabled || isSending || isUploading || userTier === ACCOUNT_TIER.FREE;
@@ -93,10 +113,10 @@ const ChatInput = React.memo(({
                     aria-label="Emoji picker"
                 >
                     <div className={styles.emojiHeader}>
-                        <h4>Select Emoji</h4>
-                        <button 
-                            onClick={() => setShowEmojis(false)} 
-                            aria-label="Close emoji picker"
+                        <h4>{translations.selectEmoji || "Select Emoji"}</h4>
+                        <button
+                            onClick={() => setShowEmojis(false)}
+                            aria-label={translations.closeEmojiPicker || "Close emoji picker"}
                             type="button"
                         >
                             <FaTimes />
@@ -140,18 +160,18 @@ const ChatInput = React.memo(({
                         styles.messageInput,
                         isUserBlocked && styles.blockedInput
                     )}
-                    placeholder={isUserBlocked ? "Cannot send messages to blocked users" : effectivePlaceholder}
-                    value={messageValue} 
-                    onChange={handleTextAreaChange} 
-                    onKeyPress={handleKeyPress} 
-                    rows={1} 
-                    disabled={inputDisabled || isUserBlocked} 
-                    title={isUserBlocked ? 
-                        "This user is blocked" : 
-                        (isFreeUserNoAttachment ? 
-                            "Upgrade to send text messages" : 
-                            "Type a message (Shift+Enter for newline)")}
-                    aria-label="Message Input" 
+                    placeholder={isUserBlocked ? (translations.blockedUserMessage || "Cannot send messages to blocked users") : effectivePlaceholder}
+                    value={messageValue}
+                    onChange={handleTextAreaChange}
+                    onKeyPress={handleKeyPress}
+                    rows={1}
+                    disabled={inputDisabled || isUserBlocked}
+                    title={isUserBlocked ?
+                        (translations.blockedUserMessage || "This user is blocked") :
+                        (isFreeUserNoAttachment ?
+                            (translations.upgradeToSendText || "Upgrade to send text messages") :
+                            (translations.messagePlaceholder || "Type a message (Shift+Enter for newline)"))}
+                    aria-label={translations.messageInput || "Message Input"}
                 />
                 
                 {/* Attachment Button */}
@@ -159,11 +179,11 @@ const ChatInput = React.memo(({
                     type="button" 
                     className={styles.attachButton}
                     onClick={onFileAttachClick} 
-                    disabled={attachDisabled} 
-                    title={userTier === ACCOUNT_TIER.FREE ? 
-                        "Upgrade to send files" : 
-                        "Attach File"} 
-                    aria-label="Attach File"
+                    disabled={attachDisabled}
+                    title={userTier === ACCOUNT_TIER.FREE ?
+                        (translations.upgradeToSendFiles || "Upgrade to send files") :
+                        (translations.attachFile || "Attach File")}
+                    aria-label={translations.attachFile || "Attach File"}
                 >
                     <FaPaperclip />
                 </button>
@@ -173,9 +193,9 @@ const ChatInput = React.memo(({
                     type="button" 
                     className={styles.winkButton}
                     onClick={onWinkSend} 
-                    disabled={winkDisabled} 
-                    title="Send Wink" 
-                    aria-label="Send Wink"
+                    disabled={winkDisabled}
+                    title={translations.sendWink || "Send Wink"}
+                    aria-label={translations.sendWink || "Send Wink"}
                 >
                     <FaHeart />
                 </button>
@@ -189,9 +209,9 @@ const ChatInput = React.memo(({
                         !canSubmit && styles.disabled, 
                         (isSending || isUploading) && styles.sending
                     )} 
-                    disabled={!canSubmit} 
-                    title={attachmentSelected ? "Send File" : "Send Message"} 
-                    aria-label={attachmentSelected ? "Send File" : "Send Message"}
+                    disabled={!canSubmit}
+                    title={attachmentSelected ? (translations.sendFile || "Send File") : (translations.sendMessage || "Send Message")}
+                    aria-label={attachmentSelected ? (translations.sendFile || "Send File") : (translations.sendMessage || "Send Message")}
                 >
                     {isSending || isUploading ? 
                         <FaSpinner className="fa-spin" /> : 

@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import PropTypes from 'prop-types';
+import { useTranslation } from 'react-i18next';
+// Direct translation without helper functions
 
 /**
  * Reusable Button component with standardized styling
@@ -16,13 +18,23 @@ const Button = ({
   icon,
   iconPosition = 'left',
   isLoading = false,
-  loadingText = 'Loading...',
+  loadingText,
   ...rest
 }) => {
+  const { t } = useTranslation();
+
+  // Memoized translations using direct t() calls with fallbacks
+  const translations = useMemo(() => ({
+    loading: t('loading') || 'Loading...'
+  }), [t]);
+
   const baseClasses = `btn btn-${variant} btn-${size} ${fullWidth ? 'btn-full-width' : ''}`;
   const iconClasses = icon ? `btn-with-icon icon-${iconPosition}` : '';
   const loadingClasses = isLoading ? 'btn-loading' : '';
-  
+
+  // Use provided loadingText or the translation
+  const loadingDisplay = loadingText || translations.loading;
+
   return (
     <button
       type={type}
@@ -34,7 +46,7 @@ const Button = ({
       {isLoading ? (
         <>
           <span className="loading-spinner"></span>
-          {loadingText}
+          {loadingDisplay}
         </>
       ) : (
         <>

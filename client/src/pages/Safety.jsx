@@ -59,15 +59,15 @@ const Safety = () => {
         <div className="row justify-content-center">
           <div className="col-12 col-lg-10">
             <div className="policy-card">
-              <h1 className="policy-title gradient-text">{t("safety.title", "Safety & Privacy")}</h1>
+              <h1 className="policy-title gradient-text">{t("safetyTitle", "Safety & Privacy")}</h1>
               
               <section className="mb-5">
                 <div className="safety-icon-container">
                   <FaShieldAlt className="safety-main-icon" />
                 </div>
-                <h2>{t("safety.introduction", "Your Safety is Our Priority")}</h2>
+                <h2>{t("safetyIntroduction", "Your Safety is Our Priority")}</h2>
                 <p>
-                  {t("safety.introContent", 
+                  {t("safetyIntroContent",
                     "At Mandarin, we are committed to creating a safe, secure, and respectful environment for all our users. We have implemented comprehensive safety measures to protect your privacy and ensure positive interactions. This page outlines our commitment to your safety and provides resources to help you stay safe while using our platform."
                   )}
                 </p>
@@ -76,87 +76,87 @@ const Safety = () => {
               <section className="mb-5">
                 <h2 className="d-flex align-items-center">
                   <FaLock className="section-icon" />
-                  {t("safety.privacyProtection", "Privacy Protection")}
+                  {t("privacyProtection", "Privacy Protection")}
                 </h2>
                 <p>
-                  {t("safety.privacyContent", 
+                  {t("privacyContent",
                     "Your personal information is safeguarded by industry-leading security measures:"
                   )}
                 </p>
                 <ul className="safety-checklist">
                   <li>
                     <FaCheck className="check-icon" />
-                    {t("safety.dataEncryption", "End-to-end encryption for all personal data")}
+                    {t("dataEncryption", "End-to-end encryption for all personal data")}
                   </li>
                   <li>
                     <FaCheck className="check-icon" />
-                    {t("safety.photoPrivacy", "Control over who sees your photos and profile information")}
+                    {t("photoPrivacy", "Control over who sees your photos and profile information")}
                   </li>
                   <li>
                     <FaCheck className="check-icon" />
-                    {t("safety.locationControl", "Precise control over your location sharing")}
+                    {t("locationControl", "Precise control over your location sharing")}
                   </li>
                   <li>
                     <FaCheck className="check-icon" />
-                    {t("safety.privacySettings", "Customizable privacy settings for your comfort level")}
+                    {t("privacySettings", "Customizable privacy settings for your comfort level")}
                   </li>
                 </ul>
                 <p>
-                  {t("safety.privacyPolicy", 
+                  {t("reviewPrivacyPolicy",
                     "For more details on how we handle your data, please review our"
-                  )} <Link to="/privacy" className="text-link">{t("safety.privacyPolicyLink", "Privacy Policy")}</Link>.
+                  )} <Link to="/privacy" className="text-link">{t("privacyPolicyLink", "Privacy Policy")}</Link>.
                 </p>
               </section>
 
               <section className="mb-5">
                 <h2 className="d-flex align-items-center">
                   <FaUserShield className="section-icon" />
-                  {t("safety.onlineSafety", "Online Safety Tips")}
+                  {t("onlineSafety", "Online Safety Tips")}
                 </h2>
                 <p>
-                  {t("safety.tipsIntro", 
+                  {t("tipsIntro",
                     "While we work hard to maintain a safe platform, it's important to follow these safety guidelines:"
                   )}
                 </p>
                 
                 <div className="safety-tips-grid">
                   <div className="safety-tip">
-                    <h3>{t("safety.meetingTip", "Meeting In Person")}</h3>
+                    <h3>{t("meetingTip", "Meeting In Person")}</h3>
                     <ul>
-                      <li>{t("safety.meetPublic", "Always meet in a public place for your first meeting")}</li>
-                      <li>{t("safety.tellFriend", "Tell a friend or family member about your plans")}</li>
-                      <li>{t("safety.stayingSober", "Stay sober and clear-headed during initial meetings")}</li>
-                      <li>{t("safety.ownTransport", "Arrange your own transportation to and from the meeting")}</li>
+                      <li>{t("meetPublic", "Always meet in a public place for your first meeting")}</li>
+                      <li>{t("tellFriend", "Tell a friend or family member about your plans")}</li>
+                      <li>{t("stayingSober", "Stay sober and clear-headed during initial meetings")}</li>
+                      <li>{t("ownTransport", "Arrange your own transportation to and from the meeting")}</li>
                     </ul>
                   </div>
                   
                   <div className="safety-tip">
-                    <h3>{t("safety.personalInfoTip", "Protecting Personal Information")}</h3>
+                    <h3>{t("personalInfoTip", "Protecting Personal Information")}</h3>
                     <ul>
-                      <li>{t("safety.limitInfo", "Limit personal information in your profile and messages")}</li>
-                      <li>{t("safety.noFinancial", "Never share financial information or send money")}</li>
-                      <li>{t("safety.privateComm", "Keep communications on the platform until you build trust")}</li>
-                      <li>{t("safety.socialMedia", "Be cautious about connecting on social media too quickly")}</li>
+                      <li>{t("limitInfo", "Limit personal information in your profile and messages")}</li>
+                      <li>{t("noFinancial", "Never share financial information or send money")}</li>
+                      <li>{t("privateComm", "Keep communications on the platform until you build trust")}</li>
+                      <li>{t("socialMedia", "Be cautious about connecting on social media too quickly")}</li>
                     </ul>
                   </div>
                   
                   <div className="safety-tip">
-                    <h3>{t("safety.recognizeTip", "Recognizing Red Flags")}</h3>
+                    <h3>{t("recognizeTip", "Recognizing Red Flags")}</h3>
                     <ul>
-                      <li>{t("safety.inconsistencies", "Be wary of inconsistencies in someone's story")}</li>
-                      <li>{t("safety.rushingRelationship", "Be cautious of someone rushing the relationship")}</li>
-                      <li>{t("safety.avoidingQuestions", "Watch for avoidance of direct questions")}</li>
-                      <li>{t("safety.requestingMoney", "Be alert if someone requests money for any reason")}</li>
+                      <li>{t("inconsistencies", "Be wary of inconsistencies in someone's story")}</li>
+                      <li>{t("rushingRelationship", "Be cautious of someone rushing the relationship")}</li>
+                      <li>{t("avoidingQuestions", "Watch for avoidance of direct questions")}</li>
+                      <li>{t("requestingMoney", "Be alert if someone requests money for any reason")}</li>
                     </ul>
                   </div>
                   
                   <div className="safety-tip">
-                    <h3>{t("safety.respectTip", "Respectful Communication")}</h3>
+                    <h3>{t("respectTip", "Respectful Communication")}</h3>
                     <ul>
-                      <li>{t("safety.consentMatters", "Always respect boundaries and consent")}</li>
-                      <li>{t("safety.politeDecline", "Politely decline interests that don't match yours")}</li>
-                      <li>{t("safety.reportHarassment", "Report any harassment or inappropriate messages")}</li>
-                      <li>{t("safety.blockOption", "Use the block feature if someone makes you uncomfortable")}</li>
+                      <li>{t("consentMatters", "Always respect boundaries and consent")}</li>
+                      <li>{t("politeDecline", "Politely decline interests that don't match yours")}</li>
+                      <li>{t("reportHarassment", "Report any harassment or inappropriate messages")}</li>
+                      <li>{t("blockOption", "Use the block feature if someone makes you uncomfortable")}</li>
                     </ul>
                   </div>
                 </div>
@@ -165,84 +165,84 @@ const Safety = () => {
               <section className="mb-5">
                 <h2 className="d-flex align-items-center">
                   <FaExclamationTriangle className="section-icon" />
-                  {t("safety.reportingIssues", "Reporting Issues")}
+                  {t("reportingIssues", "Reporting Issues")}
                 </h2>
                 <p>
-                  {t("safety.reportingContent", 
+                  {t("reportingContent",
                     "Your safety is our priority. If you encounter inappropriate behavior, we encourage you to report it immediately:"
                   )}
                 </p>
                 <ol className="safety-reporting">
                   <li>
-                    <strong>{t("safety.reportingUser", "Report a User")}:</strong> {t("safety.reportingUserDetails", "Use the 'Report' button on their profile or in your chat conversation")}
+                    <strong>{t("reportingUser", "Report a User")}:</strong> {t("reportingUserDetails", "Use the 'Report' button on their profile or in your chat conversation")}
                   </li>
                   <li>
-                    <strong>{t("safety.reportingContact", "Contact Support")}:</strong> {t("safety.reportingContactDetails", "Our support team is available 24/7 to assist with urgent safety concerns")}
+                    <strong>{t("reportingContact", "Contact Support")}:</strong> {t("reportingContactDetails", "Our support team is available 24/7 to assist with urgent safety concerns")}
                   </li>
                   <li>
-                    <strong>{t("safety.reportingAuthorities", "Contact Authorities")}:</strong> {t("safety.reportingAuthoritiesDetails", "In case of immediate danger or threats, please contact local authorities first")}
+                    <strong>{t("reportingAuthorities", "Contact Authorities")}:</strong> {t("reportingAuthoritiesDetails", "In case of immediate danger or threats, please contact local authorities first")}
                   </li>
                 </ol>
                 <div className="safety-alert">
                   <p>
-                    <strong>{t("safety.emergencySituations", "For emergency situations")}: </strong>
-                    {t("safety.emergencyContact", "Contact your local emergency services immediately, then notify our support team so we can take appropriate action on our platform.")}
+                    <strong>{t("emergencySituations", "For emergency situations")}: </strong>
+                    {t("emergencyContact", "Contact your local emergency services immediately, then notify our support team so we can take appropriate action on our platform.")}
                   </p>
                 </div>
               </section>
 
               <section className="mb-5">
-                <h2>{t("safety.verification", "User Verification")}</h2>
+                <h2>{t("verification", "User Verification")}</h2>
                 <p>
-                  {t("safety.verificationContent", 
+                  {t("verificationContent",
                     "We employ multiple verification methods to ensure the authenticity of our users:"
                   )}
                 </p>
                 <ul className="safety-checklist">
                   <li>
                     <FaCheck className="check-icon" />
-                    {t("safety.photoVerification", "Photo verification technology")}
+                    {t("photoVerification", "Photo verification technology")}
                   </li>
                   <li>
                     <FaCheck className="check-icon" />
-                    {t("safety.emailVerification", "Email verification")}
+                    {t("emailVerification", "Email verification")}
                   </li>
                   <li>
                     <FaCheck className="check-icon" />
-                    {t("safety.phoneVerification", "Phone number verification")}
+                    {t("phoneVerification", "Phone number verification")}
                   </li>
                   <li>
                     <FaCheck className="check-icon" />
-                    {t("safety.profileReview", "Profile review process")}
+                    {t("profileReview", "Profile review process")}
                   </li>
                 </ul>
                 <p>
-                  {t("safety.verificationBadge", 
+                  {t("verificationBadge",
                     "Look for the verified badge on profiles to identify users who have completed our verification process."
                   )}
                 </p>
               </section>
 
               <section className="mb-5">
-                <h2>{t("safety.contactUs", "Contact Our Safety Team")}</h2>
+                <h2>{t("contactSafetyTeam", "Contact Our Safety Team")}</h2>
                 <p>
-                  {t("safety.contactContent", 
+                  {t("safetyContactContent",
                     "If you have safety concerns or suggestions, our dedicated safety team is here to help:"
                   )}
                 </p>
                 <p>
                   Email: safety@mandarin.example.com<br />
-                  Support: <Link to="/support" className="text-link">{t("safety.supportCenter", "Support Center")}</Link>
+                  Support: <Link to="/support" className="text-link">{t("supportCenter", "Support Center")}</Link>
                 </p>
               </section>
 
               <div className="policy-footer">
-                <Link to="/" className="btn btn-outline-primary">{t("common.backToHome", "Back to Home")}</Link>
+                <Link to="/" className="btn btn-outline-primary">{t("backToHome", "Back to Home")}</Link>
                 <div className="policy-links">
-                  <Link to="/about">{t("common.aboutUs", "About Us")}</Link>
-                  <Link to="/privacy">{t("common.privacyPolicy", "Privacy Policy")}</Link>
-                  <Link to="/terms">{t("common.termsOfService", "Terms of Service")}</Link>
-                  <Link to="/support">{t("common.contactSupport", "Contact Support")}</Link>
+                  <Link to="/about">{t("aboutUs", "About Us")}</Link>
+                  <Link to="/privacy">{t("privacyPolicy", "Privacy Policy")}</Link>
+                  <Link to="/terms">{t("termsOfService", "Terms of Service")}</Link>
+                  <Link to="/support">{t("contactSupport", "Contact Support")}</Link>
                 </div>
               </div>
             </div>

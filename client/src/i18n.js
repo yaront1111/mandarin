@@ -3,7 +3,7 @@ import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import logger from "./utils/logger";
 
-// Import the translation files
+// Import the translation files with standardized namespaces
 import enTranslations from './en.json';
 import heTranslations from './he.json';
 
@@ -14,66 +14,19 @@ i18n
 
 const log = logger.create('i18n');
 
-// Consolidated photo translations (migrated from translation-fix.js)
-// These are now part of the main translation files and added here for backward compatibility
-const photoTranslations = {
-  // English translations
-  en: {
-    profile: {
-      photos: "Photos",
-      photo: "Photo",
-      currentlyPrivate: "Currently private",
-      currentlyPublic: "Currently public",
-      currentlyFriendsOnly: "Currently visible to friends only",
-      makePublic: "Make public",
-      makePrivate: "Make private",
-      makeFriendsOnly: "Make friends only",
-      setAsProfilePhoto: "Set as profile photo",
-      deletePhoto: "Delete photo"
-    }
-  },
-  
-  // Hebrew translations
-  he: {
-    profile: {
-      photos: "תמונות",
-      photo: "תמונה",
-      currentlyPrivate: "כרגע פרטי",
-      currentlyPublic: "כרגע ציבורי",
-      currentlyFriendsOnly: "כרגע גלוי לחברים בלבד",
-      makePublic: "הפוך לציבורי",
-      makePrivate: "הפוך לפרטי",
-      makeFriendsOnly: "הפוך לחברים בלבד",
-      setAsProfilePhoto: "הגדר כתמונת פרופיל",
-      deletePhoto: "מחק תמונה"
-    }
-  }
-};
+// Note: All translations are now in the flat structure in en.json and he.json
+// No need for a separate photoTranslations object anymore
 
 // --- Initialize i18next ---
 i18n.init({
   // --- Resource Bundles ---
-  // Load translations from the imported JSON files
+  // Load translations from the imported JSON files with standardized namespaces
   resources: {
     en: {
-      translation: {
-        ...enTranslations,
-        // Ensure photo translations are available in the main bundle
-        profile: {
-          ...enTranslations.profile,
-          ...photoTranslations.en.profile
-        }
-      },
+      translation: enTranslations,
     },
     he: {
-      translation: {
-        ...heTranslations,
-        // Ensure photo translations are available in the main bundle
-        profile: {
-          ...heTranslations.profile,
-          ...photoTranslations.he.profile
-        }
-      },
+      translation: heTranslations,
     },
   },
 
@@ -94,7 +47,7 @@ i18n.init({
   defaultNS: "translation",
 
   // --- Advanced Options ---
-  keySeparator: ".", // Use '.' for nested keys (e.g., profile.iAm)
+  keySeparator: false, // Disable key separator for flat structure
   nsSeparator: ":", // Namespace separator (not heavily used with single NS)
 
   // --- Detection Settings ---
@@ -121,8 +74,8 @@ i18n.init({
   // Handler for missing keys - provides a fallback and logs a warning
   parseMissingKeyHandler: (key) => {
     log.warn(`Missing translation key: ${key}`);
-    // Attempt to return a readable version of the last part of the key
-    return key.split(".").pop().replace(/_/g, " ");
+    // For flat structure, just make it more readable by replacing underscores
+    return key.replace(/_/g, " ");
   },
 
   // Optionally save missing keys to the backend or log them (requires backend setup or custom logger)
@@ -148,10 +101,10 @@ i18n.init({
   debug: process.env.NODE_ENV === "development",
 });
 
-// Deprecated: This function is no longer needed as translations are now directly included
-// in the main translation resources. It's kept here for backward compatibility.
+// This function is no longer needed as we've moved to flat translations in en.json and he.json.
+// It's only kept here for backward compatibility with any code that might still reference it.
 export const addPhotoTranslations = (i18nInstance) => {
-  log.info("addPhotoTranslations is deprecated. Translations are now in the main resources.");
+  log.info("addPhotoTranslations is deprecated. We now use flat translations in en.json and he.json");
   return i18nInstance;
 };
 

@@ -52,14 +52,14 @@ const Login = () => {
     const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/
 
     if (!formData.email) {
-      errors.email = t('auth.email') + " " + t('errors.validationError')
+      errors.email = t('email') + " " + t('validationError')
     } else if (!emailRegex.test(formData.email)) {
-      errors.email = t('errors.validationError')
+      errors.email = t('validationError')
     }
     if (!formData.password) {
-      errors.password = t('auth.password') + " " + t('errors.validationError')
+      errors.password = t('password') + " " + t('validationError')
     } else if (formData.password.length < 6) {
-      errors.password = t('auth.passwordRequirements')
+      errors.password = t('passwordRequirements')
     }
 
     return errors
@@ -103,7 +103,7 @@ const Login = () => {
           <Link to="/" className={styles.pageTitle}>
             Mandarin
           </Link>
-          <p className={styles.subtitle}>{t('auth.signIn')}</p>
+          <p className={styles.subtitle}>{t('signIn')}</p>
         </div>
 
         {formErrors.general && (
@@ -116,7 +116,7 @@ const Login = () => {
         <form onSubmit={handleSubmit}>
           <div className={styles.formGroup}>
             <label className={styles.formLabel} htmlFor="email">
-              {t('auth.email')}
+              {t('email')}
             </label>
             <div className={styles.inputWrapper}>
               <FaEnvelope className={styles.inputIcon} />
@@ -125,7 +125,7 @@ const Login = () => {
                 id="email"
                 name="email"
                 className={styles.input}
-                placeholder={t('auth.email')}
+                placeholder={t('email')}
                 value={formData.email}
                 onChange={handleChange}
                 disabled={isSubmitting}
@@ -142,7 +142,7 @@ const Login = () => {
 
           <div className={styles.formGroup}>
             <label className={styles.formLabel} htmlFor="password">
-              {t('auth.password')}
+              {t('password')}
             </label>
             <div className={styles.inputWrapper}>
               <FaLock className={styles.inputIcon} />
@@ -151,7 +151,7 @@ const Login = () => {
                 id="password"
                 name="password"
                 className={styles.input}
-                placeholder={t('auth.password')}
+                placeholder={t('password')}
                 value={formData.password}
                 onChange={handleChange}
                 disabled={isSubmitting}
@@ -183,10 +183,10 @@ const Login = () => {
                 onChange={() => setRememberMe(!rememberMe)}
                 disabled={isSubmitting}
               />
-              {t('auth.rememberMe')}
+              {t('rememberMe')}
             </label>
             <Link to="/forgot-password" className={styles.forgotPassword}>
-              {t('auth.forgotPassword')}
+              {t('forgotPassword')}
             </Link>
           </div>
 
@@ -198,34 +198,34 @@ const Login = () => {
             {isSubmitting ? (
               <>
                 <span className={styles.spinner}></span>
-                <span>{t('common.loading')}</span>
+                <span>{t('loading')}</span>
               </>
             ) : (
               <>
-                <span>{t('auth.signIn')}</span>
+                <span>{t('signIn')}</span>
                 <FaArrowRight />
               </>
             )}
           </button>
         </form>
 
-        <div className={styles.divider}>{t('common.or')}</div>
+        <div className={styles.divider}>{t('or')}</div>
 
         <div>
           <button className={styles.socialButton}>
             <FaGoogle className={styles.googleIcon} />
-            <span>{t('auth.signInWith')} Google</span>
+            <span>{t('signInWith')} Google</span>
           </button>
           <button className={styles.socialButton}>
             <FaFacebook className={styles.facebookIcon} />
-            <span>{t('auth.signInWith')} Facebook</span>
+            <span>{t('signInWith')} Facebook</span>
           </button>
         </div>
 
         <div className={styles.footer}>
-          {t('auth.dontHaveAccount')}{" "}
+          {t('dontHaveAccount')}{" "}
           <Link to="/register" className={styles.footerLink}>
-            {t('auth.signUp')}
+            {t('signUp')}
           </Link>
         </div>
       </div>

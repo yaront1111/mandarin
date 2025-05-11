@@ -3,22 +3,23 @@ import PropTypes from 'prop-types';
 
 /**
  * Reusable Card component with consistent styling
+ * No translations needed for this pure presentational component
  */
-const Card = ({ 
-  children, 
-  title, 
-  subtitle, 
-  className = '', 
+const Card = ({
+  children,
+  title,
+  subtitle,
+  className = '',
   headerClassName = '',
   bodyClassName = '',
   footerClassName = '',
   footer,
   noPadding = false,
   onClick,
-  hover = false 
+  hover = false
 }) => {
   return (
-    <div 
+    <div
       className={`card ${hover ? 'hover-effect' : ''} ${className}`}
       onClick={onClick}
       role={onClick ? "button" : undefined}
@@ -30,11 +31,11 @@ const Card = ({
           {subtitle && <p className="card-subtitle">{subtitle}</p>}
         </div>
       )}
-      
+
       <div className={`card-body ${noPadding ? 'no-padding' : ''} ${bodyClassName}`}>
         {children}
       </div>
-      
+
       {footer && (
         <div className={`card-footer ${footerClassName}`}>
           {footer}

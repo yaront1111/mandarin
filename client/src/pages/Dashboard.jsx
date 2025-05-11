@@ -37,11 +37,42 @@ const Dashboard = () => {
   const { createStory } = useStories()
   const { t } = useTranslation()
   const { isRTL } = useLanguage()
-  
+
   // Use our responsive design hooks
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
   const isSmallScreen = isMobile || isTablet;
+
+  // Memoized translations using direct t() calls with fallbacks
+  const translations = useMemo(() => ({
+    browseUsers: t('browseUsers') || 'Browse Users',
+    yourMatches: t('yourMatches') || 'Your Matches',
+    findMatches: t('findMatches') || 'Find your perfect matches',
+    loadingUsers: t('loadingUsers') || 'Loading users',
+    loadingMoreUsers: t('loadingMoreUsers') || 'Loading more users',
+    noMatches: t('noMatches') || 'No matches found',
+    tryAdjustingFilters: t('tryAdjustingFilters') || 'Try adjusting your filters',
+    myStories: t('myStories') || 'My Stories',
+    createStory: t('createStory') || 'Create Story',
+    loading: t('loading') || 'Loading',
+    filter: t('filter') || 'Filter',
+    filters: t('filters') || 'Filters',
+    reset: t('reset') || 'Reset',
+    apply: t('apply') || 'Apply',
+    online: t('online') || 'Online',
+    showOnly: t('showOnly') || 'Show Only',
+    range: t('range') || 'Range',
+    age: t('age') || 'Age',
+    distance: t('distance') || 'Distance',
+    verified: t('verified') || 'Verified',
+    withPhotos: t('withPhotos') || 'With Photos',
+    interests: t('interests') || 'Interests',
+    gridView: t('gridView') || 'Grid View',
+    listView: t('listView') || 'List View',
+    toggleFilters: t('toggleFilters') || 'Toggle Filters',
+    browseAndConnect: t('browseAndConnect') || 'Browse and Connect',
+    kmAway: t('kmAway') || 'km away'
+  }), [t]);
 
   // Infinite scrolling states
   const [page, setPage] = useState(1)
@@ -386,7 +417,7 @@ const Dashboard = () => {
           {/* Stories Section */}
           <div className={styles.storiesSection}>
             <div className={styles.storiesHeader}>
-              <h2 className={styles.storiesTitle}>{t('stories.myStories')}</h2>
+              <h2 className={styles.storiesTitle}>{translations.myStories}</h2>
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() => !creatingStory && setShowStoryCreator(true)}
@@ -394,7 +425,7 @@ const Dashboard = () => {
                 disabled={creatingStory}
               >
                 <FaPlus />
-                <span>{creatingStory ? t('common.loading') : t('stories.createStory')}</span>
+                <span>{creatingStory ? translations.loading : translations.createStory}</span>
               </button>
             </div>
             <StoriesCarousel
@@ -409,8 +440,10 @@ const Dashboard = () => {
           {/* Content Header with Filters and View Toggle */}
           <div className={styles.dashboardHeader}>
             <div>
-              <h1 className={styles.dashboardTitle}>{activeTab === "discover" ? t('dashboard.browseUsers') : t('dashboard.yourMatches')}</h1>
-              <p className={styles.dashboardSubtitle}>{t('dashboard.findMatches')}</p>
+              <h1 className={styles.dashboardTitle}>
+                {activeTab === "discover" ? translations.browseUsers : translations.yourMatches}
+              </h1>
+              <p className={styles.dashboardSubtitle}>{translations.findMatches}</p>
             </div>
             <div className={styles.dashboardActions}>
               <div className={styles.viewToggle}>
@@ -438,7 +471,7 @@ const Dashboard = () => {
                 aria-label="Toggle filters"
               >
                 <FaFilter />
-                <span>{t('common.filter')}</span>
+                <span>{translations.filter}</span>
               </button>
             </div>
           </div>
@@ -450,7 +483,7 @@ const Dashboard = () => {
               {isMobile && (
                 <div className="mobile-modal-header">
                   <div className="mobile-modal-drag-indicator"></div>
-                  <h3 className="mobile-modal-title">{t('common.filters')}</h3>
+                  <h3 className="mobile-modal-title">{translations.filters}</h3>
                   <button 
                     className="mobile-modal-close" 
                     onClick={() => setShowFilters(false)}
@@ -463,7 +496,7 @@ const Dashboard = () => {
               
               {/* Age Range Filter */}
               <div className={styles.filterSection}>
-                <h3>{t('profile.age')} {t('common.range')}</h3>
+                <h3>{translations.age} {translations.range}</h3>
                 <div className={`${styles.filterOptions} ${isMobile ? 'touch-target' : ''}`}>
                   <div className={styles.rangeSlider}>
                     <div className={styles.rangeValues}>
@@ -504,7 +537,7 @@ const Dashboard = () => {
 
               {/* Distance Filter */}
               <div className={styles.filterSection}>
-                <h3>{t('profile.distance')}</h3>
+                <h3>{translations.distance}</h3>
                 <div className={styles.filterOptions}>
                   <div className={styles.rangeSlider}>
                     <div className={styles.rangeValue}>
@@ -530,7 +563,7 @@ const Dashboard = () => {
 
               {/* Show Only Filters */}
               <div className={styles.filterSection}>
-                <h3>{t('common.showOnly')}</h3>
+                <h3>{translations.showOnly}</h3>
                 <div className={`${styles.filterOptions} d-flex flex-column`}>
                   <label className={styles.filterOption}>
                     <input
@@ -544,7 +577,7 @@ const Dashboard = () => {
                       }
                       aria-label="Show only online users"
                     />
-                    <span>{t('common.online')}</span>
+                    <span>{translations.online}</span>
                   </label>
                   <label className={styles.filterOption}>
                     <input
@@ -558,7 +591,7 @@ const Dashboard = () => {
                       }
                       aria-label="Show only verified profiles"
                     />
-                    <span>{t('profile.verified')}</span>
+                    <span>{translations.verified}</span>
                   </label>
                   <label className={styles.filterOption}>
                     <input
@@ -572,14 +605,14 @@ const Dashboard = () => {
                       }
                       aria-label="Show only profiles with photos"
                     />
-                    <span>{t('profile.withPhotos')}</span>
+                    <span>{translations.withPhotos}</span>
                   </label>
                 </div>
               </div>
 
               {/* Interests Filter */}
               <div className={styles.filterSection}>
-                <h3>{t('profile.interests')}</h3>
+                <h3>{translations.interests}</h3>
                 <div className={styles.tagsContainer}>
                   {availableInterests.map((interest) => (
                     <button
@@ -597,10 +630,10 @@ const Dashboard = () => {
               {/* Filter Actions */}
               <div className={styles.filterActions}>
                 <button className="btn btn-outline" onClick={resetFilters} aria-label="Reset filters">
-                  {t('common.reset')}
+                  {translations.reset}
                 </button>
                 <button className="btn btn-primary" onClick={() => setShowFilters(false)} aria-label="Apply filters">
-                  {t('common.apply')} {t('common.filter')}
+                  {translations.apply} {translations.filter}
                 </button>
               </div>
             </div>
@@ -613,7 +646,7 @@ const Dashboard = () => {
               <div className={styles.contentLoader}>
                 <div className={styles.loadingContainer}>
                   <div className={styles.spinner}></div>
-                  <p className={styles.loadingText}>{t('dashboard.loadingUsers')}...</p>
+                  <p className={styles.loadingText}>{translations.loadingUsers}...</p>
                 </div>
               </div>
             ) : sortedUsers.length > 0 ? (
@@ -648,7 +681,7 @@ const Dashboard = () => {
                   <div className={styles.contentLoader} style={{minHeight: "100px"}}>
                     <div className={styles.loadingContainer}>
                       <div className={styles.spinner}></div>
-                      <p className={styles.loadingText}>{t('dashboard.loadingMoreUsers')}...</p>
+                      <p className={styles.loadingText}>{translations.loadingMoreUsers}...</p>
                     </div>
                   </div>
                 )}
@@ -660,10 +693,10 @@ const Dashboard = () => {
                   <div className={styles.noResultsIcon}>
                     <FaSearch />
                   </div>
-                  <h3>{t('dashboard.noMatches')}</h3>
-                  <p>{t('dashboard.tryAdjustingFilters')}</p>
+                  <h3>{translations.noMatches}</h3>
+                  <p>{translations.tryAdjustingFilters}</p>
                   <button className="btn btn-primary" onClick={resetFilters} aria-label="Reset filters">
-                    {t('common.reset')} {t('common.filter')}
+                    {translations.reset} {translations.filter}
                   </button>
                 </div>
               </div>

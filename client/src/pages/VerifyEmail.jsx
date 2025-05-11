@@ -32,7 +32,7 @@ const VerifyEmail = () => {
 
       if (!token) {
         setStatus("error")
-        setMessage(t('auth.tokenMissing'))
+        setMessage(t('tokenMissing'))
         return
       }
 
@@ -41,7 +41,7 @@ const VerifyEmail = () => {
 
         if (response.success) {
           setStatus("success")
-          setMessage(t('auth.accountVerified'))
+          setMessage(t('accountVerified'))
 
           // If user is already logged in, refresh their profile
           if (user) {
@@ -53,12 +53,12 @@ const VerifyEmail = () => {
           }
         } else {
           setStatus("error")
-          setMessage(response.error || t('auth.verificationFailed'))
+          setMessage(response.error || t('verificationFailed'))
         }
       } catch (err) {
         logger.error("Verification error:", err)
         setStatus("error")
-        setMessage(err.response?.data?.error || t('auth.verificationFailed'))
+        setMessage(err.response?.data?.error || t('verificationFailed'))
       }
     }
 
@@ -68,9 +68,9 @@ const VerifyEmail = () => {
   const handleResendVerification = async () => {
     if (user) {
       await resendVerificationEmail()
-      setMessage(t('auth.verificationEmailSent'))
+      setMessage(t('verificationEmailSent'))
     } else {
-      setMessage(t('auth.loginToResend'))
+      setMessage(t('loginToResend'))
     }
   }
 
@@ -87,30 +87,30 @@ const VerifyEmail = () => {
       <div className="verify-email-container">
         <div className="verify-email-card">
           <div className="verify-email-header">
-            <h1>{t('auth.verifyEmail')}</h1>
+            <h1>{t('verifyEmail')}</h1>
           </div>
 
           <div className="verify-email-content">
             {status === "loading" && (
               <div className="verify-email-loading">
                 <FaSpinner className="spinner" />
-                <p>{t('auth.verifyingEmail')}</p>
+                <p>{t('verifyingEmail')}</p>
               </div>
             )}
 
             {status === "success" && (
               <div className="verify-email-success">
                 <FaCheckCircle className="success-icon" />
-                <h2>{t('auth.verificationSuccess')}</h2>
+                <h2>{t('verificationSuccess')}</h2>
                 <p>{message}</p>
                 <div className="verify-email-actions">
                   {user ? (
                     <button className="primary-button" onClick={handleGoToDashboard}>
-                      {t('common.goBack')} {t('common.dashboard')}
+                      {t('goBack')} {t('dashboard')}
                     </button>
                   ) : (
                     <button className="primary-button" onClick={handleGoToLogin}>
-                      {t('auth.signIn')}
+                      {t('signIn')}
                     </button>
                   )}
                 </div>
@@ -120,14 +120,14 @@ const VerifyEmail = () => {
             {status === "error" && (
               <div className="verify-email-error">
                 <FaExclamationTriangle className="error-icon" />
-                <h2>{t('auth.verificationFailed')}</h2>
+                <h2>{t('verificationFailed')}</h2>
                 <p>{message}</p>
                 <div className="verify-email-actions">
                   <button className="secondary-button" onClick={handleResendVerification}>
-                    <FaEnvelope /> {t('auth.resendVerificationEmail')}
+                    <FaEnvelope /> {t('resendVerificationEmail')}
                   </button>
                   <Link to="/login" className="text-link">
-                    {t('auth.backToLogin')}
+                    {t('backToLogin')}
                   </Link>
                 </div>
               </div>

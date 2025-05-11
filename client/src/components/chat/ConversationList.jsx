@@ -72,7 +72,8 @@ const ConversationList = ({
             
             // Ensure the user object has a username property
             if (!convo.user.username) {
-              console.warn("User missing username property in conversation:", convo.user._id);
+              // Use a more meaningful debug message to help with troubleshooting
+              console.debug(`Applying username fallback for user ${typeof convo.user._id === 'string' ? convo.user._id : JSON.stringify(convo.user._id)}`);
               convo = {
                 ...convo,
                 user: {
