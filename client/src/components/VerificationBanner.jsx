@@ -8,7 +8,24 @@ import logger from "../utils/logger"
 
 const log = logger.create("VerificationBanner")
 
-const VerificationBanner = () => {
+// Create a safe wrapper component that only renders the banner if auth context is available
+const SafeVerificationBanner = () => {
+  try {
+    // Try to access useAuth to check if we're within AuthProvider
+    const auth = useAuth();
+    if (!auth) return null;
+    
+    // If we have auth context, render the actual banner component
+    return <VerificationBannerContent />;
+  } catch (error) {
+    // If context is not available, don't render anything
+    log.warn("Auth context not available for VerificationBanner:", error.message);
+    return null;
+  }
+};
+
+// The actual banner content component
+const VerificationBannerContent = () => {
   const { user, resendVerificationEmail } = useAuth()
   const [showBanner, setShowBanner] = useState(true)
   const [resending, setResending] = useState(false)
@@ -178,4 +195,4 @@ const VerificationBanner = () => {
   )
 }
 
-export default VerificationBanner
+export default SafeVerificationBanner

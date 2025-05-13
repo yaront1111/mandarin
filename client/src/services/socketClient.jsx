@@ -320,17 +320,114 @@ class SocketClient {
    * @param {string} eventName - Event name to forward
    */
   _registerEnhancedEventForwarder(eventName) {
-    // Original event forwarding
+    // Track seen event data to prevent duplicates
+    // Use a Map with ID keys and timestamp values to handle expiration
+    if (!this._eventDeduplicationMap) {
+      this._eventDeduplicationMap = new Map();
+    }
+    
+    if (!this._eventDeduplicationMap.has(eventName)) {
+      this._eventDeduplicationMap.set(eventName, new Map());
+    }
+    
+    // Deduplicate events based on a hash of their content and a short time window
+    const generateEventHash = (data) => {
+      if (!data) return '';
+      
+      // Use different strategies for different event types
+      if (eventName === 'messageReceived' || eventName === 'messageSent') {
+        // For messages, use ID, sender, recipient, and type
+        return `${data._id || data.tempId || ''}|${data.sender || ''}|${data.recipient || ''}`;
+      } else if (eventName.includes('photoPermission')) {
+        // For permission events, use permissionId or requestId
+        return `${data.permissionId || data.requestId || ''}|${data.status || ''}`;
+      } else if (eventName === 'notification' || eventName === 'newLike') {
+        // For general notifications
+        return `${data.type || ''}|${data.sender?._id || data.sender || ''}|${data.timestamp || Date.now()}`;
+      }
+      
+      // Default hash using whatever fields are available
+      return `${JSON.stringify(data).substring(0, 100)}|${Date.now().toString().substring(0, 10)}`;
+    };
+    
+    // Determine if an event is a duplicate
+    const isDuplicate = (data) => {
+      const dedupeMap = this._eventDeduplicationMap.get(eventName);
+      if (!dedupeMap) return false;
+      
+      // For events with clear IDs
+      if (data && (data._id || data.id || data.tempId)) {
+        const eventId = data._id || data.id || data.tempId;
+        if (dedupeMap.has(eventId)) {
+          const timestamp = dedupeMap.get(eventId);
+          const now = Date.now();
+          // If we've seen this ID in the last X seconds, consider it a duplicate
+          if (now - timestamp < 5000) { // 5 second window
+            return true;
+          }
+        }
+      }
+      
+      // For events without clear IDs, use a content hash approach
+      const hash = generateEventHash(data);
+      if (hash && dedupeMap.has(`hash:${hash}`)) {
+        const timestamp = dedupeMap.get(`hash:${hash}`);
+        const now = Date.now();
+        if (now - timestamp < 5000) { // 5 second window
+          return true;
+        }
+      }
+      
+      return false;
+    };
+    
+    // Record an event in our deduplication system
+    const recordEvent = (data) => {
+      const dedupeMap = this._eventDeduplicationMap.get(eventName);
+      if (!dedupeMap) return;
+      
+      const now = Date.now();
+      
+      // Record by ID if available
+      if (data && (data._id || data.id || data.tempId)) {
+        const eventId = data._id || data.id || data.tempId;
+        dedupeMap.set(eventId, now);
+      }
+      
+      // Also record by hash for content-based deduplication
+      const hash = generateEventHash(data);
+      if (hash) {
+        dedupeMap.set(`hash:${hash}`, now);
+      }
+      
+      // Clean up old entries to prevent memory leaks
+      // Only do cleanup occasionally 
+      if (Math.random() < 0.1) { // 10% chance on each event
+        this._cleanupDeduplicationMaps();
+      }
+    };
+    
+    // Original event forwarding with enhanced deduplication
     this.socket.on(eventName, (data) => {
-      this._notifyEventHandlers(eventName, data)
+      // First check if this is a duplicate event
+      if (isDuplicate(data)) {
+        log.debug(`Skipping duplicate ${eventName} event`, data?._id || data?.id || '');
+        return;
+      }
+      
+      // Record this event to prevent duplicates
+      recordEvent(data);
+      
+      // Process the event normally
+      this._notifyEventHandlers(eventName, data);
 
       // Enhancement: Forward notification events to a global browser event
       if (this.notificationEventTypes.includes(eventName)) {
         // Dispatch to window for direct listeners
-        window.dispatchEvent(new CustomEvent(eventName, { detail: data }))
+        window.dispatchEvent(new CustomEvent(eventName, { detail: data }));
 
         // Also dispatch a generic notification event for consistency
-        window.dispatchEvent(new CustomEvent("notification", { detail: data }))
+        window.dispatchEvent(new CustomEvent("notification", { detail: data }));
 
         // Sync with other tabs if enabled
         if (this.notificationSyncChannel) {
@@ -338,13 +435,13 @@ class SocketClient {
             this.notificationSyncChannel.postMessage({
               type: SOCKET.NOTIFICATION.SYNC_ACTIONS.NEW_NOTIFICATION,
               data: data,
-            })
+            });
           } catch (err) {
-            log.error("Error syncing notification to other tabs:", err)
+            log.error("Error syncing notification to other tabs:", err);
           }
         }
       }
-    })
+    });
   }
 
   /**
@@ -353,35 +450,35 @@ class SocketClient {
   setupNotificationSyncChannel() {
     // Only run if the browser supports BroadcastChannel
     if (typeof BroadcastChannel === "undefined") {
-      log.warn("BroadcastChannel not supported, cross-tab sync disabled")
-      return null
+      log.warn("BroadcastChannel not supported, cross-tab sync disabled");
+      return null;
     }
 
     try {
-      this.notificationSyncChannel = new BroadcastChannel(SOCKET.NOTIFICATION.SYNC_CHANNEL_NAME)
+      this.notificationSyncChannel = new BroadcastChannel(SOCKET.NOTIFICATION.SYNC_CHANNEL_NAME);
 
       // Listen for messages from other tabs
       this.notificationSyncChannel.onmessage = (event) => {
-        const { type, data } = event.data
+        const { type, data } = event.data;
 
         if (type === SOCKET.NOTIFICATION.SYNC_ACTIONS.NEW_NOTIFICATION) {
-          log.debug("Received new notification from another tab")
-          window.dispatchEvent(new CustomEvent("newNotification", { detail: data }))
+          log.debug("Received new notification from another tab");
+          window.dispatchEvent(new CustomEvent("newNotification", { detail: data }));
         } else if (type === SOCKET.NOTIFICATION.SYNC_ACTIONS.MARK_READ) {
-          log.debug("Received mark-read event from another tab")
-          window.dispatchEvent(new CustomEvent("notificationRead", { detail: data }))
+          log.debug("Received mark-read event from another tab");
+          window.dispatchEvent(new CustomEvent("notificationRead", { detail: data }));
         } else if (type === SOCKET.NOTIFICATION.SYNC_ACTIONS.MARK_ALL_READ) {
-          log.debug("Received mark-all-read event from another tab")
-          window.dispatchEvent(new CustomEvent("allNotificationsRead"))
+          log.debug("Received mark-all-read event from another tab");
+          window.dispatchEvent(new CustomEvent("allNotificationsRead"));
         }
-      }
+      };
 
-      log.info("Notification sync channel initialized")
-      return this.notificationSyncChannel
+      log.info("Notification sync channel initialized");
+      return this.notificationSyncChannel;
     } catch (error) {
-      log.error("Error setting up notification sync channel:", error)
-      this.notificationSyncChannel = null
-      return null
+      log.error("Error setting up notification sync channel:", error);
+      this.notificationSyncChannel = null;
+      return null;
     }
   }
 
@@ -506,19 +603,36 @@ class SocketClient {
    * @returns {Function} - Unsubscribe function
    */
   on(event, callback) {
+    // Create a unique identifier for this callback by adding a random id
+    // This helps prevent duplicate handlers when components remount
+    const uniqueCallback = (...args) => callback(...args);
+    uniqueCallback._originalCallback = callback;
+    uniqueCallback._id = Math.random().toString(36).substr(2, 9);
+    
     if (!this.eventHandlers[event]) {
       this.eventHandlers[event] = []
     }
+    
+    // Check if this callback is already registered (happens with hot reloading or component remounting)
+    const existingHandler = this.eventHandlers[event].find(handler => 
+      handler._originalCallback === callback || 
+      handler === callback
+    );
+    
+    if (existingHandler) {
+      log.debug(`Preventing duplicate handler for ${event} event`);
+      return () => this.off(event, existingHandler);
+    }
 
-    this.eventHandlers[event].push(callback)
+    this.eventHandlers[event].push(uniqueCallback)
 
     // Also register with socket if already connected
     if (this.socket) {
-      this.socket.on(event, callback)
+      this.socket.on(event, uniqueCallback)
     }
 
     // Return unsubscribe function
-    return () => this.off(event, callback)
+    return () => this.off(event, uniqueCallback)
   }
 
   /**
@@ -534,7 +648,23 @@ class SocketClient {
 
     // Remove from local handlers
     if (this.eventHandlers[event]) {
-      this.eventHandlers[event] = this.eventHandlers[event].filter((handler) => handler !== callback)
+      // Handle both original and wrapped callbacks
+      this.eventHandlers[event] = this.eventHandlers[event].filter((handler) => {
+        // Check if this is a direct match
+        if (handler === callback) return false;
+        
+        // Check if this is a match via the _originalCallback reference
+        if (handler._originalCallback === callback) return false;
+        
+        // Check if both are wrapped callbacks with the same original
+        if (callback._originalCallback && 
+            handler._originalCallback && 
+            callback._originalCallback === handler._originalCallback) {
+          return false;
+        }
+        
+        return true;
+      });
 
       if (this.eventHandlers[event].length === 0) {
         delete this.eventHandlers[event]
@@ -558,6 +688,36 @@ class SocketClient {
       })
     }
   }
+  
+  /**
+   * Clean up old entries in the event deduplication maps
+   * @private
+   */
+  _cleanupDeduplicationMaps() {
+    if (!this._eventDeduplicationMap) return;
+    
+    const now = Date.now();
+    const cutoff = now - 30000; // Remove entries older than 30 seconds
+    
+    // Iterate through each event type
+    for (const [eventType, dedupeMap] of this._eventDeduplicationMap.entries()) {
+      // Clean up old entries
+      for (const [key, timestamp] of dedupeMap.entries()) {
+        if (timestamp < cutoff) {
+          dedupeMap.delete(key);
+        }
+      }
+    }
+    
+    // Log only occasionally to avoid spamming logs
+    if (Math.random() < 0.1) {
+      let totalEntries = 0;
+      for (const dedupeMap of this._eventDeduplicationMap.values()) {
+        totalEntries += dedupeMap.size;
+      }
+      log.debug(`Cleaned up event deduplication maps, current size: ${totalEntries} entries`);
+    }
+  }
 
   /**
    * Emit an event to the server
@@ -573,12 +733,37 @@ class SocketClient {
 
     if (!this.connected) {
       log.info(`Socket not connected, queueing '${event}'`)
-      this.pendingMessages.push({ event, data })
+      // Limit pending messages queue size to prevent memory issues
+      if (this.pendingMessages.length < 100) {
+        this.pendingMessages.push({ event, data })
+      } else {
+        // If queue is full, prioritize important events
+        const priorityEvents = ['message', 'videoSignal', 'notification']
+        if (priorityEvents.includes(event)) {
+          // Remove oldest non-priority message and add this one
+          const nonPriorityIndex = this.pendingMessages.findIndex(msg => !priorityEvents.includes(msg.event))
+          if (nonPriorityIndex !== -1) {
+            this.pendingMessages.splice(nonPriorityIndex, 1)
+            this.pendingMessages.push({ event, data })
+          }
+        }
+        log.warn(`Pending message queue full, dropping non-priority messages`)
+      }
       return true
     }
 
     try {
-      this.socket.emit(event, data)
+      // Add rate limiting for certain high-frequency events
+      if (event === 'typing') {
+        // Throttle typing events
+        const now = Date.now()
+        if (!this._lastTypingEvent || now - this._lastTypingEvent > 2000) {
+          this._lastTypingEvent = now
+          this.socket.emit(event, data)
+        }
+      } else {
+        this.socket.emit(event, data)
+      }
       return true
     } catch (error) {
       log.error(`Error emitting '${event}':`, error)

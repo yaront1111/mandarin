@@ -217,10 +217,10 @@
   position: relative;
   width: 100%;
   aspect-ratio: 1 / 1;
-  background-color: var(--neutral-100);
   border-radius: var(--radius-xl);
   overflow: hidden;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadow-inner);
@@ -1114,6 +1114,27 @@
 .dark .sectionTitle { color: var(--neutral-200); }
 .dark .sectionTitle:hover { color: var(--primary-400); }
 .dark .aboutText { color: var(--neutral-300); }
+
+.noPhotosText {
+  margin-top: var(--space-sm);
+  color: var(--text-medium);
+  font-size: var(--font-size-md);
+  text-align: center;
+  position: absolute;
+  bottom: 10px;
+  left: 0;
+  right: 0;
+  background: rgba(0,0,0,0.5);
+  padding: 5px;
+  backdrop-filter: blur(3px);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  color: white;
+}
+
+.dark .noPhotosText {
+  color: white;
+  background: rgba(0,0,0,0.6);
+}
 
 /* Dark Mode Tags */
 .darkTag {

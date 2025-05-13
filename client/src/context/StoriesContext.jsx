@@ -86,10 +86,77 @@ export function StoriesProvider({ children }) {
         try {
           const res = await storiesService.getAllStories()
           if (!res.success) throw new Error(res.message || "Failed to load stories")
+          
+          // Process stories to ensure proper userData for frontend
+          const processedStories = res.data.map(story => {
+            // Add debug information for story data structure
+            if (process.env.NODE_ENV !== 'production') {
+              log.debug(`Processing story ${story._id}:`, {
+                hasPopulatedUser: story.user && typeof story.user === 'object',
+                hasUserData: !!story.userData,
+                userType: typeof story.user,
+                userKeys: story.user && typeof story.user === 'object' ? Object.keys(story.user) : []
+              });
+            }
+            
+            // If the story has a populated user object but no userData,
+            // we should create userData from the user object
+            if (story.user && typeof story.user === 'object') {
+              // If userData doesn't exist, create it
+              if (!story.userData) {
+                return {
+                  ...story,
+                  userData: { 
+                    ...story.user,
+                    // Ensure _id is present 
+                    _id: story.user._id || story._id
+                  }
+                };
+              } 
+              // If userData exists but doesn't have _id, add it
+              else if (typeof story.userData === 'object' && !story.userData._id) {
+                return {
+                  ...story,
+                  userData: { 
+                    ...story.userData,
+                    _id: story.user._id || story._id
+                  }
+                };
+              }
+            }
+            
+            // If story has a string user ID but no userData, create minimal userData
+            if (typeof story.user === 'string' && !story.userData) {
+              return {
+                ...story,
+                userData: { 
+                  _id: story.user,
+                  // If we have nickname in the story, add it to userData
+                  ...(story.nickname && { nickname: story.nickname })
+                }
+              };
+            }
+            
+            // If userData exists but doesn't have _id and user is a string, add it
+            if (story.userData && typeof story.userData === 'object' && 
+                !story.userData._id && typeof story.user === 'string') {
+              return {
+                ...story,
+                userData: {
+                  ...story.userData,
+                  _id: story.user
+                }
+              };
+            }
+            
+            return story;
+          });
+          
           // dedupe by _id
           const unique = Array.from(
-            new Map(res.data.map(s => [s._id, s])).values()
+            new Map(processedStories.map(s => [s._id, s])).values()
           )
+          
           lastFetchRef.current = Date.now()
           dispatch({ type: "LOAD_SUCCESS", payload: unique })
           return unique
@@ -124,7 +191,80 @@ export function StoriesProvider({ children }) {
       try {
         const res = await storiesService.getUserStories(userId)
         if (!res.success) throw new Error(res.message || "Failed to load user stories")
-        return Array.isArray(res.data) ? [...res.data] : []
+        
+        // Process stories to ensure proper userData - using same enhanced logic as getAllStories
+        const processedStories = Array.isArray(res.data) ? res.data.map(story => {
+          // Add debug information for story data structure
+          if (process.env.NODE_ENV !== 'production') {
+            log.debug(`Processing user story ${story._id}:`, {
+              hasPopulatedUser: story.user && typeof story.user === 'object',
+              hasUserData: !!story.userData,
+              userType: typeof story.user,
+              userKeys: story.user && typeof story.user === 'object' ? Object.keys(story.user) : []
+            });
+          }
+          
+          // If the story has a populated user object with _id
+          if (story.user && typeof story.user === 'object') {
+            // If userData doesn't exist, create it
+            if (!story.userData) {
+              return {
+                ...story,
+                userData: { 
+                  ...story.user,
+                  // Ensure _id is present 
+                  _id: story.user._id || story._id || userId // Use userId as fallback
+                }
+              };
+            } 
+            // If userData exists but doesn't have _id, add it
+            else if (typeof story.userData === 'object' && !story.userData._id) {
+              return {
+                ...story,
+                userData: { 
+                  ...story.userData,
+                  _id: story.user._id || story._id || userId
+                }
+              };
+            }
+          }
+          
+          // If story has a string user ID but no userData, create minimal userData
+          if (typeof story.user === 'string' && !story.userData) {
+            return {
+              ...story,
+              userData: { 
+                _id: story.user,
+                // If we have nickname in the story, add it to userData
+                ...(story.nickname && { nickname: story.nickname })
+              }
+            };
+          }
+          
+          // If userData exists but doesn't have _id and user is a string, add it
+          if (story.userData && typeof story.userData === 'object' && 
+              !story.userData._id && typeof story.user === 'string') {
+            return {
+              ...story,
+              userData: {
+                ...story.userData,
+                _id: story.user
+              }
+            };
+          }
+          
+          // For user stories specifically, if all else fails, ensure userData exists with at least the userID
+          if (!story.userData) {
+            return {
+              ...story,
+              userData: { _id: userId }
+            };
+          }
+          
+          return story;
+        }) : [];
+        
+        return processedStories
       } catch (err) {
         log.error(`loadUserStories(${userId})`, err)
         return []

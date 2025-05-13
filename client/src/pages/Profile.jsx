@@ -40,7 +40,7 @@ const Profile = () => {
   // Reference to the profile container for mobile optimizations
   const profileContainerRef = useRef(null);
   const { user } = useAuth()
-  const { updateProfile, refreshUserData } = useUser() // Removed uploadPhoto since we'll use the hook version
+  const { updateProfile, refreshUserData } = useUser()
   const { t } = useTranslation()
   const { isRTL } = useLanguage()
 
@@ -155,7 +155,6 @@ const Profile = () => {
     },
   })
   
-  // Remove localPhotos state, use processPhotos from the hook instead
   const [availableInterests] = useState([
     "Dating",
     "Casual",
@@ -242,18 +241,9 @@ const Profile = () => {
   const fileInputRef = useRef(null)
   const navigate = useNavigate()
 
-  // New states for loading
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [profile, setProfile] = useState(null)
-  const [userId, setUserId] = useState(null) // Assuming you might want to view other profiles
-  const [likeLoading, setLikeLoading] = useState(false)
-  const [messageLoading, setMessageLoading] = useState(false)
+  // States for loading and photo management
   const [isLoading, setIsLoading] = useState(true)
-  const [photoLoading, setPhotoLoading] = useState({})
   const [photosUpdateTimestamp, setPhotosUpdateTimestamp] = useState(Date.now())
-
-  const isOwnProfile = !userId // Determine if it's the logged-in user's profile
 
   // Initialize profile state from user data
   useEffect(() => {
@@ -274,8 +264,6 @@ const Profile = () => {
           maritalStatus: user.details?.maritalStatus || "",
         },
       })
-      
-      // No longer need to manually process photos - the hook handles this
       log.debug(`User has ${user.photos?.length || 0} photos`)
     }
     setIsLoading(false)
@@ -313,16 +301,6 @@ const Profile = () => {
     };
   }, [isTouch]);
 
-  const [formData, setFormData] = useState({
-    nickname: "",
-    details: {
-      age: "",
-      gender: "",
-      location: "",
-      bio: "",
-      interests: [],
-    },
-  })
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -515,19 +493,14 @@ const Profile = () => {
         },
       }
 
-      console.log("Submitting profile data:", submissionData)
       const updatedUser = await updateProfile(submissionData)
 
       if (updatedUser) {
-        console.log("Profile updated successfully, refreshing user data...");
-
         // After successful update, force a refresh of user data and wait for it to complete
         const refreshResult = await refreshUserData(updatedUser._id);
 
-        if (refreshResult) {
-          console.log("User data refresh successful");
-        } else {
-          console.warn("User data refresh may not have been complete, but continuing");
+        if (!refreshResult) {
+          log.warn("User data refresh may not have been complete, but continuing");
         }
 
         toast.success(translations.profileUpdated)
@@ -714,83 +687,11 @@ const Profile = () => {
     setIsEditing(false)
   }
 
-  // Find where profile data is being loaded
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        setLoading(true)
-        const token = sessionStorage.getItem("token")
-        if (!token) {
-          setError("Authentication required")
-          setLoading(false)
-          return
-        }
 
-        // Use the correct endpoint based on your API routes
-        // If viewing own profile, use the current user endpoint
-        const endpoint = userId ? `/api/users/${userId}` : `/api/users`
-
-        const response = await axios.get(endpoint, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
-        setProfile(response.data)
-      } catch (error) {
-        console.error("Failed to fetch profile:", error)
-        setError("Could not load profile data")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchProfile()
-  }, [userId])
-
-  const handleLike = async () => {
-    setLikeLoading(true)
-    try {
-      // Implement your like/unlike logic here
-      // Example: await axios.post(`/api/users/${userId}/like`);
-      // Update the profile state accordingly
-      setProfile((prevProfile) => ({
-        ...prevProfile,
-        isLiked: !prevProfile.isLiked,
-      }))
-    } catch (error) {
-      console.error("Failed to like/unlike profile:", error)
-      toast.error("Failed to like/unlike profile")
-    } finally {
-      setLikeLoading(false)
-    }
+  const handleMessage = () => {
+    navigate("/messages")
   }
 
-  const handleMessage = async () => {
-    setMessageLoading(true)
-    try {
-      // Implement your message logic here
-      // Example: navigate(`/messages/${userId}`);
-      navigate("/messages") // Redirect to messages for now
-    } catch (error) {
-      console.error("Failed to navigate to messages:", error)
-      toast.error("Failed to navigate to messages")
-    } finally {
-      setMessageLoading(false)
-    }
-  }
-
-  // Removed unused profile photo upload functions
-  // All photo uploads are now handled via the centralized usePhotoManagement hook
-
-  // Update the getProfilePhoto function to use the normalizePhotoUrl utility
-  const getProfilePhoto = () => {
-    if (!user || !user.photos || user.photos.length === 0) {
-      return "/placeholder.svg"
-    }
-    return normalizePhotoUrl(user.photos[0].url)
-  }
-
-  // Replace the profile rendering with this
   
   return (
     <div 

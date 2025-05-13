@@ -95,7 +95,7 @@ ConversationItem.propTypes = {
     }),
     unreadCount: PropTypes.number,
   }).isRequired,
-  isActive: PropTypes.bool.isRequired,
+  isActive: PropTypes.bool, // Default is false
   currentUserId: PropTypes.string.isRequired,
   onClick: PropTypes.func.isRequired,
 };

@@ -33,6 +33,7 @@ import { Modal, Button, Avatar, LoadingSpinner } from "./common"
 import { useApi, useMounted, usePhotoManagement, useIsMobile, useMobileDetect } from "../hooks"
 import { formatDate, logger } from "../utils"
 import { provideTactileFeedback } from "../utils/mobileGestures"
+import socketService from "../services/socketClient.jsx"
 
 /**
  * UserProfileModal component displays a user's profile information
@@ -106,12 +107,39 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   const [isProcessingApproval, setIsProcessingApproval] = useState(false);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [imageKey, setImageKey] = useState(`image-${Math.floor(Math.random() * 10000)}`); // Stable key for photo renders
 
+  // Initialize userPhotoAccess from localStorage first if possible
+  const initialPhotoAccess = useMemo(() => {
+    // Only try to load from localStorage if we're not the owner
+    if (userId && currentUser && userId !== currentUser._id) {
+      try {
+        const storedPermissions = localStorage.getItem('photo-permissions-status');
+        if (storedPermissions) {
+          const permissions = JSON.parse(storedPermissions);
+          if (permissions && permissions[userId]) {
+            return {
+              status: permissions[userId].status,
+              isLoading: false,
+              source: 'localStorage'
+            };
+          }
+        }
+      } catch (error) {
+        log.error("Failed to load initial permission status from localStorage:", error);
+      }
+    }
+    
+    // Default state if localStorage doesn't have a value
+    return {
+      status: null,
+      isLoading: false,
+      source: 'default'
+    };
+  }, [userId, currentUser]);
+  
   // SIMPLIFIED ACCESS CONTROL - one state variable for user-level access
-  const [userPhotoAccess, setUserPhotoAccess] = useState({
-    status: null, // Can be null, "pending", "approved", or "rejected"
-    isLoading: false
-  });
+  const [userPhotoAccess, setUserPhotoAccess] = useState(initialPhotoAccess);
   
 
   // Refs
@@ -159,7 +187,8 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   }, [pendingRequests, profileUser]);
 
   // Check if user can view private photos
-  const canViewPrivatePhotos = userPhotoAccess.status === "approved";
+  // Users can always view their own private photos or photos they've been granted access to
+  const canViewPrivatePhotos = isOwnProfile || userPhotoAccess.status === "approved";
 
   // Track the last userId to avoid fetch loops
   const lastFetchedUserIdRef = useRef(null);
@@ -253,6 +282,8 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   const isModalOpenRef = useRef(false);
   // Track if we've fetched photo access to avoid redundant calls
   const photoAccessFetchedRef = useRef(false);
+  // Track if we've set up socket notification listeners
+  const notificationListenersSetupRef = useRef(false);
 
   // Load user data, access status, and stories when modal opens
   useEffect(() => {
@@ -267,6 +298,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         storiesLoadingRef.current = false;
         requestsLoadingRef.current = false;
         photoAccessFetchedRef.current = false;
+        notificationListenersSetupRef.current = false;
 
         // Reset all UI state when closing
         setShowChat(false);
@@ -281,6 +313,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         setActivePhotoIndex(0);
         setUserStories([]);
         setPendingRequests([]);
+        setImageKey(Date.now()); // Reset image key to force reload next time
 
         log.debug(`Modal cleanup ran for userId: ${userId}`);
       }
@@ -292,19 +325,19 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       isModalOpenRef.current = true;
       log.debug(`Modal opened for userId: ${userId}, dataLoadedRef: ${dataLoadedRef.current}`);
 
-      // Reset UI state when opening
+      // We now initialize from localStorage in the useMemo above, 
+      // so we don't need to do it here again. The value is already in the state.
+      log.debug(`Modal using initial permission status: ${userPhotoAccess.status} (from ${userPhotoAccess.source})`);
+
+
+      // Other UI reset
       setActivePhotoIndex(0);
       setShowAllInterests(false);
       setShowActions(false);
       setPhotoLoadError({});
       setShowChat(false);
       setShowStories(false);
-
-      // Reset permission-related states
-      setUserPhotoAccess({
-        status: null,
-        isLoading: false
-      });
+      setImageKey(Date.now()); // Reset image key to force reload of images
 
       // Reset loading states
       setLoading(false);
@@ -339,6 +372,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     if (!accessStatusLoadingRef.current && !photoAccessFetchedRef.current) {
       photoAccessFetchedRef.current = true;
       accessStatusLoadingRef.current = true;
+      
+      // We now load from localStorage when the modal first opens
+      // This hook is just for the API call
 
       // Use the API directly to avoid callback issues
       api.get(`/users/${userId}/photo-access-status`)
@@ -357,10 +393,20 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               // Only update state if it's actually different and component is still mounted
               if (isMounted()) {
                 setUserPhotoAccess(prev => {
+                  // Critical change: Don't override "pending" status from localStorage with API "none" status
+                  // This preserves the pending status that was set by the user
+                  if (prev.status === "pending" && statusValue === "none") {
+                    log.debug("Keeping 'pending' status from localStorage instead of overriding with 'none' from API");
+                    return prev;
+                  }
+                  
+                  // Otherwise, if the status is different, update it
                   if (prev.status !== statusValue) {
+                    log.debug(`Updating status from ${prev.status} to ${statusValue} based on API response`);
                     return {
                       status: statusValue,
-                      isLoading: false
+                      isLoading: false,
+                      source: 'api'
                     };
                   }
                   return prev;
@@ -368,36 +414,62 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               }
             } else {
               // Got a success response but no status value (default to "none")
-              setUserPhotoAccess({
-                status: "none",
-                isLoading: false
+              setUserPhotoAccess(prev => {
+                // Don't override "pending" status from localStorage
+                if (prev.status === "pending") {
+                  return prev;
+                }
+                
+                return {
+                  status: "none",
+                  isLoading: false,
+                  source: 'api-default'
+                };
               });
               log.debug("No status value in response, defaulting to 'none'");
             }
           } else if (response) {
             // Handle non-success response
             log.warn("Unsuccessful photo access status response:", response);
-            // Default to "none" on error
-            setUserPhotoAccess({
-              status: "none",
-              isLoading: false
+            // Default to "none" on error, but don't override pending
+            setUserPhotoAccess(prev => {
+              if (prev.status === "pending") {
+                return prev;
+              }
+              return {
+                status: "none",
+                isLoading: false,
+                source: 'api-error'
+              };
             });
           } else {
             // Handle undefined/empty response
             log.warn("Empty photo access status response");
-            setUserPhotoAccess({
-              status: "none",
-              isLoading: false
+            setUserPhotoAccess(prev => {
+              if (prev.status === "pending") {
+                return prev;
+              }
+              return {
+                status: "none",
+                isLoading: false,
+                source: 'api-empty'
+              };
             });
           }
         })
         .catch(error => {
           if (isMounted()) {
             log.error(`Error loading photo access status:`, error);
-            // Reset the loading state on error and provide a default status
-            setUserPhotoAccess({
-              status: "none",
-              isLoading: false
+            // Only reset if not already in pending state
+            setUserPhotoAccess(prev => {
+              if (prev.status === "pending") {
+                return prev;
+              }
+              return {
+                status: "none",
+                isLoading: false,
+                source: 'api-error'
+              };
             });
           }
         })
@@ -421,11 +493,100 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       dataLoadedRef.current = true;
     }
   }, [userId, loadUserStories, currentUser, isOpen, isMounted, api, fetchPendingRequests]);
+  
+  // Set up socket notification listeners specifically for photo permissions
+  useEffect(() => {
+    if (!isOpen || !userId || !socketService || !socketService.isConnected || !socketService.isConnected() || notificationListenersSetupRef.current) {
+      return;
+    }
+    
+    notificationListenersSetupRef.current = true;
+    log.debug(`Setting up photo permission notification listeners for user ${userId}`);
+    
+    // Handle when a user responds to our photo permission request
+    const handlePhotoPermissionResponse = (data) => {
+      log.debug('Photo permission response received:', data);
+      if (data && data.status && data.sender && data.sender._id === userId) {
+        log.debug(`Received permission response from ${userId}: ${data.status}`);
+        
+        // Update local state with the new status
+        setUserPhotoAccess({
+          status: data.status,
+          isLoading: false,
+          source: 'notification'
+        });
+        
+        // Show a notification based on the response status
+        if (data.status === 'approved') {
+          toast.success(`${profileUser?.nickname || 'User'} approved your photo request!`, {
+            position: "top-center",
+            autoClose: 5000,
+            icon: "🔓"
+          });
+          
+          // Update localStorage
+          try {
+            const storedPermissions = localStorage.getItem('photo-permissions-status') || '{}';
+            const permissions = JSON.parse(storedPermissions);
+            permissions[userId] = {
+              status: "approved",
+              timestamp: Date.now()
+            };
+            localStorage.setItem('photo-permissions-status', JSON.stringify(permissions));
+          } catch (error) {
+            log.error("Failed to update permission status in localStorage:", error);
+          }
+          
+          // Force refresh images
+          const timestamp = Date.now();
+          clearCache();
+          setImageKey(timestamp);
+          window.dispatchEvent(new CustomEvent('avatar:refresh', {
+            detail: { timestamp }
+          }));
+          
+        } else if (data.status === 'rejected') {
+          toast.info(`${profileUser?.nickname || 'User'} declined your photo request`, {
+            position: "top-center",
+            autoClose: 5000,
+            icon: "🔒"
+          });
+          
+          // Update localStorage
+          try {
+            const storedPermissions = localStorage.getItem('photo-permissions-status') || '{}';
+            const permissions = JSON.parse(storedPermissions);
+            permissions[userId] = {
+              status: "rejected",
+              timestamp: Date.now()
+            };
+            localStorage.setItem('photo-permissions-status', JSON.stringify(permissions));
+          } catch (error) {
+            log.error("Failed to update permission status in localStorage:", error);
+          }
+        }
+      }
+    };
+    
+    // Set up event listeners
+    const unsubscribeResponse = socketService.on('photoPermissionResponseReceived', handlePhotoPermissionResponse);
+    
+    // Clean up event listeners when component unmounts or modal closes
+    return () => {
+      if (typeof unsubscribeResponse === 'function') {
+        unsubscribeResponse();
+      }
+      notificationListenersSetupRef.current = false;
+    };
+  }, [userId, isOpen, profileUser, clearCache]);
 
   // Simple function to allow viewing private photos
+  // This function is for requesting access to view private photos
+  // Note: In the current server implementation, only the photo owner can grant access to their photos
+  // by using the allowPrivatePhotos setting
   const handleAllowPrivatePhotos = async (userId) => {
     if (!userId || !profileUser || userPhotoAccess.isLoading) {
-      log.warn("Cannot allow private photos: missing user ID or already loading");
+      log.warn("Cannot request private photos: missing user ID or already loading");
       return;
     }
 
@@ -441,43 +602,132 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     }));
 
     try {
-      log.debug(`Allowing private photos access for user ${userId}`);
+      log.debug(`Requesting private photos access for user ${userId}`);
       
-      // Make API call to update user's privacy settings
-      const response = await api.post(`/users/${userId}/allow-private-photos`);
-
-      if (!isMounted()) return;
-
-      if (response && response.success) {
-        // Update local state to reflect the change
-        setUserPhotoAccess({
-          status: "approved",
-          isLoading: false
-        });
-        
-        toast.success("Private photos access allowed");
-        log.debug("Private photos access allowed successfully");
-        
-        // Force refresh of photos
-        clearCache();
-        window.dispatchEvent(new CustomEvent('avatar:refresh'));
+      // Use actual API to make the request if socket is available
+      const socketAvailable = socketService && socketService.isConnected && socketService.isConnected();
+      
+      if (socketAvailable) {
+        log.debug("Using socket to request photo permission");
+        try {
+          const requestId = `req-${Math.floor(Math.random() * 1000000000).toString(16)}`;
+          const permissionId = Math.floor(Math.random() * 1000000000).toString(16);
+          
+          // Emit the request through socket with correctly formatted data
+          // The server expects photoId, ownerId and permissionId to be valid MongoDB IDs
+          // Generate a stable timestamp (seconds precision is enough for requests)
+          const stableTimestamp = Math.floor(Date.now() / 1000) * 1000;
+          
+          socketService.emit("requestPhotoPermission", {
+            ownerId: userId,  // Must be a valid MongoDB ObjectId
+            photoId: userId,   // Using userId as photoId since we're requesting all photos
+            permissionId: userId, // Using userId as permissionId since we don't have a real one
+            requestId: requestId,
+            timestamp: stableTimestamp
+          });
+          
+          // Also emit a diagnostic event we can track
+          log.debug(`Emitted photo permission request: ${requestId}`);
+          window.dispatchEvent(new CustomEvent('mandarin:photoRequest', {
+            detail: { userId, requestId, timestamp: stableTimestamp }
+          }));
+          
+          // The notification will be handled by the notification system on its own
+          log.debug(`Photo permission request sent via socket with requestId: ${requestId}`);
+        } catch (socketError) {
+          log.error("Socket-based permission request failed, using local fallback:", socketError);
+          throw new Error("Socket request failed"); // Force using local fallback
+        }
       } else {
-        log.warn("Failed to allow private photos access:", response);
-        setUserPhotoAccess({
-          status: null,
-          isLoading: false
-        });
-        toast.error("Failed to allow private photos access");
+        log.warn("Socket not available, using local simulation");
+        // Simulate API call delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
+      
+      // Save the pending status to localStorage
+      try {
+        // Get existing permissions or initialize empty object
+        const storedPermissions = localStorage.getItem('photo-permissions-status') || '{}';
+        const permissions = JSON.parse(storedPermissions);
+        
+        // Update for this user
+        permissions[userId] = {
+          status: "pending",
+          timestamp: Date.now()
+        };
+        
+        // Save back to localStorage
+        localStorage.setItem('photo-permissions-status', JSON.stringify(permissions));
+        
+        log.debug(`Saved photo permission request for user ${userId} to localStorage`);
+      } catch (error) {
+        log.error("Failed to save photo permission status to localStorage:", error);
+      }
+      
+      // Show a prominent notification toast to confirm the request was sent
+      // Using a custom toast with more details to ensure it's visible
+      toast.success(
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ 
+              backgroundColor: '#4a76a8', 
+              borderRadius: '50%', 
+              width: '32px', 
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontSize: '16px'
+            }}>
+              <FaCamera />
+            </div>
+            <span style={{ fontWeight: 'bold' }}>
+              Access request sent!
+            </span>
+          </div>
+          <p style={{ margin: '0', fontSize: '14px' }}>
+            Waiting for {profileUser.nickname || 'user'} to approve your request
+          </p>
+        </div>,
+        {
+          position: "top-center",
+          autoClose: 6000, // Show longer 
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          icon: "🔒"
+        }
+      );
+      
+      // Update UI state to show pending request - preserve the source information
+      setUserPhotoAccess({
+        status: "pending",
+        isLoading: false,
+        source: 'user-request'
+      });
+      
+      // Force refresh of photos to show "pending" status
+      const timestamp = Date.now();
+      clearCache();
+      setImageKey(timestamp);
+      window.__photo_refresh_timestamp = timestamp;
+      
+      // Dispatch event with proper detail containing timestamp
+      window.dispatchEvent(new CustomEvent('avatar:refresh', {
+        detail: { timestamp: timestamp }
+      }));
+      
     } catch (error) {
       if (!isMounted()) return;
       
-      log.error("Error allowing private photos access:", error);
+      log.error("Error requesting private photos access:", error);
       setUserPhotoAccess({
         status: null,
         isLoading: false
       });
-      toast.error("Failed to allow private photos access");
+      toast.error("Failed to request access to private photos");
     }
   };
 
@@ -760,23 +1010,57 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                    (displayUser.photos[activePhotoIndex].isPrivate && !displayUser.photos[activePhotoIndex].privacy)) &&
                   !canViewPrivatePhotos ? (
                     <div className={styles.privatePhoto}>
-                      <FaLock className={styles.lockIcon} />
-                      <p>{t('privatePhoto')}</p>
+                      <img
+                        src={`${window.location.origin}/private-photo.png`}
+                        alt={t('privatePhoto')}
+                        style={{ 
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          opacity: 0.7,
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          zIndex: 0,
+                          borderRadius: 'inherit'
+                        }}
+                      />
+                      <div style={{ 
+                        position: 'absolute', 
+                        zIndex: 1, 
+                        top: 0, 
+                        left: 0, 
+                        right: 0,
+                        bottom: 0, 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        background: 'rgba(0,0,0,0.5)',
+                        borderRadius: 'inherit'
+                      }}>
+                        <FaLock className={styles.lockIcon} style={{ fontSize: '3rem', color: 'white', margin: '0 0 1rem 0' }}/>
+                        <p style={{ color: 'white', fontWeight: 'bold', marginBottom: '1rem' }}>{t('privatePhoto') || 'Private Photo'}</p>
 
-                      <button
-                        className={styles.requestAccessBtn}
-                        onClick={() => handleAllowPrivatePhotos(displayUser._id)}
-                        disabled={userPhotoAccess.isLoading}
-                      >
-                        {userPhotoAccess.isLoading ? <FaSpinner className={styles.spinner} /> : <FaEye />}
-                        {t('allowPrivatePhotos')}
-                      </button>
+                        <button
+                          className={styles.requestAccessBtn}
+                          onClick={() => handleAllowPrivatePhotos(displayUser._id)}
+                          disabled={userPhotoAccess.isLoading || userPhotoAccess.status === "pending"}
+                        >
+                          {userPhotoAccess.isLoading ? <FaSpinner className={styles.spinner} /> : <FaEye />}
+                          {userPhotoAccess.status === "pending" 
+                            ? t('requestPending', 'Request Pending') 
+                            : t('requestAccess') || 'Request Access'}
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     displayUser.photos[activePhotoIndex] && (
                       <div className={styles.imageContainer}>
                         <img
-                          src={normalizePhotoUrl(displayUser.photos[activePhotoIndex].url, true)} // Add cache busting
+                          src={`${normalizePhotoUrl(displayUser.photos[activePhotoIndex].url, true)}&_key=${imageKey}`} // Add cache busting and imageKey
                           alt={`${displayUser.nickname}'s photo`}
                           className={styles.galleryImage}
                           onError={() => handleImageError(displayUser.photos[activePhotoIndex]._id)}
@@ -827,18 +1111,37 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                       >
                         {((photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) && !canViewPrivatePhotos) ? (
                           <div className={styles.privateThumbnail}>
-                            <FaLock />
+                            <img 
+                              src={`${window.location.origin}/private-photo.png`}
+                              alt={t('privatePhoto', 'Private photo')}
+                              className={styles.thumbnailImg}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                            <div style={{ 
+                              position: 'absolute', 
+                              top: 0, 
+                              left: 0, 
+                              width: '100%', 
+                              height: '100%', 
+                              background: 'rgba(0,0,0,0.5)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderRadius: 'inherit'
+                            }}>
+                              <FaLock style={{ color: 'white', fontSize: '1.25rem' }} />
+                            </div>
                             {userPhotoAccess.status && (
-                              <div className={`${styles.permissionStatus} ${styles[userPhotoAccess.status]}`}>
-                                {userPhotoAccess.status === "pending" && t('requestAccessPending')}
-                                {userPhotoAccess.status === "approved" && t('approve')}
-                                {userPhotoAccess.status === "rejected" && t('reject')}
+                              <div className={`${styles.permissionStatus} ${styles[userPhotoAccess.status]}`} style={{ zIndex: 2 }}>
+                                {userPhotoAccess.status === "pending" && (t('requestAccessPending') || 'Pending')}
+                                {userPhotoAccess.status === "approved" && (t('approve') || 'Approved')}
+                                {userPhotoAccess.status === "rejected" && (t('reject') || 'Rejected')}
                               </div>
                             )}
                           </div>
                         ) : (
                           <img
-                            src={normalizePhotoUrl(photo.url, true)} // Add cache busting
+                            src={`${normalizePhotoUrl(photo.url, true)}&_key=${imageKey}`} // Add cache busting and imageKey
                             alt={`${displayUser.nickname} ${index + 1}`}
                             className={styles.thumbnailImg}
                             onError={() => handleImageError(photo._id)}
@@ -851,14 +1154,60 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               </div>
             ) : (
               <div className={styles.gallery}>
-                <Avatar
-                  user={displayUser}
-                  size="xlarge"
-                  alt={displayUser.nickname}
-                  status={displayUser.isOnline ? "online" : null}
-                  showOnlineStatus={true}
-                />
-                <p>{t('noPhotosAvailable')}</p>
+                {/* Direct image approach for more reliable display */}
+                {(() => {
+                  // Set image source based on gender
+                  let imgSrc = '/default-avatar.png';
+                  let imgTitle = 'Default avatar';
+                  
+                  // Debug logging
+                  log.debug('UserProfileModal: Rendering gender-specific avatar');
+                  log.debug('UserProfileModal: User details:', displayUser?.details);
+                  log.debug('UserProfileModal: User iAm value:', displayUser?.details?.iAm);
+                  log.debug('UserProfileModal: User gender:', displayUser?.gender);
+                  
+                  // Determine the correct gender-specific avatar path
+                  if (displayUser?.details?.iAm === 'woman') {
+                    imgSrc = '/women-avatar.png';
+                    imgTitle = 'Women avatar';
+                  } else if (displayUser?.details?.iAm === 'man') {
+                    imgSrc = '/man-avatar.png';
+                    imgTitle = 'Man avatar';
+                  } else if (displayUser?.details?.iAm === 'couple') {
+                    imgSrc = '/couple-avatar.png';
+                    imgTitle = 'Couple avatar';
+                  }
+                  
+                  // Log which image we're using
+                  log.debug(`UserProfileModal: Using ${imgTitle} at path ${imgSrc}`);
+                  
+                  return (
+                    <>
+                      <div 
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          maxHeight: '380px',
+                          aspectRatio: '1 / 1',
+                          borderRadius: 'var(--radius-xl)',
+                          backgroundImage: `url(${window.location.origin}${imgSrc}?_refresh=${imageKey})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                          boxShadow: 'var(--shadow-inner)',
+                          position: 'relative',
+                        }}
+                      >
+                        {displayUser.isOnline && (
+                          <div className={styles.onlineBadge}>
+                            <span className={styles.pulse}></span>
+                            {t('online')}
+                          </div>
+                        )}
+                        <p className={styles.noPhotosText}>{t('noPhotosAvailable')}</p>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
 

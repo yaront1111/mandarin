@@ -897,9 +897,43 @@ const StoriesViewer = ({ storyId, userId, onClose }) => {
           <div className={styles.storiesUserInfo}>
             <Avatar 
               user={
-                typeof currentStory?.user === "object" 
-                  ? currentStory.user 
-                  : currentStory?.userData || { _id: currentStory?.user, nickname: getUserDisplayName() }
+                // Extract user object with a sophisticated approach
+                (() => {
+                  // For debugging
+                  console.debug("StoriesViewer user data:", {
+                    currentStoryUser: currentStory?.user,
+                    userDataExists: !!currentStory?.userData,
+                    userType: typeof currentStory?.user,
+                    nickname: getUserDisplayName()
+                  });
+                  
+                  // First priority: use userData if it exists (designed for frontend)
+                  if (currentStory?.userData && typeof currentStory.userData === "object") {
+                    // Make sure userData has an _id
+                    if (!currentStory.userData._id && 
+                        (typeof currentStory.user === "string" || 
+                         (typeof currentStory.user === "object" && currentStory.user?._id))) {
+                      return { 
+                        ...currentStory.userData, 
+                        _id: typeof currentStory.user === "string" 
+                          ? currentStory.user 
+                          : currentStory.user._id
+                      };
+                    }
+                    return currentStory.userData;
+                  }
+                  
+                  // Second priority: use user object if it's populated
+                  if (typeof currentStory?.user === "object" && currentStory.user) {
+                    return currentStory.user;
+                  }
+                  
+                  // Last resort: create minimal user object from available data
+                  return { 
+                    _id: typeof currentStory?.user === "string" ? currentStory.user : undefined,
+                    nickname: getUserDisplayName()
+                  };
+                })()
               }
               alt={getUserDisplayName()}
               className={styles.storiesUserAvatar}

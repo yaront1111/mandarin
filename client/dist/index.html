@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/placeholder.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#3a86ff" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="Flirtss - Connect with singles in your area. Find meaningful relationships, make new connections, and discover your perfect match." />
+    <meta name="keywords" content="dating, online dating, relationships, singles, match, connection" />
+    <meta name="author" content="Flirtss" />
+    
+    <!-- Critical CSS for dark mode to prevent flash of light content -->
+    <style>
+      .dark {
+        color-scheme: dark;
+      }
+      .dark body {
+        background-color: #111827;
+        color: #f9fafb;
+      }
+      body {
+        background-color: #111827;
+      }
+    </style>
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://flirtss.com/" />
+    <meta property="og:title" content="Flirtss - Connect with Singles" />
+    <meta property="og:description" content="Find meaningful relationships and make genuine connections with singles in your area." />
+    <meta property="og:image" content="/public/images/flirtss-social-share.jpg" />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://flirtss.com/" />
+    <meta property="twitter:title" content="Flirtss - Connect with Singles" />
+    <meta property="twitter:description" content="Find meaningful relationships and make genuine connections with singles in your area." />
+    <meta property="twitter:image" content="/public/images/flirtss-social-share.jpg" />
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://flirtss.com/" />
+    
+    <!-- Favicon -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    
+    <title>Flirtss</title>
+    
+    <!-- Apply dark mode and detect language before app loads -->
+    <script>
+      (function() {
+        // 1. Apply dark mode by default
+        // Check saved preference first
+        const savedTheme = localStorage.getItem('theme');
+        
+        // If there's no saved preference or it's set to dark or system prefers dark, apply dark mode
+        if (!savedTheme || savedTheme === 'dark' || 
+            (savedTheme === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+        
+        // 2. Detect and apply Hebrew for Israeli users
+        const savedLanguage = localStorage.getItem('language');
+        
+        // If language is already set in localStorage, use that
+        if (savedLanguage) {
+          document.documentElement.lang = savedLanguage;
+          document.documentElement.dir = savedLanguage === 'he' ? 'rtl' : 'ltr';
+          document.documentElement.classList.add(savedLanguage === 'he' ? 'rtl' : 'ltr');
+        } 
+        // Otherwise try to detect Israeli users
+        else {
+          // Israeli detection indicators
+          const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          const isIsraeliTimeZone = timeZone === 'Asia/Jerusalem';
+          
+          const browserLang = navigator.language || '';
+          const isHebrewLanguage = browserLang.startsWith('he') || browserLang.includes('-IL');
+          
+          // Set Hebrew as default for Israeli users
+          if (isIsraeliTimeZone || isHebrewLanguage) {
+            document.documentElement.lang = 'he';
+            document.documentElement.dir = 'rtl';
+            document.documentElement.classList.add('rtl');
+            
+            // We don't save to localStorage here to allow the app to make the final decision
+            // with its more sophisticated detection
+          } else {
+            document.documentElement.lang = 'en';
+            document.documentElement.dir = 'ltr';
+            document.documentElement.classList.add('ltr');
+          }
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-D47qPLqu.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-BDP1-VUM.js">
+    <link rel="modulepreload" crossorigin href="/assets/ui-CFgWxDLP.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-DPZhU-Ed.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

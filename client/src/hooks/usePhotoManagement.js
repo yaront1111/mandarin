@@ -14,17 +14,22 @@
  * - Soft deletion of photos (using isDeleted flag)
  * - Handling photo loading errors
  * - Normalizing photo URLs
+ * - Image compression before upload
+ * - Offline support with local storage
+ * - Robust retry mechanism for failed uploads
+ * - Race condition handling for token processing
  * 
  * The hook maintains backward compatibility with the old isPrivate boolean model
  * while encouraging the use of the new privacy enum.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApi } from './useApi';
 import { useUser } from '../context';
 import { normalizePhotoUrl, markUrlAsFailed } from '../utils';
 import { toast } from 'react-toastify';
 import logger from '../utils/logger';
+import imageCompression from 'browser-image-compression';
 
 const log = logger.create("usePhotoManagement");
 
@@ -40,9 +45,54 @@ const usePhotoManagement = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const [photoLoadErrors, setPhotoLoadErrors] = useState({});
+  const [pendingUploads, setPendingUploads] = useState([]);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   
   // References to prevent race conditions
   const processingRef = useRef(false);
+  const tokenWaitTimeRef = useRef(500); // Initial wait time for token processing
+  const maxRetries = 3; // Maximum number of retry attempts
+  const uploadQueueKey = 'mandarin_pending_uploads';
+  
+  // Load any pending uploads from localStorage on hook initialization
+  useEffect(() => {
+    try {
+      const savedUploads = localStorage.getItem(uploadQueueKey);
+      if (savedUploads) {
+        const uploads = JSON.parse(savedUploads);
+        // Check if there are any valid pending uploads
+        if (Array.isArray(uploads) && uploads.length > 0) {
+          setPendingUploads(uploads);
+          log.debug(`Loaded ${uploads.length} pending uploads from localStorage`);
+        }
+      }
+    } catch (err) {
+      log.error('Error loading pending uploads from localStorage:', err);
+    }
+  }, []);
+  
+  // Save uploads queue to localStorage
+  const saveUploadsToLocalStorage = (uploads) => {
+    try {
+      if (uploads.length > 0) {
+        localStorage.setItem(uploadQueueKey, JSON.stringify(uploads));
+      } else {
+        localStorage.removeItem(uploadQueueKey);
+      }
+    } catch (err) {
+      log.error('Error saving pending uploads to localStorage:', err);
+    }
+  };
+  
+  // Add an upload to the pending queue
+  const addToPendingUploads = useCallback((uploadData) => {
+    setPendingUploads(prev => {
+      const newQueue = [...prev, uploadData];
+      saveUploadsToLocalStorage(newQueue);
+      return newQueue;
+    });
+  }, []);
 
   /**
    * Clear the URL normalization cache for a specific URL or all photo URLs
@@ -69,6 +119,193 @@ const usePhotoManagement = () => {
   }, []);
 
   /**
+   * Force refresh all avatars application-wide with an option for extreme refresh
+   * This is a utility function that can be called when you know a profile photo
+   * has changed but you don't have access to specific avatar instances
+   */
+  const refreshAllAvatars = useCallback((forcePageRefresh = false) => {
+    // Clear all photo caches
+    clearCache();
+    
+    // Most aggressive solution - actual page refresh if requested
+    if (forcePageRefresh && typeof window !== 'undefined') {
+      log.debug('Forcing complete page refresh by reloading the window');
+      window.location.reload();
+      return; // Stop here since we're reloading
+    }
+    
+    // Dispatch a custom event that components can listen for
+    if (typeof window !== 'undefined') {
+      // Add a more aggressive cache busting using a single random value for the entire page
+      window.__photo_refresh_timestamp = Date.now();
+      
+      // Create and dispatch refresh event
+      const refreshEvent = new CustomEvent('avatar:refresh', {
+        detail: { timestamp: window.__photo_refresh_timestamp }
+      });
+      window.dispatchEvent(refreshEvent);
+      
+      // Force a CSS class change on body to trigger repaints
+      document.body.classList.add('photo-refreshed');
+      setTimeout(() => {
+        document.body.classList.remove('photo-refreshed');
+      }, 100);
+      
+      // Force repaint on browser by triggering a layout recalculation
+      const scrollPosition = window.scrollY;
+      document.body.style.zoom = '99.99%';
+      setTimeout(() => {
+        document.body.style.zoom = '100%';
+        window.scrollTo(0, scrollPosition);
+      }, 50);
+      
+      log.debug('Avatar refresh event dispatched with timestamp:', window.__photo_refresh_timestamp);
+    }
+  }, [clearCache]);
+  
+  // Process any pending uploads when online and authenticated
+  useEffect(() => {
+    const processQueue = async () => {
+      // Only process if online and not already uploading
+      if (!navigator.onLine || isUploading || isRetrying || pendingUploads.length === 0) {
+        return;
+      }
+      
+      log.debug(`Processing ${pendingUploads.length} pending uploads`);
+      setIsRetrying(true);
+      
+      // Take the first pending upload
+      const [nextUpload, ...remainingUploads] = pendingUploads;
+      
+      try {
+        // Try to upload the file
+        await processUpload(nextUpload);
+        
+        // Update the queue
+        setPendingUploads(remainingUploads);
+        saveUploadsToLocalStorage(remainingUploads);
+        
+        // Reset retry count on success
+        setRetryCount(0);
+      } catch (err) {
+        log.error('Failed to process pending upload:', err);
+        
+        // Increment retry count
+        const newRetryCount = retryCount + 1;
+        setRetryCount(newRetryCount);
+        
+        if (newRetryCount >= maxRetries) {
+          // If we've reached max retries, remove this upload from the queue
+          setPendingUploads(remainingUploads);
+          saveUploadsToLocalStorage(remainingUploads);
+          toast.error(`Failed to upload photo after ${maxRetries} attempts`); 
+          setRetryCount(0);
+        } else {
+          // Otherwise keep in queue for next retry
+          toast.info(`Retrying photo upload (${newRetryCount}/${maxRetries})`);
+        }
+      } finally {
+        setIsRetrying(false);
+      }
+    };
+    
+    // Process queue when online
+    if (navigator.onLine) {
+      processQueue();
+    }
+    
+    // Listen for online/offline events
+    const handleOnline = () => {
+      toast.info('Back online. Resuming photo uploads...');
+      processQueue();
+    };
+    
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [pendingUploads, isUploading, isRetrying, retryCount]);
+  
+  // Compress an image before upload
+  const compressImage = async (file, options = {}) => {
+    const defaultOptions = {
+      maxSizeMB: 1,          // Default max size 1MB
+      maxWidthOrHeight: 1920,  // Reasonable size for profile photos
+      useWebWorker: true,    // Use web worker for better performance
+      fileType: file.type,   // Preserve file type
+    };
+    
+    try {
+      log.debug(`Compressing image: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+      const compressedFile = await imageCompression(file, { ...defaultOptions, ...options });
+      log.debug(`Compression complete: ${compressedFile.name} (${(compressedFile.size / 1024 / 1024).toFixed(2)}MB)`);
+      return compressedFile;
+    } catch (err) {
+      log.error('Image compression error:', err);
+      // Return original file if compression fails
+      return file;
+    }
+  };
+  
+  // Process a pending upload
+  const processUpload = async (uploadData) => {
+    if (!uploadData || !uploadData.file) {
+      throw new Error('Invalid upload data');
+    }
+    
+    const { file, privacy, shouldSetAsProfile } = uploadData;
+    
+    // Create FormData
+    const formData = new FormData();
+    formData.append('photo', file);
+    formData.append('privacy', privacy || 'private');
+    
+    // Add flag for profile photo if needed
+    if (shouldSetAsProfile) {
+      formData.append('isProfile', 'true');
+    }
+    
+    // Handle token race condition by waiting
+    if (uploadData.isNewRegistration) {
+      await new Promise(resolve => setTimeout(resolve, tokenWaitTimeRef.current));
+      // Increase wait time for each retry, up to 3 seconds
+      tokenWaitTimeRef.current = Math.min(3000, tokenWaitTimeRef.current * 1.5);
+    }
+    
+    // Make the API request
+    setIsUploading(true);
+    setUploadProgress(0);
+    
+    try {
+      // Use api.upload method
+      const response = await api.upload('/users/photos', formData, (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        setUploadProgress(percentCompleted);
+        
+        if (uploadData.onProgress && typeof uploadData.onProgress === 'function') {
+          uploadData.onProgress(percentCompleted);
+        }
+      });
+      
+      // Clear cache and trigger refresh
+      refreshAllAvatars();
+      
+      // Wait before refreshing user data
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      if (response && (response.success || response.photo)) {
+        const resultData = response.data || response.photo;
+        return resultData;
+      } else {
+        throw new Error(response?.error || 'Failed to upload photo');
+      }
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  /**
    * Generate a consistent temporary ID for a photo
    */
   const generateTempId = useCallback(() => {
@@ -76,14 +313,19 @@ const usePhotoManagement = () => {
   }, []);
 
   /**
-   * Handle photo upload with progress tracking
+   * Handle photo upload with progress tracking, compression, offline support, and retry mechanism
    * @param {File} file - The file to upload
    * @param {string} privacy - Privacy level ('public', 'private', 'friends_only')
    * @param {Function} onProgress - Optional progress callback
    * @param {boolean} shouldSetAsProfile - Whether to set this photo as profile photo
+   * @param {Object} options - Additional options
+   * @param {boolean} options.isNewRegistration - Whether this upload is part of a new user registration
+   * @param {boolean} options.compressImage - Whether to compress the image before upload (defaults to true)
+   * @param {boolean} options.addToQueueOnFailure - Whether to add failed uploads to queue (defaults to true)
+   * @param {Object} options.compressionOptions - Options for image compression
    * @returns {Promise<Object>} The uploaded photo object
    */
-  const uploadPhoto = useCallback(async (file, privacy = 'private', onProgress, shouldSetAsProfile = false) => {
+  const uploadPhoto = useCallback(async (file, privacy = 'private', onProgress, shouldSetAsProfile = false, options = {}) => {
     if (!file) {
       throw new Error('No file provided');
     }
@@ -102,13 +344,53 @@ const usePhotoManagement = () => {
     if (privacy && !['public', 'private', 'friends_only'].includes(privacy)) {
       privacy = 'private'; // Default to private for safety
     }
-
-    setIsUploading(true);
-    setUploadProgress(0);
+    
+    // Extract options with defaults
+    const {
+      isNewRegistration = false,
+      compressImage: shouldCompress = true,
+      addToQueueOnFailure = true,
+      compressionOptions = {}
+    } = options;
     
     try {
+      // Compress image if enabled (and not already processing a failed upload)
+      let processedFile = file;
+      if (shouldCompress && file.size > 500 * 1024) { // Only compress if > 500KB
+        processedFile = await compressImage(file, compressionOptions);
+      }
+      
+      // Check if offline
+      if (!navigator.onLine) {
+        log.debug('Device is offline. Adding upload to queue.');
+        toast.info('You appear to be offline. The photo will upload when connection is restored.');
+        
+        // Add to pending uploads queue
+        const uploadData = {
+          file: processedFile,
+          privacy,
+          shouldSetAsProfile,
+          onProgress,
+          isNewRegistration,
+          timestamp: Date.now()
+        };
+        
+        addToPendingUploads(uploadData);
+        return { queued: true, message: 'Upload queued until online' };
+      }
+      
+      setIsUploading(true);
+      setUploadProgress(0);
+      
+      // Handle token race condition by waiting if this is a new registration
+      if (isNewRegistration) {
+        log.debug(`Waiting ${tokenWaitTimeRef.current}ms for token processing`);
+        await new Promise(resolve => setTimeout(resolve, tokenWaitTimeRef.current));
+      }
+      
+      // Create FormData
       const formData = new FormData();
-      formData.append('photo', file);
+      formData.append('photo', processedFile);
       formData.append('privacy', privacy);
       
       // Add flag for profile photo if needed
@@ -134,6 +416,9 @@ const usePhotoManagement = () => {
       // This helps with race conditions
       await new Promise(resolve => setTimeout(resolve, 300));
       
+      // Reset token wait time on successful upload
+      tokenWaitTimeRef.current = 500;
+      
       if (response && response.success && response.data) {
         return response.data;
       } else if (response && response.photo) {
@@ -143,12 +428,33 @@ const usePhotoManagement = () => {
       }
     } catch (error) {
       log.error('Photo upload error:', error);
+      
+      // If we should add to queue on failure and we're online (meaning it's an API error, not a network error)
+      if (addToQueueOnFailure && navigator.onLine) {
+        log.debug('Adding failed upload to retry queue');
+        
+        // Add to pending uploads with retry information
+        const uploadData = {
+          file,
+          privacy,
+          shouldSetAsProfile,
+          onProgress,
+          isNewRegistration,
+          timestamp: Date.now(),
+          retry: true,
+          error: error.message
+        };
+        
+        addToPendingUploads(uploadData);
+        toast.info('Upload failed. Will retry automatically.');
+      }
+      
       throw error;
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
     }
-  }, [api, clearCache]);
+  }, [api, refreshAllAvatars, addToPendingUploads, compressImage]);
 
   /**
    * Set the privacy level for a photo (public, private, friends_only)
@@ -204,7 +510,7 @@ const usePhotoManagement = () => {
       processingRef.current = false;
       setIsProcessingPhoto(false);
     }
-  }, [api, refreshUserData]);
+  }, [api, refreshUserData, refreshAllAvatars]);
   
   /**
    * Legacy method - Toggle a photo between public and private
@@ -255,7 +561,7 @@ const usePhotoManagement = () => {
       processingRef.current = false;
       setIsProcessingPhoto(false);
     }
-  }, [api, refreshUserData, setPhotoPrivacy]);
+  }, [api, setPhotoPrivacy]);
 
   /**
    * Set a photo as the profile photo
@@ -267,38 +573,50 @@ const usePhotoManagement = () => {
     if (!photoId) {
       throw new Error('No photo ID provided');
     }
-    
+
     if (processingRef.current) return;
-    
+
     // Check if this is a temporary photo
     if (typeof photoId === 'string' && photoId.startsWith('temp-')) {
       toast.warning('Please wait for the photo to finish uploading');
       return;
     }
-    
+
     processingRef.current = true;
     setIsProcessingPhoto(true);
-    
+
     try {
-      // The new API automatically handles the isProfile flag for all photos
+      // First check if the photo is private and make it public if needed
+      const user = await api.get(`/auth/me`);
+      const photo = user?.photos?.find(p => p._id === photoId);
+
+      if (photo && (photo.privacy === 'private' || photo.privacy === 'friends_only' || photo.isPrivate)) {
+        log.debug(`Setting photo ${photoId} to public because it's being set as profile photo`);
+        // Make sure the photo is public before setting as profile
+        await api.put(`/users/photos/${photoId}/privacy`, {
+          privacy: 'public'
+        });
+      }
+
+      // The API automatically handles the isProfile flag for all photos
       const response = await api.put(`/users/photos/${photoId}/profile`);
-      
+
       // API response is already processed by useApi hook
       // The response might be directly the data or could have success property
       // Handle both cases
       const responseData = response?.data || response;
-      
+
       // Clear URL cache for all images to ensure they're refreshed throughout the app
       clearCache();
-      
+
       // Force global refresh by dispatching refresh event
       refreshAllAvatars();
-      
+
       // Refresh user data to update the UI
       if (userId) {
         await refreshUserData(userId, true); // Force immediate refresh
       }
-      
+
       return responseData; // Returns the full photos array
     } catch (error) {
       log.error('Set profile photo error:', error);
@@ -307,7 +625,7 @@ const usePhotoManagement = () => {
       processingRef.current = false;
       setIsProcessingPhoto(false);
     }
-  }, [api, refreshUserData, clearCache]);
+  }, [api, refreshUserData, clearCache, refreshAllAvatars]);
 
   /**
    * Soft delete a photo (mark as deleted but keep in database)
@@ -362,7 +680,7 @@ const usePhotoManagement = () => {
       processingRef.current = false;
       setIsProcessingPhoto(false);
     }
-  }, [api, refreshUserData]);
+  }, [api, refreshUserData, refreshAllAvatars]);
 
   /**
    * Handle image loading errors and fallbacks
@@ -452,45 +770,137 @@ const usePhotoManagement = () => {
    * @returns {string} Normalized profile photo URL
    */
   const getProfilePhotoUrl = useCallback((userOrPhotos) => {
-    if (!userOrPhotos) return normalizePhotoUrl('/default-avatar.png');
+    // Get gender-specific default avatar based on user's gender/identity
+    const getDefaultAvatar = (user) => {
+      // Debug logging - check if user exists
+      log.debug('getDefaultAvatar called with user:', user ? 'User object present' : 'No user object');
+      
+      if (!user) {
+        log.debug('No user provided, returning default avatar');
+        return '/default-avatar.png';
+      }
+      
+      // Debug logging - check if details.iAm exists
+      log.debug('User contains details.iAm:', user.details && user.details.iAm ? 'YES' : 'NO');
+      if (user.details) {
+        log.debug('User details object:', JSON.stringify(user.details));
+      }
+      
+      // Check user's identity from details.iAm - case-insensitive matching
+      if (user.details && user.details.iAm) {
+        const iAm = typeof user.details.iAm === 'string' ? user.details.iAm.toLowerCase() : '';
+        log.debug('details.iAm value (normalized):', iAm);
+        
+        if (iAm === 'woman' || iAm === 'women' || iAm === 'female') {
+          log.debug('Returning women avatar based on details.iAm');
+          return '/women-avatar.png';
+        } else if (iAm === 'man' || iAm === 'male') {
+          log.debug('Returning man avatar based on details.iAm');
+          return '/man-avatar.png';
+        } else if (iAm === 'couple' || iAm === 'other') {
+          log.debug('Returning couple avatar based on details.iAm');
+          return '/couple-avatar.png';
+        }
+      }
+      
+      // Debug logging - check gender field
+      log.debug('User gender field:', user.gender || 'Not defined');
+      
+      // Fallback to gender field if iAm is not available (for backward compatibility)
+      if (user.gender) {
+        // Case-insensitive gender matching
+        const gender = typeof user.gender === 'string' ? user.gender.toLowerCase() : '';
+        
+        if (gender === 'female' || gender === 'woman' || gender === 'women') {
+          log.debug('Returning women avatar based on gender field');
+          return '/women-avatar.png';
+        } else if (gender === 'male' || gender === 'man') {
+          log.debug('Returning man avatar based on gender field');
+          return '/man-avatar.png';
+        } else if (gender === 'couple' || gender === 'other') {
+          log.debug('Returning couple avatar based on gender field');
+          return '/couple-avatar.png';
+        }
+      }
+      
+      // If no specific gender/identity or it's not one of the recognized values
+      log.debug('No matching gender/identity found, returning default avatar');
+      return '/default-avatar.png';
+    };
+    
+    if (!userOrPhotos) return normalizePhotoUrl(getDefaultAvatar());
     
     // Handle user object
     if (userOrPhotos.photos) {
       const photos = userOrPhotos.photos;
+      
+      // Debug logging for photos array
+      log.debug(`User has photos array with ${photos ? photos.length : 0} photos`);
+      if (photos && photos.length > 0) {
+        log.debug(`First photo URL: ${photos[0].url || 'undefined'}`);
+      }
+      
+      // No photos or empty array
       if (!photos || photos.length === 0) {
-        return normalizePhotoUrl('/default-avatar.png');
+        log.debug('No photos found, returning gender-specific avatar');
+        return normalizePhotoUrl(getDefaultAvatar(userOrPhotos), true); // Always bust cache for avatars
       }
       
       // Find non-deleted photos first
-      const availablePhotos = photos.filter(photo => !photo.isDeleted);
+      const availablePhotos = photos.filter(photo => !photo.isDeleted && photo.url);
+      
+      log.debug(`User has ${availablePhotos.length} non-deleted photos with URLs`);
+      
+      // No available photos after filtering
       if (availablePhotos.length === 0) {
-        return normalizePhotoUrl('/default-avatar.png');
+        log.debug('No available photos after filtering, returning gender-specific avatar');
+        return normalizePhotoUrl(getDefaultAvatar(userOrPhotos), true); // Always bust cache for avatars
       }
       
       // Find profile photo among available photos
-      const profilePhoto = availablePhotos.find(photo => photo.isProfile);
-      const url = profilePhoto ? profilePhoto.url : availablePhotos[0].url;
+      const profilePhoto = availablePhotos.find(photo => photo.isProfile === true);
       
-      return normalizePhotoUrl(url || '/default-avatar.png');
+      if (profilePhoto && profilePhoto.url) {
+        log.debug('Found profile photo with URL:', profilePhoto.url);
+        return normalizePhotoUrl(profilePhoto.url, true); // Bust cache for profile photos
+      } else {
+        // Use first available photo if no profile photo is set
+        log.debug('No profile photo found, using first available photo:', availablePhotos[0].url);
+        return normalizePhotoUrl(availablePhotos[0].url, true);
+      }
     }
     
     // Handle photos array
     if (Array.isArray(userOrPhotos)) {
+      log.debug(`Received photos array with ${userOrPhotos.length} items`);
+      
       if (userOrPhotos.length === 0) {
-        return normalizePhotoUrl('/default-avatar.png');
+        // This is trickier as we don't have the user object here
+        // Just use generic default avatar in this case
+        log.debug('Empty photos array, returning default avatar');
+        return normalizePhotoUrl('/default-avatar.png', true);
       }
       
-      // Find non-deleted photos first
-      const availablePhotos = userOrPhotos.filter(photo => !photo.isDeleted);
+      // Find non-deleted photos first with valid URLs
+      const availablePhotos = userOrPhotos.filter(photo => !photo.isDeleted && photo.url);
+      log.debug(`Found ${availablePhotos.length} available photos after filtering`);
+      
       if (availablePhotos.length === 0) {
-        return normalizePhotoUrl('/default-avatar.png');
+        log.debug('No available photos after filtering, returning default avatar');
+        return normalizePhotoUrl('/default-avatar.png', true);
       }
       
       // Find profile photo among available photos
-      const profilePhoto = availablePhotos.find(photo => photo.isProfile);
-      const url = profilePhoto ? profilePhoto.url : availablePhotos[0].url;
+      const profilePhoto = availablePhotos.find(photo => photo.isProfile === true);
       
-      return normalizePhotoUrl(url || '/default-avatar.png');
+      if (profilePhoto && profilePhoto.url) {
+        log.debug('Found profile photo with URL:', profilePhoto.url);
+        return normalizePhotoUrl(profilePhoto.url, true); // Always bust cache for profile photos
+      } else {
+        // Use first available photo if no profile photo is set
+        log.debug('No profile photo found, using first available photo:', availablePhotos[0].url);
+        return normalizePhotoUrl(availablePhotos[0].url, true);
+      }
     }
     
     // Handle string URL
@@ -501,57 +911,15 @@ const usePhotoManagement = () => {
     return normalizePhotoUrl('/default-avatar.png');
   }, []);
 
-  /**
-   * Force refresh all avatars application-wide with an option for extreme refresh
-   * This is a utility function that can be called when you know a profile photo
-   * has changed but you don't have access to specific avatar instances
-   */
-  const refreshAllAvatars = useCallback((forcePageRefresh = false) => {
-    // Clear all photo caches
-    clearCache();
-    
-    // Most aggressive solution - actual page refresh if requested
-    if (forcePageRefresh && typeof window !== 'undefined') {
-      log.debug('Forcing complete page refresh by reloading the window');
-      window.location.reload();
-      return; // Stop here since we're reloading
-    }
-    
-    // Dispatch a custom event that components can listen for
-    if (typeof window !== 'undefined') {
-      // Add a more aggressive cache busting using a single random value for the entire page
-      window.__photo_refresh_timestamp = Date.now();
-      
-      // Create and dispatch refresh event
-      const refreshEvent = new CustomEvent('avatar:refresh', {
-        detail: { timestamp: window.__photo_refresh_timestamp }
-      });
-      window.dispatchEvent(refreshEvent);
-      
-      // Force a CSS class change on body to trigger repaints
-      document.body.classList.add('photo-refreshed');
-      setTimeout(() => {
-        document.body.classList.remove('photo-refreshed');
-      }, 100);
-      
-      // Force repaint on browser by triggering a layout recalculation
-      const scrollPosition = window.scrollY;
-      document.body.style.zoom = '99.99%';
-      setTimeout(() => {
-        document.body.style.zoom = '100%';
-        window.scrollTo(0, scrollPosition);
-      }, 50);
-      
-      log.debug('Avatar refresh event dispatched with timestamp:', window.__photo_refresh_timestamp);
-    }
-  }, [clearCache]);
-
   return {
     // State
     isUploading,
     uploadProgress,
     isProcessingPhoto,
     photoLoadErrors,
+    pendingUploads,
+    isRetrying,
+    retryCount,
     
     // Photo operations
     uploadPhoto,
@@ -559,6 +927,11 @@ const usePhotoManagement = () => {
     togglePhotoPrivacy,     // Legacy method preserved for compatibility
     setProfilePhoto,
     deletePhoto,
+    
+    // Enhanced features
+    compressImage,          // Compress images before upload
+    processUpload,          // Process a pending upload
+    addToPendingUploads,    // Add an upload to the pending queue
     
     // Utility functions
     handlePhotoLoadError,

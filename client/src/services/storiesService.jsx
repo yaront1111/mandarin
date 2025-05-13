@@ -177,7 +177,6 @@ export const createTextStory = async (storyData, onProgress) => {
     return {
       success: false,
       error: "Duplicate submission",
-      message: "Please wait 5 seconds before posting another story",
     };
   }
 

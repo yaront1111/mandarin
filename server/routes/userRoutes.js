@@ -171,17 +171,57 @@ router.get(
     const requestingUserId = req.user._id.toString();
     const isOwner = requestingUserId === id;
     
-    // Apply photo privacy filtering
+    // Process photos to include permission data
     if (targetUser.photos && Array.isArray(targetUser.photos)) {
       // Get only non-deleted photos
       targetUser.photos = targetUser.photos.filter(photo => !photo.isDeleted);
       
-      // If not the owner, apply privacy filters
-      if (!isOwner) {
-        targetUser.photos = targetUser.photos.filter(photo => {
-          return photo.privacy === 'public';
-          // Add friends_only handling here when implementing friendship system
+      // For each photo, add a hasPermission flag based on privacy and permissions
+      if (!isOwner && targetUser.photos.length > 0) {
+        // Get all private photo IDs
+        const privatePhotoIds = targetUser.photos
+          .filter(photo => photo.privacy === 'private')
+          .map(p => p._id);
+          
+        // If there are private photos, check for permissions
+        let permissions = [];
+        if (privatePhotoIds.length > 0) {
+          permissions = await PhotoPermission.find({
+            photo: { $in: privatePhotoIds },
+            requestedBy: requestingUserId,
+            status: 'approved'
+          });
+        }
+        
+        // Create a set of approved photo IDs for quick lookups
+        const approvedPhotoIds = new Set(
+          permissions.map(p => p.photo.toString())
+        );
+        
+        // Add permission flags to each photo
+        targetUser.photos = targetUser.photos.map(photo => {
+          const photoObj = photo;
+          
+          // Determine if the user has permission to view this photo
+          if (photo.privacy === 'public') {
+            photoObj.hasPermission = true;
+          } else if (photo.privacy === 'private') {
+            photoObj.hasPermission = approvedPhotoIds.has(photo._id.toString());
+          } else if (photo.privacy === 'friends_only') {
+            // TODO: Implement friends logic here if needed
+            photoObj.hasPermission = false;
+          } else {
+            photoObj.hasPermission = false;
+          }
+          
+          return photoObj;
         });
+      } else {
+        // Owner has permission to all photos
+        targetUser.photos = targetUser.photos.map(photo => ({
+          ...photo,
+          hasPermission: true
+        }));
       }
     }
     
@@ -540,26 +580,47 @@ router.get(
   "/photos/permissions",
   protect,
   asyncHandler(async (req, res) => {
-    const photoIds = (req.user.photos || []).map((p) => p._id);
     const { page, limit, skip } = paginate(req);
-    const q = { photo: { $in: photoIds } };
-    if (["pending", "approved", "rejected"].includes(req.query.status)) q.status = req.query.status;
-
-    const perms = await PhotoPermission.find(q)
-      .populate("requestedBy", "nickname photos")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-    const total = await PhotoPermission.countDocuments(q);
-
-    res.json({
-      success: true,
-      count: perms.length,
-      total,
-      page,
-      pages: Math.ceil(total / limit),
-      data: perms,
-    });
+    const { status } = req.query;
+    
+    try {
+      // Get all photo IDs that belong to the user
+      const user = await User.findById(req.user._id).select("photos");
+      if (!user) return respondError(res, 404, "User not found");
+      
+      const photoIds = user.photos.map(p => p._id);
+      
+      // Build query based on filters
+      const query = { photoOwnerId: req.user._id };
+      
+      // Filter by status if provided
+      if (status && ["pending", "approved", "rejected"].includes(status)) {
+        query.status = status;
+      }
+      
+      // Get permissions with pagination
+      const [permissions, total] = await Promise.all([
+        PhotoPermission.find(query)
+          .populate("requestedBy", "nickname photos") // Include basic info about the requester
+          .populate("photo", "url") // Include photo URL
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit),
+        PhotoPermission.countDocuments(query)
+      ]);
+      
+      res.json({
+        success: true,
+        count: permissions.length,
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        data: permissions,
+      });
+    } catch (err) {
+      logger.error(`Error fetching photo permissions: ${err.message}`);
+      respondError(res, 500, "Failed to fetch photo permissions");
+    }
   })
 );
 
@@ -771,14 +832,33 @@ router.get(
       return res.json({ success: true, status: "approved", message: "Owner" });
     }
     
-    // Check if user has allowed private photos
-    const allowPrivatePhotos = target.settings?.privacy?.allowPrivatePhotos;
+    // Check for permissions in the database
+    const privatePhotoIds = privatePhotos.map(p => p._id);
+    const permissions = await PhotoPermission.find({
+      photo: { $in: privatePhotoIds },
+      requestedBy: req.user._id
+    });
     
-    if (allowPrivatePhotos) {
-      return res.json({ success: true, status: "approved", message: "Access allowed" });
-    } else {
-      return res.json({ success: true, status: "none", message: "No access" });
+    // Check for existing permissions
+    if (permissions.length > 0) {
+      // If all permissions are approved
+      if (permissions.every(p => p.status === 'approved')) {
+        return res.json({ success: true, status: "approved", message: "Access granted" });
+      }
+      
+      // If all permissions are rejected
+      if (permissions.every(p => p.status === 'rejected')) {
+        return res.json({ success: true, status: "rejected", message: "Access denied" });
+      }
+      
+      // If some permissions are pending
+      if (permissions.some(p => p.status === 'pending')) {
+        return res.json({ success: true, status: "pending", message: "Request awaiting approval" });
+      }
     }
+    
+    // Default case: No permissions yet
+    return res.json({ success: true, status: "none", message: "No access" });
   })
 );
 
@@ -916,202 +996,257 @@ router.delete(
 );
 
 /**
- * POST /api/users/photos/approve-all
+ * POST /api/users/photos/permissions/approve-all
  * Approve all pending photo requests
  */
 router.post(
-  "/photos/approve-all",
+  "/photos/permissions/approve-all",
   protect,
   asyncHandler(async (req, res) => {
-    const pending = await PhotoPermission.find({
-      photoOwnerId: req.user._id,
-      status: "pending",
-    });
-    if (!pending.length)
-      return res.json({ success: true, message: "No pending requests", approvedCount: 0 });
+    try {
+      // Find all pending permission requests where this user is the owner
+      const pending = await PhotoPermission.find({
+        photoOwnerId: req.user._id,
+        status: "pending",
+      });
+      
+      if (!pending.length) {
+        return res.json({ 
+          success: true, 
+          message: "No pending requests", 
+          approvedCount: 0 
+        });
+      }
 
-    await Promise.all(
-      pending.map((r) => {
-        r.status = "approved";
-        r.updatedAt = new Date();
-        return r.save();
-      })
-    );
-    res.json({
-      success: true,
-      message: `Approved ${pending.length} requests`,
-      approvedCount: pending.length,
-    });
-  })
-);
+      // Approve all pending requests
+      await Promise.all(
+        pending.map(async (permission) => {
+          return permission.approve();
+        })
+      );
 
-/**
- * POST /api/users/:id/allow-private-photos
- * Allow access to private photos
- */
-router.post(
-  "/:id/allow-private-photos",
-  protect,
-  asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    if (!isValidId(id)) return respondError(res, 400, "Invalid user ID");
-    
-    // Only the owner can allow private photos
-    if (req.user._id.toString() !== id) {
-      return respondError(res, 403, "Only the owner can allow private photos");
+      res.json({
+        success: true,
+        message: `Approved ${pending.length} requests`,
+        approvedCount: pending.length,
+      });
+    } catch (err) {
+      logger.error(`Error approving all photo permissions: ${err.message}`);
+      respondError(res, 500, "Failed to approve photo permissions");
     }
-
-    // Update the user's privacy settings
-    const user = await User.findById(id);
-    if (!user) return respondError(res, 404, "User not found");
-    
-    // Ensure settings object exists
-    if (!user.settings) user.settings = {};
-    if (!user.settings.privacy) user.settings.privacy = {};
-    
-    // Set allowPrivatePhotos to true
-    user.settings.privacy.allowPrivatePhotos = true;
-    await user.save();
-
-    res.json({
-      success: true,
-      message: "Private photos access allowed",
-      data: { allowPrivatePhotos: true }
-    });
   })
 );
 
 /**
- * PUT /api/users/:id/approve-photo-access
- * Approve all pending requests from a specific user
- */
-router.put(
-  "/:id/approve-photo-access",
-  protect,
-  asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    if (!isValidId(id)) return respondError(res, 400, "Invalid user ID");
-
-    const pending = await PhotoPermission.find({
-      requestedBy: id,
-      photoOwnerId: req.user._id,
-      status: "pending",
-    });
-    if (!pending.length)
-      return res.json({ success: true, message: "No requests", approvedCount: 0 });
-
-    pending.forEach((r) => {
-      r.status = "approved";
-      r.updatedAt = new Date();
-      r.respondedAt = new Date();
-      r.save();
-    });
-
-    res.json({
-      success: true,
-      message: `Approved ${pending.length} requests`,
-      approvedCount: pending.length,
-    });
-  })
-);
-
-/**
- * PUT /api/users/:id/reject-photo-access
- * Reject all pending requests from a specific user
- */
-router.put(
-  "/:id/reject-photo-access",
-  protect,
-  asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    if (!isValidId(id)) return respondError(res, 400, "Invalid user ID");
-
-    const pending = await PhotoPermission.find({
-      requestedBy: id,
-      photoOwnerId: req.user._id,
-      status: "pending",
-    });
-    if (!pending.length)
-      return res.json({ success: true, message: "No requests", rejectedCount: 0 });
-
-    pending.forEach((r) => {
-      r.status = "rejected";
-      r.updatedAt = new Date();
-      r.respondedAt = new Date();
-      r.save();
-    });
-
-    res.json({
-      success: true,
-      message: `Rejected ${pending.length} requests`,
-      rejectedCount: pending.length,
-    });
-  })
-);
-
-/**
- * POST /api/users/photos/:id/request
- * Request access to a single photo
+ * POST /api/users/request-photo-access
+ * Request access to a user's private photos
  */
 router.post(
-  "/photos/:id/request",
-  enhancedProtect,
+  "/request-photo-access/:userId",
+  protect,
   asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    const { userId } = req.body;
-    if (!isValidId(id) || !isValidId(userId))
-      return respondError(res, 400, "Invalid IDs");
-
-    const owner = await User.findById(userId).select("photos");
-    if (!owner) return respondError(res, 404, "User not found");
-
-    const photo = owner.photos.id(id);
-    if (!photo) return respondError(res, 404, "Photo not found");
-    if (photo.privacy !== 'private') return respondError(res, 400, "Photo not private");
-    if (owner._id.toString() === req.user._id.toString())
-      return respondError(res, 400, "Cannot request own photo");
-
-    let perm = await PhotoPermission.findOne({ photo: id, requestedBy: req.user._id });
-    if (perm) return res.json({ success: true, data: perm, message: "Already requested" });
-
-    perm = new PhotoPermission({ photo: id, requestedBy: req.user._id, status: "pending" });
-    await perm.save();
-
-    // socket notification omitted...
-
-    res.status(201).json({ success: true, data: perm });
+    const { userId } = req.params;
+    const { message } = req.body;
+    
+    if (!isValidId(userId)) {
+      return respondError(res, 400, "Invalid user ID");
+    }
+    
+    // Cannot request access to your own photos
+    if (req.user._id.toString() === userId) {
+      return respondError(res, 400, "Cannot request access to your own photos");
+    }
+    
+    try {
+      // Get the target user's private photos
+      const targetUser = await User.findById(userId).select("photos");
+      if (!targetUser) {
+        return respondError(res, 404, "User not found");
+      }
+      
+      // Find all private photos
+      const privatePhotos = targetUser.photos.filter(photo => 
+        photo.privacy === 'private' && !photo.isDeleted
+      );
+      
+      if (privatePhotos.length === 0) {
+        return respondError(res, 400, "User has no private photos");
+      }
+      
+      // Create permission requests for each private photo
+      const permissionRequests = privatePhotos.map(photo => ({
+        photo: photo._id,
+        requestedBy: req.user._id,
+        photoOwnerId: targetUser._id,
+        message: message || '',
+        status: 'pending'
+      }));
+      
+      // Insert the permission requests
+      const results = await PhotoPermission.insertMany(permissionRequests, { 
+        ordered: false,
+        // Skip documents that violate the unique constraint
+        // (photo + requestedBy combination must be unique)
+        // This prevents duplicate requests for the same photo
+        skipDuplicates: true
+      });
+      
+      // Notify user about new permission requests
+      // Notification details would be handled by socket service
+      
+      return res.status(201).json({
+        success: true,
+        message: `Requested access to ${results.length} private photos`,
+        requestCount: results.length,
+        data: results
+      });
+    } catch (err) {
+      logger.error(`Error requesting photo access: ${err.message}`);
+      // If the error is validation related (e.g., already requested)
+      if (err.name === 'ValidationError' || err.code === 11000) {
+        return respondError(res, 400, err.message || "Error processing request");
+      }
+      respondError(res, 500, "Failed to request photo access");
+    }
   })
 );
 
 /**
- * PUT /api/users/photos/permissions/:id
- * Respond to a single photo-permission request
+ * PUT /api/users/respond-photo-access/:userId
+ * Respond to all photo access requests from a specific user
  */
 router.put(
-  "/photos/permissions/:id",
+  "/respond-photo-access/:userId",
   protect,
   asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body;
-    if (!isValidId(id)) return respondError(res, 400, "Invalid permission ID");
-    if (!["approved", "rejected"].includes(status))
-      return respondError(res, 400, "Invalid status");
+    const { userId } = req.params;
+    const { status, message } = req.body;
+    
+    if (!isValidId(userId)) {
+      return respondError(res, 400, "Invalid user ID");
+    }
+    
+    if (!status || !['approved', 'rejected'].includes(status)) {
+      return respondError(res, 400, "Status must be 'approved' or 'rejected'");
+    }
+    
+    try {
+      // Find all pending photo permission requests from this user
+      const permissions = await PhotoPermission.find({
+        requestedBy: userId,
+        photoOwnerId: req.user._id,
+        status: 'pending'
+      });
+      
+      if (permissions.length === 0) {
+        return res.json({
+          success: true,
+          message: "No pending requests from this user",
+          updatedCount: 0
+        });
+      }
+      
+      // Process all permissions
+      for (const permission of permissions) {
+        if (status === 'approved') {
+          await permission.approve();
+        } else {
+          await permission.reject(message);
+        }
+      }
+      
+      // Notify the requesting user about the response
+      // Notification details would be handled by socket service
+      
+      return res.json({
+        success: true,
+        message: `${status === 'approved' ? 'Approved' : 'Rejected'} ${permissions.length} photo access requests`,
+        updatedCount: permissions.length
+      });
+    } catch (err) {
+      logger.error(`Error responding to photo access: ${err.message}`);
+      respondError(res, 500, "Failed to respond to photo access requests");
+    }
+  })
+);
 
-    const perm = await PhotoPermission.findById(id);
-    if (!perm) return respondError(res, 404, "Permission not found");
+/**
+ * PUT /api/users/photos/permissions/:permissionId
+ * Respond to a specific photo permission request
+ */
+router.put(
+  "/photos/permissions/:permissionId",
+  protect,
+  asyncHandler(async (req, res) => {
+    const { permissionId } = req.params;
+    const { status, message } = req.body;
+    
+    if (!isValidId(permissionId)) {
+      return respondError(res, 400, "Invalid permission ID");
+    }
+    
+    if (!status || !['approved', 'rejected'].includes(status)) {
+      return respondError(res, 400, "Status must be 'approved' or 'rejected'");
+    }
+    
+    try {
+      // Find the permission request
+      const permission = await PhotoPermission.findById(permissionId);
+      
+      if (!permission) {
+        return respondError(res, 404, "Permission request not found");
+      }
+      
+      // Verify the user is the photo owner
+      if (permission.photoOwnerId.toString() !== req.user._id.toString()) {
+        return respondError(res, 403, "Not authorized to respond to this request");
+      }
+      
+      // Update the permission
+      if (status === 'approved') {
+        await permission.approve();
+      } else {
+        await permission.reject(message);
+      }
+      
+      // Notify the requesting user about the response
+      // Notification details would be handled by socket service
+      
+      return res.json({
+        success: true,
+        message: `Request ${status}`,
+        data: permission
+      });
+    } catch (err) {
+      logger.error(`Error updating permission: ${err.message}`);
+      respondError(res, 500, "Failed to update permission");
+    }
+  })
+);
 
-    // Only photo owner may respond
-    const owner = await User.findOne({ _id: req.user._id, "photos._id": perm.photo });
-    if (!owner) return respondError(res, 403, "Not authorized");
-
-    perm.status = status;
-    perm.updatedAt = new Date();
-    if (status !== "pending") perm.respondedAt = new Date();
-    await perm.save();
-
-    // socket notification omitted...
-
-    res.json({ success: true, data: perm });
+/**
+ * GET /api/users/photos/permissions/pending
+ * Get the count of pending photo access requests
+ */
+router.get(
+  "/photos/permissions/pending/count",
+  protect,
+  asyncHandler(async (req, res) => {
+    try {
+      // Count all pending permission requests where this user is the owner
+      const pendingCount = await PhotoPermission.countDocuments({
+        photoOwnerId: req.user._id,
+        status: "pending",
+      });
+      
+      res.json({
+        success: true,
+        pendingCount
+      });
+    } catch (err) {
+      logger.error(`Error counting pending permissions: ${err.message}`);
+      respondError(res, 500, "Failed to count pending permissions");
+    }
   })
 );
 

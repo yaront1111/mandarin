@@ -4,11 +4,11 @@ import CallBanners from './CallBanners';
 import ChatArea from './ChatArea';
 import ChatHeader from './ChatHeader';
 import ChatInput from './ChatInput';
-import { 
-  LoadingIndicator, 
-  ErrorMessage, 
-  ConnectionIssueMessage, 
-  NoMessagesPlaceholder 
+import {
+  LoadingIndicator,
+  ErrorMessage,
+  ConnectionIssueMessage,
+  NoMessagesPlaceholder
 } from './ChatStatusIndicators';
 import ConversationItem from './ConversationItem';
 import ConversationList from './ConversationList';
@@ -20,7 +20,7 @@ import PremiumBanner from './PremiumBanner';
 import TypingIndicator from './TypingIndicator';
 
 // Utils
-import { 
+import {
   groupMessagesByDate,
   formatMessagePreview,
   formatMessageTime,

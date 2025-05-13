@@ -42,14 +42,26 @@ const StoriesCarousel = ({ onStoryClick }) => {
   const touchStartXRef = useRef(0)
   const isTouchActiveRef = useRef(false)
 
-  // Add some mock "coming soon" stories
+  // Add some mock "coming soon" stories with proper user data structure
   const comingSoonStories = [
     {
       _id: "coming-soon-video",
       mediaType: "video",
       user: {
         _id: "video-user",
-        nickname: "Video Stories"
+        nickname: "Video Stories",
+        details: {
+          iAm: "man" // Add gender information for default avatar
+        },
+        gender: "male" // Fallback for older avatar logic
+      },
+      userData: {
+        _id: "video-user",
+        nickname: "Video Stories",
+        details: {
+          iAm: "man" // Add gender information for default avatar
+        },
+        gender: "male" // Fallback for older avatar logic
       }
     },
     {
@@ -57,7 +69,19 @@ const StoriesCarousel = ({ onStoryClick }) => {
       mediaType: "image",
       user: {
         _id: "image-user",
-        nickname: "Image Stories"
+        nickname: "Image Stories",
+        details: {
+          iAm: "woman" // Add gender information for default avatar
+        },
+        gender: "female" // Fallback for older avatar logic
+      },
+      userData: {
+        _id: "image-user",
+        nickname: "Image Stories",
+        details: {
+          iAm: "woman" // Add gender information for default avatar
+        },
+        gender: "female" // Fallback for older avatar logic
       }
     }
   ];
@@ -65,6 +89,21 @@ const StoriesCarousel = ({ onStoryClick }) => {
   // Process stories to remove duplicates and ensure proper data structure
   useEffect(() => {
     if (stories && stories.length > 0) {
+      // Log to help debug the data structure
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('Stories from context:', stories.slice(0, 2));
+        
+        // Check how user data is structured in the stories
+        if (stories.length > 0) {
+          const sampleStory = stories[0];
+          console.debug('Sample story user structure:', {
+            userData: sampleStory.userData,
+            user: sampleStory.user,
+            userType: typeof sampleStory.user,
+          });
+        }
+      }
+    
       const uniqueStories = []
       const storyIds = new Set()
       const userIds = new Set()
@@ -73,7 +112,19 @@ const StoriesCarousel = ({ onStoryClick }) => {
       stories.forEach((story) => {
         if (story && story._id && !storyIds.has(story._id)) {
           storyIds.add(story._id)
-          uniqueStories.push(story)
+          
+          // Ensure user data is properly structured
+          const processedStory = { ...story };
+          
+          // If user is string ID but userData exists as object, ensure it has _id
+          if (typeof story.user === 'string' && story.userData && !story.userData._id) {
+            processedStory.userData = { 
+              ...story.userData,
+              _id: story.user // Add ID from the user field
+            };
+          }
+          
+          uniqueStories.push(processedStory)
         }
       })
 
@@ -218,19 +269,45 @@ const StoriesCarousel = ({ onStoryClick }) => {
 
   // Generate memoized thumbnail components
   const storyThumbnails = useMemo(() => {
-    return processedStories.map((story) => (
-      <StoryThumbnail
-        key={story._id || `story-${Math.random()}`}
-        story={story}
-        onClick={() => handleStoryClick(story._id)}
-        hasUnviewedStories={
-          typeof hasUnviewedStories === "function" && story.user
-            ? hasUnviewedStories(typeof story.user === "string" ? story.user : story.user._id)
-            : false
-        }
-        mediaType={story.mediaType}
-      />
-    ))
+    return processedStories.map((story) => {
+      // For debugging - log the actual story data being passed to each thumbnail
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug(`Story ${story._id} user data in carousel:`, {
+          user: story.user, 
+          userData: story.userData,
+          iAm: story.user?.details?.iAm || story.userData?.details?.iAm,
+          hasDetails: !!story.user?.details || !!story.userData?.details
+        });
+      }
+      
+      // Create a properly structured user object to pass explicitly
+      const userObject = story.userData && typeof story.userData === 'object' ? story.userData :
+                        (story.user && typeof story.user === 'object' ? story.user : 
+                          (typeof story.user === 'string' ? { _id: story.user } : {}));
+                          
+      // If this is a coming soon story
+      if (story._id === 'coming-soon-video' || story._id === 'coming-soon-image') {
+        // Force the user to include the proper details needed for gender avatars
+        userObject.details = userObject.details || {};
+        userObject.details.iAm = story._id === 'coming-soon-video' ? 'man' : 'woman';
+        userObject.gender = story._id === 'coming-soon-video' ? 'male' : 'female';
+      }
+      
+      return (
+        <StoryThumbnail
+          key={story._id || `story-${Math.random()}`}
+          story={story}
+          user={userObject} // Explicitly pass the user object
+          onClick={() => handleStoryClick(story._id)}
+          hasUnviewedStories={
+            typeof hasUnviewedStories === "function" && story.user
+              ? hasUnviewedStories(typeof story.user === "string" ? story.user : story.user._id)
+              : false
+          }
+          mediaType={story.mediaType}
+        />
+      );
+    });
   }, [processedStories, handleStoryClick, hasUnviewedStories])
 
   // Show loading state

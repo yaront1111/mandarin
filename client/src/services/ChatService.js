@@ -15,6 +15,8 @@ const SOCKET_ACK_TIMEOUT = SOCKET.TIMEOUT.ACK;             // From config
 const MESSAGE_FETCH_TIMEOUT = TIMEOUTS.FETCH.MESSAGES;     // From config
 const MESSAGE_DEDUP_TIMEOUT = TIMEOUTS.MESSAGE.DEDUPLICATION; // From config
 const PENDING_MESSAGE_EXPIRY = TIMEOUTS.MESSAGE.PENDING_EXPIRY; // From config
+const FILE_CACHE_KEY = 'mandarin_file_urls';               // LocalStorage key for file URL cache
+const FILE_CACHE_HASH_KEY = 'mandarin_file_urls_by_hash';  // LocalStorage key for file URL hash cache
 
 function isValidObjectId(id) {
   return typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
@@ -112,6 +114,13 @@ class ChatService {
     listen('messageReceived', (msg) => this._onSocketMessage(msg, false));
     listen('messageSent',    (msg) => this._onSocketMessage(msg, true));
     listen('messageError',   (err) => this._notify('messageError', err));
+
+    // Register for typing indicator events
+    listen('typing', (data) => {
+      if (data && data.userId) {
+        this._notify('userTyping', data);
+      }
+    });
   }
 
   _cleanupSocketListeners() {
@@ -360,6 +369,197 @@ class ChatService {
   isConnected() {
     // Directly use socketService's isConnected method
     return socketService.isConnected();
+  }
+
+  // File URL cache system
+  // This replaces the window.__fileMessages global with a proper class method
+
+  /**
+   * Initialize the file URL cache system from localStorage
+   * @private
+   */
+  _initFileCache() {
+    if (!this._fileUrlCache) {
+      log.debug("Initializing file URL caches");
+
+      // Create cache objects
+      this._fileUrlCache = {};
+      this._fileUrlCacheByHash = {};
+
+      // Load cached file URLs from localStorage
+      try {
+        // Load ID-based cache
+        const persistedUrls = localStorage.getItem(FILE_CACHE_KEY);
+        if (persistedUrls) {
+          const parsed = JSON.parse(persistedUrls);
+          if (parsed && typeof parsed === 'object') {
+            this._fileUrlCache = parsed;
+            log.debug(`Restored ${Object.keys(parsed).length} file URLs from localStorage`);
+          }
+        }
+
+        // Load hash-based cache
+        const persistedHashUrls = localStorage.getItem(FILE_CACHE_HASH_KEY);
+        if (persistedHashUrls) {
+          const parsed = JSON.parse(persistedHashUrls);
+          if (parsed && typeof parsed === 'object') {
+            this._fileUrlCacheByHash = parsed;
+            log.debug(`Restored ${Object.keys(parsed).length} file URLs by hash`);
+          }
+        } else if (Object.keys(this._fileUrlCache).length > 0) {
+          // Build hash cache from ID cache if it doesn't exist
+          this._rebuildHashCache();
+        }
+      } catch (err) {
+        log.error("Failed to load persisted file URLs", err);
+        this._fileUrlCache = {};
+        this._fileUrlCacheByHash = {};
+      }
+    }
+  }
+
+  /**
+   * Rebuild the hash cache from the ID cache
+   * @private
+   */
+  _rebuildHashCache() {
+    log.debug("Building hash-based cache from ID-based cache");
+
+    Object.entries(this._fileUrlCache).forEach(([msgId, msgData]) => {
+      if (msgData?.url) {
+        // Generate a hash if one doesn't exist
+        const hash = msgData.hash || this._generateMessageHash(msgData);
+        if (hash) {
+          this._fileUrlCacheByHash[hash] = {
+            ...msgData,
+            id: msgId
+          };
+        }
+      }
+    });
+
+    // Persist the new hash cache
+    this._persistFileCaches();
+  }
+
+  /**
+   * Generate a hash for a file message
+   * @private
+   * @param {Object} msgData - Message data object
+   * @returns {string} - Generated hash
+   */
+  _generateMessageHash(msgData) {
+    if (!msgData) return '';
+    const fileName = msgData.fileName || '';
+    const timeStamp = msgData.timestamp ? new Date(msgData.timestamp).toISOString().substring(0, 16) : '';
+    // Use available data to create a semi-unique hash
+    return `${fileName}-${timeStamp}`;
+  }
+
+  /**
+   * Save file caches to localStorage
+   * @private
+   */
+  _persistFileCaches() {
+    try {
+      localStorage.setItem(FILE_CACHE_KEY, JSON.stringify(this._fileUrlCache));
+      localStorage.setItem(FILE_CACHE_HASH_KEY, JSON.stringify(this._fileUrlCacheByHash));
+    } catch (err) {
+      log.error("Failed to persist file URL caches", err);
+    }
+  }
+
+  /**
+   * Get a file URL from cache by message ID
+   * @param {string} messageId - Message ID
+   * @returns {Object|null} - File URL data or null if not found
+   */
+  getFileUrl(messageId) {
+    this._initFileCache();
+    return this._fileUrlCache[messageId] || null;
+  }
+
+  /**
+   * Get a file URL from cache by hash
+   * @param {string} hash - File hash
+   * @returns {Object|null} - File URL data or null if not found
+   */
+  getFileUrlByHash(hash) {
+    this._initFileCache();
+    return this._fileUrlCacheByHash[hash] || null;
+  }
+
+  /**
+   * Add a file URL to the cache
+   * @param {string} messageId - Message ID
+   * @param {Object} fileData - File data object (url, fileName, etc.)
+   */
+  addFileUrl(messageId, fileData) {
+    this._initFileCache();
+
+    if (!messageId || !fileData?.url) return;
+
+    // Add timestamp if not present
+    const data = {
+      ...fileData,
+      timestamp: fileData.timestamp || new Date().toISOString()
+    };
+
+    // Generate hash if not present
+    if (!data.hash) {
+      data.hash = this._generateMessageHash(data);
+    }
+
+    // Update caches
+    this._fileUrlCache[messageId] = data;
+
+    if (data.hash) {
+      this._fileUrlCacheByHash[data.hash] = {
+        ...data,
+        id: messageId
+      };
+    }
+
+    // Persist caches
+    this._persistFileCaches();
+  }
+
+  /**
+   * Remove a file URL from the cache
+   * @param {string} messageId - Message ID
+   */
+  removeFileUrl(messageId) {
+    this._initFileCache();
+
+    const data = this._fileUrlCache[messageId];
+    if (data) {
+      // Remove from hash cache
+      if (data.hash && this._fileUrlCacheByHash[data.hash]) {
+        delete this._fileUrlCacheByHash[data.hash];
+      }
+
+      // Remove from ID cache
+      delete this._fileUrlCache[messageId];
+
+      // Persist caches
+      this._persistFileCaches();
+    }
+  }
+
+  /**
+   * Clear file URL caches
+   */
+  clearFileCaches() {
+    this._fileUrlCache = {};
+    this._fileUrlCacheByHash = {};
+
+    // Remove from localStorage
+    try {
+      localStorage.removeItem(FILE_CACHE_KEY);
+      localStorage.removeItem(FILE_CACHE_HASH_KEY);
+    } catch (err) {
+      log.error("Failed to clear file URL caches from localStorage", err);
+    }
   }
 
   cleanup() {

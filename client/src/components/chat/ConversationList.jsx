@@ -87,7 +87,7 @@ const ConversationList = ({
               <ConversationItem
                 key={convo.user._id}
                 conversation={convo}
-                isActive={activeConversation && activeConversation.user._id === convo.user._id}
+                isActive={activeConversation?.user?._id === convo.user._id}
                 currentUserId={currentUserId}
                 onClick={onConversationSelect}
               />

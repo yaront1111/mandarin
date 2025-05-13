@@ -80,8 +80,23 @@ export const useApi = (options = {}) => {
         // Format error message
         const errorMsg = err.error || err.message || "An error occurred"
 
-        // Set error state
-        setError(errorMsg)
+        // List of API paths for which we suppress errors completely
+        const silentUrlPatterns = [
+          '/users/photo-permissions',
+          '/users/photo-permissions/pending',
+          '/photo-permissions',
+          '/photo-access',
+          '/blocked'
+        ];
+
+        // Check if this is a silenced error (don't show logs or set error state)
+        const shouldSilence = key && typeof key === 'string' &&
+          silentUrlPatterns.some(pattern => key.includes(pattern));
+
+        // Only set error state for non-silenced errors
+        if (!shouldSilence && !err.silenced) {
+          setError(errorMsg);
+        }
 
         // Clean up this request reference
         delete activeRequestsRef.current[key]
@@ -91,8 +106,8 @@ export const useApi = (options = {}) => {
           onError(errorMsg)
         }
 
-        // Log error if enabled
-        if (options.logErrors !== false) {
+        // Log error if enabled and not silenced
+        if (options.logErrors !== false && !shouldSilence && !err.silenced) {
           log.error(`API error: ${errorMsg}`, err)
         }
 

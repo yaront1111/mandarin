@@ -58,6 +58,7 @@ const Register = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [formErrors, setFormErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false)
   // Track if a submission has been attempted to improve validation UX
   const [attemptedSubmit, setAttemptedSubmit] = useState(false)
   // Remove redundant 'errors' state, use formErrors
@@ -70,13 +71,14 @@ const Register = () => {
   const navigate = useNavigate()
   const location = useLocation()
   
-  // Get photo upload functionality from central hook
+  // Get photo upload functionality from central hook with extended features
   const { 
     uploadPhoto, 
     isUploading, 
     uploadProgress, 
     normalizePhotoUrl,
-    clearCache
+    clearCache,
+    pendingUploads
   } = usePhotoManagement()
 
   // --- Options (Consider translating these if they appear in UI directly) ---
@@ -124,6 +126,20 @@ const Register = () => {
     }
     // No need for cleanup function resetting state here if component unmounts
   }, [isAuthenticated, navigate, location.state?.email])
+  
+  // Check for pending uploads on component mount
+  useEffect(() => {
+    if (pendingUploads.length > 0 && isAuthenticated) {
+      // Show notification about pending uploads, but only if already authenticated
+      toast.info(
+        t('pendingUploadsNotice', 
+          `You have {{count}} photos pending upload that will complete when you're online.`, 
+          { count: pendingUploads.length }
+        )
+      );
+      logger.debug(`Found ${pendingUploads.length} pending uploads in queue`);
+    }
+  }, [pendingUploads.length, isAuthenticated, t])
 
   // Handle auth errors from context
   useEffect(() => {
@@ -354,17 +370,35 @@ const Register = () => {
       return
     }
     
-    // For registration, we'll just preview the image but not upload it yet
-    // We'll upload it after successful registration
-    setFormData({ ...formData, profilePhoto: file }) // Store the File object
-    
-    // Show preview
-    const reader = new FileReader()
-    reader.onloadend = () => { setPreviewImage(reader.result) }
-    reader.readAsDataURL(file)
-    
-    if (formErrors.profilePhoto) {
-      setFormErrors({ ...formErrors, profilePhoto: '' })
+    try {
+      // Show processing indicator for large files
+      if (file.size > 2 * 1024 * 1024) {
+        setIsProcessingPhoto(true)
+      }
+      
+      // Store the original file for later upload
+      setFormData({ ...formData, profilePhoto: file })
+      
+      // Show preview (use the original file for preview)
+      const reader = new FileReader()
+      reader.onloadend = () => { 
+        setPreviewImage(reader.result)
+        setIsProcessingPhoto(false) // Hide processing indicator once preview is ready
+      }
+      reader.readAsDataURL(file)
+      
+      // Clear any previous errors
+      if (formErrors.profilePhoto) {
+        setFormErrors({ ...formErrors, profilePhoto: '' })
+      }
+      
+      // Log file size for debugging
+      logger.debug(`Selected photo: ${file.name}, size: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
+      
+    } catch (err) {
+      setIsProcessingPhoto(false)
+      logger.error("Error processing photo:", err)
+      toast.error(t('photoProcessingError', "Error processing photo"))
     }
   }
 
@@ -372,6 +406,7 @@ const Register = () => {
   const handleRemovePhoto = () => {
     setFormData({ ...formData, profilePhoto: null })
     setPreviewImage(null)
+    setIsProcessingPhoto(false) // Clear processing state
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -400,8 +435,16 @@ const Register = () => {
         return; // Stop submission if final step has errors
      }
 
+    // Check if we're offline before starting registration
+    if (!navigator.onLine && formData.profilePhoto) {
+      // Show offline warning for photo uploads
+      toast.info(t('offlinePhotoUploadWarn', 'You are currently offline. Your profile will be created, and your photo will upload automatically when you reconnect.'));
+    }
+
     setFormErrors({}) // Clear errors before submitting
     setIsSubmitting(true)
+    // Reset photo processing state
+    setIsProcessingPhoto(false)
 
     try {
       // --- Step 1: Register User ---
@@ -442,18 +485,32 @@ const Register = () => {
         // If there's a profile photo File object, upload it using the centralized hook
         if (formData.profilePhoto instanceof File) {
           try {
-            // Wait a short delay to ensure token is properly set and processed
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            // Use the centralized hook with 'public' privacy setting for profile photos
-            // Set shouldSetAsProfile to true to automatically set it as profile photo
-            const photoResult = await uploadPhoto(formData.profilePhoto, 'public', null, true);
+            // Use the enhanced uploadPhoto function with all new features
+            const photoResult = await uploadPhoto(
+              formData.profilePhoto,
+              'public',
+              null, // No progress callback needed here
+              true, // Set as profile photo
+              {
+                isNewRegistration: true, // Enable token race condition handling
+                compressImage: true, // Use image compression
+                addToQueueOnFailure: true, // Add to retry queue if it fails
+                compressionOptions: {
+                  maxSizeMB: 1, // Compress to 1MB
+                  maxWidthOrHeight: 1920 // Reasonable size for profile photos
+                }
+              }
+            );
 
             if (photoResult) {
-              toast.success(t('photoUploadSuccess', "Profile photo uploaded successfully"));
-              
-              // The hook automatically refreshes user data, so no need to do that separately
-              logger.debug("Profile photo uploaded successfully via hook:", photoResult);
+              if (photoResult.queued) {
+                // Photo was queued for later upload (user is offline)
+                toast.info(t('photoQueuedUpload', "Profile photo will be uploaded when you're online"));
+                logger.debug("Profile photo queued for upload:", photoResult);
+              } else {
+                toast.success(t('photoUploadSuccess', "Profile photo uploaded successfully"));
+                logger.debug("Profile photo uploaded successfully via hook:", photoResult);
+              }
             } else {
               logger.error("Photo upload returned no result");
               toast.error(t('photoUploadFailed', "Failed to upload profile photo"));
@@ -665,6 +722,13 @@ const Register = () => {
             </div>
             <p className={styles.uploadProgressText}>{t('uploading', 'Uploading')} {uploadProgress}%</p>
           </div>
+        ) : isProcessingPhoto ? (
+          <div className={styles.uploadProgressContainer}>
+            <div className={styles.processingContainer}>
+              <div className={styles.spinner}></div>
+              <p>{t('processingPhoto', 'Processing photo...')}</p>
+            </div>
+          </div>
         ) : (
           <div className={`${styles.photoUploadArea} ${previewImage ? styles.hasImage : ''}`} onClick={triggerFileInput}>
             <input type="file" ref={fileInputRef} accept="image/jpeg,image/png,image/jpg" onChange={handlePhotoChange} className="d-none" />
@@ -696,13 +760,13 @@ const Register = () => {
           </p>
         )}
         
-        {previewImage && !isUploading && (
+        {previewImage && !isUploading && !isProcessingPhoto && (
           <div className={styles.photoActions}>
             <button 
               type="button" 
               className={`${styles.photoActionButton} ${styles.changePhotoButton}`} 
               onClick={triggerFileInput}
-              disabled={isUploading}
+              disabled={isUploading || isProcessingPhoto}
             >
               <FaEdit /> {t('changePhoto', 'Change Photo')}
             </button>
@@ -710,7 +774,7 @@ const Register = () => {
               type="button" 
               className={`${styles.photoActionButton} ${styles.removePhotoButton}`} 
               onClick={handleRemovePhoto}
-              disabled={isUploading}
+              disabled={isUploading || isProcessingPhoto}
             >
               <FaTrash /> {t('removePhoto', 'Remove')}
             </button>
@@ -718,10 +782,20 @@ const Register = () => {
         )}
       </div>
       <div className={styles.formActions}>
-        <button type="button" className={`${styles.button} ${styles.buttonOutline}`} onClick={handlePrevStep} disabled={isSubmitting}>
+        <button 
+          type="button" 
+          className={`${styles.button} ${styles.buttonOutline}`} 
+          onClick={handlePrevStep} 
+          disabled={isSubmitting || isUploading || isProcessingPhoto}
+        >
           <FaArrowLeft /> {t('back', 'Back')}
         </button>
-        <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleNextStep} disabled={isSubmitting}>
+        <button 
+          type="button" 
+          className={`${styles.button} ${styles.buttonPrimary}`} 
+          onClick={handleNextStep} 
+          disabled={isSubmitting || isUploading || isProcessingPhoto}
+        >
            {t('continue', 'Continue')} <FaArrowRight />
         </button>
       </div>

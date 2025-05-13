@@ -124,11 +124,25 @@ const UserCard = ({
     showLess: t('showLess') || 'Show less'
   }), [t]);
   
+  // State to trigger re-renders when photos update
+  const [refreshKey, setRefreshKey] = useState(Date.now());
+  
   // Listen for avatar refresh events
   useEffect(() => {
-    const handleAvatarRefresh = () => {
+    const handleAvatarRefresh = (event) => {
       // Force a re-render when avatar refresh event is triggered
       log.debug(`Avatar refresh event received for user ${user.nickname}`);
+      
+      // Get the timestamp from the event or use current time
+      const timestamp = event?.detail?.timestamp || Date.now();
+      
+      // Update refresh key to force re-render
+      setRefreshKey(timestamp);
+      
+      // Ensure the global refresh timestamp is updated
+      if (typeof window !== 'undefined') {
+        window.__photo_refresh_timestamp = timestamp;
+      }
     };
     
     window.addEventListener('avatar:refresh', handleAvatarRefresh);
@@ -205,9 +219,31 @@ const UserCard = ({
     return currentUser && user && currentUser._id === user._id;
   }, [currentUser, user]);
 
+  // Helper function to get gender-specific default avatar
+  const getGenderSpecificAvatar = useCallback((user) => {
+    if (!user) return `${window.location.origin}/default-avatar.png`;
+    
+    // Check user's identity from details.iAm
+    if (user.details && user.details.iAm) {
+      if (user.details.iAm === 'woman') {
+        return `${window.location.origin}/women-avatar.png`;
+      } else if (user.details.iAm === 'man') {
+        return `${window.location.origin}/man-avatar.png`;
+      } else if (user.details.iAm === 'couple') {
+        return `${window.location.origin}/couple-avatar.png`;
+      }
+    }
+    
+    // Default to generic avatar
+    return `${window.location.origin}/default-avatar.png`;
+  }, []);
+  
   // Determine photo URL based on privacy and ownership
   const profilePhotoUrl = useMemo(() => {
-    if (!user?.photos?.length) return `${window.location.origin}/default-avatar.png`;
+    if (!user?.photos?.length) {
+      // No photos, use gender-specific default avatar
+      return getGenderSpecificAvatar(user);
+    }
     
     const profilePhoto = user.photos.find(p => p.isProfile) || user.photos[0];
     
@@ -218,8 +254,18 @@ const UserCard = ({
     }
     
     // For own private photos or public photos, use normal URL handling
-    return getProfilePhotoUrl(user);
-  }, [user, getProfilePhotoUrl, isPhotoPrivate, isOwnProfile]);
+    // Get URL with cache busting to ensure freshness
+    const timestamp = window.__photo_refresh_timestamp || refreshKey || Date.now();
+    const url = getProfilePhotoUrl(user);
+    
+    // Add cache busting parameter if not already present
+    if (url && !url.includes('_v=') && !url.includes('&_t=')) {
+      const separator = url.includes('?') ? '&' : '?';
+      return `${url}${separator}_v=${timestamp}`;
+    }
+    
+    return url;
+  }, [user, getProfilePhotoUrl, isPhotoPrivate, isOwnProfile, refreshKey, getGenderSpecificAvatar]);
   
   // Need to create a CSS class for private images
   useEffect(() => {
@@ -439,8 +485,12 @@ const UserCard = ({
             const isPrivate = isPhotoPrivate(profilePhoto);
             const opacity = isPrivate && isOwnProfile ? 0.7 : 1; // Reduce opacity for own private photos
             
+            // Create a unique key to force re-render when profile photo changes
+            const imgKey = `user-${user._id}-photo-${profilePhoto?._id || '0'}-${window.__photo_refresh_timestamp || refreshKey || Date.now()}`;
+            
             return (
               <img
+                key={imgKey}
                 src={profilePhotoUrl}
                 alt={user.nickname}
                 loading="lazy"
@@ -454,12 +504,14 @@ const UserCard = ({
                 }}
                 onError={(e) => {
                   e.target.onerror = null;
-                  const fallbackUrl = `${window.location.origin}/default-avatar.png`;
+                  const fallbackUrl = getGenderSpecificAvatar(user);
                   e.target.src = fallbackUrl;
                   
                   // Use the shared photo error handler to mark the URL as failed and refresh avatars
                   if (profilePhoto?._id) {
                     handlePhotoLoadError(profilePhoto._id, profilePhotoUrl);
+                    // Force a refresh of all avatars to ensure consistent display
+                    refreshAllAvatars();
                   }
                 }}
               />
@@ -517,8 +569,12 @@ const UserCard = ({
           const isPrivate = isPhotoPrivate(profilePhoto);
           const opacity = isPrivate && isOwnProfile ? 0.7 : 1; // Reduce opacity for own private photos
           
+          // Create a unique key to force re-render when profile photo changes
+          const imgKey = `list-user-${user._id}-photo-${profilePhoto?._id || '0'}-${window.__photo_refresh_timestamp || refreshKey || Date.now()}`;
+          
           return (
             <img
+              key={imgKey}
               src={profilePhotoUrl}
               alt={user.nickname}
               loading="lazy"
@@ -536,6 +592,8 @@ const UserCard = ({
                 // Use the shared photo error handler to mark the URL as failed and refresh avatars
                 if (profilePhoto?._id) {
                   handlePhotoLoadError(profilePhoto._id, profilePhotoUrl);
+                  // Force a refresh of all avatars to ensure consistent display
+                  refreshAllAvatars();
                 }
               }}
             />

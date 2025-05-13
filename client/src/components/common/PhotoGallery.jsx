@@ -76,7 +76,7 @@ const PhotoGallery = ({
 
   // State for the gallery
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
-  const [imageKey, setImageKey] = useState(Date.now());
+  const [imageKey, setImageKey] = useState(`gallery-${Math.floor(Math.random() * 10000)}`);
   
   // Refs
   const fileInputRef = useRef(null);
@@ -85,10 +85,8 @@ const PhotoGallery = ({
   useEffect(() => {
     const handleAvatarRefresh = () => {
       log.debug("Avatar refresh event received, updating PhotoGallery");
-      forceUpdateRef.current = Date.now();
-      setImageKey(Date.now());
-      // Force a re-render
-      setForceUpdate(Date.now());
+      // Just toggle force update, don't use timestamps
+      setForceUpdate(prev => prev + 1);
     };
     
     window.addEventListener('avatar:refresh', handleAvatarRefresh);
@@ -364,7 +362,7 @@ const PhotoGallery = ({
                   // Show actual photo
                   <img
                     key={`photo-${photo._id}-${imageKey}`}
-                    src={`${normalizePhotoUrl(photo.url, true)}${window.__photo_refresh_timestamp ? `&_t=${window.__photo_refresh_timestamp}` : ''}&_k=${imageKey}`}
+                    src={normalizePhotoUrl(photo.url, true)}
                     alt={t('photo')}
                     className={styles.photoImage}
                     style={{

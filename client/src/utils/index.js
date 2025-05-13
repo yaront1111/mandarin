@@ -8,6 +8,8 @@ import logger from './logger';
 export { default as logger, createLogger, LogLevel } from './logger';
 // Create a logger for this file
 const log = logger.create("utils");
+
+// Re-export all chat utils
 export * from './chatUtils';
 
 // i18n utilities have been removed in favor of direct t() function usage
@@ -63,12 +65,18 @@ export const resetUserSession = () => {
 
 
 /**
- * Direct validator and fixer for MongoDB ObjectIDs
+ * Enhanced validator and fixer for MongoDB ObjectIDs
+ * This is the centralized function for standardizing user ID format
+ * across the entire application.
+ *
  * @param {string|object} id - The ID to validate or fix
  * @returns {string|null} - Valid MongoDB ObjectId string or null if unfixable
  */
 export const ensureValidObjectId = (id) => {
   if (!id) return null;
+
+  // Log for debugging - comment out in production
+  // log.debug(`ensureValidObjectId input: ${typeof id === 'object' ? JSON.stringify(id) : id}`);
 
   // If already a valid ObjectId string, return it unchanged
   const idString = typeof id === 'string' ? id : String(id);
@@ -86,6 +94,7 @@ export const ensureValidObjectId = (id) => {
   }
 
   // Handle corrupted toString() results that might include "ObjectId(...)"
+  // This matches both ObjectId("id") and ObjectId('id') formats
   const objectIdMatch = idString.match(/ObjectId\(['"](.*)['"]\)/);
   if (objectIdMatch && objectIdMatch[1]) {
     const extracted = objectIdMatch[1];
@@ -94,14 +103,44 @@ export const ensureValidObjectId = (id) => {
     }
   }
 
-  // For object with _id property
+  // For object with _id property (preferred format)
   if (typeof id === 'object' && id !== null && id._id) {
     return ensureValidObjectId(id._id);
   }
 
-  // For object with id property
+  // For object with id property (legacy format)
   if (typeof id === 'object' && id !== null && id.id) {
     return ensureValidObjectId(id.id);
+  }
+
+  // For object with sub property (JWT format)
+  if (typeof id === 'object' && id !== null && id.sub) {
+    return ensureValidObjectId(id.sub);
+  }
+
+  // For nested user objects (e.g., { user: { _id: '...' } })
+  if (typeof id === 'object' && id !== null && id.user) {
+    if (typeof id.user === 'object' && id.user !== null) {
+      // Try _id first, then id
+      if (id.user._id) {
+        return ensureValidObjectId(id.user._id);
+      } else if (id.user.id) {
+        return ensureValidObjectId(id.user.id);
+      }
+    } else if (typeof id.user === 'string') {
+      // Handle case where user is just the ID string
+      return ensureValidObjectId(id.user);
+    }
+  }
+
+  // Last resort - try to find any 24-char hex string in the object
+  if (typeof id === 'object' && id !== null) {
+    const jsonString = JSON.stringify(id);
+    const allMatches = jsonString.match(/[0-9a-fA-F]{24}/g) || [];
+    if (allMatches.length > 0) {
+      // Use the first match found
+      return allMatches[0];
+    }
   }
 
   return null;
@@ -142,15 +181,57 @@ if (typeof window !== 'undefined') {
  * @returns {string} Normalized URL
  */
 export const normalizePhotoUrl = (url, bustCache = false) => {
+  // Add debug logging
+  log.debug(`normalizePhotoUrl called with URL: "${url}"`);
   
-  if (!url) return `${window.location.origin}/placeholder.svg`;
+  if (!url) {
+    log.debug('URL is empty, returning placeholder.svg');
+    return `${window.location.origin}/placeholder.svg`;
+  }
 
   // Create a cache key that includes the bustCache parameter
   const cacheKey = `${url}:${bustCache}`;
   
   // Check cache only if we're not busting
   if (!bustCache && urlNormalizationCache.has(cacheKey)) {
+    log.debug(`normalizePhotoUrl: Cache hit for "${url}", returning cached value`);
     return urlNormalizationCache.get(cacheKey);
+  }
+  
+  // Handle gender-specific avatars and profile photos
+  if (url) {
+    // Gender avatars need special handling
+    const isGenderAvatar = url.includes('man-avatar') || 
+                          url.includes('women-avatar') || 
+                          url.includes('couple-avatar') || 
+                          url.includes('default-avatar');
+    
+    // Make sure paths are absolute for gender avatars
+    if (isGenderAvatar && url.startsWith('/')) {
+      log.debug(`normalizePhotoUrl: Converting avatar path to absolute URL: ${url}`);
+      url = `${window.location.origin}${url}`;
+    }
+    
+    // Similarly for profile photos
+    if (url.startsWith('/uploads/')) {
+      log.debug(`normalizePhotoUrl: Converting profile photo path to absolute URL: ${url}`);
+      url = `${window.location.origin}${url}`;
+    }
+    
+    // Remove any existing refresh parameters to prevent flickering
+    if (url.includes('_refresh=')) {
+      url = url.replace(/([?&])_refresh=\d+(&|$)/, '$1');
+      // Clean up trailing ? or & if that was the only parameter
+      if (url.endsWith('?') || url.endsWith('&')) {
+        url = url.slice(0, -1);
+      }
+    }
+    
+    // Cache result for gender avatars
+    if (isGenderAvatar) {
+      urlNormalizationCache.set(cacheKey, url);
+      return url;
+    }
   }
 
   // Check if it's a known failed URL
@@ -160,8 +241,14 @@ export const normalizePhotoUrl = (url, bustCache = false) => {
 
   let result;
 
-  // If it's the default avatar or placeholder, use absolute URL
-  if (url === '/default-avatar.png' || url === '/placeholder.svg') {
+  // If it's the default avatar (any gender variant) or placeholder, use absolute URL
+  if (url === '/default-avatar.png' || 
+      url === '/default-avatar1.png' ||
+      url === '/man-avatar.png' ||
+      url === '/women-avatar.png' ||
+      url === '/couple-avatar.png' ||
+      url === '/placeholder.svg') {
+    log.debug(`normalizePhotoUrl: Converting avatar path "${url}" to absolute URL`);
     result = `${window.location.origin}${url}`;
   }
   // If it's already a full URL, return it

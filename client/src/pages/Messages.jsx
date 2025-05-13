@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useContext, useCallback, useMemo } 
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import chatService from "../services/ChatService";
-import { formatDate, classNames } from "../utils";
+import { formatDate, classNames, debounce } from "../utils";
 import apiService from "../services/apiService";
 import logger from "../utils/logger";
 import styles from "../styles/Messages.module.css";
@@ -80,6 +80,9 @@ const Messages = () => {
   const isMobile = useIsMobile();
   const { isTouch, isIOS, isAndroid } = useMobileDetect();
   const [showSidebar, setShowSidebar] = useState(true);
+  
+  // Memoize user ID to prevent unnecessary re-renders
+  const currentUserId = useMemo(() => currentUser?._id, [currentUser?._id]);
   const [showEmojis, setShowEmojis] = useState(false);
   const [isCallActive, setIsCallActive] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
@@ -112,12 +115,29 @@ const Messages = () => {
   const refreshIndicatorRef = useRef(null);
   const messagesRef = useRef([]); // Track current messages to help detect duplicates
 
-  // Common emojis for the emoji picker
-  const commonEmojis = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"];
+  // Common emojis for the emoji picker - memoized to prevent recreating array on each render
+  const commonEmojis = useMemo(() => [
+    "😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"
+  ], []);
   
-  // Keep messagesRef in sync with messages state
+  // Keep messagesRef in sync with messages state and optimize message deduplication
   useEffect(() => {
     messagesRef.current = messages;
+    
+    // Add message IDs to the seen messages set when they're added to the state
+    messages.forEach(message => {
+      const messageId = message._id || message.tempId;
+      if (messageId && !seenMessagesRef.current.has(messageId)) {
+        seenMessagesRef.current.add(messageId);
+      }
+    });
+    
+    // Clean up seen messages set if it gets too large
+    if (seenMessagesRef.current.size > 1000) {
+      // Keep the 500 most recent message IDs by removing the oldest
+      const oldestMessages = Array.from(seenMessagesRef.current).slice(0, 500);
+      oldestMessages.forEach(id => seenMessagesRef.current.delete(id));
+    }
   }, [messages]);
   
   // Add a throttle for wink messages to prevent sending multiple winks at once
@@ -130,52 +150,77 @@ const Messages = () => {
   
   // Create a function to check if a message is a duplicate
   const isDuplicateMessage = useCallback((message) => {
-    // Skip system messages
+    // Skip system messages from duplication checking
     if (message.type === 'system') return false;
     
     const messageId = message._id || message.tempId;
-    if (!messageId) return false;
     
-    // Check if we've seen this exact message ID
-    if (seenMessagesRef.current.has(messageId)) {
-      console.log("Duplicate message detected by ID:", messageId);
+    // First level check: exact ID match
+    if (messageId && seenMessagesRef.current.has(messageId)) {
+      console.log("Duplicate message detected by exact ID match:", messageId);
       return true;
     }
     
-    // For winks, do additional content+time-based deduplication
-    if (message.type === 'wink' && message.content === "😉") {
-      // Check against recently seen winks from the same sender
-      const recentWinks = seenWinksRef.current.filter(wink => 
-        wink.sender === message.sender && 
-        Date.now() - wink.timestamp < 60000 // 60-second window for winks
-      );
+    // Second level check: content + sender + recipient + approximate time
+    // This catches messages that might have different IDs but are effectively duplicates
+    if (message.sender && message.content) {
+      // Create a signature combining the key aspects of a message
+      const messageTimestamp = new Date(message.createdAt || Date.now()).getTime();
+      const signatureKey = `${message.sender}:${message.recipient || ''}:${message.type}:${message.content}:${Math.floor(messageTimestamp/5000)}`;
       
-      if (recentWinks.length > 0) {
-        console.log("Duplicate wink detected by time window");
-        return true;
+      // Check if we've seen this signature in our messages
+      if (messagesRef.current) {
+        const similarMessages = messagesRef.current.filter(existingMsg => 
+          existingMsg.sender === message.sender &&
+          existingMsg.recipient === (message.recipient || '') &&
+          existingMsg.type === message.type &&
+          existingMsg.content === message.content &&
+          Math.abs(new Date(existingMsg.createdAt || Date.now()).getTime() - messageTimestamp) < 5000
+        );
+        
+        if (similarMessages.length > 0) {
+          console.log("Duplicate message detected by content+time signature:", signatureKey);
+          return true;
+        }
       }
       
-      // Add to seen winks
-      seenWinksRef.current.push({
-        sender: message.sender,
-        recipient: message.recipient,
-        timestamp: Date.now(),
-        id: messageId
-      });
-      
-      // Clean up old winks (older than 5 minutes)
-      seenWinksRef.current = seenWinksRef.current.filter(wink => 
-        Date.now() - wink.timestamp < 300000
-      );
+      // Third level: special handling for winks which are prone to duplication
+      if (message.type === 'wink' && message.content === "😉") {
+        // Check against recently seen winks from the same sender with a longer window
+        const recentWinks = seenWinksRef.current.filter(wink => 
+          wink.sender === message.sender && 
+          Date.now() - wink.timestamp < 60000 // 60-second window for winks
+        );
+        
+        if (recentWinks.length > 0) {
+          console.log("Duplicate wink detected by time window");
+          return true;
+        }
+        
+        // Add to seen winks
+        seenWinksRef.current.push({
+          sender: message.sender,
+          recipient: message.recipient || '',
+          timestamp: Date.now(),
+          id: messageId || `generated-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+        });
+        
+        // Clean up old winks (older than 5 minutes)
+        seenWinksRef.current = seenWinksRef.current.filter(wink => 
+          Date.now() - wink.timestamp < 300000
+        );
+      }
     }
     
-    // Add to seen messages
-    seenMessagesRef.current.add(messageId);
-    
-    // Clean up seen messages set if it gets too large
-    if (seenMessagesRef.current.size > 1000) {
-      const oldestMessages = Array.from(seenMessagesRef.current).slice(0, 500);
-      oldestMessages.forEach(id => seenMessagesRef.current.delete(id));
+    // Not a duplicate, add to our tracking systems
+    if (messageId) {
+      seenMessagesRef.current.add(messageId);
+      
+      // Clean up seen messages set if it gets too large
+      if (seenMessagesRef.current.size > 1000) {
+        const oldestMessages = Array.from(seenMessagesRef.current).slice(0, 500);
+        oldestMessages.forEach(id => seenMessagesRef.current.delete(id));
+      }
     }
     
     return false;
@@ -379,12 +424,38 @@ const Messages = () => {
     if (!chatInitializedRef.current || !currentUser?._id || typeof window === 'undefined') return;
 
     const handleMessageReceived = (newMessage) => {
-      console.log("Message received:", newMessage);
+      log.debug("Message received:", newMessage);
       
       // Skip processing if this is a duplicate message we've seen before
       if (isDuplicateMessage(newMessage)) {
-        console.log("Skipping duplicate message in handleMessageReceived");
+        log.debug("Skipping duplicate message in handleMessageReceived");
         return;
+      }
+      
+      // Additional early check for duplicates using messageRef.current 
+      // This helps avoid duplicates during active message exchanges
+      if (newMessage._id && messagesRef.current) {
+        const existingMsgById = messagesRef.current.find(m => m._id === newMessage._id);
+        if (existingMsgById) {
+          log.debug("Duplicate message detected in messagesRef by ID:", newMessage._id);
+          return;
+        }
+        
+        // Also check for likely duplicates even without matching IDs
+        // For example, same content sent multiple times in quick succession
+        if (newMessage.sender && newMessage.content) {
+          const potentialDuplicates = messagesRef.current.filter(m => 
+            m.sender === newMessage.sender && 
+            m.content === newMessage.content &&
+            m.type === newMessage.type && 
+            Math.abs(new Date(m.createdAt).getTime() - new Date(newMessage.createdAt).getTime()) < 3000
+          );
+          
+          if (potentialDuplicates.length > 0) {
+            log.debug("Likely duplicate message detected using content+time matching:", newMessage.content);
+            return;
+          }
+        }
       }
 
       // Enhanced message hash function with more factors for better deduplication
@@ -993,6 +1064,81 @@ const Messages = () => {
     }, 100);
     return () => clearTimeout(timer);
   }, [messages]);
+  
+  // Create memoized filtered messages to avoid processing on every render
+  const filteredMessages = useMemo(() => {
+    // Remove any duplicate messages by ID or content + timestamp
+    const uniqueIds = new Set();
+    const contentTimeMap = new Map();
+    const winkTracker = new Map(); // Special tracking for winks by sender and minute
+    
+    // First sort messages by date to ensure consistent processing
+    const sortedMessages = [...messages].sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+    
+    return sortedMessages.filter(msg => {
+      // First check for ID duplicates
+      const id = msg._id || msg.tempId;
+      if (id) {
+        if (uniqueIds.has(id)) return false;
+        uniqueIds.add(id);
+      }
+      
+      // Special handling for winks - they need stricter deduplication
+      if (msg.type === 'wink' && msg.content === '😉') {
+        const sender = msg.sender || '';
+        // Group winks by sender and minute to catch duplicates across page refreshes
+        const winkTimeKey = Math.floor(new Date(msg.createdAt).getTime() / 60000); // One minute buckets
+        const winkKey = `${sender}:${winkTimeKey}`;
+        
+        if (winkTracker.has(winkKey)) {
+          // Keep the message with a valid ID if possible
+          const existing = winkTracker.get(winkKey);
+          if (existing.id && !id) {
+            return false; // Keep the existing message with ID
+          } else if (!existing.id && id) {
+            // Replace the existing entry with this one that has an ID
+            winkTracker.set(winkKey, {id, index: messages.indexOf(msg)});
+            return true;
+          } else {
+            // If both have IDs or neither has an ID, keep the first one chronologically
+            return false;
+          }
+        }
+        
+        // First wink from this sender in this minute
+        winkTracker.set(winkKey, {id, index: messages.indexOf(msg)});
+        return true;
+      }
+      
+      // Then check for same content/sender/recipient within a close timeframe
+      // This catches duplicates that might have different IDs but are essentially the same message
+      if (msg.type !== 'system') {
+        const sender = msg.sender || '';
+        const recipient = msg.recipient || '';
+        const content = msg.content || '';
+        const timestamp = new Date(msg.createdAt).getTime();
+        const key = `${sender}:${recipient}:${content}:${Math.floor(timestamp/1000)}`;
+        
+        const existing = contentTimeMap.get(key);
+        if (existing) {
+          // If we have a message with ID and a duplicate without ID, keep the one with ID
+          if (!existing.id && id) {
+            contentTimeMap.set(key, {id, index: messages.indexOf(msg)});
+            return true;
+          }
+          // If both have IDs or both don't have IDs, keep the first one we saw
+          return false;
+        }
+        
+        // First time seeing this message signature
+        contentTimeMap.set(key, {id, index: messages.indexOf(msg)});
+      }
+      
+      return true;
+    });
+  }, [messages]);
 
   // Ensure active conversation has current blocked status
   useEffect(() => {
@@ -1017,7 +1163,7 @@ const Messages = () => {
 
   // --- Touch Gesture Handlers ---
 
-  const handleTouchStart = (e) => {
+  const handleTouchStart = useCallback((e) => {
     if (!conversationsListRef.current) return;
 
     const touchY = e.touches[0].clientY;
@@ -1030,9 +1176,9 @@ const Messages = () => {
     } else {
       setIsRefreshing(false); // Ensure it's false if not at top
     }
-  };
+  }, []);
 
-  const handleTouchMove = (e) => {
+  const handleTouchMove = useCallback((e) => {
     if (!messagesContainerRef.current) return; // Ensure container ref is valid
 
     const currentY = e.touches[0].clientY;
@@ -1073,7 +1219,7 @@ const Messages = () => {
       // Optional: Add visual feedback during swipe here if needed
        // e.preventDefault(); // Prevent horizontal scroll interference
     }
-  };
+  }, [isRefreshing, touchStartY, touchStartX, showSidebar, SWIPE_THRESHOLD]);
 
   const handleTouchEnd = async (e) => {
     // Handle pull-to-refresh completion
@@ -1297,6 +1443,10 @@ const Messages = () => {
    try {
      console.log(`Fetching messages for ${partnerUserId}`);
      const messagesData = await chatService.getMessages(partnerUserId);
+     
+     // Log some basic stats about the loaded messages
+     const winkCount = messagesData.filter(msg => msg.type === 'wink' && msg.content === '😉').length;
+     console.log(`Loaded ${messagesData.length} messages for ${partnerUserId}, including ${winkCount} winks`);
 
      // Check we're still loading for the same user before updating state
      if (loadedConversationRef.current !== loadingForUserId) {
@@ -1354,10 +1504,46 @@ const Messages = () => {
        return msg;
      });
 
-     // Set messages with processed file URLs
-     setMessages(
-       processedMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
-     );
+     // Process winks to deduplicate them before setting messages
+     // First, sort messages by date to ensure consistent processing
+     const sortedMessages = processedMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+     
+     // Deduplicate winks that are close in time (common when receiving from server)
+     const deduplicatedMessages = [];
+     const seenWinkTracker = new Map(); // Track winks by sender and approximate time
+     
+     for (let i = 0; i < sortedMessages.length; i++) {
+       const currentMsg = sortedMessages[i];
+       
+       // Special handling for winks
+       if (currentMsg.type === 'wink' && currentMsg.content === '😉') {
+         const sender = currentMsg.sender;
+         const timeKey = Math.floor(new Date(currentMsg.createdAt).getTime() / 60000); // Group by minute
+         const winkKey = `${sender}:${timeKey}`;
+         
+         // If we've seen a wink from this sender in this minute, skip this one
+         if (seenWinkTracker.has(winkKey)) {
+           console.log(`Skipping duplicate wink from ${sender} during initial load (minute ${timeKey})`);
+           continue;
+         }
+         
+         // Mark this wink as seen
+         seenWinkTracker.set(winkKey, currentMsg._id);
+       }
+       
+       // Add message to deduplicated list
+       deduplicatedMessages.push(currentMsg);
+     }
+     
+     // Update our seen message ID tracking to prevent them from being received again
+     deduplicatedMessages.forEach(msg => {
+       if (msg._id) {
+         seenMessagesRef.current.add(msg._id);
+       }
+     });
+     
+     // Set messages with processed and deduplicated messages
+     setMessages(deduplicatedMessages);
      setError(null); // Clear error on successful load
    } catch (err) {
      // Check we're still on the same conversation before updating error state
@@ -1604,7 +1790,7 @@ const Messages = () => {
  };
 
 
-  const handleFileAttachment = () => {
+  const handleFileAttachment = useCallback(() => {
     if (currentUser?.accountTier === "FREE") {
       return toast.error("Free accounts cannot send files. Upgrade to send files.");
     }
@@ -1614,7 +1800,7 @@ const Messages = () => {
     if (fileInput) {
       fileInput.click();
     }
-  };
+  }, [currentUser?.accountTier]);
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -1648,14 +1834,14 @@ const Messages = () => {
   };
 
 
-  const handleRemoveAttachment = () => {
+  const handleRemoveAttachment = useCallback(() => {
     setAttachment(null);
     setUploadProgress(0);
     setIsUploading(false); // Ensure uploading state is reset
     if (fileInputRef.current) {
       fileInputRef.current.value = ""; // Clear the actual input element's value
     }
-  };
+  }, []);
 
   const handleSendAttachment = async () => {
     if (!attachment || !activeConversation?.user?._id || isUploading) return;
@@ -1915,7 +2101,7 @@ const Messages = () => {
   };
 
 
-  const handleEmojiClick = (emoji) => {
+  const handleEmojiClick = useCallback((emoji) => {
     setMessageInput((prev) => prev + emoji);
     setShowEmojis(false);
     if (messageInputRef.current) {
@@ -1924,7 +2110,7 @@ const Messages = () => {
     if (isMobile && "vibrate" in navigator) {
       navigator.vibrate(20);
     }
-  };
+  }, [isMobile]);
 
   const handleVideoCall = async () => {
     if (!activeConversation || !currentUser?._id) return;
@@ -2384,7 +2570,7 @@ const Messages = () => {
 
         {/* Chat Area */}
         <ChatArea
-          className={(!showSidebar && isMobile) && styles.fullWidth}
+          className={(!showSidebar && isMobile) ? styles.fullWidth : ''}
           isUserBlocked={activeConversation?.user?.isBlocked || (activeConversation?.user?._id && isUserBlocked(activeConversation.user._id))}
         >
           {activeConversation ? (
@@ -2579,7 +2765,7 @@ const Messages = () => {
                 />
               ) : (
                 <MessageList
-                  messages={messages}
+                  messages={filteredMessages}
                   currentUserId={currentUser?._id}
                   isSending={isSending}
                   typingUser={typingUser && activeConversation?.user?._id === typingUser ? activeConversation.user.nickname : null}

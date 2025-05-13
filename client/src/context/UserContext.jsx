@@ -360,30 +360,60 @@ export function UserProvider({ children }) {
     }
   }, [])
 
-  // Simplified implementation to handle various response formats
+  // Standardized implementation to handle various response formats
   const getBlockedUsers = useCallback(async () => {
     try {
       // Final client-side fallback
       if (!user) {
         return [];
       }
-      
-      // Always return an empty array on the client side
-      // This is a temporary solution until we resolve the server issues
-      return [];
-      
-      /* Disabled temporarily until server is fixed
-      logger.debug("Fetching blocked users list");
-      const res = await apiService.get("/users/blocked");
-      logger.debug(`Blocked users response: ${res?.success ? 'success' : 'failed'}`);
-      
-      if (!res?.success) {
+
+      log.debug("Fetching blocked users list");
+
+      try {
+        const res = await apiService.get("/users/blocked");
+        log.debug(`Blocked users response: ${res?.success ? 'success' : 'failed'}`);
+
+        if (!res?.success) {
+          return [];
+        }
+
+        // Normalize all user IDs to ensure consistent format
+        const normalizedBlockList = (Array.isArray(res.data) ? res.data : []).map(id => {
+          // Ensure each ID is a properly formatted MongoDB ObjectId
+          if (typeof id === 'object' && id._id) {
+            return id._id;
+          } else if (typeof id === 'object' && id.id) {
+            return id.id;
+          } else {
+            // Convert to string and ensure it's a valid MongoDB ObjectId format
+            return String(id).replace(/^ObjectId\(['"](.+)['"]\)$/, '$1');
+          }
+        }).filter(id => /^[0-9a-fA-F]{24}$/.test(id));
+
+        // Also update localStorage for future fallback
+        localStorage.setItem('blockedUsers', JSON.stringify(normalizedBlockList));
+
+        return normalizedBlockList;
+      } catch (apiError) {
+        log.warn('Failed to fetch blocked users from API, using localStorage fallback:', apiError);
+
+        // Try fallback to localStorage
+        try {
+          const storedBlockedUsers = localStorage.getItem('blockedUsers');
+          if (storedBlockedUsers) {
+            const blockList = JSON.parse(storedBlockedUsers) || [];
+            log.debug(`Loaded ${blockList.length} blocked users from localStorage`);
+            return blockList;
+          }
+        } catch (storageError) {
+          log.warn('Error parsing blocked users from localStorage:', storageError);
+        }
+
         return [];
       }
-      
-      return Array.isArray(res.data) ? res.data : [];
-      */
     } catch (err) {
+      log.error('Error in getBlockedUsers:', err);
       return [];
     }
   }, [user])

@@ -80,7 +80,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
     } = useChat(recipientId); //
 
     // --- State ---
-    const [localMessages, setLocalMessages] = useState([]);
+    // UI-specific state (not related to chat data)
     const [newMessage, setNewMessage] = useState("");
     const [attachment, setAttachment] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -94,6 +94,10 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
     const [profileUserId, setProfileUserId] = useState(null);
     const [blockedUsers, setBlockedUsers] = useState(new Set());
 
+    // Local system messages that are not part of the chat history
+    // (like call events, notifications about permissions, etc.)
+    const [systemMessages, setSystemMessages] = useState([]);
+
     // --- Refs ---
     const messagesEndRef = useRef(null);
     const chatInputRef = useRef(null);
@@ -104,25 +108,36 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
     const isInitialLoadDone = useRef(false);
 
     // --- Memoized Values ---
-    // Using apiService directly instead of deprecated createAuthAxios
-    const groupedMessages = useMemo(() => groupMessagesByDate(localMessages), [localMessages]);
+    // Create combined messages from chat messages and system messages
+    const combinedMessages = useMemo(() => {
+        if (!hookMessages) return [];
+
+        // Combine chat messages with system messages
+        const combined = [...hookMessages, ...systemMessages];
+
+        // Sort by date
+        return combined.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    }, [hookMessages, systemMessages]);
+
+    // Group messages by date for display
+    const groupedMessages = useMemo(() => groupMessagesByDate(combinedMessages), [combinedMessages]);
     const currentUserId = user?._id; // Get current user ID safely
-    
+
     // Check if a user is blocked
     const isUserBlocked = useCallback((userId) => {
         // Safety checks to handle potential errors or edge cases
         if (!userId) return false;
-        
+
         // Check both client-side state and server-side state
         const isClientBlocked = blockedUsers.has(userId);
         const isServerBlocked = recipient?.isBlocked || false;
-        
+
         return isClientBlocked || isServerBlocked;
     }, [blockedUsers, recipient?.isBlocked]);
 
     // --- Event Handlers ---
 
-    // Define addLocalSystemMessage *before* the useEffect that uses it
+    // Define addLocalSystemMessage to handle system notifications
     const addLocalSystemMessage = useCallback((content, error = false) => {
         const newSysMessage = {
             _id: generateLocalUniqueId('system'),
@@ -132,11 +147,11 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
             type: "system",
             error,
         };
-        setLocalMessages(prev => {
+        setSystemMessages(prev => {
             if (prev.some(msg => msg._id === newSysMessage._id)) return prev;
             return [...prev, newSysMessage].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         });
-    }, []); // Empty dependency array is likely correct here as setLocalMessages is stable
+    }, []);
 
 
     // --- Effects ---
@@ -150,20 +165,20 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
             if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
         };
     }, [recipientId, recipient?.nickname]);
-    
+
     // Load blocked users from localStorage and server when component mounts
     useEffect(() => {
         const loadBlockedUsers = async () => {
             // First load from localStorage for immediate UI feedback
             try {
                 const blockedList = JSON.parse(localStorage.getItem('mandarin_blocked_users') || '[]');
-                
+
                 if (blockedList.length > 0) {
                     log.debug(`Loading ${blockedList.length} blocked users from localStorage`);
-                    
+
                     // Convert array to Set for faster lookups
                     setBlockedUsers(new Set(blockedList));
-                    
+
                     // If the current recipient is in the blocked list, update their status
                     if (recipient?._id && blockedList.includes(recipient._id) && !recipient.isBlocked) {
                         log.debug('Marking current recipient as blocked from localStorage data');
@@ -174,7 +189,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
                 log.error('Error loading blocked users from localStorage:', e);
                 // Continue even if localStorage fails - the server API will provide the authoritative list
             }
-            
+
             // Then fetch from server for authoritative data
             if (user?._id) {
                 try {
@@ -184,102 +199,34 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
                         try {
                             // Check if this specific user is blocked
                             log.debug(`Checking if user ${recipient._id} is blocked (as workaround for 400 error)`);
-                            
+
                             // Use an alternative approach - check user object directly
                             if (user.blockedUsers && Array.isArray(user.blockedUsers) && user.blockedUsers.includes(recipient._id)) {
                                 log.debug(`User ${recipient._id} is marked as blocked in user object`);
                                 recipient.isBlocked = true;
                             }
-                            
+
                         } catch (specificErr) {
                             log.debug(`Could not check specific user blocked status: ${specificErr.message}`);
                         }
                     }
-                    
+
                     // Try to fallback to localStorage data (since API endpoint isn't working)
                     const lsBlockedUsers = JSON.parse(localStorage.getItem('mandarin_blocked_users') || '[]');
                     if (lsBlockedUsers.length > 0) {
                         log.debug(`Using ${lsBlockedUsers.length} blocked users from localStorage due to API error`);
                         setBlockedUsers(new Set(lsBlockedUsers));
                     }
-                    
+
                 } catch (e) {
                     log.error('Error with blocked users handling:', e);
                     // We already loaded from localStorage, so UI is still responsive
                 }
             }
         };
-        
+
         loadBlockedUsers();
     }, [recipient?._id, user?._id]);
-
-    // Merge Hook Messages with Local System Messages
-    useEffect(() => {
-        // Only proceed if hookMessages changed
-        if (!hookMessages) return;
-        
-        // Get all system messages from localMessages
-        const localSystem = localMessages.filter(msg => msg.type === 'system' && msg._id?.startsWith('local-'));
-        
-        // Combine hookMessages with local system messages
-        const combined = [...hookMessages];
-        
-        // Add only system messages that aren't already in the combined array
-        localSystem.forEach(localMsg => {
-            if (!combined.some(msg => msg._id === localMsg._id)) {
-                combined.push(localMsg);
-            }
-        });
-        
-        // Sort combined messages by date
-        combined.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-
-        // Deduplicate messages with enhanced detection
-        const uniqueMessages = [];
-        const seenIds = new Set();
-        const seenCombinations = new Set(); // Detect duplicates even with different IDs
-        
-        combined.forEach(msg => {
-            const id = msg._id || msg.tempId;
-            
-            // Create a compound key to detect duplicates based on sender, time, content & type
-            const timeStr = msg.createdAt?.substring(0, 19) || ''; // Ignore milliseconds precision
-            const contentKey = (msg.content || '').substring(0, 50); // First 50 chars
-            const combinationKey = `${msg.sender}-${timeStr}-${contentKey}-${msg.type}`;
-            
-            // Only add the message if we haven't seen its ID or a duplicate pattern
-            if (id && !seenIds.has(id) && !seenCombinations.has(combinationKey)) {
-                // Normalize the message object with all required fields
-                const normalizedMsg = {
-                    _id: msg._id, 
-                    tempId: msg.tempId, 
-                    sender: msg.sender || "system",
-                    recipient: msg.recipient, 
-                    content: msg.content ?? "",
-                    createdAt: msg.createdAt || new Date().toISOString(),
-                    type: msg.type || "text", 
-                    read: msg.read ?? false,
-                    pending: msg.pending ?? (!!msg.tempId), 
-                    error: msg.error ?? false,
-                    metadata: msg.metadata
-                };
-                uniqueMessages.push(normalizedMsg);
-                if (id) seenIds.add(id);
-                seenCombinations.add(combinationKey);
-            } else if (!id) {
-                log.warn("Message without ID or tempId encountered:", msg);
-            } else {
-                log.debug("Filtered out duplicate message:", id, msg.content);
-            }
-        });
-
-        // Update localMessages only if the content actually changed
-        if (uniqueMessages.length !== localMessages.length || 
-            JSON.stringify(uniqueMessages.map(m => m._id)) !== JSON.stringify(localMessages.map(m => m._id))) {
-            log.debug(`Updating messages: ${uniqueMessages.length} unique of ${combined.length} total`);
-            setLocalMessages(uniqueMessages);
-        }
-    }, [hookMessages, localMessages]); // Include localMessages to detect actual changes
 
     // Scroll Management
     useEffect(() => {
@@ -288,10 +235,10 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
         if (!messagesEndEl || !containerEl || !isOpen) {
             isInitialLoadDone.current = !isOpen; return;
         }
-        if (initialized && localMessages.length > 0 && !isInitialLoadDone.current) {
+        if (initialized && combinedMessages.length > 0 && !isInitialLoadDone.current) {
             messagesEndEl.scrollIntoView({ behavior: 'instant', block: 'end' });
             isInitialLoadDone.current = true;
-        } else if (isInitialLoadDone.current && localMessages.length > 0) {
+        } else if (isInitialLoadDone.current && combinedMessages.length > 0) {
             const scrollThreshold = 150;
             const isNearBottom = containerEl.scrollHeight - containerEl.scrollTop - containerEl.clientHeight < scrollThreshold;
             if (isNearBottom) {
@@ -303,7 +250,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
         } else if (!initialized) {
             isInitialLoadDone.current = false;
         }
-    }, [localMessages, initialized, isOpen]);
+    }, [combinedMessages, initialized, isOpen]);
 
     // Loading Timeout
     useEffect(() => {
@@ -860,13 +807,13 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
             >
                 <div className={styles.messagesContainer} ref={messagesContainerRef}>
                 {/* --- Loading/Error/Empty States --- */}
-                {hookLoading && !localMessages.length ? (
+                {hookLoading && !combinedMessages.length ? (
                     <LoadingIndicator showTimeoutMessage={loadingTimedOut} handleRetry={handleRetryLoad} handleReconnect={handleReconnect} customStyles={styles}/>
                 ) : hookError ? (
                     <ErrorMessage error={hookError} handleRetry={handleRetryLoad} handleForceInit={handleForceInit} showInitButton={!initialized} customStyles={styles}/>
-                ) : !initialized || (!isConnected && !localMessages.length) ? (
+                ) : !initialized || (!isConnected && !combinedMessages.length) ? (
                     <ConnectionIssueMessage handleReconnect={handleReconnect} isInitializing={!initialized} customStyles={styles}/>
-                ) : localMessages.length === 0 && !hookLoading ? (
+                ) : combinedMessages.length === 0 && !hookLoading ? (
                     <NoMessagesPlaceholder text="No messages yet. Say hello!" customStyles={styles}/>
                 ) : (
                      // --- Message List Rendering ---

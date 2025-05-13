@@ -1,528 +1,433 @@
 "use client"
 
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, useState } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "./AuthContext";
 import chatService from "../services/ChatService";
 import logger from "../utils/logger";
-import { SOCKET, TIMEOUTS, CACHE } from "../config";
 
 const log = logger.create("ChatContext");
-
-// Initial state
-const initialState = {
-  conversations: [],
-  messages: [],
-  activeConversation: null,
-  loading: false,
-  sending: false,
-  error: null,
-  hasMore: true,
-  page: 1,
-  loadingMore: false,
-  typingStatus: false,
-  initialized: false,
-  isConnected: false,
-};
-
-// Action types
-const ACTIONS = {
-  INIT_START: "INIT_START",
-  INIT_SUCCESS: "INIT_SUCCESS",
-  INIT_ERROR: "INIT_ERROR",
-  SET_CONVERSATIONS: "SET_CONVERSATIONS",
-  SET_ACTIVE_CONVERSATION: "SET_ACTIVE_CONVERSATION",
-  SET_MESSAGES: "SET_MESSAGES",
-  ADD_MESSAGE: "ADD_MESSAGE",
-  UPDATE_MESSAGE: "UPDATE_MESSAGE",
-  LOAD_START: "LOAD_START",
-  LOAD_SUCCESS: "LOAD_SUCCESS",
-  LOAD_ERROR: "LOAD_ERROR",
-  LOAD_MORE_START: "LOAD_MORE_START",
-  LOAD_MORE_SUCCESS: "LOAD_MORE_SUCCESS",
-  LOAD_MORE_ERROR: "LOAD_MORE_ERROR",
-  SENDING_START: "SENDING_START",
-  SENDING_SUCCESS: "SENDING_SUCCESS",
-  SENDING_ERROR: "SENDING_ERROR",
-  SET_TYPING: "SET_TYPING",
-  SET_CONNECTION: "SET_CONNECTION",
-  RESET_ERROR: "RESET_ERROR",
-  RESET: "RESET",
-};
-
-// Reducer function
-function chatReducer(state, action) {
-  switch (action.type) {
-    case ACTIONS.INIT_START:
-      return { ...state, loading: true, error: null };
-    case ACTIONS.INIT_SUCCESS:
-      return { ...state, initialized: true, loading: false };
-    case ACTIONS.INIT_ERROR:
-      return { ...state, loading: false, error: action.payload, initialized: true };
-    case ACTIONS.SET_CONVERSATIONS:
-      return { ...state, conversations: action.payload };
-    case ACTIONS.SET_ACTIVE_CONVERSATION:
-      return { ...state, activeConversation: action.payload };
-    case ACTIONS.SET_MESSAGES:
-      return { ...state, messages: action.payload };
-    case ACTIONS.ADD_MESSAGE:
-      // Check for duplicates by _id or tempId
-      const exists = state.messages.some(
-        m => m._id === action.payload._id || 
-        (action.payload.tempId && m.tempId === action.payload.tempId)
-      );
-      if (exists) return state;
-      
-      // Add message and sort by createdAt
-      return { 
-        ...state, 
-        messages: [...state.messages, action.payload].sort(
-          (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
-        )
-      };
-    case ACTIONS.UPDATE_MESSAGE:
-      return {
-        ...state,
-        messages: state.messages.map(m => 
-          m._id === action.payload._id || m.tempId === action.payload.tempId
-            ? { ...m, ...action.payload, updated: true }
-            : m
-        )
-      };
-    case ACTIONS.LOAD_START:
-      return { ...state, loading: true, error: null };
-    case ACTIONS.LOAD_SUCCESS:
-      return { 
-        ...state, 
-        loading: false, 
-        messages: action.payload, 
-        hasMore: action.payload.length >= 20,
-        page: 1
-      };
-    case ACTIONS.LOAD_ERROR:
-      return { ...state, loading: false, error: action.payload };
-    case ACTIONS.LOAD_MORE_START:
-      return { ...state, loadingMore: true };
-    case ACTIONS.LOAD_MORE_SUCCESS:
-      return {
-        ...state,
-        loadingMore: false,
-        messages: action.combined,
-        hasMore: action.payload.length >= 20,
-        page: state.page + 1
-      };
-    case ACTIONS.LOAD_MORE_ERROR:
-      return { ...state, loadingMore: false, error: action.payload };
-    case ACTIONS.SENDING_START:
-      return { ...state, sending: true };
-    case ACTIONS.SENDING_SUCCESS:
-      return { ...state, sending: false };
-    case ACTIONS.SENDING_ERROR:
-      return { ...state, sending: false, error: action.payload };
-    case ACTIONS.SET_TYPING:
-      return { ...state, typingStatus: action.payload };
-    case ACTIONS.SET_CONNECTION:
-      return { ...state, isConnected: action.payload };
-    case ACTIONS.RESET_ERROR:
-      return { ...state, error: null };
-    case ACTIONS.RESET:
-      return initialState;
-    default:
-      return state;
-  }
-}
 
 // Create context
 const ChatContext = createContext();
 
-// Create provider component
+/**
+ * ChatProvider is a wrapper around ChatService that provides
+ * chat state and methods to all child components.
+ *
+ * It is designed to be a thin wrapper that delegates most functionality
+ * to the ChatService singleton, which acts as the single source of truth.
+ */
 export function ChatProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
-  const [state, dispatch] = useReducer(chatReducer, initialState);
-  
-  // Refs
-  const typingTimeoutRef = useRef(null);
+
+  // Core state
+  const [initialized, setInitialized] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+
+  // Chat data state
+  const [messages, setMessages] = useState([]);
+  const [conversations, setConversations] = useState([]);
+  const [activeConversation, setActiveConversation] = useState(null);
+  const [typingStatus, setTypingStatus] = useState(false);
+
+  // Pagination state
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // Message state
+  const [sending, setSending] = useState(false);
+
+  // Refs for cleanup and tracking mount status
   const mountedRef = useRef(true);
-  const listenerCleanupRef = useRef(null);
-  
-  // Initialize chat service
+  const listenerCleanupRef = useRef([]);
+  const typingTimeoutRef = useRef(null);
+
+  // Initialize chat service when user is authenticated
   useEffect(() => {
     mountedRef.current = true;
-    
+
     const initializeChat = async () => {
       if (!isAuthenticated || !user?._id) return;
-      
-      dispatch({ type: ACTIONS.INIT_START });
-      
+
+      setLoading(true);
+      setError(null);
+
       try {
         log.info("Initializing chat service...");
         await chatService.initialize(user);
-        
+
         if (mountedRef.current) {
-          dispatch({ type: ACTIONS.INIT_SUCCESS });
-          dispatch({ type: ACTIONS.SET_CONNECTION, payload: chatService.isConnected() });
+          setInitialized(true);
+          setIsConnected(chatService.isConnected());
+          setupListeners();
         }
-        
-        // Register global chat event listeners
-        setupGlobalListeners();
       } catch (error) {
         log.error("Failed to initialize chat service:", error);
-        
+
         if (mountedRef.current) {
-          dispatch({ 
-            type: ACTIONS.INIT_ERROR, 
-            payload: error.message || "Failed to initialize chat" 
-          });
+          setError(error.message || "Failed to initialize chat");
+          // Set initialized to true even on error to prevent infinite loading
+          setInitialized(true);
+        }
+      } finally {
+        if (mountedRef.current) {
+          setLoading(false);
         }
       }
     };
-    
+
     initializeChat();
-    
+
     return () => {
       mountedRef.current = false;
-      
-      // Clean up all event listeners
-      if (listenerCleanupRef.current) {
-        listenerCleanupRef.current.forEach(cleanup => {
-          if (typeof cleanup === 'function') {
-            cleanup();
-          }
-        });
-      }
-      
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
+      cleanupListeners();
     };
   }, [isAuthenticated, user]);
-  
-  // Set up global chat listeners (these apply to all conversations)
-  const setupGlobalListeners = useCallback(() => {
-    // Clear previous listeners
-    if (listenerCleanupRef.current) {
-      listenerCleanupRef.current.forEach(cleanup => {
-        if (typeof cleanup === 'function') {
-          cleanup();
-        }
-      });
-    }
-    
-    // Create new listeners array
+
+  // Setup listeners for chat events
+  const setupListeners = useCallback(() => {
+    // Clear existing listeners
+    cleanupListeners();
+
     const listeners = [];
-    
-    // Listen for connection status changes
-    const connectionListener = chatService.on('connectionChanged', ({ connected }) => {
-      if (!mountedRef.current) return;
-      
-      dispatch({ type: ACTIONS.SET_CONNECTION, payload: connected });
-    });
-    listeners.push(connectionListener);
-    
-    // Save listeners for cleanup
+
+    // Connection status listener
+    listeners.push(
+      chatService.on('connectionChanged', ({ connected }) => {
+        if (!mountedRef.current) return;
+        setIsConnected(connected);
+      })
+    );
+
+    // Message received listener
+    listeners.push(
+      chatService.on('messageReceived', (message) => {
+        if (!mountedRef.current) return;
+
+        // Update messages if for active conversation
+        if (activeConversation === message.sender) {
+          setMessages(prev => {
+            // Check for duplicates
+            if (prev.some(m => m._id === message._id)) return prev;
+
+            // Add message and sort
+            return [...prev, message].sort(
+              (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+            );
+          });
+
+          // Mark conversation as read
+          chatService.markConversationRead(message.sender);
+        }
+
+        // Update conversations list with latest message
+        updateConversationWithMessage(message);
+      })
+    );
+
+    // Message sent confirmation listener
+    listeners.push(
+      chatService.on('messageSent', (message) => {
+        if (!mountedRef.current) return;
+
+        // Update message status if for active conversation
+        if (activeConversation === message.recipient) {
+          updateMessageStatus(message);
+        }
+
+        // Update conversations list with latest message
+        updateConversationWithMessage(message);
+      })
+    );
+
+    // Message error listener
+    listeners.push(
+      chatService.on('messageError', (error) => {
+        if (!mountedRef.current) return;
+
+        if (error.tempId) {
+          // Mark message as error
+          setMessages(prev => prev.map(m =>
+            m.tempId === error.tempId
+              ? { ...m, status: 'error', error: true, errorMessage: error.error }
+              : m
+          ));
+        }
+
+        setSending(false);
+        setError(error.error || 'Error sending message');
+      })
+    );
+
+    // Add typing indicator listener
+    listeners.push(
+      chatService.on('userTyping', (data) => {
+        if (!mountedRef.current) return;
+
+        // Only update typing status if it's for the active conversation
+        if (activeConversation === data.userId) {
+          setTypingStatus(true);
+
+          // Clear any existing timeout
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+          }
+
+          // Set timeout to clear typing status after 3 seconds
+          typingTimeoutRef.current = setTimeout(() => {
+            if (mountedRef.current) {
+              setTypingStatus(false);
+            }
+          }, 3000);
+        }
+      })
+    );
+
+    // Store listeners for cleanup
     listenerCleanupRef.current = listeners;
+  }, [activeConversation]);
+
+  // Helper to clean up listeners
+  const cleanupListeners = useCallback(() => {
+    if (listenerCleanupRef.current.length > 0) {
+      listenerCleanupRef.current.forEach(unsub => {
+        if (typeof unsub === 'function') {
+          unsub();
+        }
+      });
+      listenerCleanupRef.current = [];
+    }
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
   }, []);
-  
-  // Setup event listeners for the active conversation
-  useEffect(() => {
-    if (!state.activeConversation || !isAuthenticated || !user?._id || !state.initialized) {
-      return;
-    }
-    
-    const recipientId = state.activeConversation;
-    
-    // Clear previous conversation-specific listeners
-    if (listenerCleanupRef.current) {
-      // Filter out global listeners (like connectionChanged) and keep them
-      const globalListeners = listenerCleanupRef.current.filter(
-        listener => typeof listener === 'object' && listener.isGlobal
+
+  // Helper to update conversation list with new message
+  const updateConversationWithMessage = useCallback((message) => {
+    setConversations(prev => {
+      // Find the conversation
+      const conversationIndex = prev.findIndex(c =>
+        c._id === (message.recipient === user?._id ? message.sender : message.recipient)
       );
-      
-      // Clear other listeners
-      listenerCleanupRef.current.forEach(cleanup => {
-        if (typeof cleanup === 'function' && !cleanup.isGlobal) {
-          cleanup();
-        }
-      });
-      
-      // Reset to keep only global listeners
-      listenerCleanupRef.current = globalListeners;
-    }
-    
-    // Create new conversation-specific listeners
-    const listeners = [];
-    
-    // 1. Message updated listener 
-    const updateListener = chatService.on('messageUpdated', (message) => {
-      if (!mountedRef.current) return;
-      
-      dispatch({ type: ACTIONS.UPDATE_MESSAGE, payload: message });
-    });
-    listeners.push(updateListener);
-    
-    // 2. Message received listener
-    const messageListener = chatService.on('messageReceived', (message) => {
-      if (!mountedRef.current) return;
-      
-      // Only process messages for this conversation
-      if (message.sender === recipientId && message.recipient === user._id) {
-        log.debug(`Received message from ${recipientId}`);
-        
-        dispatch({ type: ACTIONS.ADD_MESSAGE, payload: message });
-        
-        // Mark conversation as read
-        chatService.markConversationRead(recipientId);
+
+      if (conversationIndex === -1) {
+        // If conversation doesn't exist, we might need to refresh the list
+        // This could happen if this is the first message
+        return prev;
       }
-    });
-    listeners.push(messageListener);
-    
-    // 3. Message sent confirmation listener
-    const sentListener = chatService.on('messageSent', (message) => {
-      if (!mountedRef.current) return;
-      
-      // Only handle messages for this conversation
-      if (message.recipient === recipientId) {
-        log.debug(`Message sent confirmation for ${recipientId}`);
-        
-        dispatch({ 
-          type: ACTIONS.UPDATE_MESSAGE, 
-          payload: {
-            ...message,
-            status: 'sent',
-            pending: false
-          }
-        });
-      }
-    });
-    listeners.push(sentListener);
-    
-    // 4. Typing indicator listener
-    const typingListener = chatService.on('userTyping', (data) => {
-      if (!mountedRef.current) return;
-      
-      if (data.userId === recipientId) {
-        dispatch({ type: ACTIONS.SET_TYPING, payload: true });
-        
-        // Auto-clear typing indicator after 3 seconds
-        if (typingTimeoutRef.current) {
-          clearTimeout(typingTimeoutRef.current);
-        }
-        
-        typingTimeoutRef.current = setTimeout(() => {
-          if (mountedRef.current) {
-            dispatch({ type: ACTIONS.SET_TYPING, payload: false });
-          }
-        }, 3000);
-      }
-    });
-    listeners.push(typingListener);
-    
-    // 5. Message error listener
-    const errorListener = chatService.on('messageError', (error) => {
-      if (!mountedRef.current) return;
-      
-      if (error.tempMessageId) {
-        // Update the message with error status
-        dispatch({ 
-          type: ACTIONS.UPDATE_MESSAGE, 
-          payload: {
-            tempId: error.tempMessageId,
-            error: true,
-            status: 'error',
-            errorMessage: error.error || 'Failed to send message'
-          }
-        });
-      }
-      
-      dispatch({ 
-        type: ACTIONS.SENDING_ERROR, 
-        payload: error.error || 'Error sending message'
+
+      // Update the conversation with the latest message
+      const updatedConversations = [...prev];
+      updatedConversations[conversationIndex] = {
+        ...updatedConversations[conversationIndex],
+        lastMessage: message,
+        // Increment unread count if not active conversation
+        unreadCount: activeConversation === updatedConversations[conversationIndex]._id
+          ? 0
+          : (updatedConversations[conversationIndex].unreadCount || 0) + 1
+      };
+
+      // Sort conversations to put the most recent first
+      return updatedConversations.sort((a, b) => {
+        const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt) : new Date(0);
+        const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt) : new Date(0);
+        return bTime - aTime;
       });
     });
-    listeners.push(errorListener);
-    
-    // Add conversation-specific listeners to the global listeners list
-    if (listenerCleanupRef.current) {
-      listenerCleanupRef.current = [...listenerCleanupRef.current, ...listeners];
-    } else {
-      listenerCleanupRef.current = listeners;
+  }, [activeConversation, user]);
+
+  // Helper to update message status
+  const updateMessageStatus = useCallback((message) => {
+    setMessages(prev => prev.map(m =>
+      (m._id === message._id || m.tempId === message.tempId)
+        ? { ...m, ...message, status: 'sent', pending: false, error: false }
+        : m
+    ));
+  }, []);
+
+  // Function to fetch conversations
+  const getConversations = useCallback(async () => {
+    if (!initialized || !isAuthenticated) {
+      log.warn("Not initialized or authenticated, can't get conversations");
+      return [];
     }
-    
-    // Initial load of messages
-    loadMessages(recipientId);
-    
-    // Mark conversation as read when opened
-    chatService.markConversationRead(recipientId);
-    
-    return () => {
-      // Clean up conversation-specific listeners
-      if (listeners && listeners.length) {
-        listeners.forEach(cleanup => {
-          if (typeof cleanup === 'function') {
-            cleanup();
-          }
-        });
+
+    try {
+      log.info("ChatContext: Getting conversations from service");
+      const fetchedConversations = await chatService.getConversations();
+      log.info(`ChatContext: Got ${fetchedConversations?.length || 0} conversations from service`);
+
+      if (mountedRef.current && Array.isArray(fetchedConversations)) {
+        log.info("ChatContext: Setting conversations in state");
+        setConversations(fetchedConversations);
+        return fetchedConversations;
       }
-      
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, [state.activeConversation, isAuthenticated, user, state.initialized]);
-  
+
+      log.warn("ChatContext: Got non-array or component unmounted, returning empty array");
+      return [];
+    } catch (error) {
+      log.error("Failed to fetch conversations:", error);
+      return [];
+    }
+  }, [initialized, isAuthenticated]);
+
+  // Function to set active conversation and load its messages
+  const setActiveConvo = useCallback((recipientId) => {
+    if (recipientId === activeConversation) return;
+
+    setActiveConversation(recipientId);
+
+    // Mark conversation as read when it becomes active
+    if (recipientId && initialized) {
+      chatService.markConversationRead(recipientId);
+
+      // Reset pagination when changing conversations
+      setPage(1);
+      setHasMore(true);
+
+      // Reset typing status
+      setTypingStatus(false);
+
+      // Load messages for the conversation
+      loadMessages(recipientId);
+    }
+  }, [activeConversation, initialized]);
+
   // Function to load messages for a conversation
   const loadMessages = useCallback(async (recipientId, forceRefresh = false) => {
-    if (!recipientId || !isAuthenticated || !user?._id || !state.initialized) {
-      log.warn('Cannot load messages: Missing required data');
-      return [];
-    }
-    
-    if (state.loading && !forceRefresh) {
-      log.debug('Already loading messages, skipping duplicate request');
-      return state.messages;
-    }
-    
-    dispatch({ type: ACTIONS.LOAD_START });
-    
-    try {
-      log.debug(`Loading messages for conversation with ${recipientId}`);
-      
-      // Try to get messages, with retry on failure
-      let loadedMessages;
-      try {
-        loadedMessages = await chatService.getMessages(recipientId, 1, 20);
-      } catch (firstError) {
-        log.warn('First attempt to load messages failed, retrying:', firstError);
-        
-        // Wait a moment before retry
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        // Try again
-        loadedMessages = await chatService.getMessages(recipientId, 1, 20);
-      }
-      
-      // Skip updates if unmounted
-      if (!mountedRef.current) return [];
-      
-      // Ensure we have an array, even if empty
-      const messages = Array.isArray(loadedMessages) ? loadedMessages : [];
-      
-      // Deduplicate messages by ID
-      const uniqueMessages = [];
-      const seenIds = new Set();
-      
-      // Process messages to deduplicate
-      [...messages].reverse().forEach(msg => {
-        // Only add if we haven't seen this ID before
-        if (msg._id && !seenIds.has(msg._id)) {
-          uniqueMessages.push(msg);
-          seenIds.add(msg._id);
-        }
-      });
-      
-      dispatch({ type: ACTIONS.LOAD_SUCCESS, payload: uniqueMessages });
-      
-      log.debug(`Loaded ${messages.length} messages`);
+    if (!recipientId || !initialized || loading && !forceRefresh) {
       return messages;
-    } catch (error) {
-      log.error('Failed to load messages:', error);
-      
-      // Skip updates if unmounted
-      if (!mountedRef.current) return [];
-      
-      dispatch({ 
-        type: ACTIONS.LOAD_ERROR, 
-        payload: error.message || 'Failed to load messages'
-      });
-      
-      return [];
     }
-  }, [isAuthenticated, user, state.loading, state.initialized]);
-  
-  // Function to load more messages (pagination)
-  const loadMoreMessages = useCallback(async () => {
-    if (!state.activeConversation || !isAuthenticated || state.loadingMore || !state.hasMore || !state.initialized) {
-      return [];
-    }
-    
-    dispatch({ type: ACTIONS.LOAD_MORE_START });
-    
+
+    setLoading(true);
+    setError(null);
+
     try {
-      const nextPage = state.page + 1;
-      log.debug(`Loading more messages, page ${nextPage}`);
-      
-      const moreMessages = await chatService.getMessages(state.activeConversation, nextPage, 20);
-      
-      // Skip updates if unmounted
+      const fetchedMessages = await chatService.getMessages(recipientId);
+
       if (!mountedRef.current) return [];
-      
-      // Handle non-array response
-      const messages = Array.isArray(moreMessages) ? moreMessages : [];
-      
-      if (messages.length > 0) {
-        // Combine messages, avoiding duplicates
-        const combined = [...state.messages];
-        
-        // Reverse the order of messages so oldest are first
-        const reversedMessages = [...messages].reverse();
-        
-        reversedMessages.forEach(newMsg => {
-          // Skip if already exists
-          if (!combined.some(m => m._id === newMsg._id)) {
-            combined.push(newMsg);
+
+      // Only update if this is still the active conversation
+      if (activeConversation === recipientId) {
+        // Deduplicate and sort messages
+        const uniqueMessages = [];
+        const seenIds = new Set();
+
+        // Use spread and reverse to avoid mutating original array
+        [...fetchedMessages].reverse().forEach(msg => {
+          if (!seenIds.has(msg._id)) {
+            uniqueMessages.push(msg);
+            seenIds.add(msg._id);
           }
         });
-        
-        dispatch({ 
-          type: ACTIONS.LOAD_MORE_SUCCESS,
-          payload: messages,
-          combined
-        });
-      } else {
-        dispatch({ 
-          type: ACTIONS.LOAD_MORE_SUCCESS,
-          payload: [],
-          combined: state.messages
-        });
+
+        setMessages(uniqueMessages);
+        setHasMore(fetchedMessages.length >= 20);
+        setPage(1);
       }
-      
-      return messages;
+
+      return fetchedMessages;
     } catch (error) {
-      log.error('Failed to load more messages:', error);
-      
-      // Skip updates if unmounted
-      if (!mountedRef.current) return [];
-      
-      dispatch({ 
-        type: ACTIONS.LOAD_MORE_ERROR, 
-        payload: error.message || 'Failed to load more messages'
-      });
-      
+      log.error("Failed to load messages:", error);
+
+      if (mountedRef.current) {
+        setError(error.message || "Failed to load messages");
+      }
+
+      return [];
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [activeConversation, initialized, loading, messages]);
+
+  // Function to load more messages (pagination)
+  const loadMoreMessages = useCallback(async () => {
+    if (!activeConversation || !initialized || loadingMore || !hasMore) {
       return [];
     }
-  }, [state.activeConversation, isAuthenticated, state.loadingMore, state.hasMore, state.page, state.initialized, state.messages]);
-  
+
+    setLoadingMore(true);
+
+    try {
+      const nextPage = page + 1;
+      const moreMessages = await chatService.getMessages(activeConversation, nextPage);
+
+      if (!mountedRef.current) return [];
+
+      if (Array.isArray(moreMessages) && moreMessages.length > 0) {
+        setMessages(prev => {
+          // Combine with existing messages, avoiding duplicates
+          const combined = [...prev];
+          const seenIds = new Set(prev.map(m => m._id));
+
+          moreMessages.forEach(msg => {
+            if (!seenIds.has(msg._id)) {
+              combined.push(msg);
+              seenIds.add(msg._id);
+            }
+          });
+
+          // Sort messages by date
+          return combined.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        });
+
+        setHasMore(moreMessages.length >= 20);
+        setPage(nextPage);
+      } else {
+        setHasMore(false);
+      }
+
+      return moreMessages;
+    } catch (error) {
+      log.error("Failed to load more messages:", error);
+      setError("Failed to load more messages");
+      return [];
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [activeConversation, initialized, loadingMore, hasMore, page]);
+
   // Function to send a message
   const sendMessage = useCallback(async (content, type = 'text', metadata = null) => {
-    if (!state.activeConversation || !isAuthenticated || !user?._id || !state.initialized) {
-      const errMsg = 'Cannot send message: Missing required data';
+    if (!activeConversation || !initialized || !isConnected) {
+      const errMsg = 'Cannot send message: Chat is not ready';
       log.error(errMsg);
       throw new Error(errMsg);
     }
-    
-    dispatch({ type: ACTIONS.SENDING_START });
-    
+
+    setSending(true);
+
     try {
-      log.debug(`Sending ${type} message to ${state.activeConversation}`);
-      
-      // Create a temporary ID for optimistic UI updates
+      // Check for recent duplicates (within 5 seconds)
+      const now = new Date();
+      const recentDuplicate = messages.some(m =>
+        m.content === content &&
+        m.type === type &&
+        m.sender === user?._id &&
+        m.recipient === activeConversation &&
+        now - new Date(m.createdAt) < 5000
+      );
+
+      if (recentDuplicate) {
+        log.debug("Skipping duplicate message send");
+        setSending(false);
+        return null;
+      }
+
+      // Create optimistic message
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-      
-      // Create a temporary message for optimistic UI update
       const tempMessage = {
         _id: tempId,
         tempId,
         sender: user._id,
-        recipient: state.activeConversation,
+        recipient: activeConversation,
         content,
         type,
         metadata: metadata || {},
@@ -530,139 +435,102 @@ export function ChatProvider({ children }) {
         status: 'sending',
         pending: true
       };
-      
-      // Prevent sending duplicate messages - check if we already have a message
-      // with identical content sent within the last 5 seconds
-      const now = new Date();
-      const recentDuplicates = state.messages.filter(m => 
-        m.content === tempMessage.content &&
-        m.sender === tempMessage.sender &&
-        m.recipient === tempMessage.recipient &&
-        now - new Date(m.createdAt) < 5000 // Within the last 5 seconds
+
+      // Add optimistic message to UI
+      setMessages(prev => [...prev, tempMessage].sort(
+        (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+      ));
+
+      // Send actual message
+      const result = await chatService.sendMessage(
+        activeConversation,
+        content,
+        type,
+        metadata
       );
-      
-      if (recentDuplicates.length > 0) {
-        log.debug("Skipping duplicate message send - already have same content");
-        dispatch({ type: ACTIONS.SENDING_SUCCESS });
-        return null;
-      }
-      
-      // Add to messages for optimistic UI update
-      dispatch({ type: ACTIONS.ADD_MESSAGE, payload: tempMessage });
-      
-      // Send the actual message
-      const message = await chatService.sendMessage(
-        state.activeConversation, 
-        content, 
-        type, 
-        metadata,
-        tempId
-      );
-      
-      // Skip updates if unmounted
-      if (!mountedRef.current) return message;
-      
+
+      if (!mountedRef.current) return result;
+
       // Update message status
-      dispatch({ 
-        type: ACTIONS.UPDATE_MESSAGE, 
-        payload: {
-          ...message,
-          tempId,
-          status: 'sent',
-          pending: false
-        }
-      });
-      
-      dispatch({ type: ACTIONS.SENDING_SUCCESS });
-      
-      return message;
+      setMessages(prev => prev.map(m =>
+        m.tempId === tempId
+          ? { ...m, ...result, status: 'sent', pending: false }
+          : m
+      ));
+
+      setSending(false);
+      return result;
     } catch (error) {
-      log.error('Failed to send message:', error);
-      
-      // Skip updates if unmounted
-      if (!mountedRef.current) throw error;
-      
-      dispatch({ 
-        type: ACTIONS.SENDING_ERROR, 
-        payload: error.message || 'Failed to send message'
-      });
-      
+      log.error("Failed to send message:", error);
+
+      if (mountedRef.current) {
+        setError(error.message || "Failed to send message");
+        setSending(false);
+      }
+
       throw error;
     }
-  }, [state.activeConversation, isAuthenticated, user, state.initialized, state.messages]);
-  
-  // Function to fetch all conversations
-  const getConversations = useCallback(async () => {
-    if (!isAuthenticated || !user?._id || !state.initialized) {
-      log.warn('Cannot fetch conversations: Not authenticated or initialized');
-      return [];
-    }
-    
-    try {
-      log.debug("Fetching conversations");
-      const conversations = await chatService.getConversations();
-      
-      if (!mountedRef.current) return [];
-      
-      if (Array.isArray(conversations)) {
-        dispatch({ type: ACTIONS.SET_CONVERSATIONS, payload: conversations });
-        return conversations;
-      }
-      
-      return [];
-    } catch (error) {
-      log.error('Failed to fetch conversations:', error);
-      return [];
-    }
-  }, [isAuthenticated, user, state.initialized]);
-  
-  // Function to set the active conversation
-  const setActiveConversation = useCallback((recipientId) => {
-    if (recipientId !== state.activeConversation) {
-      dispatch({ type: ACTIONS.SET_ACTIVE_CONVERSATION, payload: recipientId });
-    }
-  }, [state.activeConversation]);
-  
+  }, [activeConversation, initialized, isConnected, messages, user]);
+
   // Function to send typing indicator
   const sendTyping = useCallback(() => {
-    if (state.activeConversation && isAuthenticated && state.initialized && chatService.isConnected()) {
-      chatService.sendTypingIndicator(state.activeConversation);
+    if (activeConversation && initialized && isConnected) {
+      chatService.sendTypingIndicator(activeConversation);
     }
-  }, [state.activeConversation, isAuthenticated, state.initialized]);
-  
+  }, [activeConversation, initialized, isConnected]);
+
   // Function to reset error state
   const resetError = useCallback(() => {
-    dispatch({ type: ACTIONS.RESET_ERROR });
+    setError(null);
   }, []);
-  
-  // Function to manually refresh messages
+
+  // Function to refresh messages
   const refresh = useCallback(() => {
-    if (state.activeConversation) {
-      return loadMessages(state.activeConversation, true);
+    if (activeConversation) {
+      return loadMessages(activeConversation, true);
     }
     return Promise.resolve([]);
-  }, [state.activeConversation, loadMessages]);
-  
-  // Provide the chat context value
-  const value = {
+  }, [activeConversation, loadMessages]);
+
+  // Function to mark a conversation as read
+  const markConversationRead = useCallback((recipientId) => {
+    if (recipientId && initialized) {
+      return chatService.markConversationRead(recipientId);
+    }
+    return Promise.resolve(null);
+  }, [initialized]);
+
+  // Create combined context value
+  const contextValue = {
     // State
-    ...state,
-    user, // Expose user for filtering
-    isAuthenticated, // Expose auth status
-    
+    initialized,
+    loading,
+    error,
+    isConnected,
+    messages,
+    conversations,
+    activeConversation,
+    typingStatus,
+    hasMore,
+    loadingMore,
+    sending,
+    user,
+    isAuthenticated,
+
     // Actions
     getConversations,
-    setActiveConversation,
+    setActiveConversation: setActiveConvo,
     loadMessages,
     loadMoreMessages,
     sendMessage,
     sendTyping,
     resetError,
-    refresh
+    refresh,
+    markConversationRead
   };
-  
+
   return (
-    <ChatContext.Provider value={value}>
+    <ChatContext.Provider value={contextValue}>
       {children}
     </ChatContext.Provider>
   );

@@ -10,12 +10,72 @@
     '/src/styles/layout.css'
   ];
   
-  // Critical images needed for first render
+  // Critical images needed for first render with absolute URLs to avoid path issues
   const criticalImages = [
     '/placeholder.svg',
     '/default-avatar.png',
+    '/women-avatar.png', // Gender-specific avatars (note spelling: women not woman)
+    '/man-avatar.png',
+    '/couple-avatar.png',
     '/logo.png'
   ];
+  
+  // Force immediate loading of gender avatars to ensure they're available
+  (function preloadCriticalImages() {
+    // Force load the gender avatar images to ensure they're in browser cache
+    const imageUrls = [
+      window.location.origin + '/women-avatar.png',
+      window.location.origin + '/man-avatar.png',
+      window.location.origin + '/couple-avatar.png',
+      window.location.origin + '/default-avatar.png'
+    ];
+    
+    // Add avatar images to the DOM for debugging and to keep them in memory
+    const avatarPreloadDiv = document.createElement('div');
+    avatarPreloadDiv.id = 'avatar-preload-container';
+    avatarPreloadDiv.style.cssText = 'position: absolute; width: 0; height: 0; overflow: hidden; z-index: -1;';
+    document.body.appendChild(avatarPreloadDiv);
+    
+    imageUrls.forEach(url => {
+      const img = new Image();
+      img.src = url;
+      img.crossOrigin = 'anonymous';
+      img.style.position = 'absolute';
+      img.style.width = '1px';
+      img.style.height = '1px';
+      img.style.opacity = '0.01';
+      
+      // Add to DOM to ensure it stays loaded
+      avatarPreloadDiv.appendChild(img);
+      
+      // Log successful load or error for debugging
+      img.onload = () => console.log('Avatar preloaded successfully:', url);
+      img.onerror = (e) => {
+        console.error('Failed to preload avatar:', url, e);
+        // Try again without cache buster
+        if (url.includes('?')) {
+          const retryImg = new Image();
+          retryImg.src = url.split('?')[0];
+          retryImg.crossOrigin = 'anonymous';
+          retryImg.style.cssText = img.style.cssText;
+          avatarPreloadDiv.appendChild(retryImg);
+        }
+      };
+    });
+    
+    // Create tiny image references in localStorage for direct access
+    try {
+      window.localStorage.setItem('avatar_cache_paths', JSON.stringify({
+        'woman': '/women-avatar.png',
+        'women': '/women-avatar.png',
+        'man': '/man-avatar.png',
+        'couple': '/couple-avatar.png',
+        'default': '/default-avatar.png'
+      }));
+    } catch (e) {
+      console.warn('Could not cache avatar paths in localStorage', e);
+    }
+  })();
   
   // 2. Moderate priority resources (needed soon after first paint)
   const secondaryImages = [

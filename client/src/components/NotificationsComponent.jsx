@@ -81,8 +81,10 @@ const NotificationItem = React.memo(({ notification, onClick }) => {
       case "match":
         return "matched with you";
       case "photoRequest":
-        return "requested access to your photo";
+        log.debug("Rendering photoRequest notification:", notif);
+        return "requested access to your private photos";
       case "photoResponse":
+        log.debug("Rendering photoResponse notification:", notif);
         const status = notif.data?.status || "";
         return status === "approved" ? "approved your photo request" : "declined your photo request";
       case "story":

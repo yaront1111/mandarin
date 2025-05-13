@@ -14,6 +14,7 @@ export { default as LoadingSpinner } from './LoadingSpinner';
 export { default as LoadingState } from './LoadingState';
 export { default as Modal } from './Modal';
 export { default as MobileGestureWrapper } from './MobileGestureWrapper';
+export { default as PhotoGallery } from './PhotoGallery';
 
 // Higher-Order Components
 export { default as withErrorBoundary, withErrorBoundary as WithErrorBoundary } from './withErrorBoundary';
