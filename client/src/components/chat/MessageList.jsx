@@ -70,6 +70,7 @@ const MessageList = ({
               message={message}
               currentUserId={currentUserId}
               isSending={isSending}
+              customStyles={styles}
             />
           ))}
         </div>

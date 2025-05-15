@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useStories } from "../../context"
 import StoryThumbnail from "./StoryThumbnail"
 import styles from "../../styles/stories.module.css"
@@ -35,7 +35,7 @@ const StoriesCarousel = ({ onStoryClick }) => {
   const { stories = [], loadStories, loading: contextLoading, hasUnviewedStories } = storiesContext
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [processedStories, setProcessedStories] = useState([])
+  // Remove processedStories state, we'll use useMemo instead
   const [loadAttempted, setLoadAttempted] = useState(false)
   const loadingRef = useRef(false)
   const carouselRef = useRef(null)
@@ -87,22 +87,22 @@ const StoriesCarousel = ({ onStoryClick }) => {
   ];
 
   // Process stories to remove duplicates and ensure proper data structure
-  useEffect(() => {
+  const processedStories = useMemo(() => {
     if (stories && stories.length > 0) {
       // Log to help debug the data structure
-      if (process.env.NODE_ENV !== 'production') {
-        console.debug('Stories from context:', stories.slice(0, 2));
-        
-        // Check how user data is structured in the stories
-        if (stories.length > 0) {
-          const sampleStory = stories[0];
-          console.debug('Sample story user structure:', {
-            userData: sampleStory.userData,
-            user: sampleStory.user,
-            userType: typeof sampleStory.user,
-          });
-        }
-      }
+      // if (process.env.NODE_ENV !== 'production') {
+      //   console.debug('Stories from context:', stories.slice(0, 2));
+      //   
+      //   // Check how user data is structured in the stories
+      //   if (stories.length > 0) {
+      //     const sampleStory = stories[0];
+      //     console.debug('Sample story user structure:', {
+      //       userData: sampleStory.userData,
+      //       user: sampleStory.user,
+      //       userType: typeof sampleStory.user,
+      //     });
+      //   }
+      // }
     
       const uniqueStories = []
       const storyIds = new Set()
@@ -153,13 +153,12 @@ const StoriesCarousel = ({ onStoryClick }) => {
       })
 
       // Add "coming soon" stories
-      const allStories = [...userStories, ...comingSoonStories];
-      setProcessedStories(allStories)
+      return [...userStories, ...comingSoonStories];
     } else {
       // If no stories, just show the coming soon stories
-      setProcessedStories(comingSoonStories)
+      return comingSoonStories;
     }
-  }, [stories])
+  }, [stories, comingSoonStories])
 
   // Load stories when component mounts, with throttling
   useEffect(() => {
@@ -271,14 +270,14 @@ const StoriesCarousel = ({ onStoryClick }) => {
   const storyThumbnails = useMemo(() => {
     return processedStories.map((story) => {
       // For debugging - log the actual story data being passed to each thumbnail
-      if (process.env.NODE_ENV !== 'production') {
-        console.debug(`Story ${story._id} user data in carousel:`, {
-          user: story.user, 
-          userData: story.userData,
-          iAm: story.user?.details?.iAm || story.userData?.details?.iAm,
-          hasDetails: !!story.user?.details || !!story.userData?.details
-        });
-      }
+      // if (process.env.NODE_ENV !== 'production') {
+      //   console.debug(`Story ${story._id} user data in carousel:`, {
+      //     user: story.user, 
+      //     userData: story.userData,
+      //     iAm: story.user?.details?.iAm || story.userData?.details?.iAm,
+      //     hasDetails: !!story.user?.details || !!story.userData?.details
+      //   });
+      // }
       
       // Create a properly structured user object to pass explicitly
       const userObject = story.userData && typeof story.userData === 'object' ? story.userData :
@@ -367,4 +366,4 @@ const StoriesCarousel = ({ onStoryClick }) => {
   )
 }
 
-export default StoriesCarousel
+export default React.memo(StoriesCarousel)

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { logger } from '../../utils';
 import usePhotoManagement from '../../hooks/usePhotoManagement';
@@ -78,115 +78,143 @@ const Avatar = ({
     clearCache 
   } = usePhotoManagement();
   
-  // Add extra debugging
-  log.debug('Avatar component received user:', user ? `User ID: ${user._id}` : 'No user');
-  if (user && user.details) {
-    log.debug('Avatar component - user.details.iAm:', user.details.iAm);
+  // Add debugging only in development mode
+  if (process.env.NODE_ENV === 'development') {
+    log.debug('Avatar component received user:', user ? `User ID: ${user._id}` : 'No user');
+    if (user && user.details) {
+      log.debug('Avatar component - user.details.iAm:', user.details.iAm);
+    }
+    log.debug('Avatar component - placeholder prop:', placeholder);
   }
-  log.debug('Avatar component - placeholder prop:', placeholder);
 
-  // If user object is provided, extract src, alt and online status from it
-  // Use getProfilePhotoUrl to get the proper profile photo if available
-  let userSrc = user ? getProfilePhotoUrl(user) : (src || null);
-  const userAlt = user?.nickname || alt || "User";
-  const userOnline = (showOnlineStatus && user?.isOnline) || online;
-  
-  // First check for known troublesome special cases - direct handling for critical users
-  if ((user?._id === 'mrbig111' || userAlt === 'mrbig111') && 
-      !(user?._id === '681f446dccf1f0d2bb3d2631')) { // Make sure we don't match woman user
-    log.debug('Immediate fix for mrbig111 user - forcing man avatar');
-    userSrc = `${window.location.origin}/man-avatar.png`;
-  }
-  // Direct fix for the woman user with ID 681f446dccf1f0d2bb3d2631
-  else if (user?._id === '681f446dccf1f0d2bb3d2631') {
-    // Check if we already have a non-default profile photo URL
-    if (userSrc && 
-        !isDefaultAvatar(userSrc) && 
-        !userSrc.includes('man-avatar') && 
-        userSrc.includes('/uploads/images/')) {
-      // Save the real profile photo URL to localStorage for consistency 
-      try {
-        const cachedUrl = {
-          url: userSrc
-        };
-        window.localStorage.setItem('user_681f446dccf1f0d2bb3d2631_photo', JSON.stringify(cachedUrl));
-        log.debug('Saved photo URL to localStorage for 681f446dccf1f0d2bb3d2631:', userSrc);
-      } catch (e) {
-        // Ignore storage errors
-      }
-      
-      log.debug('Using existing profile photo URL for woman user:', userSrc);
-    } else {
-      // Try to get cached URL from localStorage first
-      let foundCachedUrl = false;
-      try {
-        const cachedData = window.localStorage.getItem('user_681f446dccf1f0d2bb3d2631_photo');
-        if (cachedData) {
-          const parsed = JSON.parse(cachedData);
-          if (parsed.url && parsed.url.includes('/uploads/images/')) {
-            log.debug('Using cached profile photo URL from localStorage:', parsed.url);
-            userSrc = parsed.url;
-            foundCachedUrl = true; // Mark that we found a cached URL, don't continue to gender avatar
-          }
-        }
-      } catch (e) {
-        // Ignore storage errors
-      }
-      
-      // Force women avatar as fallback only if we didn't find a cached URL
-      if (!foundCachedUrl) {
-        log.debug('Forcing women avatar for user 681f446dccf1f0d2bb3d2631');
-        userSrc = `${window.location.origin}/women-avatar.png`;
-      }
-    }
-  }
-  // Fix for "coming soon" story users 
-  else if (user?._id === 'video-user' || user?._id === 'image-user') {
-    const avatarType = user._id === 'video-user' ? 'man' : 'women';
-    log.debug(`Immediate fix for ${user._id} - forcing ${avatarType} avatar`);
-    userSrc = `${window.location.origin}/${avatarType}-avatar.png`;
-  }
-  // Apply special case handling for other users that need forced gender avatars
-  else {
-    const specialCaseAvatar = getSpecialCaseAvatar(user?._id, userAlt);
+  // Memoize expensive avatar calculations
+  const { userSrc, userAlt, userOnline } = useMemo(() => {
+    // If user object is provided, extract src, alt and online status from it
+    // Use getProfilePhotoUrl to get the proper profile photo if available
+    let computedSrc = user ? getProfilePhotoUrl(user) : (src || null);
+    const computedAlt = user?.nickname || alt || "User";
+    const computedOnline = (showOnlineStatus && user?.isOnline) || online;
     
-    // First check for special case avatars that explicitly need gender-specific treatment
-    if (specialCaseAvatar) {
-      log.debug(`Applying special case avatar for ${userAlt}:`, specialCaseAvatar);
-      userSrc = `${window.location.origin}${specialCaseAvatar}?_refresh=${Date.now()}`;
-    } 
-    // Then check if we have a default avatar which should be replaced with gender-specific
-    else if (userSrc && isDefaultAvatar(userSrc) && user) {
-      // Case-insensitive matching for gender
-      const iAm = user.details?.iAm?.toLowerCase() || '';
-      const gender = user.gender?.toLowerCase() || '';
-      
-      // Try to get gender specific avatar based on user info
-      let genderBasedAvatar = null;
-      
-      // Check iAm field first (preferred)
-      if (iAm === 'man' || iAm === 'male') {
-        genderBasedAvatar = '/man-avatar.png';
-      } else if (iAm === 'woman' || iAm === 'women' || iAm === 'female') {
-        genderBasedAvatar = '/women-avatar.png';
-      } else if (iAm === 'couple' || iAm === 'other') {
-        genderBasedAvatar = '/couple-avatar.png';
-      }
-      // Then check gender field
-      else if (gender === 'male' || gender === 'man') {
-        genderBasedAvatar = '/man-avatar.png';
-      } else if (gender === 'female' || gender === 'woman' || gender === 'women') {
-        genderBasedAvatar = '/women-avatar.png';
-      } else if (gender === 'couple' || gender === 'other') {
-        genderBasedAvatar = '/couple-avatar.png';
-      }
-                               
-      if (genderBasedAvatar) {
-        log.debug(`Replacing default avatar with gender-specific avatar for ${userAlt}:`, genderBasedAvatar);
-        userSrc = `${window.location.origin}${genderBasedAvatar}`;
+    // First check for known troublesome special cases - direct handling for critical users
+    if ((user?._id === 'mrbig111' || computedAlt === 'mrbig111') && 
+        !(user?._id === '681f446dccf1f0d2bb3d2631')) { // Make sure we don't match woman user
+      log.debug('Immediate fix for mrbig111 user - forcing man avatar');
+      computedSrc = `${window.location.origin}/man-avatar.png`;
+    }
+    // Direct fix for the woman user with ID 681f446dccf1f0d2bb3d2631
+    else if (user?._id === '681f446dccf1f0d2bb3d2631') {
+      // Check if we already have a non-default profile photo URL
+      if (computedSrc && 
+          !isDefaultAvatar(computedSrc) && 
+          !computedSrc.includes('man-avatar') && 
+          computedSrc.includes('/uploads/images/')) {
+        // Save the real profile photo URL to localStorage for consistency 
+        try {
+          // Check if we already have this URL cached with a timestamp
+          const existingCache = window.localStorage.getItem('user_681f446dccf1f0d2bb3d2631_photo');
+          let shouldUpdate = true;
+          
+          if (existingCache) {
+            const existing = JSON.parse(existingCache);
+            // Only update if URL changed or cache is older than 5 minutes
+            if (existing.url === computedSrc && existing.timestamp && 
+                (Date.now() - existing.timestamp) < 5 * 60 * 1000) {
+              shouldUpdate = false;
+            }
+          }
+          
+          if (shouldUpdate) {
+            const cachedUrl = {
+              url: computedSrc,
+              timestamp: Date.now()
+            };
+            window.localStorage.setItem('user_681f446dccf1f0d2bb3d2631_photo', JSON.stringify(cachedUrl));
+            // log.debug('Saved photo URL to localStorage for 681f446dccf1f0d2bb3d2631:', computedSrc);
+          }
+        } catch (e) {
+          // Ignore storage errors
+        }
+        
+        // log.debug('Using existing profile photo URL for woman user:', computedSrc);
+      } else {
+        // Try to get cached URL from localStorage first
+        let foundCachedUrl = false;
+        try {
+          const cachedData = window.localStorage.getItem('user_681f446dccf1f0d2bb3d2631_photo');
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData);
+            if (parsed.url && parsed.url.includes('/uploads/images/')) {
+              // log.debug('Using cached profile photo URL from localStorage:', parsed.url);
+              computedSrc = parsed.url;
+              foundCachedUrl = true; // Mark that we found a cached URL, don't continue to gender avatar
+            }
+          }
+        } catch (e) {
+          // Ignore storage errors
+        }
+        
+        // Force women avatar as fallback only if we didn't find a cached URL
+        if (!foundCachedUrl) {
+          log.debug('Forcing women avatar for user 681f446dccf1f0d2bb3d2631');
+          computedSrc = `${window.location.origin}/women-avatar.png`;
+        }
       }
     }
-  }
+    // Fix for "coming soon" story users 
+    else if (user?._id === 'video-user' || user?._id === 'image-user') {
+      const avatarType = user._id === 'video-user' ? 'man' : 'women';
+      log.debug(`Immediate fix for ${user._id} - forcing ${avatarType} avatar`);
+      computedSrc = `${window.location.origin}/${avatarType}-avatar.png`;
+    }
+    // Apply special case handling for other users that need forced gender avatars
+    else {
+      const specialCaseAvatar = getSpecialCaseAvatar(user?._id, computedAlt);
+      
+      // First check for special case avatars that explicitly need gender-specific treatment
+      if (specialCaseAvatar) {
+        log.debug(`Applying special case avatar for ${computedAlt}:`, specialCaseAvatar);
+        computedSrc = `${window.location.origin}${specialCaseAvatar}?_refresh=${Date.now()}`;
+      } 
+      // Then check if we have a default avatar which should be replaced with gender-specific
+      else if (computedSrc && isDefaultAvatar(computedSrc) && user) {
+        // Case-insensitive matching for gender
+        const iAm = user.details?.iAm?.toLowerCase() || '';
+        const gender = user.gender?.toLowerCase() || '';
+        
+        // Try to get gender specific avatar based on user info
+        let genderBasedAvatar = null;
+        
+        // Check iAm field first (preferred)
+        if (iAm === 'man' || iAm === 'male') {
+          genderBasedAvatar = '/man-avatar.png';
+        } else if (iAm === 'woman' || iAm === 'women' || iAm === 'female') {
+          genderBasedAvatar = '/women-avatar.png';
+        } else if (iAm === 'couple' || iAm === 'other') {
+          genderBasedAvatar = '/couple-avatar.png';
+        }
+        // Then check gender field
+        else if (gender === 'male' || gender === 'man') {
+          genderBasedAvatar = '/man-avatar.png';
+        } else if (gender === 'female' || gender === 'woman' || gender === 'women') {
+          genderBasedAvatar = '/women-avatar.png';
+        } else if (gender === 'couple' || gender === 'other') {
+          genderBasedAvatar = '/couple-avatar.png';
+        }
+                                 
+        if (genderBasedAvatar) {
+          log.debug(`Replacing default avatar with gender-specific avatar for ${computedAlt}:`, genderBasedAvatar);
+          computedSrc = `${window.location.origin}${genderBasedAvatar}`;
+        }
+      }
+    }
+    
+    // Return the computed values
+    return {
+      userSrc: computedSrc,
+      userAlt: computedAlt,
+      userOnline: computedOnline
+    };
+  }, [user, alt, src, online, showOnlineStatus, getProfilePhotoUrl]);
   
   // Use extracted values for the rest of the component
   src = userSrc;
@@ -273,7 +301,7 @@ const Avatar = ({
   
   // Default avatar path based on user gender/identity
   const defaultAvatarPath = getDefaultAvatarPath();
-  log.debug('Avatar component - using defaultAvatarPath:', defaultAvatarPath);
+  // log.debug('Avatar component - using defaultAvatarPath:', defaultAvatarPath);
   
   // Use a stable component ID instead of timestamp
   const [componentId] = React.useState('avatar-' + Math.floor(Math.random() * 10000));
@@ -550,4 +578,33 @@ Avatar.propTypes = {
   showOnlineStatus: PropTypes.bool // Whether to show online status from user object
 };
 
-export default Avatar;
+export default React.memo(Avatar, (prevProps, nextProps) => {
+  // Early return for obvious differences
+  if (prevProps.src !== nextProps.src ||
+      prevProps.alt !== nextProps.alt ||
+      prevProps.size !== nextProps.size ||
+      prevProps.status !== nextProps.status ||
+      prevProps.className !== nextProps.className ||
+      prevProps.online !== nextProps.online ||
+      prevProps.placeholder !== nextProps.placeholder ||
+      prevProps.statusPosition !== nextProps.statusPosition ||
+      prevProps.showFallback !== nextProps.showFallback ||
+      prevProps.showOnlineStatus !== nextProps.showOnlineStatus ||
+      prevProps.onClick !== nextProps.onClick) {
+    return false;
+  }
+  
+  // Smart comparison for user object - only compare relevant fields
+  if (!prevProps.user && !nextProps.user) return true;
+  if (!prevProps.user || !nextProps.user) return false;
+  
+  // Only compare fields that actually affect rendering
+  return (
+    prevProps.user._id === nextProps.user._id &&
+    prevProps.user.nickname === nextProps.user.nickname &&
+    prevProps.user.isOnline === nextProps.user.isOnline &&
+    JSON.stringify(prevProps.user.photos) === JSON.stringify(nextProps.user.photos) &&
+    prevProps.user.details?.iAm === nextProps.user.details?.iAm &&
+    prevProps.user.gender === nextProps.user.gender
+  );
+});

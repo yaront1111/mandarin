@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useUser } from "../../context";
 import { FaImage, FaVideo, FaStarOfLife } from "react-icons/fa";
 import styles from "../../styles/stories.module.css";
@@ -12,22 +12,22 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser, me
 
   // Derive user object from story or props
   const storyUser = useMemo(() => {
-    // Enhanced debugging for story data structure
-    if (process.env.NODE_ENV !== 'production') {
-      console.debug('StoryThumbnail story data:', {
-        hasStory: !!story,
-        hasPropUser: !!propUser,
-        storyId: story?._id,
-        storyUser: story?.user,
-        storyUserData: story?.userData,
-        storyUserType: story?.user ? typeof story.user : 'none',
-        userDataKeys: story?.userData ? Object.keys(story.userData) : [],
-        hasProfilePicture: story?.userData?.profilePicture || story?.user?.profilePicture,
-        hasPhotos: (story?.userData?.photos || story?.user?.photos) ? 'yes' : 'no',
-        propUserDetails: propUser ? !!propUser.details : 'no prop user',
-        propUserIAm: propUser?.details?.iAm
-      });
-    }
+    // Enhanced debugging for story data structure (only in development)
+    // if (process.env.NODE_ENV !== 'production') {
+    //   console.debug('StoryThumbnail story data:', {
+    //     hasStory: !!story,
+    //     hasPropUser: !!propUser,
+    //     storyId: story?._id,
+    //     storyUser: story?.user,
+    //     storyUserData: story?.userData,
+    //     storyUserType: story?.user ? typeof story.user : 'none',
+    //     userDataKeys: story?.userData ? Object.keys(story.userData) : [],
+    //     hasProfilePicture: story?.userData?.profilePicture || story?.user?.profilePicture,
+    //     hasPhotos: (story?.userData?.photos || story?.user?.photos) ? 'yes' : 'no',
+    //     propUserDetails: propUser ? !!propUser.details : 'no prop user',
+    //     propUserIAm: propUser?.details?.iAm
+    //   });
+    // }
     
     // Special case for userID 681f446dccf1f0d2bb3d2631
     if (propUser?._id === '681f446dccf1f0d2bb3d2631' || story?.user?._id === '681f446dccf1f0d2bb3d2631' || 
@@ -198,4 +198,17 @@ const StoryThumbnail = ({ story, onClick, hasUnviewedStories, user: propUser, me
   );
 };
 
-export default StoryThumbnail;
+export default React.memo(StoryThumbnail, (prevProps, nextProps) => {
+  // Compare props for equality
+  return (
+    prevProps.story?._id === nextProps.story?._id &&
+    prevProps.onClick === nextProps.onClick &&
+    prevProps.hasUnviewedStories === nextProps.hasUnviewedStories &&
+    prevProps.mediaType === nextProps.mediaType &&
+    // Compare user object
+    JSON.stringify(prevProps.user) === JSON.stringify(nextProps.user) &&
+    // Compare story object (more selective)
+    JSON.stringify(prevProps.story?.user) === JSON.stringify(nextProps.story?.user) &&
+    JSON.stringify(prevProps.story?.userData) === JSON.stringify(nextProps.story?.userData)
+  );
+});

@@ -517,7 +517,7 @@ const UserCard = ({
               />
             );
           })()}
-          {user.isOnline && <span className={`${styles.statusIndicator} ${styles.online}`}></span>}
+          {user.isOnline && <span className={`${styles.onlineStatusIndicator} ${styles.online}`}></span>}
         </div>
 
         {/* User Info */}
@@ -599,7 +599,7 @@ const UserCard = ({
             />
           );
         })()}
-        {user.isOnline && <span className={`${styles.statusIndicator} ${styles.online}`}></span>}
+        {user.isOnline && <span className={`${styles.onlineStatusIndicator} ${styles.online}`}></span>}
       </div>
 
       {/* User Info - List View */}

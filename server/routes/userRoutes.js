@@ -13,6 +13,7 @@ import config from "../config.js";
 import { protect, enhancedProtect } from "../middleware/auth.js";
 import { canLikeUser } from "../middleware/permissions.js";
 import logger from "../logger.js";
+import { sendLikeNotification, sendPhotoPermissionRequestNotification, sendPhotoPermissionResponseNotification } from "../socket/notification.js";
 import { uploadPhoto } from "../middleware/upload.js";
 import jwt from "jsonwebtoken";
 
@@ -729,7 +730,14 @@ router.post(
 
     const mutual = await Like.exists({ sender: id, recipient: req.user._id });
 
-    // Notify via socket (omitted for brevity)...
+    // Send notification for the like
+    const io = req.app.get('io');
+    if (io) {
+      await sendLikeNotification(io, req.user, target, {
+        _id: like._id,
+        isMatch: !!mutual
+      });
+    }
 
     res.json({
       success: true,
@@ -1091,8 +1099,14 @@ router.post(
         skipDuplicates: true
       });
       
-      // Notify user about new permission requests
-      // Notification details would be handled by socket service
+      // Send notification for the photo permission request
+      const io = req.app.get('io');
+      if (io) {
+        // Send notification for each permission created
+        for (const permission of results) {
+          await sendPhotoPermissionRequestNotification(io, req.user, targetUser, permission);
+        }
+      }
       
       return res.status(201).json({
         success: true,
@@ -1155,8 +1169,16 @@ router.put(
         }
       }
       
-      // Notify the requesting user about the response
-      // Notification details would be handled by socket service
+      // Send notifications for the response
+      const io = req.app.get('io');
+      if (io) {
+        const requester = await User.findById(userId);
+        if (requester) {
+          for (const permission of permissions) {
+            await sendPhotoPermissionResponseNotification(io, req.user, requester, permission);
+          }
+        }
+      }
       
       return res.json({
         success: true,
@@ -1209,8 +1231,14 @@ router.put(
         await permission.reject(message);
       }
       
-      // Notify the requesting user about the response
-      // Notification details would be handled by socket service
+      // Send notification for the response
+      const io = req.app.get('io');
+      if (io) {
+        const requester = await User.findById(permission.requestedBy);
+        if (requester) {
+          await sendPhotoPermissionResponseNotification(io, req.user, requester, permission);
+        }
+      }
       
       return res.json({
         success: true,

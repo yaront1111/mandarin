@@ -394,7 +394,7 @@
   flex-shrink: 0;
 }
 
-.statusIndicator {
+.onlineStatusIndicator {
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -404,7 +404,7 @@
   border: 2px solid var(--white);
 }
 
-.statusIndicator.online {
+.onlineStatusIndicator.online {
   background-color: var(--success);
 }
 
@@ -589,6 +589,8 @@
   margin-bottom: 8px;
   max-width: 75%;
   align-self: flex-start;
+  overflow: visible;
+  position: relative;
 }
 
 .messageWrapper:has(.sent) {
@@ -685,6 +687,17 @@
   justify-content: flex-end;
   gap: 4px;
   margin-top: 4px;
+  position: relative;
+  z-index: 1;
+  overflow: visible;
+}
+
+.metaSent {
+  justify-content: flex-end;
+}
+
+.metaReceived {
+  justify-content: flex-start;
 }
 
 .messageTime {
@@ -701,8 +714,41 @@
 }
 
 .statusIndicator {
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
+  margin-left: 4px;
+  opacity: 1 !important;
+  visibility: visible !important;
+  position: relative !important;
+  z-index: 1;
+}
+
+/* Ensure indicators are clearly visible in all themes */
+.statusIndicator svg {
+  min-width: 14px !important;
+  min-height: 14px !important;
+  width: 14px !important;
+  height: 14px !important;
+  display: inline-block !important;
+  vertical-align: middle;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Status indicator colors */
+.metaSent .statusIndicator svg[title="Read"] {
+  color: #4caf50 !important; /* Green for read */
+  fill: #4caf50 !important;
+}
+
+.metaSent .statusIndicator svg[title="Sent"] {
+  color: #65abff !important; /* Blue for sent */
+  fill: #65abff !important;
+}
+
+.metaSent .statusIndicator svg[title="Failed to send"] {
+  color: var(--danger) !important;
+  fill: var(--danger) !important;
 }
 
 /* File Messages */

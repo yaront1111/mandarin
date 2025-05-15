@@ -28,6 +28,7 @@ export const useChat = (recipientId = null) => {
   // When this hook is called with a specific recipientId, set it as the active conversation
   useEffect(() => {
     if (normalizedRecipientId) {
+      log.debug(`useChat: Setting active conversation to ${normalizedRecipientId}`);
       chatContext.setActiveConversation(normalizedRecipientId);
     }
   }, [normalizedRecipientId, chatContext.setActiveConversation]);

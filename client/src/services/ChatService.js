@@ -81,12 +81,28 @@ class ChatService {
         log.info(`Initializing ChatService for ${uid}`);
 
         const token = getToken();
-        // Let socketService handle the connection
-        if (token && !socketService.isConnected()) {
+        // Setup socket listeners first, before connection
+        this._setupSocketListeners();
+        
+        // Initialize socket service and wait for connection
+        if (token) {
           socketService.init(uid, token);
+          
+          // Wait for socket to connect (with timeout)
+          const connectionTimeout = 5000; // 5 seconds
+          const startTime = Date.now();
+          
+          while (!socketService.isConnected() && Date.now() - startTime < connectionTimeout) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
+          if (!socketService.isConnected()) {
+            log.warn('Socket connection timeout, proceeding anyway');
+          } else {
+            log.info('Socket connected successfully');
+          }
         }
 
-        this._setupSocketListeners();
         this.initialized = true;
         clearTimeout(timeout);
         resolve(true);
@@ -109,6 +125,18 @@ class ChatService {
       const unsub = socketService.on(evt, fn);
       this.socketUnsubscribers.push(unsub);
     };
+
+    // Register for connection events
+    listen('connect', () => {
+      log.info('Socket connected');
+      this._processPending();
+      this._notify('connectionChanged', { connected: true });
+    });
+    
+    listen('disconnect', () => {
+      log.warn('Socket disconnected');
+      this._notify('connectionChanged', { connected: false });
+    });
 
     // Register for message events
     listen('messageReceived', (msg) => this._onSocketMessage(msg, false));
@@ -368,7 +396,9 @@ class ChatService {
 
   isConnected() {
     // Directly use socketService's isConnected method
-    return socketService.isConnected();
+    const connected = socketService.isConnected();
+    log.debug(`ChatService.isConnected: ${connected}`);
+    return connected;
   }
 
   // File URL cache system

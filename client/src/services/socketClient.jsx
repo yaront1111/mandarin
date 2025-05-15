@@ -73,13 +73,15 @@ class SocketClient {
         reconnectionDelay: this.reconnectDelay,
         reconnectionDelayMax: SOCKET.RECONNECT.DELAY_MAX,
         timeout: SOCKET.CONNECTION.TIMEOUT,
-        path: "/socket.io/", // Explicitly specify path for more reliability
-        transports: ["polling", "websocket"], // Always try both transports
+        path: "/socket.io/", // Match server path exactly (with trailing slash)
+        transports: ["polling", "websocket"], // Server-aligned transport order
         autoConnect: true,
         forceNew: true, // Force new connection attempt
         withCredentials: true, // Enable sending credentials with cross-origin requests
-        extraHeaders: {}, // Leave empty to avoid CORS issues
-        rejectUnauthorized: false, // Ignore self-signed certificates for secure connections  
+        extraHeaders: {
+          'x-connection-type': 'socket.io' // Required by server CORS configuration
+        },
+        // Remove rejectUnauthorized as it may cause issues in production
         secure: window.location.protocol === 'https:', // Match page protocol
         upgrade: true, // Try to upgrade to websocket
       })
@@ -117,6 +119,8 @@ class SocketClient {
     // Connection events
     this.socket.on("connect", () => {
       log.info("Socket connected successfully")
+      log.info(`Socket transport: ${this.socket.io?.engine?.transport?.name || "unknown"}`)
+      log.info(`Socket URL: ${this.socket.io?.uri || "unknown"}`)
       this.connected = true
       this.connectionAttempts = 0
       this._startHeartbeat()
@@ -841,13 +845,7 @@ class SocketClient {
 
             // Always use the most recent token available
             log.info("Initializing socket with fresh token");
-            this.init(this.userId, freshToken || token, {
-              // Explicitly try websocket first on reconnect for better reliability
-              // Removed extraHeaders from transportOptions that were causing CORS issues
-              transportOptions: {
-                websocket: {}
-              }
-            });
+            this.init(this.userId, freshToken || token);
 
             // Dispatch reconnection success event specifically for notifications
             window.dispatchEvent(new CustomEvent(SOCKET.EVENTS.NOTIFICATION_SOCKET_RECONNECTED));

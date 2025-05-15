@@ -18,6 +18,7 @@ import { useNavigate } from "react-router-dom"
 import { FaHeart, FaCheck, FaTimes, FaCamera } from "react-icons/fa"
 import debounce from "lodash.debounce"
 import logger from "../utils/logger"
+import MemoryHelper from "../utils/simple-memory-helper"
 
 const log = logger.create("NotificationContext")
 
@@ -81,7 +82,17 @@ export function NotificationProvider({ children }) {
   const { openProfileModal } = useModals()
   const navigate = useNavigate()
   const [state, dispatch] = useReducer(reducer, initialState)
-  const pollingRef = useRef(null)
+  
+  // Simple memory helper for cleanup
+  const cleanupHelper = useRef(new MemoryHelper());
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    const helper = cleanupHelper.current;
+    return () => {
+      helper.cleanup();
+    };
+  }, [])
 
   // Fetch notifications from server
   const fetchNotifications = useCallback(async () => {
@@ -207,23 +218,25 @@ export function NotificationProvider({ children }) {
       dispatch({ type: "SET_SOCKET_CONNECTED", payload: false })
     }
 
-    // Create event handlers and unsubscribers
+    // Create event handlers and unsubscribers using helper
+    const helper = cleanupHelper.current;
+    
     const unsubscribers = [
-      socketService.on("notification", d => handleIncoming(d, "notification")),
-      socketService.on("newMessage", d => handleIncoming(d, "newMessage")),
-      socketService.on("newLike", d => handleIncoming(d, "newLike")),
-      socketService.on("photoPermissionRequestReceived", d => {
+      helper.addSubscription('notification', socketService.on("notification", d => handleIncoming(d, "notification"))),
+      helper.addSubscription('newMessage', socketService.on("newMessage", d => handleIncoming(d, "newMessage"))),
+      helper.addSubscription('newLike', socketService.on("newLike", d => handleIncoming(d, "newLike"))),
+      helper.addSubscription('photoPermissionRequest', socketService.on("photoPermissionRequestReceived", d => {
         log.info("Received photo permission request notification:", d);
         handleIncoming(d, "photoPermissionRequest");
-      }),
-      socketService.on("photoPermissionResponseReceived", d => {
+      })),
+      helper.addSubscription('photoPermissionResponse', socketService.on("photoPermissionResponseReceived", d => {
         log.info("Received photo permission response notification:", d);
         handleIncoming(d, "photoPermissionResponse");
-      }),
-      socketService.on("newComment", d => handleIncoming(d, "newComment")),
-      socketService.on("incomingCall", d => handleIncoming(d, "incomingCall")),
-      socketService.on("connect", onConnect),
-      socketService.on("disconnect", onDisconnect)
+      })),
+      helper.addSubscription('newComment', socketService.on("newComment", d => handleIncoming(d, "newComment"))),
+      helper.addSubscription('incomingCall', socketService.on("incomingCall", d => handleIncoming(d, "incomingCall"))),
+      helper.addSubscription('connect', socketService.on("connect", onConnect)),
+      helper.addSubscription('disconnect', socketService.on("disconnect", onDisconnect))
     ]
     
     // Set initial connection state
@@ -232,11 +245,24 @@ export function NotificationProvider({ children }) {
       payload: socketService.isConnected(),
     })
 
-    // Cleanup function - unsubscribe all event handlers
+    // Monitor connection state changes
+    const checkConnectionInterval = setInterval(() => {
+      const isConnected = socketService.isConnected()
+      dispatch({
+        type: "SET_SOCKET_CONNECTED",
+        payload: isConnected,
+      })
+    }, 1000) // Check every second
+
+    // Cleanup function - helper handles cleanup
     return () => {
-      unsubscribers.forEach(unsubscribe => {
-        if (typeof unsubscribe === 'function') {
-          unsubscribe();
+      // Clear connection check interval
+      clearInterval(checkConnectionInterval)
+      
+      // Helper will cleanup all subscriptions when component unmounts
+      unsubscribers.forEach(unsub => {
+        if (typeof unsub === 'function') {
+          unsub();
         }
       });
     }
@@ -244,16 +270,18 @@ export function NotificationProvider({ children }) {
 
   // Poll as fallback when socket is disconnected
   useEffect(() => {
-    clearInterval(pollingRef.current)
+    const helper = cleanupHelper.current;
+    
     if (isAuthenticated && !state.socketConnected) {
-      pollingRef.current = setInterval(() => {
+      const intervalCleanup = helper.setInterval(() => {
         if (!socketService.isConnected()) {
           fetchNotifications()
           socketService.reconnect?.()
         }
       }, 30_000)
+      
+      return intervalCleanup;
     }
-    return () => clearInterval(pollingRef.current)
   }, [isAuthenticated, state.socketConnected, fetchNotifications])
 
   // Add a test notification (for QA)

@@ -19,6 +19,7 @@ class SocketService {
     this.maxReconnectAttempts = 5
     this.reconnectInterval = 3000 // 3 seconds
     this.connectionMonitor = null
+    this.internalEventHandlers = new Map() // For internal event handling
   }
 
   /**
@@ -62,6 +63,9 @@ class SocketService {
         this.reconnectAttempts = 0
         this._processPendingMessages()
 
+        // Forward the connect event to any listeners
+        this._notifyEventHandlers("connect", {})
+
         // Dispatch reconnect event for other components
         window.dispatchEvent(new CustomEvent("socketReconnected"))
       })
@@ -69,6 +73,9 @@ class SocketService {
       this.socket.on("disconnect", (reason) => {
         this._log(`Socket disconnected: ${reason}`)
         this.connectionState = "disconnected"
+
+        // Forward the disconnect event to any listeners
+        this._notifyEventHandlers("disconnect", { reason })
 
         // Start monitoring connection if not already monitoring
         this._startConnectionMonitor()
@@ -138,6 +145,25 @@ class SocketService {
    */
   isConnected() {
     return this.socket && this.socket.isConnected()
+  }
+
+  /**
+   * Notify internal event handlers
+   * @param {string} event - Event name
+   * @param {any} data - Event data
+   * @private
+   */
+  _notifyEventHandlers(event, data) {
+    // First notify our internal event listeners (managed by this service)
+    if (this.eventListeners.has(event)) {
+      this.eventListeners.get(event).forEach(callback => {
+        try {
+          callback(data)
+        } catch (err) {
+          this._log(`Error in event handler for ${event}: ${err.message}`, "error")
+        }
+      })
+    }
   }
 
   /**

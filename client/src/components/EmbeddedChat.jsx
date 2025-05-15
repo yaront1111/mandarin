@@ -71,6 +71,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
         sendFileMessage: hookSendFileMessage,
         typingStatus,
         sendTyping,
+        loadMessages,
         loadMoreMessages,
         hasMore,
         sending: sendingMessage, // State indicating if a message is currently being sent via hook
@@ -106,17 +107,57 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
     const loadingTimeoutRef = useRef(null);
     const messagesContainerRef = useRef(null);
     const isInitialLoadDone = useRef(false);
+    const lastWinkSentRef = useRef(0); // Track last wink timestamp for rate limiting
 
     // --- Memoized Values ---
     // Create combined messages from chat messages and system messages
     const combinedMessages = useMemo(() => {
         if (!hookMessages) return [];
 
-        // Combine chat messages with system messages
-        const combined = [...hookMessages, ...systemMessages];
+        // Deduplicate messages, especially winks
+        const deduplicatedMessages = [];
+        const seenIds = new Set();
+        const winkTracker = new Map(); // Track winks by sender and time window
 
-        // Sort by date
-        return combined.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        // Combine chat messages with system messages
+        const allMessages = [...hookMessages, ...systemMessages];
+
+        // Sort first
+        allMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+        // Then deduplicate
+        allMessages.forEach(msg => {
+            // Skip invalid messages
+            if (!msg || (!msg.type && !msg.content)) return;
+
+            // Check for ID duplicates
+            const id = msg._id || msg.tempId;
+            if (id && seenIds.has(id)) {
+                log.debug(`Skipping duplicate message by ID: ${id}`);
+                return;
+            }
+            if (id) {
+                seenIds.add(id);
+            }
+
+            // Special handling for winks - more aggressive deduplication
+            if (msg.type === 'wink' && msg.content === '😉') {
+                const sender = msg.sender || '';
+                // Group winks by sender and 5-minute intervals
+                const winkTimeKey = Math.floor(new Date(msg.createdAt).getTime() / 300000); // 5-minute buckets
+                const winkKey = `${sender}:${winkTimeKey}`;
+
+                if (winkTracker.has(winkKey)) {
+                    log.debug(`Skipping duplicate wink from ${sender} in time window ${winkTimeKey}`);
+                    return;
+                }
+                winkTracker.set(winkKey, msg);
+            }
+
+            deduplicatedMessages.push(msg);
+        });
+
+        return deduplicatedMessages;
     }, [hookMessages, systemMessages]);
 
     // Group messages by date for display
@@ -165,6 +206,7 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
             if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
         };
     }, [recipientId, recipient?.nickname]);
+
 
     // Load blocked users from localStorage and server when component mounts
     useEffect(() => {
@@ -466,6 +508,18 @@ const EmbeddedChat = ({ recipient, isOpen = true, onClose = () => {} }) => {
             }
             return;
         }
+        
+        // Add throttling to prevent multiple winks in quick succession
+        const now = Date.now();
+        const timeSinceLastWink = now - lastWinkSentRef.current;
+        if (timeSinceLastWink < 5000) { // 5 second throttle
+            toast.info("Please wait a moment before sending another wink");
+            return;
+        }
+        
+        // Update the last wink timestamp
+        lastWinkSentRef.current = now;
+        
         await sendMessageWrapper("😉", 'wink');
     }, [sendingMessage, isUploading, recipientId, sendMessageWrapper, isUserBlocked, recipient]);
 

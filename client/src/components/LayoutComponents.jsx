@@ -5,12 +5,27 @@ import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAuth, useNotifications, useLanguage } from "../context"
 import { LanguageSelector, Avatar } from "./common"
+import React from "react"
 import { usePhotoManagement } from "../hooks"
 import { toast } from "react-toastify"
 import { logger } from "../utils/logger.js"
 
 // Create a named logger for this component
 const log = logger.create('LayoutComponents')
+
+// Memoized Avatar component to prevent unnecessary re-renders
+const MemoizedAvatar = React.memo(Avatar, (prevProps, nextProps) => {
+  // Only re-render if user object or its relevant properties change
+  return (
+    prevProps.user?._id === nextProps.user?._id &&
+    prevProps.user?.nickname === nextProps.user?.nickname &&
+    prevProps.user?.online === nextProps.user?.online &&
+    JSON.stringify(prevProps.user?.photos) === JSON.stringify(nextProps.user?.photos) &&
+    prevProps.size === nextProps.size &&
+    prevProps.showOnlineStatus === nextProps.showOnlineStatus &&
+    prevProps.className === nextProps.className
+  );
+});
 import {
   FaUserCircle,
   FaBell,
@@ -198,7 +213,7 @@ export const Navbar = () => {
               <div className="user-menu">
                 <div className="user-avatar-container" onClick={toggleUserDropdown}>
                   {user ? (
-                    <Avatar
+                    <MemoizedAvatar
                       user={user}
                       size="small"
                       alt={user.nickname}

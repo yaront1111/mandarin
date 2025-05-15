@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useAuth } from "./AuthContext";
 import chatService from "../services/ChatService";
 import logger from "../utils/logger";
+import { MemoryHelper } from "../utils/simple-memory-helper";
 
 const log = logger.create("ChatContext");
 
@@ -42,7 +43,7 @@ export function ChatProvider({ children }) {
 
   // Refs for cleanup and tracking mount status
   const mountedRef = useRef(true);
-  const listenerCleanupRef = useRef([]);
+  const cleanupHelper = useRef(new MemoryHelper());
   const typingTimeoutRef = useRef(null);
 
   // Initialize chat service when user is authenticated
@@ -61,7 +62,10 @@ export function ChatProvider({ children }) {
 
         if (mountedRef.current) {
           setInitialized(true);
-          setIsConnected(chatService.isConnected());
+          // Force immediate check of connection status
+          const connected = chatService.isConnected();
+          setIsConnected(connected);
+          log.info(`Initial connection status: ${connected}`);
           setupListeners();
         }
       } catch (error) {
@@ -84,18 +88,17 @@ export function ChatProvider({ children }) {
     return () => {
       mountedRef.current = false;
       cleanupListeners();
+      cleanupHelper.current.cleanup();
     };
   }, [isAuthenticated, user]);
 
   // Setup listeners for chat events
   const setupListeners = useCallback(() => {
     // Clear existing listeners
-    cleanupListeners();
-
-    const listeners = [];
+    cleanupHelper.current.cleanup();
 
     // Connection status listener
-    listeners.push(
+    cleanupHelper.current.addCleanup(
       chatService.on('connectionChanged', ({ connected }) => {
         if (!mountedRef.current) return;
         setIsConnected(connected);
@@ -103,7 +106,7 @@ export function ChatProvider({ children }) {
     );
 
     // Message received listener
-    listeners.push(
+    cleanupHelper.current.addCleanup(
       chatService.on('messageReceived', (message) => {
         if (!mountedRef.current) return;
 
@@ -129,7 +132,7 @@ export function ChatProvider({ children }) {
     );
 
     // Message sent confirmation listener
-    listeners.push(
+    cleanupHelper.current.addCleanup(
       chatService.on('messageSent', (message) => {
         if (!mountedRef.current) return;
 
@@ -144,7 +147,7 @@ export function ChatProvider({ children }) {
     );
 
     // Message error listener
-    listeners.push(
+    cleanupHelper.current.addCleanup(
       chatService.on('messageError', (error) => {
         if (!mountedRef.current) return;
 
@@ -163,7 +166,7 @@ export function ChatProvider({ children }) {
     );
 
     // Add typing indicator listener
-    listeners.push(
+    cleanupHelper.current.addCleanup(
       chatService.on('userTyping', (data) => {
         if (!mountedRef.current) return;
 
@@ -185,21 +188,11 @@ export function ChatProvider({ children }) {
         }
       })
     );
-
-    // Store listeners for cleanup
-    listenerCleanupRef.current = listeners;
   }, [activeConversation]);
 
   // Helper to clean up listeners
   const cleanupListeners = useCallback(() => {
-    if (listenerCleanupRef.current.length > 0) {
-      listenerCleanupRef.current.forEach(unsub => {
-        if (typeof unsub === 'function') {
-          unsub();
-        }
-      });
-      listenerCleanupRef.current = [];
-    }
+    cleanupHelper.current.cleanup();
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -276,31 +269,42 @@ export function ChatProvider({ children }) {
     }
   }, [initialized, isAuthenticated]);
 
-  // Function to set active conversation and load its messages
+
+  // Function to set active conversation - without loadMessages dependency to avoid circular dep
   const setActiveConvo = useCallback((recipientId) => {
-    if (recipientId === activeConversation) return;
+    log.info(`setActiveConvo called with recipientId: ${recipientId}, current: ${activeConversation}, initialized: ${initialized}`);
+    
+    if (recipientId === activeConversation) {
+      log.debug('Already the active conversation, skipping');
+      return;
+    }
 
     setActiveConversation(recipientId);
 
     // Mark conversation as read when it becomes active
-    if (recipientId && initialized) {
-      chatService.markConversationRead(recipientId);
+    if (recipientId) {
+      if (initialized) {
+        log.info(`Loading messages for conversation: ${recipientId}`);
+        chatService.markConversationRead(recipientId);
 
-      // Reset pagination when changing conversations
-      setPage(1);
-      setHasMore(true);
+        // Reset pagination when changing conversations
+        setPage(1);
+        setHasMore(true);
 
-      // Reset typing status
-      setTypingStatus(false);
+        // Reset typing status
+        setTypingStatus(false);
 
-      // Load messages for the conversation
-      loadMessages(recipientId);
+        // We'll use an effect to trigger message loading instead
+      } else {
+        log.warn(`Chat not initialized yet, will load messages for ${recipientId} when ready`);
+      }
     }
   }, [activeConversation, initialized]);
 
   // Function to load messages for a conversation
   const loadMessages = useCallback(async (recipientId, forceRefresh = false) => {
-    if (!recipientId || !initialized || loading && !forceRefresh) {
+    if (!recipientId || !initialized || (loading && !forceRefresh)) {
+      log.debug(`Skipping loadMessages - recipientId: ${recipientId}, initialized: ${initialized}, loading: ${loading}, forceRefresh: ${forceRefresh}`);
       return messages;
     }
 
@@ -346,6 +350,14 @@ export function ChatProvider({ children }) {
       }
     }
   }, [activeConversation, initialized, loading, messages]);
+  
+  // Load messages when active conversation changes or when initialized
+  useEffect(() => {
+    if (initialized && activeConversation) {
+      log.info(`Loading messages for conversation: ${activeConversation}`);
+      loadMessages(activeConversation);
+    }
+  }, [initialized, activeConversation, loadMessages]);
 
   // Function to load more messages (pagination)
   const loadMoreMessages = useCallback(async () => {

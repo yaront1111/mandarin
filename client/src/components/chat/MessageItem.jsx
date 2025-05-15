@@ -43,6 +43,11 @@ const MessageItem = React.memo(({
     const isSystem = message.type === 'system';
     const isPlaceholder = message.metadata?.__localPlaceholder === true;
     const isFailed = message.error === true;
+    
+    // Debug logging
+    if (isSentByMe && !isSystem) {
+        log.debug(`MessageItem: Rendering sent message ${message._id || message.tempId}, read: ${message.read}, pending: ${message.pending}, sender: ${message.sender}, currentUserId: ${currentUserId}`);
+    }
 
     // Determine Status Indicator
     let statusIndicator = null;
