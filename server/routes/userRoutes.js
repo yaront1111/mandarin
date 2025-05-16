@@ -1278,4 +1278,98 @@ router.get(
   })
 );
 
+/**
+ * POST /api/users/grant-photo-access/:userId
+ * Directly grant a user access to all your private photos
+ */
+router.post(
+  "/grant-photo-access/:userId",
+  protect,
+  asyncHandler(async (req, res) => {
+    const { userId } = req.params;
+    const { message } = req.body;
+    
+    if (!isValidId(userId)) {
+      return respondError(res, 400, "Invalid user ID");
+    }
+    
+    // Cannot grant access to yourself
+    if (req.user._id.toString() === userId) {
+      return respondError(res, 400, "Cannot grant access to your own photos");
+    }
+    
+    try {
+      // Get your own private photos
+      const currentUser = await User.findById(req.user._id).select("photos");
+      if (!currentUser) {
+        return respondError(res, 404, "User not found");
+      }
+      
+      // Find all private photos
+      const privatePhotos = currentUser.photos.filter(photo => 
+        photo.privacy === 'private' && !photo.isDeleted
+      );
+      
+      if (privatePhotos.length === 0) {
+        return respondError(res, 400, "You have no private photos to grant access to");
+      }
+      
+      // Get the recipient user
+      const recipientUser = await User.findById(userId);
+      if (!recipientUser) {
+        return respondError(res, 404, "Recipient user not found");
+      }
+      
+      // Create approved permissions for each private photo
+      const permissions = [];
+      for (const photo of privatePhotos) {
+        // Check if permission already exists
+        const existingPermission = await PhotoPermission.findOne({
+          photo: photo._id,
+          requestedBy: userId,
+          photoOwnerId: req.user._id
+        });
+        
+        if (existingPermission) {
+          // If it exists, approve it if it's not already approved
+          if (existingPermission.status !== 'approved') {
+            await existingPermission.approve();
+            permissions.push(existingPermission);
+          }
+        } else {
+          // Create a new approved permission
+          const newPermission = new PhotoPermission({
+            photo: photo._id,
+            requestedBy: userId,
+            photoOwnerId: req.user._id,
+            message: message || 'Access granted by photo owner',
+            status: 'approved',
+            respondedAt: new Date()
+          });
+          await newPermission.save();
+          permissions.push(newPermission);
+        }
+      }
+      
+      // Send notification for the granted access
+      const io = req.app.get('io');
+      if (io) {
+        for (const permission of permissions) {
+          await sendPhotoPermissionResponseNotification(io, req.user, recipientUser, permission);
+        }
+      }
+      
+      return res.status(201).json({
+        success: true,
+        message: `Granted access to ${permissions.length} private photos`,
+        grantedCount: permissions.length,
+        data: permissions
+      });
+    } catch (err) {
+      logger.error(`Error granting photo access: ${err.message}`);
+      respondError(res, 500, "Failed to grant photo access");
+    }
+  })
+);
+
 export default router;

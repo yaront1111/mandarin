@@ -103,6 +103,7 @@ const Messages = () => {
   // Profile modal state
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileUserId, setProfileUserId] = useState(null);
+  const [isApprovingPhotoRequests, setIsApprovingPhotoRequests] = useState(false);
 
   // Refs
   const messagesEndRef = useRef(null);
@@ -1383,6 +1384,7 @@ const Messages = () => {
 
       // Get conversations
       const conversationsData = await chatService.getConversations();
+      console.log('Fetched conversations with photo requests:', conversationsData);
       const filteredConversations = conversationsData.filter(
         (conversation) => conversation?.user?._id && conversation.user._id !== currentUser._id // Add null check for user
       );
@@ -2282,6 +2284,95 @@ const Messages = () => {
     }
   }, [isMobile]);
 
+  const handleApprovePhotoRequests = async () => {
+    if (!activeConversation?.user?._id || !currentUser?._id) return;
+    
+    console.log('Handling photo access for:', activeConversation.user._id);
+    console.log('Current pending count:', activeConversation?.pendingPhotoRequests);
+    
+    try {
+      setIsApprovingPhotoRequests(true);
+      
+      if (activeConversation?.pendingPhotoRequests > 0) {
+        // If there are pending requests, approve them
+        const response = await apiService.put(`/users/respond-photo-access/${activeConversation.user._id}`, {
+          status: 'approved'
+        });
+        
+        if (response.success) {
+          toast.success(`Approved ${response.updatedCount} photo access requests`);
+          
+          // Update conversation state to reflect no pending requests
+          setActiveConversation(prev => ({
+            ...prev,
+            pendingPhotoRequests: 0
+          }));
+          
+          // Update the conversation in the list
+          setConversations(prev => prev.map(conv => 
+            conv.user._id === activeConversation.user._id 
+              ? { ...conv, pendingPhotoRequests: 0 }
+              : conv
+          ));
+          
+          // Add a system message about the approval
+          const systemMessage = {
+            _id: generateUniqueId(),
+            content: `You approved photo access for ${activeConversation.user.nickname || 'this user'}`,
+            type: "system",
+            createdAt: new Date().toISOString(),
+            sender: "system",
+            systemType: "photoApproval"
+          };
+          
+          setMessages(prev => [...prev, systemMessage]);
+        }
+      } else {
+        // Directly grant access to all private photos
+        try {
+          // Use the new grant-photo-access endpoint
+          const response = await apiService.post(`/users/grant-photo-access/${activeConversation.user._id}`, {
+            message: `${currentUser.nickname || 'User'} has granted you access to their private photos`
+          });
+          
+          if (response.success) {
+            toast.success(`Granted access to ${response.grantedCount} private photos`);
+            
+            // Add a system message
+            const systemMessage = {
+              _id: generateUniqueId(),
+              content: `You granted ${activeConversation.user.nickname || 'this user'} access to all your private photos`,
+              type: "system",
+              createdAt: new Date().toISOString(),
+              sender: "system",
+              systemType: "photoGrant"
+            };
+            
+            setMessages(prev => [...prev, systemMessage]);
+            
+            // Optionally send a message to the user
+            await handleSendMessage(`I've granted you access to all my private photos! 🔓`);
+          }
+          
+        } catch (error) {
+          console.error('Error granting photo access:', error);
+          
+          // If it's a 400 error about no private photos
+          if (error.response?.data?.error?.includes('no private photos')) {
+            toast.info('You have no private photos to grant access to');
+          } else {
+            toast.error('Failed to grant photo access. Please try again.');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error handling photo access:', error);
+      toast.error(error.message || 'Failed to handle photo access');
+    } finally {
+      setIsApprovingPhotoRequests(false);
+    }
+  };
+
   const handleVideoCall = async () => {
     if (!activeConversation || !currentUser?._id) return;
     // Check socket connection using the service's method
@@ -2769,6 +2860,10 @@ const Messages = () => {
                   setProfileUserId(activeConversation.user._id);
                   setIsProfileModalOpen(true);
                 }}
+                pendingPhotoRequests={activeConversation?.pendingPhotoRequests || 0}
+                isApprovingRequests={isApprovingPhotoRequests}
+                onApprovePhotoRequests={handleApprovePhotoRequests}
+                isConnected={socketService.isConnected()}
                 onBlockUser={(userId) => {
                   // Check if the user is already blocked
                   const isBlocked = activeConversation?.user?.isBlocked;

@@ -33,6 +33,10 @@ const ChatHeader = ({
   const moreButtonRef = useRef(null);
   const { t } = useTranslation();
 
+  // Debug photo requests
+  console.log('ChatHeader - pendingPhotoRequests:', pendingPhotoRequests);
+  console.log('ChatHeader - onApprovePhotoRequests:', typeof onApprovePhotoRequests);
+
   // Memoized translations with direct t() calls and fallbacks
   const translations = useMemo(() => ({
     approvePhotoRequests: t('approvePhotoRequests') || 'Approve photo requests',
@@ -151,12 +155,14 @@ const ChatHeader = ({
       </div>
       
       <div className={useStyles.chatActions}>
-        {pendingPhotoRequests > 0 && onApprovePhotoRequests && (
+        {onApprovePhotoRequests && (
           <button
             className={useStyles.chatHeaderBtn || useStyles.videoCallButton}
             onClick={onApprovePhotoRequests}
-            title={`Approve ${pendingPhotoRequests} photo request(s)`}
-            aria-label={translations.approvePhotoRequests || "Approve photo requests"}
+            title={pendingPhotoRequests > 0 
+              ? `Approve ${pendingPhotoRequests} photo request(s)` 
+              : 'Grant photo access'}
+            aria-label={translations.approvePhotoRequests || "Grant photo access"}
             disabled={isApprovingRequests}
             type="button"
           >

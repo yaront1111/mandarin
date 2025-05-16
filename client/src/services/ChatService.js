@@ -341,13 +341,48 @@ class ChatService {
     try {
       const res = await Promise.any(attempts);
       if (Array.isArray(res)) {
-        this.conversationsCache = res;
+        // Enhance conversations with pending photo request counts
+        const enhancedConversations = await this._enhanceWithPhotoRequests(res);
+        this.conversationsCache = enhancedConversations;
         this.conversationsTs = now;
-        return res;
+        return enhancedConversations;
       }
       throw new Error('Bad data');
     } catch {
       return this.conversationsCache || [];
+    }
+  }
+
+  async _enhanceWithPhotoRequests(conversations) {
+    try {
+      // Get all pending photo permissions where current user is the owner
+      // The endpoint already filters by photoOwnerId since we're authenticated
+      const pendingPermissions = await apiService.get('/users/photos/permissions', {
+        status: 'pending'
+      });
+      
+      console.log('Pending photo permissions response:', pendingPermissions);
+      const permissionsData = pendingPermissions.data || [];
+      
+      // Count permissions per requester
+      const pendingCountsMap = permissionsData.reduce((acc, permission) => {
+        // Get the ID of the person who requested access
+        const requesterId = permission.requestedBy?._id || permission.requestedBy;
+        acc[requesterId] = (acc[requesterId] || 0) + 1;
+        return acc;
+      }, {});
+      
+      console.log('Pending photo request counts map:', pendingCountsMap);
+      
+      // Add counts to conversations
+      return conversations.map(conv => ({
+        ...conv,
+        pendingPhotoRequests: pendingCountsMap[conv.user._id] || 0
+      }));
+    } catch (error) {
+      log.warn('Failed to enhance conversations with photo requests:', error);
+      // Return conversations without photo request counts on error
+      return conversations;
     }
   }
 
