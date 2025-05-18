@@ -78,7 +78,7 @@ const StorySchema = new Schema({
   },
   viewers:   [ViewerSchema],
   reactions: [ReactionSchema],
-  expiresAt: { type: Date, index: true },
+  expiresAt: { type: Date },
   isPremium: { type: Boolean, default: false },
   userData:  { type: Schema.Types.Mixed, default: null },
 }, {
@@ -107,7 +107,10 @@ StorySchema.virtual('reactionCount').get(function() {
 // -------------------------
 StorySchema.index({ user: 1, expiresAt: 1 });
 StorySchema.index({ 'viewers.user': 1, expiresAt: 1 });
-StorySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+StorySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL index
+
+// Note: user and type have indexes defined at field level
+// Note: expiresAt index is defined here as TTL index
 
 // -------------------------------------------------
 // Pre-save: cast IDs, normalize fields, set expiresAt

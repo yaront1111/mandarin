@@ -1,11 +1,11 @@
-import Resend from 'resend';
+import { Resend } from 'resend';
 import config from "../config.js";
 import logger from "../logger.js";
 
 const log = logger.child({ component: "ResendEmailService" });
 
 // Initialize Resend with your API key
-const resend = new Resend(config.RESEND_API_KEY || 're_7k4fkJua_N1aYoE2o8yNQvhTeuk32S5Ux');
+const resend = new Resend(config.RESEND_API_KEY);
 
 // Pull email settings from config (with sane defaults)
 const {

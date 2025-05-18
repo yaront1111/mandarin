@@ -156,13 +156,17 @@ deploy_server() {
     # Ensure production environment settings are available
     log "Setting up production environment..."
     if [ -f ".env.production" ]; then
-        log "Found .env.production file, using it for production settings"
+        log "Found .env.production file, copying to .env for production use"
+        cp ".env.production" ".env"
+        
         # Set appropriate permissions if www-data exists
         if id "www-data" &>/dev/null; then
+            chown www-data:www-data ".env"
             chown www-data:www-data ".env.production"
+            chmod 640 ".env"
             chmod 640 ".env.production"
         else
-            log "WARNING: www-data user not found, cannot set specific permissions for .env.production"
+            log "WARNING: www-data user not found, cannot set specific permissions for .env files"
         fi
     else
         log "WARNING: No .env.production file found, production settings may be incomplete"

@@ -32,7 +32,7 @@ const photoSchema = new Schema({
     default:  'private',
     required: true,
   },
-  isDeleted:  { type: Boolean, default: false, index: true },
+  isDeleted:  { type: Boolean, default: false },
   uploadedAt: { type: Date, default: Date.now },
   metadata: {
     filename:    String,
@@ -62,7 +62,6 @@ const userSchema = new Schema({
     unique:    true,
     lowercase: true,
     validate:  [validator.isEmail, 'Please provide a valid email'],
-    index:     true,
   },
   password: {
     type:      String,
@@ -78,7 +77,6 @@ const userSchema = new Schema({
     trim:      true,
     minlength: [3,  'Nickname must be at least 3 characters'],
     maxlength: [30, 'Nickname cannot exceed 30 characters'],
-    index:     true,
   },
   avatar:          { type: String, default: '' },
   profilePicture:  { type: String, default: '' },
@@ -238,17 +236,22 @@ userSchema.virtual('isSubscriptionActive').get(function() {
 // -------------------------
 // Indexes
 // -------------------------
+// Text search indexes
 userSchema.index({ 'details.location': 'text', 'details.interests': 'text' });
+
+// Compound indexes
 userSchema.index({ isOnline: 1, lastActive: -1 });
-userSchema.index({ email: 1 }, { unique: true });
-userSchema.index({ nickname: 1 });
+userSchema.index({ 'details.age': 1, 'details.gender': 1 });
+
+// Single field indexes (only those not defined at field level)
 userSchema.index({ accountTier: 1 });
 userSchema.index({ createdAt: -1 });
 userSchema.index({ lastActive: -1 });
 userSchema.index({ 'photos._id': 1 });
 userSchema.index({ 'photos.isProfile': 1 });
-userSchema.index({ 'photos.isDeleted': 1 });
-userSchema.index({ 'details.age': 1, 'details.gender': 1 });
+
+// Note: email has unique index defined at field level
+// Note: nickname and photos.isDeleted indexes are handled at field level
 
 // -------------------------------------------------
 // Pre-save: defaults, account tier, likes reset, cast IDs
