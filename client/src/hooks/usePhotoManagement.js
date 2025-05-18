@@ -735,6 +735,7 @@ const usePhotoManagement = () => {
     
     try {
       // Check if photo is the profile photo
+      log.debug('Checking if photo is profile photo:', photoId);
       const user = await api.get(`/auth/me`);
       const photo = user?.photos?.find(p => p._id === photoId);
       
@@ -742,11 +743,22 @@ const usePhotoManagement = () => {
         throw new Error('Cannot delete profile photo. Set another photo as profile first.');
       }
       
+      log.debug('Sending delete request for photo:', photoId);
       const response = await api.delete(`/users/photos/${photoId}`);
+      log.debug('Delete response:', response);
       
-      if (!response.success) {
+      // The API service returns response.data directly from axios
+      // So if we get here without an error, the delete was successful
+      // The server returns { success: true, message: "Photo deleted", data: { photoId: "xxx" } }
+      // But we only get the object itself due to axios interceptor
+      
+      // Check if we have an error in the response
+      if (response?.success === false || response?.error) {
         throw new Error(response.error || 'Failed to delete photo');
       }
+      
+      // If we got here, the delete was successful
+      log.debug('Photo deleted successfully');
       
       // Force global refresh by dispatching refresh event
       refreshAllAvatars();

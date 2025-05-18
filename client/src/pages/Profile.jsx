@@ -649,9 +649,12 @@ const Profile = () => {
     // Confirm deletion with the user
     if (!window.confirm(translations.confirmDeletePhoto)) return
     
+    log.debug('Starting photo deletion for:', photoId);
+    
     try {
       // The hook handles validation including profile photo check
       const result = await deletePhoto(photoId, user?._id)
+      log.debug('Delete operation result:', result);
       
       if (result) {
         // Clear URL cache to ensure deleted photo is no longer displayed
@@ -670,13 +673,19 @@ const Profile = () => {
           // Log refresh error but don't show it to user since delete succeeded
           log.warn("Failed to refresh user data after delete, but delete was successful:", refreshError)
         }
+      } else {
+        log.error('Unexpected: deletePhoto returned falsy result:', result);
+        toast.error(translations.photoDeleteFailed);
       }
     } catch (error) {
-      log.error("Failed to delete photo:", error)
-      // Only show error toast for actual errors, not for successful operations
-      if (error.message && !error.message.includes('success')) {
-        toast.error(error.message || translations.photoDeleteFailed)
-      }
+      log.error("Delete photo error details:", {
+        message: error.message,
+        stack: error.stack,
+        photoId: photoId,
+        userId: user?._id
+      });
+      // Show specific error message if available
+      toast.error(error.message || translations.photoDeleteFailed);
     }
   }
 
