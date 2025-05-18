@@ -149,6 +149,19 @@ export async function grantFullPhotoAccess(ownerId, granteeId, message = 'Access
       throw new Error('Owner not found');
     }
 
+    // Handle case where photos array might be undefined
+    if (!owner.photos || !Array.isArray(owner.photos)) {
+      return {
+        success: true,
+        grantedCount: 0,
+        message: 'No photos available',
+        permissions: [],
+        existingAccessCount: 0,
+        totalPrivatePhotos: 0,
+        userHasAccess: false
+      };
+    }
+
     const privatePhotos = owner.photos.filter(photo => 
       photo.privacy === 'private' && !photo.isDeleted
     );
@@ -157,7 +170,11 @@ export async function grantFullPhotoAccess(ownerId, granteeId, message = 'Access
       return {
         success: true,
         grantedCount: 0,
-        message: 'No private photos to grant access to'
+        message: 'No private photos to grant access to',
+        permissions: [],
+        existingAccessCount: 0,
+        totalPrivatePhotos: 0,
+        userHasAccess: false
       };
     }
 
@@ -215,8 +232,22 @@ export async function grantFullPhotoAccess(ownerId, granteeId, message = 'Access
           : 'No private photos to grant access to'
     };
   } catch (error) {
-    logger.error(`Error granting full photo access: ${error.message}`);
-    throw error;
+    logger.error(`Error granting full photo access: ${error.message}`, {
+      stack: error.stack,
+      ownerId,
+      granteeId
+    });
+    // Return a safe result object even on error
+    return {
+      success: false,
+      grantedCount: 0,
+      existingAccessCount: 0,
+      totalPrivatePhotos: 0,
+      permissions: [],
+      userHasAccess: false,
+      message: error.message || 'Failed to grant photo access',
+      error: error.message
+    };
   }
 }
 

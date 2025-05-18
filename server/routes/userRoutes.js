@@ -1346,11 +1346,21 @@ router.post(
       // Use the utility function to grant full photo access
       const result = await photoPermissions.grantFullPhotoAccess(req.user._id, userId, message);
       
-      // No need to check for error - the utility function handles it properly
+      // Validate result structure
+      if (!result || !result.permissions) {
+        logger.error('grantFullPhotoAccess returned invalid result:', result);
+        return respondError(res, 500, "Failed to grant photo access - invalid result");
+      }
+      
+      // Check if the operation was successful
+      if (result.success === false) {
+        logger.error('grantFullPhotoAccess failed:', result);
+        return respondError(res, 500, result.message || "Failed to grant photo access");
+      }
       
       // Send notification for the granted access
       const io = req.app.get('io');
-      if (io && result.permissions.length > 0) {
+      if (io && result.permissions && result.permissions.length > 0) {
         for (const permission of result.permissions) {
           await sendPhotoPermissionResponseNotification(io, req.user, recipientUser, permission);
         }
@@ -1394,7 +1404,12 @@ router.post(
         }
       });
     } catch (err) {
-      logger.error(`Error granting photo access: ${err.message}`);
+      logger.error(`Error granting photo access: ${err.message}`, {
+        stack: err.stack,
+        userId: req.user._id,
+        targetUserId: userId,
+        body: req.body
+      });
       respondError(res, 500, "Failed to grant photo access");
     }
   })
