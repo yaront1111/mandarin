@@ -660,11 +660,16 @@ const Profile = () => {
         // Update timestamp to force re-rendering
         setPhotosUpdateTimestamp(Date.now());
         
-        // Force immediate refresh of user data to update UI without page reload
-        await refreshUserData(user?._id, true)
-        
-        // Only show success if operation completed
+        // Show success immediately since the delete operation succeeded
         toast.success(translations.photoDeleteSuccess)
+        
+        // Try to refresh user data but don't fail if it errors
+        try {
+          await refreshUserData(user?._id, true)
+        } catch (refreshError) {
+          // Log refresh error but don't show it to user since delete succeeded
+          log.warn("Failed to refresh user data after delete, but delete was successful:", refreshError)
+        }
       }
     } catch (error) {
       log.error("Failed to delete photo:", error)

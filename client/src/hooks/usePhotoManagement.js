@@ -751,9 +751,14 @@ const usePhotoManagement = () => {
       // Force global refresh by dispatching refresh event
       refreshAllAvatars();
       
-      // Refresh user data to update the UI
+      // Try to refresh user data but don't fail the operation if it errors
       if (userId) {
-        await refreshUserData(userId, true); // Force immediate refresh
+        try {
+          await refreshUserData(userId, true); // Force immediate refresh
+        } catch (refreshError) {
+          log.warn('Failed to refresh user data after photo delete, but delete was successful:', refreshError);
+          // Don't throw - the delete operation was successful
+        }
       }
       
       return true;
