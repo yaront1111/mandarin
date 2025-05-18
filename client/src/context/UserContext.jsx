@@ -109,11 +109,30 @@ export function UserProvider({ children }) {
   const debounceRef = useRef()
   const errorToastRef = useRef(null)
 
-  // Fetch users with pagination
-  const getUsers = useCallback(async (page = 1, limit = 20) => {
+  // Fetch users with pagination and filters
+  const getUsers = useCallback(async (page = 1, limit = 20, filters = {}) => {
     dispatch({ type: "SET_LOADING", payload: page === 1 })
     try {
-      const res = await apiService.get(`/users?page=${page}&limit=${limit}`)
+      // Build query parameters with filters
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+      })
+      
+      // Add filters to query params
+      if (filters.online) params.append('online', 'true')
+      if (filters.gender && filters.gender.length > 0) {
+        // Handle multiple gender values by sending them as comma-separated
+        filters.gender.forEach(g => params.append('gender', g))
+      }
+      if (filters.ageMin) params.append('minAge', filters.ageMin.toString())
+      if (filters.ageMax) params.append('maxAge', filters.ageMax.toString())
+      if (filters.location) params.append('location', filters.location)
+      if (filters.interests && filters.interests.length > 0) {
+        filters.interests.forEach(interest => params.append('interest', interest))
+      }
+      
+      const res = await apiService.get(`/users?${params.toString()}`)
       if (!res.success) throw new Error(res.error || "Failed to fetch users")
       dispatch({
         type: page === 1 ? "GET_USERS" : "APPEND_USERS",

@@ -83,15 +83,33 @@ const Dashboard = () => {
 
   const [activeTab, setActiveTab] = useState("discover")
   const [showFilters, setShowFilters] = useState(false)
-  const [filterValues, setFilterValues] = useState({
-    ageMin: 18,
-    ageMax: 99,
-    distance: 100,
-    online: false,
-    verified: false,
-    withPhotos: false,
-    interests: [],
-  })
+  // Initialize filters with user's lookingFor preferences
+  const getDefaultFilters = useCallback(() => {
+    const lookingFor = user?.details?.lookingFor || [];
+    const genderFilter = [];
+    
+    // Map lookingFor to gender filter
+    if (lookingFor.includes('women')) genderFilter.push('female');
+    if (lookingFor.includes('men')) genderFilter.push('male');
+    if (lookingFor.includes('couples')) {
+      genderFilter.push('couple');
+      genderFilter.push('male'); // For couples
+      genderFilter.push('female'); // For couples
+    }
+    
+    return {
+      ageMin: 18,
+      ageMax: 99,
+      distance: 100,
+      online: false,
+      verified: false,
+      withPhotos: false,
+      interests: [],
+      gender: genderFilter.length > 0 ? genderFilter : ['male', 'female'], // Default to all if none specified
+    };
+  }, [user]);
+
+  const [filterValues, setFilterValues] = useState(getDefaultFilters())
 
   // Chat, story, and profile modal state
   const [chatUser, setChatUser] = useState(null)
@@ -115,9 +133,9 @@ const Dashboard = () => {
     loadUsers(1).then(() => {
       setInitialLoadComplete(true)
     })
-  }, [filterValues]) // Reload when filters change
+  }, [loadUsers]) // Use loadUsers as dependency which already depends on filterValues
 
-  // Function to load users with pagination
+  // Function to load users with pagination and filters
   const loadUsers = useCallback(
     async (pageNum) => {
       if (pageNum === 1) {
@@ -127,7 +145,7 @@ const Dashboard = () => {
       }
 
       try {
-        const result = await getUsers(pageNum, 20)
+        const result = await getUsers(pageNum, 20, filterValues)
         setHasMore(result.hasMore)
         setPage(pageNum)
         return result
@@ -139,7 +157,7 @@ const Dashboard = () => {
         setLoadingMore(false)
       }
     },
-    [getUsers],
+    [getUsers, filterValues],
   )
 
   // Load more users function
@@ -212,6 +230,22 @@ const Dashboard = () => {
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
       if (u._id === user?._id) return false
+      
+      // Gender filter
+      const userGender = u.details?.gender || 'male';
+      const userIAm = u.details?.iAm || '';
+      
+      if (filterValues.gender && filterValues.gender.length > 0) {
+        // Check both gender and iAm fields for couples
+        const isCouple = userIAm === 'couple' || u.isCouple;
+        
+        if (isCouple && filterValues.gender.includes('couple')) {
+          // Include couples if couple is selected
+        } else if (!filterValues.gender.includes(userGender)) {
+          return false;
+        }
+      }
+      
       const userAge = u.details?.age || 25
       if (userAge < filterValues.ageMin || userAge > filterValues.ageMax) return false
       if (filterValues.online && !u.isOnline) return false
@@ -338,20 +372,12 @@ const Dashboard = () => {
 
   // Reset filter values.
   const resetFilters = useCallback(() => {
-    setFilterValues({
-      ageMin: 18,
-      ageMax: 99,
-      distance: 100,
-      online: false,
-      verified: false,
-      withPhotos: false,
-      interests: [],
-    })
+    setFilterValues(getDefaultFilters())
 
     // Reset pagination
     setPage(1)
     setHasMore(true)
-  }, [])
+  }, [getDefaultFilters])
 
   // Handle scroll event for mobile
   useEffect(() => {
@@ -558,6 +584,79 @@ const Dashboard = () => {
                       aria-label="Maximum distance"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Gender Filter */}
+              <div className={styles.filterSection}>
+                <h3>{t('gender') || 'Gender'}</h3>
+                <div className={`${styles.filterOptions} d-flex flex-column`}>
+                  <label className={styles.filterOption}>
+                    <input
+                      type="checkbox"
+                      checked={filterValues.gender?.includes('female')}
+                      onChange={() => {
+                        const gender = filterValues.gender || [];
+                        if (gender.includes('female')) {
+                          setFilterValues({
+                            ...filterValues,
+                            gender: gender.filter(g => g !== 'female')
+                          });
+                        } else {
+                          setFilterValues({
+                            ...filterValues,
+                            gender: [...gender, 'female']
+                          });
+                        }
+                      }}
+                      aria-label="Show women"
+                    />
+                    <span>{t('women') || 'Women'}</span>
+                  </label>
+                  <label className={styles.filterOption}>
+                    <input
+                      type="checkbox"
+                      checked={filterValues.gender?.includes('male')}
+                      onChange={() => {
+                        const gender = filterValues.gender || [];
+                        if (gender.includes('male')) {
+                          setFilterValues({
+                            ...filterValues,
+                            gender: gender.filter(g => g !== 'male')
+                          });
+                        } else {
+                          setFilterValues({
+                            ...filterValues,
+                            gender: [...gender, 'male']
+                          });
+                        }
+                      }}
+                      aria-label="Show men"
+                    />
+                    <span>{t('men') || 'Men'}</span>
+                  </label>
+                  <label className={styles.filterOption}>
+                    <input
+                      type="checkbox"
+                      checked={filterValues.gender?.includes('couple')}
+                      onChange={() => {
+                        const gender = filterValues.gender || [];
+                        if (gender.includes('couple')) {
+                          setFilterValues({
+                            ...filterValues,
+                            gender: gender.filter(g => g !== 'couple')
+                          });
+                        } else {
+                          setFilterValues({
+                            ...filterValues,
+                            gender: [...gender, 'couple']
+                          });
+                        }
+                      }}
+                      aria-label="Show couples"
+                    />
+                    <span>{t('couples') || 'Couples'}</span>
+                  </label>
                 </div>
               </div>
 

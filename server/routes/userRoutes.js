@@ -124,7 +124,17 @@ router.get(
     const { page, limit, skip } = paginate(req);
     const q = { _id: { $ne: req.user._id } };
     if (req.query.online === "true") q.isOnline = true;
-    if (req.query.gender) q["details.gender"] = req.query.gender;
+    if (req.query.gender) {
+      // Support multiple gender values (for filtering men, women, and couples)
+      const genders = Array.isArray(req.query.gender) 
+        ? req.query.gender 
+        : req.query.gender.split(',').map(g => g.trim());
+      if (genders.length === 1) {
+        q["details.gender"] = genders[0];
+      } else {
+        q["details.gender"] = { $in: genders };
+      }
+    }
     if (req.query.minAge) q["details.age"] = { ...q["details.age"], $gte: +req.query.minAge };
     if (req.query.maxAge) q["details.age"] = { ...q["details.age"], $lte: +req.query.maxAge };
     if (req.query.location) q["details.location"] = { $regex: req.query.location, $options: "i" };
