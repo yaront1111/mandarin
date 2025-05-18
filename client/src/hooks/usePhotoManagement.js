@@ -365,14 +365,17 @@ const usePhotoManagement = () => {
       throw new Error('No file provided');
     }
 
-    const fileType = file.type.split('/')[0];
-    if (fileType !== 'image') {
-      throw new Error('File must be an image');
+    // Validate file type - must match server restrictions
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      log.error(`Invalid file type: ${file.type}. Allowed types: ${allowedTypes.join(', ')}`);
+      throw new Error(`Invalid file type. Only JPEG, PNG, and GIF images are allowed. You uploaded: ${file.type}`);
     }
     
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
-      throw new Error('File size exceeds 5MB limit');
+      log.error(`File too large: ${file.size} bytes (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+      throw new Error(`File size exceeds 5MB limit. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB`);
     }
     
     // Validate privacy parameter
@@ -473,7 +476,20 @@ const usePhotoManagement = () => {
         const status = error.response.status;
         const data = error.response.data;
         
-        if (status === 401) {
+        if (status === 400) {
+          // Handle specific 400 errors from our server
+          if (data?.error) {
+            errorMessage = data.error;
+            // Don't retry certain validation errors
+            if (errorMessage.includes('Max 10 photos') || 
+                errorMessage.includes('Only jpg/png/gif images allowed') ||
+                errorMessage.includes('No file uploaded')) {
+              shouldRetry = false;
+            }
+          } else {
+            errorMessage = 'Bad request: Request failed with status code 400';
+          }
+        } else if (status === 401) {
           errorMessage = 'Authentication expired. Please log in again.';
           shouldRetry = false; // Don't retry auth errors
         } else if (status === 413) {
