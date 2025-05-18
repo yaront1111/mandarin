@@ -7,6 +7,7 @@ import storyRoutes from "./storyRoutes.js"
 import notificationRoutes from "./notificationRoutes.js"
 import avatarRoutes from "./avatarRoutes.js"
 import subscriptionRoutes from "./subscriptionRoutes.js"
+import testRoutes from "./testRoutes.js"
 import { protect } from "../middleware/auth.js"
 import logger from "../logger.js"
 
@@ -107,5 +108,6 @@ router.use("/avatar", avatarRoutes)
 // Also mount at '/avatars' for backwards compatibility 
 router.use("/avatars", avatarRoutes)
 router.use("/subscription", subscriptionRoutes)
+router.use("/test", testRoutes)
 
 export default router

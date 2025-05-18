@@ -171,7 +171,6 @@ const initSocketServer = async (server) => {
         "Authorization",
         "X-Requested-With",
         "Accept",
-        "Origin",
         "Cache-Control",
         "x-no-cache",
         "x-auth-token",

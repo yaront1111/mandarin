@@ -14,6 +14,10 @@ export * from './chatUtils';
 
 // i18n utilities have been removed in favor of direct t() function usage
 
+// Re-export photo permission utilities
+export * from './photoPermissions';
+export { default as photoPermissions } from './photoPermissions';
+
 // Export original mobile utilities functions from mobileInit
 export {
   initializeMobileOptimizations,

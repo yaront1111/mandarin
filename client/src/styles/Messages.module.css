@@ -193,6 +193,15 @@
   background: none;
 }
 
+/* Photo access granted state */
+.chatHeaderBtn.photoAccessGranted {
+  color: #10B981; /* Green color */
+}
+
+.chatHeaderBtn.photoAccessGranted:hover {
+  background-color: #10B98120; /* Light green background on hover */
+}
+
 /* Header dropdown menu */
 .headerDropdown {
   position: absolute;

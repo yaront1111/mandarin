@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { useTranslation } from 'react-i18next';
-import { FaArrowLeft, FaVideo, FaEllipsisH, FaBan, FaFlag, FaUser, FaExclamationTriangle, FaExclamationCircle, FaSpinner, FaLock } from 'react-icons/fa';
+import { FaArrowLeft, FaVideo, FaEllipsisH, FaBan, FaFlag, FaUser, FaExclamationTriangle, FaExclamationCircle, FaSpinner, FaLock, FaLockOpen } from 'react-icons/fa';
 import Avatar from '../common/Avatar.jsx';
 // Use direct translation without helper functions
 import styles from '../../styles/Messages.module.css';
@@ -24,7 +24,8 @@ const ChatHeader = ({
   isApprovingRequests,
   onApprovePhotoRequests,
   isActionDisabled,
-  isConnected
+  isConnected,
+  photoAccess = false
 }) => {
   // Use custom styles if provided, otherwise use default styles
   const useStyles = customStyles || styles;
@@ -33,9 +34,6 @@ const ChatHeader = ({
   const moreButtonRef = useRef(null);
   const { t } = useTranslation();
 
-  // Debug photo requests
-  console.log('ChatHeader - pendingPhotoRequests:', pendingPhotoRequests);
-  console.log('ChatHeader - onApprovePhotoRequests:', typeof onApprovePhotoRequests);
 
   // Memoized translations with direct t() calls and fallbacks
   const translations = useMemo(() => ({
@@ -157,16 +155,18 @@ const ChatHeader = ({
       <div className={useStyles.chatActions}>
         {onApprovePhotoRequests && (
           <button
-            className={useStyles.chatHeaderBtn || useStyles.videoCallButton}
+            className={`${useStyles.chatHeaderBtn || useStyles.videoCallButton} ${photoAccess ? useStyles.photoAccessGranted : ''}`}
             onClick={onApprovePhotoRequests}
             title={pendingPhotoRequests > 0 
               ? `Approve ${pendingPhotoRequests} photo request(s)` 
-              : 'Grant photo access'}
-            aria-label={translations.approvePhotoRequests || "Grant photo access"}
+              : photoAccess 
+                ? 'Revoke photo access' 
+                : 'Grant photo access'}
+            aria-label={photoAccess ? "Revoke photo access" : "Grant photo access"}
             disabled={isApprovingRequests}
             type="button"
           >
-            {isApprovingRequests ? <FaSpinner className="fa-spin" /> : <FaLock />}
+            {isApprovingRequests ? <FaSpinner className="fa-spin" /> : photoAccess ? <FaLockOpen /> : <FaLock />}
           </button>
         )}
         
@@ -265,7 +265,8 @@ ChatHeader.propTypes = {
   isApprovingRequests: PropTypes.bool,
   onApprovePhotoRequests: PropTypes.func,
   isActionDisabled: PropTypes.bool,
-  isConnected: PropTypes.bool
+  isConnected: PropTypes.bool,
+  photoAccess: PropTypes.bool
 };
 
 export default React.memo(ChatHeader);

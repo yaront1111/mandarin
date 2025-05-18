@@ -33,6 +33,7 @@ import { Modal, Button, Avatar, LoadingSpinner } from "./common"
 import { useApi, useMounted, usePhotoManagement, useIsMobile, useMobileDetect } from "../hooks"
 import { formatDate, logger } from "../utils"
 import { provideTactileFeedback } from "../utils/mobileGestures"
+import { requestPhotoAccess } from "../utils/photoPermissions"
 import socketService from "../services/socketClient.jsx"
 
 /**
@@ -192,73 +193,66 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
 
   // Track the last userId to avoid fetch loops
   const lastFetchedUserIdRef = useRef(null);
+  const fetchingUserDataRef = useRef(false);
 
-  // Fetch user data - excluding unstable deps to avoid loops
+  // Fetch user data - simplified to avoid loops
   useEffect(() => {
-    // Skip if no userId, no isOpen (modal is closed), or if we've already fetched this user
-    if (!userId || !isOpen || lastFetchedUserIdRef.current === userId) {
+    // Skip if no userId or modal is closed or already fetching
+    if (!userId || !isOpen || fetchingUserDataRef.current) {
+      return;
+    }
+    
+    // Skip if we already fetched this user
+    if (lastFetchedUserIdRef.current === userId && user) {
       return;
     }
 
+    // Mark as fetching to prevent duplicate calls
+    fetchingUserDataRef.current = true;
+    
     // Wrap getUser in a function to avoid dependency issues
     const fetchUserData = async () => {
       setLoading(true);
       lastFetchedUserIdRef.current = userId;
 
       try {
-        // Adding a small delay to prevent race conditions with other API calls
-        await new Promise(resolve => setTimeout(resolve, 50));
-
-        // Use getUser from context but don't add it to dependencies
-        // Force cache clear by passing true as second parameter
-        const userData = await api.get(`/users/${userId}`, {}, { 
-          useCache: false, 
-          headers: { 
-            'x-no-cache': 'true',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache'
-          } 
-        });
-
-        if (!isMounted()) return;
-
-        log.debug("User data received:", userData?.data?.user || userData?.data || userData);
-        
-        // Extract user data from response based on structure
-        const userDataExtracted = userData?.data?.user || userData?.data || userData;
-        
-        // Set the local user state AND update the context user
-        setUser(userDataExtracted);
-        
-        // Also update the context user to ensure latest data is available
+        // Use getUser from context if available
         if (getUser && typeof getUser === 'function') {
-          getUser(userId);
+          const userData = await getUser(userId);
+          if (userData && isMounted()) {
+            setUser(userData.user || userData);
+          }
+        } else {
+          // Fallback to direct API call only if context function not available
+          const userData = await api.get(`/users/${userId}`);
+          if (userData && isMounted()) {
+            const userDataExtracted = userData?.data?.user || userData?.data || userData;
+            setUser(userDataExtracted);
+          }
         }
       } catch (error) {
         if (isMounted()) {
           log.error("Error fetching user:", error);
-          // Don't leave the loading state on if there's an error
-          setLoading(false);
         }
       } finally {
         if (isMounted()) {
           setLoading(false);
+          fetchingUserDataRef.current = false;
         }
       }
     };
 
     fetchUserData();
 
-    // Reset the ref when component unmounts or userId changes
+    // Cleanup when component unmounts
     return () => {
-      // Only reset if the component is unmounting, not just when userId changes
+      fetchingUserDataRef.current = false;
       if (!isOpen) {
         lastFetchedUserIdRef.current = null;
       }
     };
-  // Explicitly exclude getUser from deps since it might change between renders
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, isOpen, isMounted, api]);
+  // Keep minimal dependencies to avoid re-fetching
+  }, [userId, isOpen]);
 
   // IMPORTANT: We're not using this callback anymore - it's replaced with a direct API call
   // in the useEffect to prevent loops. Keep this here just for reference and documentation.
@@ -285,9 +279,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   // Track if we've set up socket notification listeners
   const notificationListenersSetupRef = useRef(false);
 
-  // Load user data, access status, and stories when modal opens
+  // Load modal data (stories, permissions, etc) when modal opens
   useEffect(() => {
-    // Skip if no userId or isOpen changed to false
+    // Skip if no userId or modal is closed
     if (!userId || !isOpen) {
       // If modal closed, reset states
       if (isModalOpenRef.current) {
@@ -323,36 +317,27 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     // Only run when the modal is truly opening (not just re-rendering)
     if (!isModalOpenRef.current) {
       isModalOpenRef.current = true;
-      log.debug(`Modal opened for userId: ${userId}, dataLoadedRef: ${dataLoadedRef.current}`);
+      log.debug(`Modal opened for userId: ${userId}`);
 
-      // We now initialize from localStorage in the useMemo above, 
-      // so we don't need to do it here again. The value is already in the state.
-      log.debug(`Modal using initial permission status: ${userPhotoAccess.status} (from ${userPhotoAccess.source})`);
-
-
-      // Other UI reset
+      // Reset UI states when opening
       setActivePhotoIndex(0);
       setShowAllInterests(false);
       setShowActions(false);
       setPhotoLoadError({});
       setShowChat(false);
       setShowStories(false);
-      setImageKey(Date.now()); // Reset image key to force reload of images
-
-      // Reset loading states
-      setLoading(false);
+      setImageKey(Date.now());
       setIsLiking(false);
       setIsChatInitiating(false);
       setIsLoadingRequests(false);
       setIsProcessingApproval(false);
     }
 
-    // Load stories only once
-    if (!storiesLoadingRef.current && !dataLoadedRef.current) {
+    // Load stories only once per modal open
+    if (!storiesLoadingRef.current && loadUserStories) {
       storiesLoadingRef.current = true;
-
-      // Use Promise.resolve to handle both synchronous and asynchronous loadUserStories
-      Promise.resolve(loadUserStories?.(userId))
+      
+      Promise.resolve(loadUserStories(userId))
         .then(stories => {
           if (isMounted() && stories && Array.isArray(stories)) {
             setUserStories(stories);
@@ -368,131 +353,80 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         });
     }
 
-    // Fetch photo access status once
-    if (!accessStatusLoadingRef.current && !photoAccessFetchedRef.current) {
+    // Fetch photo access status once per modal open
+    if (!photoAccessFetchedRef.current && userId !== currentUser?._id) {
       photoAccessFetchedRef.current = true;
-      accessStatusLoadingRef.current = true;
       
-      // We now load from localStorage when the modal first opens
-      // This hook is just for the API call
-
-      // Use the API directly to avoid callback issues
       api.get(`/users/${userId}/photo-access-status`)
         .then(response => {
           if (!isMounted()) return;
 
-          log.debug(`Received photo access status response:`, response);
-
           if (response && response.success) {
-            // Simplified access to status value with fallbacks
-            const statusValue = response.status ||
-                              (response.data && response.data.status) ||
-                              null;
-
+            const statusValue = response.status || response.data?.status || null;
+            
             if (statusValue) {
-              // Only update state if it's actually different and component is still mounted
-              if (isMounted()) {
-                setUserPhotoAccess(prev => {
-                  // Critical change: Don't override "pending" status from localStorage with API "none" status
-                  // This preserves the pending status that was set by the user
-                  if (prev.status === "pending" && statusValue === "none") {
-                    log.debug("Keeping 'pending' status from localStorage instead of overriding with 'none' from API");
-                    return prev;
-                  }
-                  
-                  // Otherwise, if the status is different, update it
-                  if (prev.status !== statusValue) {
-                    log.debug(`Updating status from ${prev.status} to ${statusValue} based on API response`);
-                    return {
-                      status: statusValue,
-                      isLoading: false,
-                      source: 'api'
-                    };
-                  }
-                  return prev;
-                });
-              }
-            } else {
-              // Got a success response but no status value (default to "none")
               setUserPhotoAccess(prev => {
-                // Don't override "pending" status from localStorage
-                if (prev.status === "pending") {
+                // Don't override pending status with none
+                if (prev.status === "pending" && statusValue === "none") {
                   return prev;
                 }
                 
-                return {
-                  status: "none",
-                  isLoading: false,
-                  source: 'api-default'
-                };
+                // Only update if different
+                if (prev.status !== statusValue) {
+                  // Update localStorage
+                  try {
+                    const storedPermissions = JSON.parse(localStorage.getItem('photo-permissions-status') || '{}');
+                    storedPermissions[userId] = {
+                      status: statusValue,
+                      timestamp: Date.now()
+                    };
+                    localStorage.setItem('photo-permissions-status', JSON.stringify(storedPermissions));
+                  } catch (error) {
+                    log.error("Failed to update localStorage:", error);
+                  }
+                  
+                  return {
+                    status: statusValue,
+                    isLoading: false,
+                    source: 'api'
+                  };
+                }
+                return prev;
               });
-              log.debug("No status value in response, defaulting to 'none'");
             }
-          } else if (response) {
-            // Handle non-success response
-            log.warn("Unsuccessful photo access status response:", response);
-            // Default to "none" on error, but don't override pending
-            setUserPhotoAccess(prev => {
-              if (prev.status === "pending") {
-                return prev;
-              }
-              return {
-                status: "none",
-                isLoading: false,
-                source: 'api-error'
-              };
-            });
-          } else {
-            // Handle undefined/empty response
-            log.warn("Empty photo access status response");
-            setUserPhotoAccess(prev => {
-              if (prev.status === "pending") {
-                return prev;
-              }
-              return {
-                status: "none",
-                isLoading: false,
-                source: 'api-empty'
-              };
-            });
           }
         })
         .catch(error => {
+          log.error(`Error loading photo access status:`, error);
           if (isMounted()) {
-            log.error(`Error loading photo access status:`, error);
-            // Only reset if not already in pending state
             setUserPhotoAccess(prev => {
-              if (prev.status === "pending") {
-                return prev;
-              }
+              if (prev.status === "pending") return prev;
               return {
                 status: "none",
                 isLoading: false,
                 source: 'api-error'
               };
             });
-          }
-        })
-        .finally(() => {
-          if (isMounted()) {
-            accessStatusLoadingRef.current = false;
           }
         });
     }
 
     // If viewing own profile, fetch pending requests once
-    if (currentUser &&
-        currentUser._id === userId &&
-        !requestsLoadingRef.current &&
-        !dataLoadedRef.current) {
+    if (currentUser?._id === userId && !requestsLoadingRef.current) {
+      requestsLoadingRef.current = true;
       fetchPendingRequests();
     }
 
-    // Mark data loaded if not already
-    if (!dataLoadedRef.current) {
-      dataLoadedRef.current = true;
-    }
-  }, [userId, loadUserStories, currentUser, isOpen, isMounted, api, fetchPendingRequests]);
+    // Reset data loaded ref when opening new modal
+    return () => {
+      if (!isOpen) {
+        dataLoadedRef.current = false;
+        photoAccessFetchedRef.current = false;
+        storiesLoadingRef.current = false;
+        requestsLoadingRef.current = false;
+      }
+    };
+  }, [userId, isOpen, currentUser?._id]);
   
   // Set up socket notification listeners specifically for photo permissions
   useEffect(() => {
@@ -518,7 +452,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         
         // Show a notification based on the response status
         if (data.status === 'approved') {
-          toast.success(`${profileUser?.nickname || 'User'} approved your photo request!`, {
+          toast.success(`${data.sender?.nickname || 'User'} approved your photo request!`, {
             position: "top-center",
             autoClose: 5000,
             icon: "🔓"
@@ -546,7 +480,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
           }));
           
         } else if (data.status === 'rejected') {
-          toast.info(`${profileUser?.nickname || 'User'} declined your photo request`, {
+          toast.info(`${data.sender?.nickname || 'User'} declined your photo request`, {
             position: "top-center",
             autoClose: 5000,
             icon: "🔒"
@@ -568,13 +502,58 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       }
     };
     
+    // Handle when photo access is revoked
+    const handlePhotoAccessRevoked = (data) => {
+      log.debug('Photo access revoked received:', data);
+      if (data && data.ownerId === userId) {
+        log.debug(`Photo access has been revoked by ${data.ownerNickname}`);
+        
+        // Update local state
+        setUserPhotoAccess({
+          status: "none",
+          isLoading: false,
+          source: 'socket'
+        });
+        
+        // Clear localStorage
+        try {
+          const storedPermissions = localStorage.getItem('photo-permissions-status') || '{}';
+          const permissions = JSON.parse(storedPermissions);
+          delete permissions[userId];
+          localStorage.setItem('photo-permissions-status', JSON.stringify(permissions));
+          log.debug(`Cleared permission status in localStorage for user ${userId}`);
+        } catch (error) {
+          log.error("Failed to clear permission status in localStorage:", error);
+        }
+        
+        // Force refresh of photos
+        const timestamp = Date.now();
+        clearCache();
+        setImageKey(timestamp);
+        window.dispatchEvent(new CustomEvent('avatar:refresh', {
+          detail: { timestamp }
+        }));
+        
+        // Show notification
+        toast.info(`${data.ownerNickname || 'User'} has revoked your access to their private photos`, {
+          position: "top-center",
+          autoClose: 5000,
+          icon: "🔒"
+        });
+      }
+    };
+    
     // Set up event listeners
     const unsubscribeResponse = socketService.on('photoPermissionResponseReceived', handlePhotoPermissionResponse);
+    const unsubscribeRevoked = socketService.on('photoAccessRevoked', handlePhotoAccessRevoked);
     
     // Clean up event listeners when component unmounts or modal closes
     return () => {
       if (typeof unsubscribeResponse === 'function') {
         unsubscribeResponse();
+      }
+      if (typeof unsubscribeRevoked === 'function') {
+        unsubscribeRevoked();
       }
       notificationListenersSetupRef.current = false;
     };
@@ -1006,9 +985,8 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
               <div className={styles.galleryContainer}>
                 <div className={styles.gallery}>
                   {displayUser.photos[activePhotoIndex] &&
-                  (displayUser.photos[activePhotoIndex].privacy === 'private' || 
-                   (displayUser.photos[activePhotoIndex].isPrivate && !displayUser.photos[activePhotoIndex].privacy)) &&
-                  !canViewPrivatePhotos ? (
+                  displayUser.photos[activePhotoIndex].privacy === 'private' &&
+                  !displayUser.photos[activePhotoIndex].hasPermission ? (
                     <div className={styles.privatePhoto}>
                       <img
                         src={`${window.location.origin}/private-photo.png`}
@@ -1109,7 +1087,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                         className={`${styles.thumbnail} ${index === activePhotoIndex ? styles.thumbnailActive : ""}`}
                         onClick={() => setActivePhotoIndex(index)}
                       >
-                        {((photo.privacy === 'private' || (photo.isPrivate && !photo.privacy)) && !canViewPrivatePhotos) ? (
+                        {(photo.privacy === 'private' && !photo.hasPermission) ? (
                           <div className={styles.privateThumbnail}>
                             <img 
                               src={`${window.location.origin}/private-photo.png`}

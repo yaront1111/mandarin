@@ -182,16 +182,17 @@ class ChatService {
 
   async getMessages(recipientId, page = 1, limit = 20) {
     await this.initialize(this.user || {});
-    if (!recipientId) return [];
+    if (!recipientId) return { messages: [], partner: null };
 
     const now = Date.now();
     const cached = this.messageCache.get(recipientId) || [];
+    const cachedPartner = this.partnerCache?.get(recipientId);
     const fresh = now - (this.messageCacheTs.get(recipientId) || 0) < MESSAGE_TTL;
     const useCache = page === 1 && cached.length && fresh;
 
-    if (useCache) {
+    if (useCache && cachedPartner) {
       log.debug(`getMessages: using cache for ${recipientId}`);
-      return cached;
+      return { messages: cached, partner: cachedPartner };
     }
 
     try {
@@ -200,23 +201,31 @@ class ChatService {
         apiService.get(`/messages/${recipientId}`, { page, limit, _t: now }),
         new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), MESSAGE_FETCH_TIMEOUT))
       ]);
-      if (resp.success && Array.isArray(resp.data)) {
-        const msgs = resp.data.map(m => ({
-          ...m,
-          tempId: m.tempId || null,
-          createdAt: m.createdAt || new Date().toISOString()
-        })).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-
-        if (page === 1) {
-          this.messageCache.set(recipientId, msgs);
-          this.messageCacheTs.set(recipientId, now);
+      if (resp.success) {
+        // Extract and store partner info if provided
+        if (resp.partner) {
+          if (!this.partnerCache) this.partnerCache = new Map();
+          this.partnerCache.set(recipientId, resp.partner);
         }
-        return msgs;
+
+        if (Array.isArray(resp.data)) {
+          const msgs = resp.data.map(m => ({
+            ...m,
+            tempId: m.tempId || null,
+            createdAt: m.createdAt || new Date().toISOString()
+          })).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+          if (page === 1) {
+            this.messageCache.set(recipientId, msgs);
+            this.messageCacheTs.set(recipientId, now);
+          }
+          return { messages: msgs, partner: resp.partner };
+        }
       }
       throw new Error(resp.error || 'Invalid response');
     } catch (err) {
       log.warn(`getMessages failed, fallback to cache: ${err.message}`);
-      return cached;
+      return { messages: cached, partner: cachedPartner };
     }
   }
 

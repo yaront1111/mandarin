@@ -396,12 +396,15 @@ export function UnifiedChatProvider({ children }) {
       
       // Only update if this is still the active conversation
       if (activeConversation === recipientId) {
+        // Ensure fetchedMessages is an array - handling null/undefined cases
+        const messages = Array.isArray(fetchedMessages) ? fetchedMessages : [];
+        
         // Deduplicate messages
         const uniqueMessages = [];
         const seenIds = new Set();
         
         // Process messages to ensure no duplicates
-        [...fetchedMessages].forEach(msg => {
+        messages.forEach(msg => {
           const id = msg._id || msg.tempId;
           if (!id || !seenIds.has(id)) {
             if (id) seenIds.add(id);
@@ -413,11 +416,11 @@ export function UnifiedChatProvider({ children }) {
         uniqueMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         
         setMessages(uniqueMessages);
-        setHasMore(fetchedMessages.length >= 20);
+        setHasMore(messages.length >= 20);
         setPage(1);
       }
       
-      return fetchedMessages;
+      return Array.isArray(fetchedMessages) ? fetchedMessages : [];
     } catch (error) {
       log.error("Failed to load messages:", error);
       

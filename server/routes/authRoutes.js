@@ -9,8 +9,9 @@ import { User } from "../models/index.js"
 import { protect, generateToken } from "../middleware/auth.js"
 import {
   sendVerificationEmail,
+  sendPasswordResetEmail,
   sendEmailNotification,
-} from "../utils/emailService.js"
+} from "../utils/unifiedEmailService.js"
 import config from "../config.js"
 import logger from "../logger.js"
 
@@ -325,22 +326,12 @@ router.post(
       // Build reset URL
       const resetUrl = `${config.APP_URL}/reset-password?token=${resetToken}`
 
-      // Send reset email
-      const mailText = `
-Hello ${user.nickname},
-
-You requested a password reset. Click the link below to set a new password:
-${resetUrl}
-
-If you did not request this, please ignore this email.
-This link expires in 1 hour.
-      `.trim()
-
+      // Send reset email using the unified service
       try {
-        await sendEmailNotification({
-          to: user.email,
-          subject: "Your password reset link (expires in 1 hour)",
-          text: mailText,
+        await sendPasswordResetEmail({
+          email: user.email,
+          nickname: user.nickname,
+          token: resetToken
         })
         log.info(`Password reset email sent to ${user.email}`)
       } catch (err) {

@@ -15,6 +15,7 @@ import { canLikeUser } from "../middleware/permissions.js";
 import logger from "../logger.js";
 import { sendLikeNotification, sendPhotoPermissionRequestNotification, sendPhotoPermissionResponseNotification } from "../socket/notification.js";
 import { uploadPhoto } from "../middleware/upload.js";
+import { photoPermissions } from "../utils/index.js";
 import jwt from "jsonwebtoken";
 
 const router = express.Router();
@@ -1108,11 +1109,55 @@ router.post(
         }
       }
       
+      // Get the target user data including photo access status
+      const userWithPhotos = await User.findById(userId).select("_id nickname onlineStatus lastActive age photos photosEnabled subscription");
+      
+      // Calculate stats for the target user
+      let publicPhotosCount = 0;
+      let privatePhotosCount = 0;
+      let approvedCount = 0;
+      
+      if (userWithPhotos.photos) {
+        const nonDeletedPhotos = userWithPhotos.photos.filter(p => !p.isDeleted);
+        publicPhotosCount = nonDeletedPhotos.filter(p => p.privacy === 'public').length;
+        privatePhotosCount = nonDeletedPhotos.filter(p => p.privacy === 'private').length;
+        
+        // Check existing permissions for accessed private photos (after creating requests)
+        const privatePhotoIds = userWithPhotos.photos
+          .filter(p => !p.isDeleted && p.privacy === 'private')
+          .map(p => p._id);
+        
+        if (privatePhotoIds.length > 0) {
+          const approvedPermissions = await PhotoPermission.find({
+            photo: { $in: privatePhotoIds },
+            requestedBy: req.user._id,
+            status: 'approved'
+          });
+          
+          approvedCount = approvedPermissions.length;
+        }
+      }
+      
+      // Return full user profile with photo stats
       return res.status(201).json({
         success: true,
         message: `Requested access to ${results.length} private photos`,
         requestCount: results.length,
-        data: results
+        data: {
+          ...userWithPhotos.toObject(),
+          publicPhotosCount: publicPhotosCount,
+          privatePhotosCount: privatePhotosCount,
+          isOnline: userWithPhotos.onlineStatus === 'online',
+          photoAccess: {
+            approved: false, // We just requested access, so it's not approved yet
+            partial: false,
+            none: true,
+            approvedCount: 0,
+            totalPrivate: privatePhotosCount
+          },
+          // Include permissions data
+          permissions: results
+        }
       });
     } catch (err) {
       logger.error(`Error requesting photo access: ${err.message}`);
@@ -1145,28 +1190,20 @@ router.put(
     }
     
     try {
-      // Find all pending photo permission requests from this user
-      const permissions = await PhotoPermission.find({
-        requestedBy: userId,
-        photoOwnerId: req.user._id,
-        status: 'pending'
-      });
+      let result;
       
-      if (permissions.length === 0) {
-        return res.json({
-          success: true,
-          message: "No pending requests from this user",
-          updatedCount: 0
-        });
+      if (status === 'approved') {
+        result = await photoPermissions.approveUserPhotoRequests(req.user._id, userId);
+      } else {
+        result = await photoPermissions.rejectUserPhotoRequests(req.user._id, userId, message);
       }
       
-      // Process all permissions
-      for (const permission of permissions) {
-        if (status === 'approved') {
-          await permission.approve();
-        } else {
-          await permission.reject(message);
-        }
+      if (result.permissions.length === 0) {
+        return res.json({
+          success: true,
+          message: result.message,
+          updatedCount: 0
+        });
       }
       
       // Send notifications for the response
@@ -1174,7 +1211,7 @@ router.put(
       if (io) {
         const requester = await User.findById(userId);
         if (requester) {
-          for (const permission of permissions) {
+          for (const permission of result.permissions) {
             await sendPhotoPermissionResponseNotification(io, req.user, requester, permission);
           }
         }
@@ -1182,8 +1219,8 @@ router.put(
       
       return res.json({
         success: true,
-        message: `${status === 'approved' ? 'Approved' : 'Rejected'} ${permissions.length} photo access requests`,
-        updatedCount: permissions.length
+        message: result.message,
+        updatedCount: result.permissions.length
       });
     } catch (err) {
       logger.error(`Error responding to photo access: ${err.message}`);
@@ -1299,75 +1336,164 @@ router.post(
     }
     
     try {
-      // Get your own private photos
-      const currentUser = await User.findById(req.user._id).select("photos");
-      if (!currentUser) {
-        return respondError(res, 404, "User not found");
-      }
       
-      // Find all private photos
-      const privatePhotos = currentUser.photos.filter(photo => 
-        photo.privacy === 'private' && !photo.isDeleted
-      );
-      
-      if (privatePhotos.length === 0) {
-        return respondError(res, 400, "You have no private photos to grant access to");
-      }
-      
-      // Get the recipient user
+      // Get the recipient user for notification purposes
       const recipientUser = await User.findById(userId);
       if (!recipientUser) {
         return respondError(res, 404, "Recipient user not found");
       }
       
-      // Create approved permissions for each private photo
-      const permissions = [];
-      for (const photo of privatePhotos) {
-        // Check if permission already exists
-        const existingPermission = await PhotoPermission.findOne({
-          photo: photo._id,
-          requestedBy: userId,
-          photoOwnerId: req.user._id
-        });
-        
-        if (existingPermission) {
-          // If it exists, approve it if it's not already approved
-          if (existingPermission.status !== 'approved') {
-            await existingPermission.approve();
-            permissions.push(existingPermission);
-          }
-        } else {
-          // Create a new approved permission
-          const newPermission = new PhotoPermission({
-            photo: photo._id,
-            requestedBy: userId,
-            photoOwnerId: req.user._id,
-            message: message || 'Access granted by photo owner',
-            status: 'approved',
-            respondedAt: new Date()
-          });
-          await newPermission.save();
-          permissions.push(newPermission);
-        }
-      }
+      // Use the utility function to grant full photo access
+      const result = await photoPermissions.grantFullPhotoAccess(req.user._id, userId, message);
+      
+      // No need to check for error - the utility function handles it properly
       
       // Send notification for the granted access
       const io = req.app.get('io');
-      if (io) {
-        for (const permission of permissions) {
+      if (io && result.permissions.length > 0) {
+        for (const permission of result.permissions) {
           await sendPhotoPermissionResponseNotification(io, req.user, recipientUser, permission);
         }
       }
       
+      // Get the recipient user data including photo access status
+      const userWithPhotos = await User.findById(userId).select("_id nickname onlineStatus lastActive age photos photosEnabled subscription");
+      
+      // Calculate stats for the recipient user
+      let publicPhotosCount = 0;
+      let privatePhotosCount = 0;
+      
+      if (userWithPhotos.photos) {
+        const nonDeletedPhotos = userWithPhotos.photos.filter(p => !p.isDeleted);
+        publicPhotosCount = nonDeletedPhotos.filter(p => p.privacy === 'public').length;
+        privatePhotosCount = nonDeletedPhotos.filter(p => p.privacy === 'private').length;
+      }
+      
+      // Check photo access status
+      const accessStatus = await photoPermissions.checkPhotoAccess(req.user._id, userId);
+      
       return res.status(201).json({
         success: true,
-        message: `Granted access to ${permissions.length} private photos`,
-        grantedCount: permissions.length,
-        data: permissions
+        message: result.message,
+        grantedCount: result.grantedCount,
+        existingAccessCount: result.existingAccessCount,
+        totalPrivatePhotos: result.totalPrivatePhotos,
+        data: {
+          ...userWithPhotos.toObject(),
+          publicPhotosCount: publicPhotosCount,
+          privatePhotosCount: privatePhotosCount,
+          isOnline: userWithPhotos.onlineStatus === 'online',
+          photoAccess: {
+            approved: accessStatus.hasAccess,
+            partial: accessStatus.partial,
+            none: accessStatus.none,
+            approvedCount: accessStatus.approvedCount,
+            totalPrivate: accessStatus.totalPrivate
+          },
+          permissions: result.permissions
+        }
       });
     } catch (err) {
       logger.error(`Error granting photo access: ${err.message}`);
       respondError(res, 500, "Failed to grant photo access");
+    }
+  })
+);
+
+/**
+ * DELETE /api/users/revoke-photo-access/:userId
+ * Revoke a user's access to all your private photos
+ */
+router.delete(
+  "/revoke-photo-access/:userId",
+  protect,
+  asyncHandler(async (req, res) => {
+    const { userId } = req.params;
+    
+    if (!isValidId(userId)) {
+      return respondError(res, 400, "Invalid user ID");
+    }
+    
+    // Cannot revoke access from yourself
+    if (req.user._id.toString() === userId) {
+      return respondError(res, 400, "Cannot revoke access from your own photos");
+    }
+    
+    try {
+      
+      // Get the recipient user for response
+      const recipientUser = await User.findById(userId);
+      if (!recipientUser) {
+        return respondError(res, 404, "Recipient user not found");
+      }
+      
+      // Use the utility function to revoke photo access
+      const result = await photoPermissions.revokePhotoAccess(req.user._id, userId);
+      
+      if (result.revokedCount === 0 && result.message.includes('No active permissions')) {
+        return res.json({
+          success: true,
+          message: result.message,
+          revokedCount: 0
+        });
+      }
+      
+      // Get the recipient user data for response
+      const userWithPhotos = await User.findById(userId).select("_id nickname onlineStatus lastActive age photos photosEnabled subscription");
+      
+      // Calculate stats for the recipient user
+      let publicPhotosCount = 0;
+      let privatePhotosCount = 0;
+      
+      if (userWithPhotos.photos) {
+        const nonDeletedPhotos = userWithPhotos.photos.filter(p => !p.isDeleted);
+        publicPhotosCount = nonDeletedPhotos.filter(p => p.privacy === 'public').length;
+        privatePhotosCount = nonDeletedPhotos.filter(p => p.privacy === 'private').length;
+      }
+      
+      // Send socket notification to the affected user about revocation
+      if (result.revokedCount > 0) {
+        const io = req.app.get('io');
+        const userConnections = req.app.get('userConnections');
+        
+        if (io && userConnections) {
+          // Get the recipient's socket connections
+          const recipientSockets = userConnections.get(userId);
+          if (recipientSockets && recipientSockets.size > 0) {
+            recipientSockets.forEach(socketId => {
+              io.to(socketId).emit('photoAccessRevoked', {
+                ownerId: req.user._id,
+                ownerNickname: req.user.nickname,
+                revokedBy: req.user.nickname,
+                timestamp: new Date()
+              });
+            });
+            logger.info(`Sent photoAccessRevoked notification to ${userId} (${recipientSockets.size} connections)`);
+          }
+        }
+      }
+      
+      return res.json({
+        success: true,
+        message: result.message,
+        revokedCount: result.revokedCount,
+        data: {
+          ...userWithPhotos.toObject(),
+          publicPhotosCount: publicPhotosCount,
+          privatePhotosCount: privatePhotosCount,
+          isOnline: userWithPhotos.onlineStatus === 'online',
+          photoAccess: {
+            approved: false,
+            partial: false,
+            none: true,
+            approvedCount: 0,
+            totalPrivate: privatePhotosCount
+          }
+        }
+      });
+    } catch (err) {
+      logger.error(`Error revoking photo access: ${err.message}`);
+      respondError(res, 500, "Failed to revoke photo access");
     }
   })
 );

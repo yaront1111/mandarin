@@ -312,12 +312,15 @@ export function ChatProvider({ children }) {
     setError(null);
 
     try {
-      const fetchedMessages = await chatService.getMessages(recipientId);
+      const response = await chatService.getMessages(recipientId);
+      const fetchedMessages = response?.messages || [];
 
       if (!mountedRef.current) return [];
 
       // Only update if this is still the active conversation
       if (activeConversation === recipientId) {
+        // Messages are already validated as an array from the service
+        
         // Deduplicate and sort messages
         const uniqueMessages = [];
         const seenIds = new Set();
@@ -369,11 +372,12 @@ export function ChatProvider({ children }) {
 
     try {
       const nextPage = page + 1;
-      const moreMessages = await chatService.getMessages(activeConversation, nextPage);
+      const response = await chatService.getMessages(activeConversation, nextPage);
+      const moreMessages = response?.messages || [];
 
       if (!mountedRef.current) return [];
 
-      if (Array.isArray(moreMessages) && moreMessages.length > 0) {
+      if (moreMessages.length > 0) {
         setMessages(prev => {
           // Combine with existing messages, avoiding duplicates
           const combined = [...prev];

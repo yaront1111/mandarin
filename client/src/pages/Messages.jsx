@@ -8,6 +8,7 @@ import { formatDate, classNames, debounce } from "../utils";
 import apiService from "../services/apiService";
 import logger from "../utils/logger";
 import { messageDeduplicator } from "../utils/messageDeduplication.js";
+import { photoPermissions } from "../utils";
 import styles from "../styles/Messages.module.css";
 import { useUser } from "../context";
 
@@ -988,6 +989,49 @@ const Messages = () => {
       );
     });
     
+    // Listen for photo access revoked notifications
+    const unsubscribePhotoAccessRevoked = socketService.on("photoAccessRevoked", (data) => {
+      log.info(`Received photoAccessRevoked event:`, data);
+      
+      // Update the conversation if it's from the current user's chat
+      if (activeConversation && data.ownerId === activeConversation.user._id) {
+        // Update active conversation state
+        setActiveConversation(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            user: { ...(prev.user || {}), photoAccess: false }
+          };
+        });
+        
+        // Update the conversation in the list
+        setConversations(prev => {
+          if (!Array.isArray(prev)) return [];
+          return prev.map(conv => {
+            if (!conv || !conv.user || conv.user._id !== data.ownerId) return conv;
+            return { ...conv, user: { ...conv.user, photoAccess: false } };
+          });
+        });
+        
+        // Add a system message about the revoked access
+        const systemMessage = {
+          _id: generateUniqueId(),
+          content: `${data.ownerNickname || 'User'} has revoked your access to their private photos`,
+          type: "system",
+          createdAt: new Date().toISOString(),
+          sender: "system",
+          systemType: "photoAccessRevoked"
+        };
+        
+        setMessages(prev => [...prev, systemMessage]);
+        
+        // Show notification
+        toast.info(`${data.ownerNickname || 'User'} has revoked your access to their private photos`, {
+          icon: "🔒"
+        });
+      }
+    });
+    
     // Listen for when messages are marked as read by recipient
     const unsubscribeMessagesRead = socketService.on("messagesRead", (data) => {
       log.info(`Received messagesRead event:`, data);
@@ -1007,6 +1051,63 @@ const Messages = () => {
       );
     });
 
+    // Listen for photo access revoked
+    const unsubscribePhotoRevoked = socketService.on("photoAccessRevoked", (data) => {
+      const { ownerId, ownerNickname } = data;
+      
+      // Update conversation state if it matches
+      setActiveConversation(prev => {
+        if (prev?.user?._id === ownerId) {
+          return {
+            ...prev,
+            user: { ...prev.user, photoAccess: false }
+          };
+        }
+        return prev;
+      });
+      
+      // Update conversations list
+      setConversations(prev => prev.map(conv => {
+        if (conv.user?._id === ownerId) {
+          return {
+            ...conv,
+            user: { ...conv.user, photoAccess: false }
+          };
+        }
+        return conv;
+      }));
+      
+      // Clear localStorage permission status
+      try {
+        const storedPermissions = localStorage.getItem('photo-permissions-status') || '{}';
+        const permissions = JSON.parse(storedPermissions);
+        delete permissions[ownerId];
+        localStorage.setItem('photo-permissions-status', JSON.stringify(permissions));
+      } catch (error) {
+        console.error('Failed to clear localStorage permission:', error);
+      }
+      
+      // Add system message if this is the active conversation
+      if (activeConversation?.user?._id === ownerId) {
+        const systemMessage = {
+          _id: generateUniqueId(),
+          content: `${ownerNickname || 'This user'} has revoked your access to their private photos`,
+          type: "system",
+          createdAt: new Date().toISOString(),
+          sender: "system",
+          systemType: "photoRevoked"
+        };
+        
+        setMessages(prev => [...prev, systemMessage]);
+      }
+      
+      // Show toast notification
+      toast.info(`${ownerNickname || 'A user'} has revoked your access to their private photos`, {
+        position: "top-center",
+        autoClose: 5000
+      });
+    });
+
     if (isMobile && "Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
@@ -1021,6 +1122,7 @@ const Messages = () => {
       unsubscribeVideoHangup();
       unsubscribeMessageRead();
       unsubscribeMessagesRead();
+      unsubscribePhotoAccessRevoked();
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [activeConversation, currentUser?._id, isCallActive, isMobile, isDuplicateMessage]);
@@ -1541,11 +1643,36 @@ const Messages = () => {
 
    try {
      console.log(`Fetching messages for ${partnerUserId}`);
-     const messagesData = await chatService.getMessages(partnerUserId);
+     const response = await chatService.getMessages(partnerUserId);
+     const messagesData = response.messages || [];
+     const partnerData = response.partner;
      
      // Log some basic stats about the loaded messages
      const winkCount = messagesData.filter(msg => msg.type === 'wink' && msg.content === '😉').length;
      console.log(`Loaded ${messagesData.length} messages for ${partnerUserId}, including ${winkCount} winks`);
+     
+     // Update activeConversation with partner photo access if available
+     if (partnerData && partnerData.photoAccess !== undefined) {
+       setActiveConversation(prev => {
+         if (!prev || !prev.user || prev.user._id !== partnerUserId) return prev;
+         return {
+           ...prev,
+           user: {
+             ...(prev.user || {}),
+             photoAccess: partnerData.photoAccess
+           }
+         };
+       });
+       
+       // Also update in conversations list
+       setConversations(prev => {
+         if (!Array.isArray(prev)) return [];
+         return prev.map(conv => {
+           if (!conv || !conv.user || conv.user._id !== partnerUserId) return conv;
+           return { ...conv, user: { ...conv.user, photoAccess: partnerData.photoAccess } };
+         });
+       });
+     }
 
      // Check we're still loading for the same user before updating state
      if (loadedConversationRef.current !== loadingForUserId) {
@@ -2287,33 +2414,37 @@ const Messages = () => {
   const handleApprovePhotoRequests = async () => {
     if (!activeConversation?.user?._id || !currentUser?._id) return;
     
-    console.log('Handling photo access for:', activeConversation.user._id);
-    console.log('Current pending count:', activeConversation?.pendingPhotoRequests);
+    const targetUserId = activeConversation.user._id;
+    const status = photoPermissions.getPhotoAccessStatus(activeConversation);
+    
     
     try {
       setIsApprovingPhotoRequests(true);
       
       if (activeConversation?.pendingPhotoRequests > 0) {
         // If there are pending requests, approve them
-        const response = await apiService.put(`/users/respond-photo-access/${activeConversation.user._id}`, {
-          status: 'approved'
-        });
+        const response = await photoPermissions.approvePhotoRequests(targetUserId);
         
         if (response.success) {
-          toast.success(`Approved ${response.updatedCount} photo access requests`);
           
           // Update conversation state to reflect no pending requests
-          setActiveConversation(prev => ({
-            ...prev,
-            pendingPhotoRequests: 0
-          }));
+          setActiveConversation(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              pendingPhotoRequests: 0,
+              user: { ...(prev.user || {}), photoAccess: true }
+            };
+          });
           
           // Update the conversation in the list
-          setConversations(prev => prev.map(conv => 
-            conv.user._id === activeConversation.user._id 
-              ? { ...conv, pendingPhotoRequests: 0 }
-              : conv
-          ));
+          setConversations(prev => {
+            if (!Array.isArray(prev)) return [];
+            return prev.map(conv => {
+              if (!conv || !conv.user || conv.user._id !== targetUserId) return conv;
+              return { ...conv, pendingPhotoRequests: 0, user: { ...conv.user, photoAccess: true } };
+            });
+          });
           
           // Add a system message about the approval
           const systemMessage = {
@@ -2328,40 +2459,107 @@ const Messages = () => {
           setMessages(prev => [...prev, systemMessage]);
         }
       } else {
-        // Directly grant access to all private photos
-        try {
-          // Use the new grant-photo-access endpoint
-          const response = await apiService.post(`/users/grant-photo-access/${activeConversation.user._id}`, {
-            message: `${currentUser.nickname || 'User'} has granted you access to their private photos`
-          });
-          
-          if (response.success) {
-            toast.success(`Granted access to ${response.grantedCount} private photos`);
+        // Toggle photo access: Grant if not granted, revoke if already granted
+        const currentAccess = activeConversation?.user?.photoAccess || false;
+        
+        if (currentAccess) {
+          // Revoke access
+          try {
+            const response = await photoPermissions.revokePhotoAccess(targetUserId);
             
-            // Add a system message
-            const systemMessage = {
-              _id: generateUniqueId(),
-              content: `You granted ${activeConversation.user.nickname || 'this user'} access to all your private photos`,
-              type: "system",
-              createdAt: new Date().toISOString(),
-              sender: "system",
-              systemType: "photoGrant"
-            };
-            
-            setMessages(prev => [...prev, systemMessage]);
-            
-            // Optionally send a message to the user
-            await handleSendMessage(`I've granted you access to all my private photos! 🔓`);
+            if (response.success) {
+              // Check if any permissions were actually revoked
+              const actuallyRevoked = response.revokedCount > 0;
+              // After revoke, use the response data to get the correct status
+              const userHasAccess = response.data?.photoAccess?.approved || false;
+              
+              // Update conversation state with the server's response
+              setActiveConversation(prev => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  user: { ...(prev.user || {}), photoAccess: userHasAccess }
+                };
+              });
+              
+              // Update the conversation in the list
+              setConversations(prev => {
+                if (!Array.isArray(prev)) return [];
+                return prev.map(conv => {
+                  if (!conv || !conv.user || conv.user._id !== targetUserId) return conv;
+                  return { ...conv, user: { ...conv.user, photoAccess: userHasAccess } };
+                });
+              });
+              
+              // Add a system message appropriate to what happened
+              const systemMessage = {
+                _id: generateUniqueId(),
+                content: actuallyRevoked 
+                  ? `You revoked photo access from ${activeConversation.user.nickname || 'this user'}`
+                  : `${activeConversation.user.nickname || 'This user'} does not have access to your private photos`,
+                type: "system",
+                createdAt: new Date().toISOString(),
+                sender: "system",
+                systemType: actuallyRevoked ? "photoRevoke" : "photoInfo"
+              };
+              
+              setMessages(prev => [...prev, systemMessage]);
+            }
+          } catch (error) {
+            console.error('Error revoking photo access:', error);
+            toast.error('Failed to revoke photo access');
           }
-          
-        } catch (error) {
-          console.error('Error granting photo access:', error);
-          
-          // If it's a 400 error about no private photos
-          if (error.response?.data?.error?.includes('no private photos')) {
-            toast.info('You have no private photos to grant access to');
-          } else {
-            toast.error('Failed to grant photo access. Please try again.');
+        } else {
+          // Grant access
+          try {
+            const message = `${currentUser.nickname || 'User'} has granted you access to their private photos`;
+            const response = await photoPermissions.grantPhotoAccess(targetUserId, message);
+            
+              
+              // Update UI state based on response
+              if (response.success) {
+                // Check if permissions were actually granted or already existed
+                const actuallyGranted = response.grantedCount > 0;
+                // Use the server's response data to get the correct status
+                const userHasAccess = response.data?.photoAccess?.approved || 
+                  (response.userHasAccess !== undefined ? response.userHasAccess : 
+                   (actuallyGranted || response.existingAccessCount > 0));
+                
+                // Update conversation state
+                setActiveConversation(prev => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    user: { ...(prev.user || {}), photoAccess: userHasAccess }
+                  };
+                });
+                
+                // Update the conversation in the list
+                setConversations(prev => {
+                  if (!Array.isArray(prev)) return [];
+                  return prev.map(conv => {
+                    if (!conv || !conv.user || conv.user._id !== targetUserId) return conv;
+                    return { ...conv, user: { ...conv.user, photoAccess: userHasAccess } };
+                  });
+                });
+                
+                // Add a system message appropriate to what happened
+                const systemMessage = {
+                  _id: generateUniqueId(),
+                  content: actuallyGranted 
+                    ? `You granted ${activeConversation.user.nickname || 'this user'} access to ${response.grantedCount} private photos`
+                    : `${activeConversation.user.nickname || 'This user'} already has access to your private photos`,
+                  type: "system",
+                  createdAt: new Date().toISOString(),
+                  sender: "system",
+                  systemType: actuallyGranted ? "photoGrant" : "photoInfo"
+                };
+                
+                setMessages(prev => [...prev, systemMessage]);
+              }
+          } catch (error) {
+            console.error('Error granting photo access:', error);
+            toast.error('Failed to grant photo access');
           }
         }
       }
@@ -2864,6 +3062,7 @@ const Messages = () => {
                 isApprovingRequests={isApprovingPhotoRequests}
                 onApprovePhotoRequests={handleApprovePhotoRequests}
                 isConnected={socketService.isConnected()}
+                photoAccess={activeConversation?.user?.photoAccess || false}
                 onBlockUser={(userId) => {
                   // Check if the user is already blocked
                   const isBlocked = activeConversation?.user?.isBlocked;

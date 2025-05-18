@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
-    "db:fix": "node db-fix.js"
+    "db:fix": "node db-fix.js",
+    "migrate:photo-permissions": "node migrations/fix-photo-permissions.js"
   },
   "dependencies": {
     "@socket.io/mongo-adapter": "^0.3.2",
@@ -38,6 +39,7 @@
     "peer": "^1.0.2",
     "rate-limiter-flexible": "^6.1.0",
     "redis": "^4.7.0",
+    "resend": "^4.5.1",
     "sanitize-html": "^2.14.0",
     "sharp": "^0.33.5",
     "socket.io": "^4.8.1",

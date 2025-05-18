@@ -51,13 +51,18 @@ const config = {
   PORT: Number.parseInt(process.env.PORT, 10) || 5000,
   NODE_ENV: process.env.NODE_ENV || "development",
   API_VERSION: process.env.API_VERSION || "v1",
-  APP_NAME: process.env.APP_NAME || "Mandarin Dating",
-  APP_URL: process.env.APP_URL || "https://mandarindating.com",
+  APP_NAME: process.env.APP_NAME || "Flirtss",
+  APP_URL: process.env.APP_URL || "https://flirtss.com",
 
   // Email settings
   EMAIL_USER: process.env.EMAIL_USER,
   EMAIL_PASSWORD: process.env.EMAIL_PASSWORD,
-  EMAIL_FROM: process.env.EMAIL_FROM || "noreply@mandarindating.com",
+  EMAIL_FROM: process.env.EMAIL_FROM || "noreply@flirtss.com",
+  APP_DOMAIN: process.env.APP_DOMAIN || "flirtss.com",
+  
+  // Resend API settings
+  RESEND_API_KEY: process.env.RESEND_API_KEY || (process.env.NODE_ENV === "production" ? null : "re_7k4fkJua_N1aYoE2o8yNQvhTeuk32S5Ux"),
+  USE_RESEND: process.env.USE_RESEND === "true" || process.env.NODE_ENV === "production",
 
   // Database settings
   MONGODB_URI: process.env.MONGODB_URI || "mongodb://localhost:27017/mandarin",

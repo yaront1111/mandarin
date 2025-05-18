@@ -71,12 +71,10 @@ export const configureCors = () => {
       "Authorization",
       "X-Requested-With",
       "Accept",
-      "Origin",
       "Cache-Control",
       "x-no-cache",
       "x-auth-token",
-      "x-connection-type",
-
+      "x-connection-type"
     ],
     exposedHeaders: [
       "Content-Length",

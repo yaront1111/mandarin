@@ -10,6 +10,8 @@ export * from "./validation.js"
 export * from "./dbHelpers.js"
 export * from "./responseHandler.js"
 export * from "./idUtils.js" // Export the new ID utilities
+export * from "./photoPermissions.js" // Export photo permission utilities
+export { default as photoPermissions } from "./photoPermissions.js"
 
 /**
  * Safe parse JSON with error handling

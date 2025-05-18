@@ -7,7 +7,7 @@ import { fileTypeFromBuffer } from "file-type";
 import sharp from "sharp";
 import rateLimit from "express-rate-limit";
 
-import { User, Message } from "../models/index.js"; // Adjust if needed
+import { User, Message, PhotoPermission } from "../models/index.js"; // Adjust if needed
 import { protect, asyncHandler } from "../middleware/auth.js";
 import logger from "../logger.js";
 import config from "../config.js";
@@ -422,6 +422,28 @@ router.get(
       },
       { $unwind: { path: "$partnerInfo", preserveNullAndEmptyArrays: true } },
       { $match: { partnerInfo: { $ne: null } } },
+      // Lookup photo permissions to check access status
+      {
+        $lookup: {
+          from: "photopermissions",
+          let: { partnerId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$photoOwnerId", userObjectId] },  // Current user owns the photos
+                    { $eq: ["$requestedBy", "$$partnerId"] },  // Partner has access to them
+                    { $eq: ["$status", "approved"] }           // Permission is approved
+                  ]
+                }
+              }
+            },
+            { $limit: 1 }
+          ],
+          as: "photoAccess"
+        }
+      },
       {
         $project: {
           _id: 0,
@@ -432,6 +454,7 @@ router.get(
             photo: { $ifNull: [{ $arrayElemAt: ["$partnerInfo.photos.url", 0] }, null] },
             isOnline: "$partnerInfo.isOnline",
             lastActive: "$partnerInfo.lastActive",
+            photoAccess: { $gt: [{ $size: "$photoAccess" }, 0] }, // True if any APPROVED permissions exist
           },
           lastMessage: "$lastMessage",
           unreadCount: "$unreadCount",
@@ -643,11 +666,18 @@ router.get(
         .json({ success: false, error: "Cannot fetch message history with yourself." });
     }
 
-    const partnerExists = await User.exists({ _id: partnerObjectId });
-    if (!partnerExists) {
+    const partner = await User.findById(partnerObjectId).select('_id nickname username photos isOnline lastActive');
+    if (!partner) {
       logger.warn(`Attempted to fetch messages with non-existent user: ${partnerObjectId}`);
       return res.status(404).json({ success: false, error: "The specified user does not exist." });
     }
+
+    // Check if current user has granted photo access to this partner
+    const hasPhotoAccess = await PhotoPermission.exists({
+      photoOwnerId: senderObjectId,  // Current user owns the photos
+      requestedBy: partnerObjectId,   // Partner has been granted access to them
+      status: 'approved'              // Permission must be approved
+    });
 
     const page = Number.parseInt(req.query.page) || 1;
     const limit = Math.min(Number.parseInt(req.query.limit) || 50, 200);
@@ -714,6 +744,15 @@ router.get(
     res.status(200).json({
       success: true,
       data: messages.reverse(),
+      partner: {
+        _id: partner._id,
+        nickname: partner.nickname,
+        username: partner.username,
+        photo: partner.photos && partner.photos.length > 0 ? partner.photos[0].url : null,
+        isOnline: partner.isOnline,
+        lastActive: partner.lastActive,
+        photoAccess: hasPhotoAccess
+      },
       pagination: {
         page,
         limit,
