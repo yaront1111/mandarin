@@ -536,7 +536,7 @@ const Profile = () => {
       // Default to private for new uploads
       const newPhoto = await uploadPhoto(file, 'private')
       
-      if (newPhoto) {
+      if (newPhoto && newPhoto._id) {
         // Clear URL cache to ensure new photo is displayed without refresh
         clearCache();
         
@@ -548,12 +548,33 @@ const Profile = () => {
         
         // Only show success toast if we got here without errors
         toast.success(translations.photoUploadSuccess)
+        
+        log.debug('Photo uploaded successfully:', {
+          photoId: newPhoto._id,
+          url: newPhoto.url
+        });
       }
     } catch (error) {
       log.error("Failed to upload photo:", error)
-      // Only show error toast for actual errors, not for successful operations
-      if (error.message && !error.message.includes('success')) {
-        toast.error(error.message || translations.photoUploadFailed)
+      
+      // Check if this is actually a successful upload that threw an error
+      if (error.response?.data?.success === true) {
+        log.warn('Upload succeeded but threw error - handling as success');
+        
+        // Clear cache and refresh
+        clearCache();
+        setPhotosUpdateTimestamp(Date.now());
+        await refreshUserData(user?._id, true);
+        toast.success(translations.photoUploadSuccess);
+      } else {
+        // Only show error toast for actual errors
+        const showError = error.message && 
+                         !error.message.includes('success') &&
+                         !error.message.includes('uploaded successfully');
+        
+        if (showError) {
+          toast.error(error.message || translations.photoUploadFailed);
+        }
       }
     }
   }

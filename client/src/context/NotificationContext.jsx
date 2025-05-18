@@ -13,9 +13,7 @@ import { useAuth } from "./AuthContext"
 import { useModals } from "./ModalContext"
 import notificationService from "../services/notificationService"
 import socketService from "../services/socketService"
-import { toast } from "react-toastify"
 import { useNavigate } from "react-router-dom"
-import { FaHeart, FaCheck, FaTimes, FaCamera } from "react-icons/fa"
 import debounce from "lodash.debounce"
 import logger from "../utils/logger"
 import MemoryHelper from "../utils/simple-memory-helper"
@@ -134,80 +132,8 @@ export function NotificationProvider({ children }) {
     if (!isAuthenticated) return
 
     const handleIncoming = (data, event) => {
+      // Just add the notification to state, no toasts
       dispatch({ type: "ADD_NOTIFICATION", payload: data })
-
-      if (event === "newLike") {
-        toast.success(
-          <div style={{ display: "flex", alignItems: "center" }}>
-            <FaHeart className="pulse" />
-            <span style={{ marginLeft: 8 }}>
-              {data.isMatch
-                ? `It's a match with ${data.sender?.nickname || "Someone"}!`
-                : `${data.sender?.nickname || "Someone"} liked you`}
-            </span>
-          </div>,
-          { autoClose: 5000 }
-        )
-      } else if (event === "photoPermissionRequest") {
-        // Special handling for photo permission requests with custom styling
-        toast.info(
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <div style={{ 
-              backgroundColor: "#3897f0", 
-              borderRadius: "50%", 
-              width: "28px", 
-              height: "28px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "white",
-              fontSize: "14px"
-            }}>
-              <FaCamera />
-            </div>
-            <span>
-              {`${data.sender?.nickname || "Someone"} requested access to your private photos`}
-            </span>
-          </div>,
-          { 
-            autoClose: 6000,
-            closeButton: true,
-            icon: "🔒"
-          }
-        );
-      } else if (event === "photoPermissionResponse") {
-        // Special handling for photo permission responses
-        const isApproved = data.data?.status === "approved";
-        toast[isApproved ? "success" : "info"](
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <div style={{ 
-              backgroundColor: isApproved ? "#43a047" : "#757575", 
-              borderRadius: "50%", 
-              width: "28px", 
-              height: "28px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "white",
-              fontSize: "14px"
-            }}>
-              {isApproved ? <FaCheck /> : <FaTimes />}
-            </div>
-            <span>
-              {data.sender?.nickname || "Someone"} {isApproved ? "approved" : "declined"} your photo request
-            </span>
-          </div>,
-          { 
-            autoClose: 6000,
-            closeButton: true,
-            icon: isApproved ? "🔓" : "🔒"
-          }
-        );
-      } else {
-        toast.info(data.message || data.content || "New notification", {
-          autoClose: 4000,
-        })
-      }
     }
 
     const onConnect = () => {
@@ -288,7 +214,6 @@ export function NotificationProvider({ children }) {
   const addTestNotification = useCallback(() => {
     const n = notificationService.addTestNotification()
     dispatch({ type: "ADD_NOTIFICATION", payload: n })
-    toast.info("Test notification added")
   }, [])
 
   // Mark a single notification as read

@@ -29,6 +29,7 @@ import { ChatProvider } from "./context/ChatContext";
 
 // --- Hooks & Services ---
 import { useNotificationNavigation } from "./services/notificationService";
+import { useInactivityTimer } from "./hooks/useInactivityTimer";
 
 // --- Layout & Core Components ---
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
@@ -37,6 +38,7 @@ import VerificationBanner from "./components/VerificationBanner.jsx";
 import { Navbar } from "./components/LayoutComponents";
 import Footer from "./components/Footer";
 import ModalContainer from "./components/ModalContainer";
+import { InactivityWrapper } from "./components/InactivityWrapper";
 
 // --- Page Components ---
 import Login from "./pages/Login";
@@ -142,16 +144,17 @@ function App() {
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
-              <UserProvider>
-                <ChatProvider>
-                  <StoriesProvider>
-                    <ModalProvider>
-                      <NotificationProvider>
-                        {/* Main application container with flex layout */}
-                        <div className="app-container" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-                          <Navbar />
-                          <TrackPageViews />
-                          <VerificationBanner />
+              <InactivityWrapper>
+                <UserProvider>
+                  <ChatProvider>
+                    <StoriesProvider>
+                      <ModalProvider>
+                        <NotificationProvider>
+                          {/* Main application container with flex layout */}
+                          <div className="app-container" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+                            <Navbar />
+                            <TrackPageViews />
+                            <VerificationBanner />
 
                           {/* Main content area that grows */}
                           <main className="main-content" style={{ flexGrow: 1 }}>
@@ -220,6 +223,7 @@ function App() {
                   </StoriesProvider>
                 </ChatProvider>
               </UserProvider>
+              </InactivityWrapper>
             </AuthProvider>
           </LanguageProvider>
         </ThemeProvider>

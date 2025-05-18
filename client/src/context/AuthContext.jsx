@@ -215,24 +215,63 @@ export function AuthProvider({ children }) {
     }
   }, [normalizeUser, scheduleRefresh, initServices])
 
-  // logout
+  // logout with complete cache clearing for security
   const logout = useCallback(async () => {
+    // Prevent logout if already logged out
+    if (!isAuthenticated && !getToken()) {
+      log.info("Already logged out, skipping logout process")
+      return
+    }
+    
     setLoading(true)
     try {
       clearTimeout(refreshTimerRef.current)
       await apiService.logout().catch(() => {})
+      
+      // Clear all authentication tokens
       removeToken()
+      
+      // Clear all cached data to prevent data sharing
+      localStorage.clear()
+      sessionStorage.clear()
+      
+      // Clear service worker caches if any
+      if ('caches' in window) {
+        try {
+          const cacheNames = await caches.keys()
+          await Promise.all(cacheNames.map(name => caches.delete(name)))
+        } catch (cacheError) {
+          log.error("Failed to clear caches:", cacheError)
+        }
+      }
+      
+      // Reset state
       setUser(null)
       setIsAuthenticated(false)
+      
+      // Notify other tabs of logout
+      try {
+        const channel = new BroadcastChannel('auth-channel')
+        channel.postMessage({ type: 'logout' })
+        channel.close()
+      } catch (broadcastError) {
+        log.error("Failed to broadcast logout:", broadcastError)
+      }
+      
+      // Navigate to login page
+      window.location.href = '/login'
     } catch (e) {
       log.error("logout", e)
       removeToken()
       setUser(null)
       setIsAuthenticated(false)
+      localStorage.clear()
+      sessionStorage.clear()
+      window.location.href = '/login'
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isAuthenticated])
 
   // verify or refresh
   const checkAndRefresh = useCallback(async () => {
@@ -338,6 +377,29 @@ export function AuthProvider({ children }) {
 
   // cleanup on unmount
   useEffect(() => () => clearTimeout(refreshTimerRef.current), [])
+  
+  // Listen for logout events from other tabs
+  useEffect(() => {
+    const channel = new BroadcastChannel('auth-channel')
+    
+    const handleMessage = (event) => {
+      if (event.data.type === 'logout') {
+        log.info('Received logout event from another tab')
+        // Clear local state without triggering another logout
+        removeToken()
+        setUser(null)
+        setIsAuthenticated(false)
+        window.location.href = '/login'
+      }
+    }
+    
+    channel.addEventListener('message', handleMessage)
+    
+    return () => {
+      channel.removeEventListener('message', handleMessage)
+      channel.close()
+    }
+  }, [])
 
   // expose
   const value = {

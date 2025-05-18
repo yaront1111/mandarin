@@ -32,6 +32,24 @@ export const PermissionsProvider = ({ children }) => {
     pending: false
   });
   
+  // Helper to clear UserCard cache
+  const clearUserCardCache = useCallback((userId) => {
+    try {
+      const storedPermissions = JSON.parse(localStorage.getItem('photo-permissions-status') || '{}');
+      if (storedPermissions[userId]) {
+        delete storedPermissions[userId];
+        localStorage.setItem('photo-permissions-status', JSON.stringify(storedPermissions));
+        
+        // Broadcast cache invalidation to other components
+        const channel = new BroadcastChannel('photo-access-cache');
+        channel.postMessage({ type: 'invalidate', userId: userId });
+        channel.close();
+      }
+    } catch (error) {
+      log.error('Failed to clear UserCard cache:', error);
+    }
+  }, []);
+  
   // Function to check if a user can view another user's private photos
   const canViewUserPrivatePhotos = useCallback((userId) => {
     if (!userId) return false;
@@ -224,12 +242,14 @@ export const PermissionsProvider = ({ children }) => {
     
     // Handle when someone approves our request
     const handlePermissionGranted = (data) => {
-      log.debug('Photo permission granted:', data);
       if (data.userId) {
         setPhotoPermissions(prev => ({
           ...prev,
           [data.userId]: 'approved'
         }));
+        
+        // Clear the UserCard cache for this user to force a refresh
+        clearUserCardCache(data.userId);
         
         // Show a notification to the user
         if (window.Notification && Notification.permission === 'granted') {
@@ -242,7 +262,6 @@ export const PermissionsProvider = ({ children }) => {
     
     // Handle a new incoming request
     const handleNewRequest = (data) => {
-      log.debug('New photo permission request received:', data);
       if (data && data.request) {
         setPendingRequests(prev => [data.request, ...prev]);
       }
@@ -264,7 +283,6 @@ export const PermissionsProvider = ({ children }) => {
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         localStorage.setItem('photo-permissions', JSON.stringify(permissions));
-        log.debug('Saved photo permissions to localStorage');
       } catch (error) {
         log.error('Failed to save permissions to localStorage:', error);
       }
@@ -279,7 +297,6 @@ export const PermissionsProvider = ({ children }) => {
     }
 
     try {
-      log.debug(`Requesting permission to view private photos for user ${userId}`);
 
       try {
         // For the photoId, we can use 'all' to request access to all photos
@@ -333,7 +350,6 @@ export const PermissionsProvider = ({ children }) => {
     }
 
     try {
-      log.debug(`Approving photo permission request ${requestId}`);
 
       try {
         const result = await permissionClient.respondToPhotoPermission(requestId, 'approved');
@@ -357,6 +373,9 @@ export const PermissionsProvider = ({ children }) => {
 
                 return newPermissions;
               });
+              
+              // Clear the UserCard cache for this user to force a refresh
+              clearUserCardCache(request.userId);
             }
 
             // Remove the request from pending list
@@ -409,7 +428,6 @@ export const PermissionsProvider = ({ children }) => {
     }
 
     try {
-      log.debug(`Rejecting photo permission request ${requestId}`);
 
       try {
         const result = await permissionClient.respondToPhotoPermission(requestId, 'rejected');
@@ -485,7 +503,6 @@ export const PermissionsProvider = ({ children }) => {
     }
 
     try {
-      log.debug(`Directly granting photo permission for user ${userId}`);
 
       try {
         const response = await api.post(`/users/photo-permissions/grant`, { userId });
@@ -503,6 +520,9 @@ export const PermissionsProvider = ({ children }) => {
 
             return newPermissions;
           });
+          
+          // Clear the UserCard cache for this user to force a refresh
+          clearUserCardCache(userId);
 
           return { success: true };
         } else {
@@ -539,7 +559,6 @@ export const PermissionsProvider = ({ children }) => {
     }
 
     try {
-      log.debug(`Approving all ${pendingRequests.length} pending requests`);
 
       try {
         const response = await api.post('/users/photo-permissions/approve-all');

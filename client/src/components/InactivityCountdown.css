@@ -1,0 +1,55 @@
+.inactivity-countdown {
+  position: fixed;
+  top: 70px;
+  right: 20px;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  z-index: 1000;
+  transition: all 0.3s ease;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.inactivity-countdown.warning {
+  background-color: rgba(255, 59, 48, 0.9);
+  animation: pulse 1s infinite;
+}
+
+.countdown-text {
+  font-weight: 500;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.9;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .inactivity-countdown {
+    top: 60px;
+    right: 10px;
+    font-size: 12px;
+    padding: 8px 16px;
+  }
+}
+
+/* Dark mode support */
+.dark .inactivity-countdown {
+  background-color: rgba(255, 255, 255, 0.9);
+  color: #000;
+}
+
+.dark .inactivity-countdown.warning {
+  background-color: rgba(255, 59, 48, 0.9);
+  color: white;
+}

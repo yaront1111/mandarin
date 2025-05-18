@@ -13,6 +13,7 @@ import {
 import { withMemo } from "./common";
 import { useLanguage, useAuth } from "../context";
 import { formatDate, logger, markUrlAsFailed } from "../utils";
+import apiService from "../services/apiService";
 // No longer using translation utilities - using direct t() function
 import { usePhotoManagement } from "../hooks";
 import styles from "../styles/usercard.module.css";
@@ -103,6 +104,8 @@ const UserCard = ({
   // Component state
   const [showAllTags, setShowAllTags] = useState(false);
   const [showMoreSections, setShowMoreSections] = useState(false);
+  const [photoAccessStatus, setPhotoAccessStatus] = useState(null);
+  const [isLoadingAccess, setIsLoadingAccess] = useState(false);
 
   // Hooks
   const navigate = useNavigate();
@@ -131,7 +134,6 @@ const UserCard = ({
   useEffect(() => {
     const handleAvatarRefresh = (event) => {
       // Force a re-render when avatar refresh event is triggered
-      log.debug(`Avatar refresh event received for user ${user.nickname}`);
       
       // Get the timestamp from the event or use current time
       const timestamp = event?.detail?.timestamp || Date.now();
@@ -152,6 +154,90 @@ const UserCard = ({
     };
   }, [user.nickname]);
 
+  // Listen for photo access cache invalidation
+  useEffect(() => {
+    // Create a broadcast channel to listen for cache invalidation messages
+    const channel = new BroadcastChannel('photo-access-cache');
+    
+    const handleCacheUpdate = (event) => {
+      if (event.data.type === 'invalidate' && event.data.userId === user?._id) {
+        // Force a re-check of photo access
+        setPhotoAccessStatus(null);
+        setIsLoadingAccess(false);
+      }
+    };
+    
+    channel.addEventListener('message', handleCacheUpdate);
+    
+    return () => {
+      channel.removeEventListener('message', handleCacheUpdate);
+      channel.close();
+    };
+  }, [user?._id]);
+  
+  // Check photo access status when user changes or when cache is invalidated
+  useEffect(() => {
+    if (!user?._id || user._id === currentUser?._id) {
+      return;
+    }
+    
+    if (isLoadingAccess) {
+      return;
+    }
+    
+    // Check localStorage first for cached status
+    try {
+      const storedPermissions = JSON.parse(localStorage.getItem('photo-permissions-status') || '{}');
+      const cached = storedPermissions[user._id];
+      
+      const cacheMaxAge = 5 * 60 * 1000; // 5 minutes
+      if (cached && cached.timestamp && Date.now() - cached.timestamp < cacheMaxAge) {
+        setPhotoAccessStatus(cached.status);
+        return;
+      }
+    } catch (error) {
+      log.error("Failed to read localStorage:", error);
+    }
+    
+    // Fetch from API
+    setIsLoadingAccess(true);
+    
+    const apiUrl = `/users/${user._id}/photo-access-status`;
+    
+    apiService.get(apiUrl)
+      .then(response => {
+        let status = 'none';
+        
+        // The apiService returns the response directly
+        if (response && response.success) {
+          status = response.status || 'none';
+        }
+        
+        setPhotoAccessStatus(status);
+        
+        // Cache the result only if it's not "none" (temporary state)
+        if (status !== 'none') {
+          try {
+            const storedPermissions = JSON.parse(localStorage.getItem('photo-permissions-status') || '{}');
+            storedPermissions[user._id] = {
+              status: status,
+              timestamp: Date.now()
+            };
+            localStorage.setItem('photo-permissions-status', JSON.stringify(storedPermissions));
+          } catch (error) {
+            log.error("Failed to update localStorage:", error);
+          }
+        }
+      })
+      .catch(error => {
+        log.error("Failed to fetch photo access status:", error);
+        setPhotoAccessStatus('none');
+      })
+      .finally(() => {
+        setIsLoadingAccess(false);
+      });
+  }, [user?._id, currentUser?._id, photoAccessStatus]);
+
   // Event Handlers
   const handleCardClick = useCallback((e) => {
     // Don't navigate if the click was on a button
@@ -171,10 +257,9 @@ const UserCard = ({
     e.preventDefault();
 
     if (onLike && user?._id) {
-      log.debug(`Like button clicked for user ${user._id}, current isLiked: ${isLiked}`);
       onLike(user._id, user.nickname);
     }
-  }, [onLike, user?._id, user?.nickname, isLiked]);
+  }, [onLike, user?._id, user?.nickname]);
 
   const handleMessageClick = useCallback((e) => {
     e.stopPropagation();
@@ -205,11 +290,19 @@ const UserCard = ({
   const isPhotoPrivate = useCallback((photo) => {
     if (!photo) return false;
     
+    // Check photo privacy fields
+    
     // Check for privacy status using new privacy enum
     if (photo.privacy === 'private') return true;
     
     // Also check legacy isPrivate flag for backward compatibility
     if (photo.isPrivate) return true;
+    
+    // Default to treating photos as private if no privacy field is set
+    // This is a safe default until all photos have privacy fields
+    if (!('privacy' in photo) && !('isPrivate' in photo)) {
+      return true;
+    }
     
     return false;
   }, []);
@@ -247,13 +340,21 @@ const UserCard = ({
     
     const profilePhoto = user.photos.find(p => p.isProfile) || user.photos[0];
     
+    
     // If it's a private photo AND not the user's own profile
     if (isPhotoPrivate(profilePhoto) && !isOwnProfile) {
-      // Use private photo placeholder for others' private photos
-      return `${window.location.origin}/private-photo.png`; 
+      
+      // If we're still loading access status, show placeholder for now
+      if (isLoadingAccess || photoAccessStatus === null) {
+        return `${window.location.origin}/private-photo.png`;
+      }
+      // Only show placeholder if access is explicitly not approved
+      if (photoAccessStatus !== 'approved') {
+        return `${window.location.origin}/private-photo.png`;
+      }
     }
     
-    // For own private photos or public photos, use normal URL handling
+    // For own private photos, public photos, or when access is granted, use normal URL handling
     // Get URL with cache busting to ensure freshness
     const timestamp = window.__photo_refresh_timestamp || refreshKey || Date.now();
     const url = getProfilePhotoUrl(user);
@@ -265,7 +366,7 @@ const UserCard = ({
     }
     
     return url;
-  }, [user, getProfilePhotoUrl, isPhotoPrivate, isOwnProfile, refreshKey, getGenderSpecificAvatar]);
+  }, [user, getProfilePhotoUrl, isPhotoPrivate, isOwnProfile, refreshKey, getGenderSpecificAvatar, photoAccessStatus, isLoadingAccess]);
   
   // Need to create a CSS class for private images
   useEffect(() => {

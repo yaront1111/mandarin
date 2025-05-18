@@ -88,8 +88,24 @@ const usePhotoManagement = () => {
   // Add an upload to the pending queue
   const addToPendingUploads = useCallback((uploadData) => {
     setPendingUploads(prev => {
+      // Check if this file is already in the queue to prevent duplicates
+      const isDuplicate = prev.some(upload => 
+        upload.file.name === uploadData.file.name &&
+        upload.file.size === uploadData.file.size &&
+        upload.file.lastModified === uploadData.file.lastModified
+      );
+      
+      if (isDuplicate) {
+        log.debug('Upload already in queue, skipping duplicate:', uploadData.file.name);
+        return prev;
+      }
+      
       const newQueue = [...prev, uploadData];
       saveUploadsToLocalStorage(newQueue);
+      log.debug('Added upload to queue:', {
+        fileName: uploadData.file.name,
+        queueLength: newQueue.length
+      });
       return newQueue;
     });
   }, []);
@@ -179,16 +195,34 @@ const usePhotoManagement = () => {
       
       try {
         // Try to upload the file
-        await processUpload(nextUpload);
+        const result = await processUpload(nextUpload);
         
-        // Update the queue
-        setPendingUploads(remainingUploads);
-        saveUploadsToLocalStorage(remainingUploads);
-        
-        // Reset retry count on success
-        setRetryCount(0);
+        // If successful, remove from queue
+        if (result && result._id) {
+          log.debug('Upload retry successful, removing from queue');
+          setPendingUploads(remainingUploads);
+          saveUploadsToLocalStorage(remainingUploads);
+          
+          // Reset retry count on success
+          setRetryCount(0);
+          
+          // Show success message
+          toast.success('Photo uploaded successfully');
+        } else {
+          throw new Error('Upload result missing expected data');
+        }
       } catch (err) {
         log.error('Failed to process pending upload:', err);
+        
+        // Check if the error response actually indicates success
+        if (err.response?.data?.success === true) {
+          log.warn('Error thrown but response indicates success - treating as successful');
+          setPendingUploads(remainingUploads);
+          saveUploadsToLocalStorage(remainingUploads);
+          setRetryCount(0);
+          toast.success('Photo uploaded successfully');
+          return;
+        }
         
         // Increment retry count
         const newRetryCount = retryCount + 1;
@@ -311,19 +345,27 @@ const usePhotoManagement = () => {
       
       log.debug('Upload response:', response);
       
-      // Clear cache and trigger refresh
-      refreshAllAvatars();
-      
-      // Wait before refreshing user data
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      if (response && (response.success || response.photo)) {
-        const resultData = response.data || response.photo;
-        log.debug('Upload successful:', resultData);
-        return resultData;
+      // Check for successful response based on the server's response format
+      if (response && response.success === true && response.data) {
+        // Clear cache and trigger refresh
+        refreshAllAvatars();
+        
+        // Wait before refreshing user data
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        log.debug('Upload successful:', response.data);
+        return response.data;
       } else {
-        const error = new Error(response?.error || 'Failed to upload photo');
+        // If we didn't get the expected success response structure
+        const error = new Error(response?.error || response?.message || 'Failed to upload photo - unexpected response');
         log.error('Upload failed with response:', response);
+        
+        // Don't throw if the response indicates success in an unexpected format
+        if (response?.success === true) {
+          log.warn('Response indicates success but in unexpected format');
+          return response.data || response.photo || response;
+        }
+        
         throw error;
       }
     } catch (error) {
@@ -446,23 +488,33 @@ const usePhotoManagement = () => {
         }
       });
       
-      // Clear cache and trigger a global refresh
-      // This will force immediate refresh across all components
-      refreshAllAvatars();
+      log.debug('Upload response structure:', {
+        hasResponse: !!response,
+        hasSuccess: !!response?.success,
+        hasData: !!response?.data,
+        keys: response ? Object.keys(response) : [],
+        response
+      });
       
-      // Wait a short delay before refreshing user data
-      // This helps with race conditions
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Reset token wait time on successful upload
-      tokenWaitTimeRef.current = 500;
-      
-      if (response && response.success && response.data) {
+      // Check if the upload was successful based on server response structure
+      if (response && response.success === true && response.data) {
+        // Clear cache and trigger a global refresh
+        // This will force immediate refresh across all components
+        refreshAllAvatars();
+        
+        // Wait a short delay before refreshing user data
+        // This helps with race conditions
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Reset token wait time on successful upload
+        tokenWaitTimeRef.current = 500;
+        
+        log.debug('Upload successful, returning photo data:', response.data);
         return response.data;
-      } else if (response && response.photo) {
-        return response.photo;
       } else {
-        throw new Error(response?.error || 'Failed to upload photo');
+        // Log what we actually got
+        log.error('Upload response not in expected format:', response);
+        throw new Error(response?.error || response?.message || 'Upload failed - unexpected response format');
       }
     } catch (error) {
       log.error('Photo upload error:', error);
@@ -508,7 +560,19 @@ const usePhotoManagement = () => {
       
       // If we should add to queue on failure and we're online (meaning it's an API error, not a network error)
       if (addToQueueOnFailure && shouldRetry && navigator.onLine) {
-        log.debug('Adding failed upload to retry queue');
+        log.debug('Adding failed upload to retry queue', {
+          errorMessage,
+          shouldRetry,
+          errorCode: error.response?.status
+        });
+        
+        // Don't add to retry queue if we got a successful response structure
+        // Sometimes the error handler is called even on success
+        const responseData = error.response?.data;
+        if (responseData?.success === true && responseData?.data) {
+          log.warn('Not adding to retry queue - response indicates success despite error throw');
+          return responseData.data;
+        }
         
         // Add to pending uploads with retry information
         const uploadData = {
@@ -763,15 +827,11 @@ const usePhotoManagement = () => {
       // Force global refresh by dispatching refresh event
       refreshAllAvatars();
       
-      // Try to refresh user data but don't fail the operation if it errors
-      if (userId) {
-        try {
-          await refreshUserData(userId, true); // Force immediate refresh
-        } catch (refreshError) {
-          log.warn('Failed to refresh user data after photo delete, but delete was successful:', refreshError);
-          // Don't throw - the delete operation was successful
-        }
-      }
+      // Force a page reload to ensure everything updates properly
+      // This is the most reliable way to ensure all state is refreshed
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
       
       return true;
     } catch (error) {
