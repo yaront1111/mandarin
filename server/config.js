@@ -96,6 +96,24 @@ const config = {
   // CORS settings
   CORS_OPTIONS: createCorsOptions(),
 
+  // Email settings - Using Resend only
+  USE_RESEND: true, // Always use Resend
+  RESEND_API_KEY: process.env.RESEND_API_KEY || '',
+  EMAIL_FROM: process.env.EMAIL_FROM || 'noreply@flirtss.com',
+  EMAIL_FROM_NAME: process.env.EMAIL_FROM_NAME || 'Flirtss',
+  
+  // SMTP settings (when not using Resend)
+  SMTP_HOST: process.env.SMTP_HOST || 'smtp.gmail.com',
+  SMTP_PORT: Number.parseInt(process.env.SMTP_PORT, 10) || 587,
+  SMTP_USER: process.env.SMTP_USER || '',
+  SMTP_PASS: process.env.SMTP_PASS || '',
+  EMAIL_TLS_REJECT_UNAUTHORIZED: process.env.EMAIL_TLS_REJECT_UNAUTHORIZED !== 'false',
+
+  // App settings
+  APP_NAME: process.env.APP_NAME || 'Flirtss',
+  APP_DOMAIN: process.env.APP_DOMAIN || 'flirtss.com',
+  APP_URL: process.env.APP_URL || process.env.FRONTEND_URL || 'https://flirtss.com',
+
   // Ensures JWT secret is set in production
   validateConfig() {
     if (this.NODE_ENV === "production" && !this.JWT_SECRET) {

@@ -4,6 +4,12 @@ import logger from "../logger.js";
 
 const log = logger.child({ component: "ResendEmailService" });
 
+// Note: Resend has rate limits:
+// - Trial accounts: 1 email per second, 100 emails per day
+// - Free plan: 3,000 emails per month
+// - Paid plans: Higher limits
+// We implement retry logic with exponential backoff to handle rate limits
+
 // Initialize Resend with your API key
 const resend = new Resend(config.RESEND_API_KEY);
 
@@ -30,21 +36,47 @@ const {
 })();
 
 /**
- * Send a raw email using Resend
+ * Send a raw email using Resend with retry logic for rate limits
  * @param {Object} mailOptions
  * @returns {Promise<Object>}
  */
 export async function sendEmailNotification(mailOptions) {
-  try {
-    const result = await resend.emails.send({
-      from: `${APP_NAME} <${EMAIL_FROM}>`,
-      ...mailOptions,
-    });
-    log.info({ to: mailOptions.to, id: result.id }, "Email sent via Resend");
-    return result;
-  } catch (err) {
-    log.error({ to: mailOptions.to, error: err.message }, "Resend email send failed");
-    throw err;
+  const maxRetries = 3;
+  let retries = 0;
+  
+  while (retries < maxRetries) {
+    try {
+      const result = await resend.emails.send({
+        from: `${APP_NAME} <${EMAIL_FROM}>`,
+        ...mailOptions,
+      });
+      log.info({ to: mailOptions.to, id: result.id }, "Email sent via Resend");
+      return result;
+    } catch (err) {
+      // Check if it's a rate limit error
+      if (err.statusCode === 429 || err.message.includes('429')) {
+        retries++;
+        if (retries >= maxRetries) {
+          log.error({ to: mailOptions.to, error: err.message }, "Resend email send failed after max retries");
+          throw err;
+        }
+        
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, retries - 1) * 1000;
+        log.warn({ 
+          to: mailOptions.to, 
+          retries: retries, 
+          delay: delay 
+        }, "Rate limited by Resend, retrying after delay");
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      // If it's not a rate limit error, throw immediately
+      log.error({ to: mailOptions.to, error: err.message }, "Resend email send failed");
+      throw err;
+    }
   }
 }
 
