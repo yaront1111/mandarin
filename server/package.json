@@ -11,7 +11,10 @@
     "format": "prettier --write .",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "db:fix": "node db-fix.js",
-    "migrate:photo-permissions": "node migrations/fix-photo-permissions.js"
+    "migrate:photo-permissions": "node migrations/fix-photo-permissions.js",
+    "seed": "node seed.js",
+    "seed:scraped": "node seed-from-scraped.js",
+    "copy:photos": "node copy-scraped-photos.js"
   },
   "dependencies": {
     "@socket.io/mongo-adapter": "^0.3.2",
