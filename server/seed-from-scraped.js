@@ -191,6 +191,18 @@ const seedDatabase = async () => {
     try {
       const fileContent = fs.readFileSync(scrapedDataPath, 'utf8');
       scrapedUsers = JSON.parse(fileContent);
+      
+      // Fix photo paths from /uploads/photos/ to /uploads/images/
+      scrapedUsers = scrapedUsers.map(user => {
+        if (user.photos && user.photos.length > 0) {
+          user.photos = user.photos.map(photo => ({
+            ...photo,
+            url: photo.url.replace('/uploads/photos/', '/uploads/images/')
+          }));
+        }
+        return user;
+      });
+      
       logger.info(`Loaded ${scrapedUsers.length} users from scraped data.`);
     } catch (error) {
       logger.error(`Error reading scraped data: ${error.message}`);
@@ -239,9 +251,10 @@ const seedDatabase = async () => {
           }
         };
         
-        // Make sure photos have correct structure
+        // Make sure photos have correct structure and fix paths
         modifiedUserData.photos = modifiedUserData.photos.map((photo, index) => ({
           ...photo,
+          url: photo.url.replace('/uploads/photos/', '/uploads/images/'), // Fix path
           isProfile: photo.isProfile || (index === 0),
           privacy: photo.privacy || 'public',
           isDeleted: photo.isDeleted || false,
