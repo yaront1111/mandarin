@@ -194,15 +194,24 @@ const usePhotoManagement = () => {
         const newRetryCount = retryCount + 1;
         setRetryCount(newRetryCount);
         
+        // Get specific error message
+        const errorMessage = err.message || 'Unknown error';
+        
         if (newRetryCount >= maxRetries) {
           // If we've reached max retries, remove this upload from the queue
           setPendingUploads(remainingUploads);
           saveUploadsToLocalStorage(remainingUploads);
-          toast.error(`Failed to upload photo after ${maxRetries} attempts`); 
+          
+          // Check if we should not retry this type of error
+          if (err.shouldRetry === false) {
+            toast.error(errorMessage);
+          } else {
+            toast.error(`Failed to upload photo after ${maxRetries} attempts: ${errorMessage}`); 
+          }
           setRetryCount(0);
         } else {
           // Otherwise keep in queue for next retry
-          toast.info(`Retrying photo upload (${newRetryCount}/${maxRetries})`);
+          toast.info(`Retrying photo upload (${newRetryCount}/${maxRetries}) - ${errorMessage}`);
         }
       } finally {
         setIsRetrying(false);
@@ -255,6 +264,16 @@ const usePhotoManagement = () => {
     
     const { file, privacy, shouldSetAsProfile } = uploadData;
     
+    log.debug('Processing upload:', {
+      fileName: file.name,
+      fileSize: file.size,
+      privacy,
+      shouldSetAsProfile,
+      isNewRegistration: uploadData.isNewRegistration,
+      retry: uploadData.retry,
+      previousError: uploadData.error
+    });
+    
     // Create FormData
     const formData = new FormData();
     formData.append('photo', file);
@@ -267,6 +286,7 @@ const usePhotoManagement = () => {
     
     // Handle token race condition by waiting
     if (uploadData.isNewRegistration) {
+      log.debug(`Waiting ${tokenWaitTimeRef.current}ms for token processing`);
       await new Promise(resolve => setTimeout(resolve, tokenWaitTimeRef.current));
       // Increase wait time for each retry, up to 3 seconds
       tokenWaitTimeRef.current = Math.min(3000, tokenWaitTimeRef.current * 1.5);
@@ -277,6 +297,8 @@ const usePhotoManagement = () => {
     setUploadProgress(0);
     
     try {
+      log.debug('Starting upload to /users/photos');
+      
       // Use api.upload method
       const response = await api.upload('/users/photos', formData, (progressEvent) => {
         const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -287,6 +309,8 @@ const usePhotoManagement = () => {
         }
       });
       
+      log.debug('Upload response:', response);
+      
       // Clear cache and trigger refresh
       refreshAllAvatars();
       
@@ -295,10 +319,21 @@ const usePhotoManagement = () => {
       
       if (response && (response.success || response.photo)) {
         const resultData = response.data || response.photo;
+        log.debug('Upload successful:', resultData);
         return resultData;
       } else {
-        throw new Error(response?.error || 'Failed to upload photo');
+        const error = new Error(response?.error || 'Failed to upload photo');
+        log.error('Upload failed with response:', response);
+        throw error;
       }
+    } catch (error) {
+      log.error('Upload error in processUpload:', {
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+      throw error;
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -429,8 +464,34 @@ const usePhotoManagement = () => {
     } catch (error) {
       log.error('Photo upload error:', error);
       
+      // Extract specific error information
+      let errorMessage = error.message || 'Failed to upload photo';
+      let shouldRetry = true;
+      
+      // Check for specific error types
+      if (error.response) {
+        const status = error.response.status;
+        const data = error.response.data;
+        
+        if (status === 401) {
+          errorMessage = 'Authentication expired. Please log in again.';
+          shouldRetry = false; // Don't retry auth errors
+        } else if (status === 413) {
+          errorMessage = 'File too large. Maximum size is 5MB.';
+          shouldRetry = false;
+        } else if (status === 429) {
+          errorMessage = 'Too many requests. Please wait a moment.';
+        } else if (status >= 500) {
+          errorMessage = 'Server error. Will retry automatically.';
+        } else if (data?.error) {
+          errorMessage = data.error;
+        }
+      } else if (!navigator.onLine) {
+        errorMessage = 'No internet connection. Will retry when online.';
+      }
+      
       // If we should add to queue on failure and we're online (meaning it's an API error, not a network error)
-      if (addToQueueOnFailure && navigator.onLine) {
+      if (addToQueueOnFailure && shouldRetry && navigator.onLine) {
         log.debug('Adding failed upload to retry queue');
         
         // Add to pending uploads with retry information
@@ -442,14 +503,21 @@ const usePhotoManagement = () => {
           isNewRegistration,
           timestamp: Date.now(),
           retry: true,
-          error: error.message
+          error: errorMessage
         };
         
         addToPendingUploads(uploadData);
         toast.info('Upload failed. Will retry automatically.');
+      } else if (!shouldRetry) {
+        // Don't retry certain errors
+        toast.error(errorMessage);
       }
       
-      throw error;
+      // Include the specific error message when throwing
+      const enhancedError = new Error(errorMessage);
+      enhancedError.originalError = error;
+      enhancedError.shouldRetry = shouldRetry;
+      throw enhancedError;
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
