@@ -193,6 +193,19 @@ export const normalizePhotoUrl = (url, bustCache = false) => {
     return `${window.location.origin}/placeholder.svg`;
   }
 
+  // Check if it's a known failed URL BEFORE any processing
+  if (failedUrlsCache.has(url)) {
+    log.debug(`URL "${url}" is known to fail, returning placeholder`);
+    return `${window.location.origin}/placeholder.svg`;
+  }
+  
+  // Also check if just the filename is marked as failed
+  const filenameMatch = url.match(/(\d+-\d+.*\.(jpg|jpeg|png|gif|webp))/i);
+  if (filenameMatch && failedUrlsCache.has(filenameMatch[1])) {
+    log.debug(`Filename "${filenameMatch[1]}" is known to fail, returning placeholder`);
+    return `${window.location.origin}/placeholder.svg`;
+  }
+
   // Create a cache key that includes the bustCache parameter
   const cacheKey = `${url}:${bustCache}`;
   
@@ -238,10 +251,7 @@ export const normalizePhotoUrl = (url, bustCache = false) => {
     }
   }
 
-  // Check if it's a known failed URL
-  if (failedUrlsCache.has(url)) {
-    return `${window.location.origin}/placeholder.svg`;
-  }
+  // Already checked for failed URLs above, no need to check again
 
   let result;
 
@@ -324,10 +334,25 @@ export const normalizePhotoUrl = (url, bustCache = false) => {
 
 /**
  * Mark a URL as failed in the cache so we don't try it again
+ * Also marks the base URL without cache-busting parameters
  * @param {string} url - URL that failed to load
  */
 export const markUrlAsFailed = (url) => {
   failedUrlsCache.add(url);
+  
+  // Also mark the base URL without cache-busting parameters
+  const baseUrl = url.replace(/[?&]_v=\d+$/, '');
+  if (baseUrl !== url) {
+    failedUrlsCache.add(baseUrl);
+  }
+  
+  // If it's a filename pattern, also mark just the filename
+  const filenameMatch = url.match(/(\d+-\d+.*\.(jpg|jpeg|png|gif|webp))/i);
+  if (filenameMatch) {
+    failedUrlsCache.add(filenameMatch[1]);
+  }
+  
+  log.debug(`Marked URL as failed: ${url} (and ${baseUrl})`);
   return `${window.location.origin}/placeholder.svg`;
 };
 

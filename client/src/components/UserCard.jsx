@@ -12,7 +12,7 @@ import {
 } from "react-icons/fa";
 import { withMemo } from "./common";
 import { useLanguage, useAuth } from "../context";
-import { formatDate, logger } from "../utils";
+import { formatDate, logger, markUrlAsFailed } from "../utils";
 // No longer using translation utilities - using direct t() function
 import { usePhotoManagement } from "../hooks";
 import styles from "../styles/usercard.module.css";
@@ -507,6 +507,10 @@ const UserCard = ({
                   const retryCount = parseInt(e.target.dataset.retryCount || '0');
                   if (retryCount >= 3) {
                     e.target.onerror = null;
+                    // Mark this URL as permanently failed so we don't retry it
+                    markUrlAsFailed(e.target.src);
+                    markUrlAsFailed(profilePhotoUrl);
+                    
                     const fallbackUrl = getGenderSpecificAvatar(user);
                     e.target.src = fallbackUrl;
                     return;
@@ -603,6 +607,10 @@ const UserCard = ({
                 const retryCount = parseInt(e.target.dataset.retryCount || '0');
                 if (retryCount >= 3) {
                   e.target.onerror = null;
+                  // Mark this URL as permanently failed so we don't retry it
+                  markUrlAsFailed(e.target.src);
+                  markUrlAsFailed(profilePhotoUrl);
+                  
                   const fallbackUrl = getGenderSpecificAvatar(user);
                   e.target.src = fallbackUrl;
                   return;
