@@ -508,7 +508,7 @@ const Register = () => {
                 toast.info(t('photoQueuedUpload', "Profile photo will be uploaded when you're online"));
                 logger.debug("Profile photo queued for upload:", photoResult);
               } else {
-                toast.success(t('photoUploadSuccess', "Profile photo uploaded successfully"));
+                // Don't show success toast here - let the hook handle it
                 logger.debug("Profile photo uploaded successfully via hook:", photoResult);
               }
             } else {
@@ -520,7 +520,7 @@ const Register = () => {
             
             // Don't show error to user if already navigating to dashboard
             // This prevents the error toast from showing after the success message
-            if (document.visibilityState === 'visible') {
+            if (document.visibilityState === 'visible' && photoErr.message && !photoErr.message.includes('success')) {
               toast.error(t('photoUploadFailed', "Failed to upload profile photo:") + " " + (photoErr.message || ""));
             }
           }

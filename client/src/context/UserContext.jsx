@@ -262,11 +262,14 @@ export function UserProvider({ children }) {
         )
         if (!res.success) throw new Error(res.error)
         dispatch({ type: "UPLOAD_PHOTO", payload: res.data })
-        toast.success(`Photo uploaded (${privacy})`)
+        // Remove duplicate toast - let the calling component handle it
+        // toast.success(`Photo uploaded (${privacy})`)
         return res.data
       } catch (err) {
         dispatch({ type: "USER_ERROR", payload: err.message })
-        return null
+        // Remove duplicate toast - let the calling component handle it
+        // toast.error(err.message)
+        throw err // Re-throw so the calling component can handle it
       }
     },
     []

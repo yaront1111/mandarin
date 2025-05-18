@@ -526,6 +526,11 @@ const Profile = () => {
       provideTactileFeedback('sendFile');
     }
     
+    // Reset file input immediately to prevent re-uploads
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+    
     // No need to duplicate validation logic from the hook
     try {
       // Default to private for new uploads
@@ -538,19 +543,18 @@ const Profile = () => {
         // Update timestamp to force re-rendering
         setPhotosUpdateTimestamp(Date.now());
         
-        toast.success(translations.photoUploadSuccess)
-        
         // Force immediate refresh of user data to update UI without page reload
         await refreshUserData(user?._id, true)
         
-        // Reset file input
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ""
-        }
+        // Only show success toast if we got here without errors
+        toast.success(translations.photoUploadSuccess)
       }
     } catch (error) {
       log.error("Failed to upload photo:", error)
-      toast.error(error.message || translations.photoUploadFailed)
+      // Only show error toast for actual errors, not for successful operations
+      if (error.message && !error.message.includes('success')) {
+        toast.error(error.message || translations.photoUploadFailed)
+      }
     }
   }
   const triggerFileInput = () => {
@@ -647,21 +651,27 @@ const Profile = () => {
     
     try {
       // The hook handles validation including profile photo check
-      await deletePhoto(photoId, user?._id)
+      const result = await deletePhoto(photoId, user?._id)
       
-      // Clear URL cache to ensure deleted photo is no longer displayed
-      clearCache();
-      
-      // Update timestamp to force re-rendering
-      setPhotosUpdateTimestamp(Date.now());
-      
-      // Force immediate refresh of user data to update UI without page reload
-      await refreshUserData(user?._id, true)
-      
-      toast.success(translations.photoDeleteSuccess)
+      if (result) {
+        // Clear URL cache to ensure deleted photo is no longer displayed
+        clearCache();
+        
+        // Update timestamp to force re-rendering
+        setPhotosUpdateTimestamp(Date.now());
+        
+        // Force immediate refresh of user data to update UI without page reload
+        await refreshUserData(user?._id, true)
+        
+        // Only show success if operation completed
+        toast.success(translations.photoDeleteSuccess)
+      }
     } catch (error) {
       log.error("Failed to delete photo:", error)
-      toast.error(error.message || translations.photoDeleteFailed)
+      // Only show error toast for actual errors, not for successful operations
+      if (error.message && !error.message.includes('success')) {
+        toast.error(error.message || translations.photoDeleteFailed)
+      }
     }
   }
 
