@@ -72,6 +72,15 @@ router.post(
     }
 
     const user = new User({ email, password, nickname, details, accountTier, isCouple })
+    
+    // Apply default subscription if enabled
+    if (config.ENABLE_DEFAULT_SUBSCRIPTION) {
+      const subscriptionDays = config.DEFAULT_SUBSCRIPTION_DAYS
+      user.isPaid = true
+      user.subscriptionExpiry = new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000)
+      log.info(`Applied ${subscriptionDays}-day subscription to new user ${email}`)
+    }
+    
     const verificationToken = user.createVerificationToken()
     await user.save()
 

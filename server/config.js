@@ -85,6 +85,10 @@ const config = {
   JWT_EXPIRE: process.env.JWT_EXPIRE || "7d",
   JWT_COOKIE_EXPIRE: Number.parseInt(process.env.JWT_COOKIE_EXPIRE, 10) || 30, // 30 days
   REFRESH_TOKEN_EXPIRE: Number.parseInt(process.env.REFRESH_TOKEN_EXPIRE, 10) || 90, // 90 days
+  
+  // Subscription settings
+  DEFAULT_SUBSCRIPTION_DAYS: Number.parseInt(process.env.DEFAULT_SUBSCRIPTION_DAYS, 10) || 365, // 1 year by default
+  ENABLE_DEFAULT_SUBSCRIPTION: process.env.ENABLE_DEFAULT_SUBSCRIPTION !== 'false', // true by default
 
   // File upload settings
   FILE_UPLOAD_PATH: process.env.FILE_UPLOAD_PATH || path.join(__dirname, "uploads"),
