@@ -255,13 +255,22 @@ class ApiService {
 
   // --- Auth & Token Refresh ---
   async _handleAuthError(config) {
+    // Don't retry if we're already trying to refresh token
+    if (config._skipAuthRefresh) {
+      return Promise.reject({ success: false });
+    }
+    
     config._retryAuth = true;
     try {
       const token = await this._refreshToken();
       config.headers.Authorization = `Bearer ${token}`;
       return this.api.request(config);
-    } catch {
-      this.logout();
+    } catch (error) {
+      // Only logout if there was a token and it failed to refresh
+      const hasToken = !!getToken();
+      if (hasToken) {
+        this.logout();
+      }
       return Promise.reject({ success: false });
     }
   }
@@ -270,7 +279,11 @@ class ApiService {
     if (this.refreshPromise) return this.refreshPromise;
     this.refreshPromise = (async () => {
       const old = getToken();
-      if (!old) throw new Error("No token");
+      if (!old) {
+        // If there's no token, don't attempt refresh - just fail silently
+        this.refreshPromise = null;
+        throw new Error("No token");
+      }
       
       try {
         // Use the api instance itself to do the request, but avoid any interceptors that would cause a loop
@@ -293,6 +306,9 @@ class ApiService {
         throw new Error("Refresh failed");
       } catch (error) {
         logger.create("ApiService").error("Token refresh failed:", error);
+        // Clear the token if refresh fails
+        setToken(null, true);
+        this.api.defaults.headers.common.Authorization = "";
         throw error;
       }
     })();

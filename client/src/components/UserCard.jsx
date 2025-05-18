@@ -503,12 +503,26 @@ const UserCard = ({
                   height: '100%'
                 }}
                 onError={(e) => {
-                  e.target.onerror = null;
-                  const fallbackUrl = getGenderSpecificAvatar(user);
-                  e.target.src = fallbackUrl;
+                  // Prevent infinite retries by limiting to 3 attempts
+                  const retryCount = parseInt(e.target.dataset.retryCount || '0');
+                  if (retryCount >= 3) {
+                    e.target.onerror = null;
+                    const fallbackUrl = getGenderSpecificAvatar(user);
+                    e.target.src = fallbackUrl;
+                    return;
+                  }
+                  
+                  // Increment retry count
+                  e.target.dataset.retryCount = (retryCount + 1).toString();
+                  
+                  // Try with timestamp to bypass cache
+                  const currentSrc = e.target.src;
+                  const url = new URL(currentSrc);
+                  url.searchParams.set('_v', Date.now().toString());
+                  e.target.src = url.toString();
                   
                   // Use the shared photo error handler to mark the URL as failed and refresh avatars
-                  if (profilePhoto?._id) {
+                  if (profilePhoto?._id && retryCount === 2) {
                     handlePhotoLoadError(profilePhoto._id, profilePhotoUrl);
                     // Force a refresh of all avatars to ensure consistent display
                     refreshAllAvatars();
@@ -585,12 +599,26 @@ const UserCard = ({
                 objectFit: 'cover'
               }}
               onError={(e) => {
-                e.target.onerror = null;
-                const fallbackUrl = `${window.location.origin}/default-avatar.png`;
-                e.target.src = fallbackUrl;
+                // Prevent infinite retries by limiting to 3 attempts
+                const retryCount = parseInt(e.target.dataset.retryCount || '0');
+                if (retryCount >= 3) {
+                  e.target.onerror = null;
+                  const fallbackUrl = getGenderSpecificAvatar(user);
+                  e.target.src = fallbackUrl;
+                  return;
+                }
+                
+                // Increment retry count
+                e.target.dataset.retryCount = (retryCount + 1).toString();
+                
+                // Try with timestamp to bypass cache
+                const currentSrc = e.target.src;
+                const url = new URL(currentSrc);
+                url.searchParams.set('_v', Date.now().toString());
+                e.target.src = url.toString();
                 
                 // Use the shared photo error handler to mark the URL as failed and refresh avatars
-                if (profilePhoto?._id) {
+                if (profilePhoto?._id && retryCount === 2) {
                   handlePhotoLoadError(profilePhoto._id, profilePhotoUrl);
                   // Force a refresh of all avatars to ensure consistent display
                   refreshAllAvatars();
