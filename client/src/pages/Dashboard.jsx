@@ -91,11 +91,7 @@ const Dashboard = () => {
     // Map lookingFor to gender filter
     if (lookingFor.includes('women')) genderFilter.push('female');
     if (lookingFor.includes('men')) genderFilter.push('male');
-    if (lookingFor.includes('couples')) {
-      genderFilter.push('couple');
-      genderFilter.push('male'); // For couples
-      genderFilter.push('female'); // For couples
-    }
+    if (lookingFor.includes('couples')) genderFilter.push('couple');
     
     return {
       ageMin: 18,
@@ -109,7 +105,18 @@ const Dashboard = () => {
     };
   }, [user]);
 
-  const [filterValues, setFilterValues] = useState(getDefaultFilters())
+  // Start with empty filters that will be populated when user data is available
+  const [filterValues, setFilterValues] = useState({
+    ageMin: 18,
+    ageMax: 99,
+    distance: 100,
+    online: false,
+    verified: false,
+    withPhotos: false,
+    interests: [],
+    gender: [], // Start empty, will be populated from user preferences
+  })
+  const [filtersInitialized, setFiltersInitialized] = useState(false)
 
   // Chat, story, and profile modal state
   const [chatUser, setChatUser] = useState(null)
@@ -127,13 +134,6 @@ const Dashboard = () => {
   const handleImageError = useCallback((userId) => {
     setImageLoadErrors((prev) => ({ ...prev, [userId]: true }))
   }, [])
-
-  // Load initial users
-  useEffect(() => {
-    loadUsers(1).then(() => {
-      setInitialLoadComplete(true)
-    })
-  }, [loadUsers]) // Use loadUsers as dependency which already depends on filterValues
 
   // Function to load users with pagination and filters
   const loadUsers = useCallback(
@@ -159,6 +159,13 @@ const Dashboard = () => {
     },
     [getUsers, filterValues],
   )
+
+  // Load initial users
+  useEffect(() => {
+    loadUsers(1).then(() => {
+      setInitialLoadComplete(true)
+    })
+  }, [loadUsers]) // Use loadUsers as dependency which already depends on filterValues
 
   // Load more users function
   const loadMoreUsers = useCallback(() => {
@@ -228,6 +235,11 @@ const Dashboard = () => {
 
   // Filter and sort users efficiently.
   const filteredUsers = useMemo(() => {
+    // Don't filter until we have initialized filters
+    if (!filtersInitialized) {
+      return [];
+    }
+    
     return users.filter((u) => {
       if (u._id === user?._id) return false
       
@@ -239,11 +251,20 @@ const Dashboard = () => {
         // Check both gender and iAm fields for couples
         const isCouple = userIAm === 'couple' || u.isCouple;
         
-        if (isCouple && filterValues.gender.includes('couple')) {
-          // Include couples if couple is selected
-        } else if (!filterValues.gender.includes(userGender)) {
-          return false;
+        if (isCouple) {
+          // If user is a couple, only include if 'couple' is in the filter
+          if (!filterValues.gender.includes('couple')) {
+            return false;
+          }
+        } else {
+          // If user is not a couple, check if their gender is in the filter
+          if (!filterValues.gender.includes(userGender)) {
+            return false;
+          }
         }
+      } else {
+        // If no gender filter is set, don't show any users
+        return false;
       }
       
       const userAge = u.details?.age || 25
@@ -257,7 +278,7 @@ const Dashboard = () => {
       }
       return true
     })
-  }, [users, user, filterValues])
+  }, [users, user, filterValues, filtersInitialized])
 
   // FIX: Deduplicate and sort users to prevent key errors
   const sortedUsers = useMemo(() => {
@@ -358,6 +379,14 @@ const Dashboard = () => {
   useEffect(() => {
     setImageLoadErrors({})
   }, [filterValues])
+
+  // Update filters when user data becomes available, but only once
+  useEffect(() => {
+    if (user && !filtersInitialized) {
+      setFilterValues(getDefaultFilters())
+      setFiltersInitialized(true)
+    }
+  }, [user, getDefaultFilters, filtersInitialized])
 
   // Check for unread messages from a given user.
   const hasUnreadMessagesFrom = useCallback(

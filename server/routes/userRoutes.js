@@ -129,10 +129,31 @@ router.get(
       const genders = Array.isArray(req.query.gender) 
         ? req.query.gender 
         : req.query.gender.split(',').map(g => g.trim());
-      if (genders.length === 1) {
-        q["details.gender"] = genders[0];
+      
+      // Handle couple filter separately
+      if (genders.includes('couple')) {
+        const nonCoupleGenders = genders.filter(g => g !== 'couple');
+        if (nonCoupleGenders.length === 0) {
+          // Only couples requested
+          q.$or = [
+            { isCouple: true },
+            { "details.iAm": "couple" }
+          ];
+        } else {
+          // Mix of couples and other genders
+          q.$or = [
+            { isCouple: true },
+            { "details.iAm": "couple" },
+            { "details.gender": { $in: nonCoupleGenders } }
+          ];
+        }
       } else {
-        q["details.gender"] = { $in: genders };
+        // No couples in filter
+        if (genders.length === 1) {
+          q["details.gender"] = genders[0];
+        } else {
+          q["details.gender"] = { $in: genders };
+        }
       }
     }
     if (req.query.minAge) q["details.age"] = { ...q["details.age"], $gte: +req.query.minAge };
@@ -141,7 +162,7 @@ router.get(
     if (req.query.interest) q["details.interests"] = { $in: [req.query.interest] };
 
     const users = await User.find(q)
-      .select("nickname details photos isOnline lastActive settings")
+      .select("nickname details photos isOnline lastActive settings isCouple")
       .sort({ isOnline: -1, lastActive: -1 })
       .skip(skip)
       .limit(limit);
@@ -658,7 +679,7 @@ router.get(
     if (req.query.online === "true") q.isOnline = true;
 
     const users = await User.find(q)
-      .select("nickname details photos isOnline lastActive settings")
+      .select("nickname details photos isOnline lastActive settings isCouple")
       .sort({ isOnline: -1, lastActive: -1 })
       .skip(skip)
       .limit(limit);
